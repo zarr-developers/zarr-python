@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Final, cast, get_args, get_origin
 
 from typing_extensions import TypedDict, Unpack
 
@@ -14,12 +14,10 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
-    arrays_to_tuples,
     copied,
     frozen,
     is_array,
     is_object,
-    is_tuple,
     json_text,
     nested_past_the_levels,
     not_an_object,
@@ -28,7 +26,6 @@ from zarr_metadata._json import (
     with_input,
     within,
 )
-from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._context import scoped
@@ -63,7 +60,7 @@ from zarr_metadata.model._shared import (
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
 
-# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+# A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
@@ -95,29 +92,6 @@ if TYPE_CHECKING:
 _ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3ArrayMetadataJSON.__required_keys__
 )
-
-
-def _is_canonical_metadata_field_v3(value: object) -> bool:
-    """Whether a validated v3 metadata field has its declared runtime container type."""
-    return isinstance(value, (str, dict))
-
-
-def is_canonical_array_metadata_v3(value: object) -> bool:
-    """Whether a validated v3 array document matches `ZarrV3ArrayMetadataJSON` at runtime."""
-    if not is_object(value) or not isinstance(value, dict):
-        return False
-    doc = value
-    codecs = doc["codecs"]
-    if not isinstance(doc["shape"], tuple) or not is_tuple(codecs):
-        return False
-    transformers = doc.get("storage_transformers", ())
-    if not is_tuple(transformers):
-        return False
-    if "dimension_names" in doc and not isinstance(doc["dimension_names"], tuple):
-        return False
-    if not all(_is_canonical_metadata_field_v3(doc[key]) for key, _ in _EXTENSION_POINTS_V3):
-        return False
-    return all(_is_canonical_metadata_field_v3(item) for item in (*codecs, *transformers))
 
 
 def members_past_the_levels(
@@ -400,58 +374,6 @@ def read_array_v3(
         document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
     )
     return reading, members
-
-
-def validate_array_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a valid v3 array document.
-
-    This checks the structure, and reads each extension point through the
-    definition that claims its name in `context`. Examples of problems: a
-    gzip `level` out of range, or a key that a codec's configuration does
-    not declare. The fill value is checked against the data type as
-    `context` read it (for example, an `int8` fill value of 300). The
-    chunk grid is checked against the shape (for example, a regular grid
-    with chunk lengths for two dimensions, over an array with three). The
-    codecs are read as a pipeline, in order, each checked against the
-    chunk it receives (for example, a `transpose` whose `order` has a
-    different number of axes, or a shard that its inner chunks do not
-    divide). A shard's inner and index codecs are checked too.
-    A name that nothing in `context` claims is not checked, and neither
-    is a fill value of that data type. After a codec with such a name,
-    the next codec receives a chunk with unknown shape and data type.
-    Unknown top-level keys are allowed (they map to `extra_fields`). A
-    reader must understand each one that does not declare
-    `must_understand: false`; the model reports these as
-    `must_understand_fields`. The result equals the `problems` of
-    `read_array_metadata_v3`, which also holds what was read to find them.
-    """
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    return read_array_v3(value, context)[0].problems
-
-
-def is_array_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
-    """Whether `value` is a v3 array document, written with tuples, that `validate_array_metadata_v3` finds no problems with."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    return (
-        _is_canonical_json(value, finite=False)
-        and not validate_array_metadata_v3(value, context=context)
-        and is_canonical_array_metadata_v3(value)
-    )
-
-
-def parse_array_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> ZarrV3ArrayMetadataJSON:
-    """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    problems = validate_array_metadata_v3(value, context=context)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(value))
 
 
 def read_extra_fields_v3(
@@ -942,9 +864,29 @@ def read_array_metadata_v3(
     `context` read it (an `AcceptedField` read by the definition that
     claims its name, an `UnclaimedField`, or a `RefusedField`), the chunks
     the codecs receive, each codec with the chunk it receives, every
-    problem `validate_array_metadata_v3` finds, and, when there are no
-    problems, the document's model, which holds the same reading. To
-    apply a policy over the fields (for example, allow only the core
+    problem, and, when there are no problems, the document's model, which
+    holds the same reading.
+
+    The read checks the structure, and reads each extension point through
+    the definition that claims its name in `context`. Examples of
+    problems: a gzip `level` out of range, or a key that a codec's
+    configuration does not declare. The fill value is checked against the
+    data type as `context` read it (for example, an `int8` fill value of
+    300). The chunk grid is checked against the shape (for example, a
+    regular grid with chunk lengths for two dimensions, over an array with
+    three). The codecs are read as a pipeline, in order, each checked
+    against the chunk it receives (for example, a `transpose` whose
+    `order` has a different number of axes, or a shard that its inner
+    chunks do not divide). A shard's inner and index codecs are checked
+    too. A name that nothing in `context` claims is not checked, and
+    neither is a fill value of that data type. After a codec with such a
+    name, the next codec receives a chunk with unknown shape and data
+    type. Unknown top-level keys are allowed (they map to
+    `extra_fields`). A reader must understand each one that does not
+    declare `must_understand: false`; the model reports these as
+    `must_understand_fields`.
+
+    To apply a policy over the fields (for example, allow only the core
     spec's fields), iterate over the reading's `fields()`. A value that
     is not an object has no fields.
     """

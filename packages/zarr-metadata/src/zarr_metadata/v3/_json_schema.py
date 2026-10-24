@@ -190,7 +190,7 @@ def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
 
 
 def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSONSchema:
-    """The JSON Schema of a v3 `zarr.json` read in `context`: an array document or a group document, as `validate_node_metadata_v3` reads it, except for the rules.
+    """The JSON Schema of a v3 `zarr.json` read in `context`: an array document or a group document, as `read_node_metadata_v3` reads it, except for the rules.
 
     Use it in an editor that validates a `zarr.json` while it is
     written, or in a validator written in another language. The schema
@@ -202,9 +202,9 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     JSON shape that the data type's definition declares (for `int8`, an
     integer in [-128, 127]). In a scope that claims it, as `CORE` does,
     a group's `consolidated_metadata` is the envelope the core spec
-    fixes, with any JSON as the documents it lists, because the validator
+    fixes, with any JSON as the documents it lists, because the reader
     does not read them, and a `null` value, which zarr-python 3.0 and 3.1
-    wrote, is refused, because the validator refuses it too. Each document is in `$defs` under the name of its
+    wrote, is refused, because the reader refuses it too. Each document is in `$defs` under the name of its
     TypedDict. `ZarrV3ArrayMetadataJSON` describes only an array.
 
     A JSON Schema describes each member on its own. It does not contain
@@ -213,7 +213,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     pipeline order with each codec checked against the chunk it
     receives, and the checks in a definition's `rules`. So a document
     the schema accepts may still have a problem. Every JSON document
-    that `validate_node_metadata_v3` finds no problem with is accepted
+    that `read_node_metadata_v3` reads without a problem is accepted
     by the schema. A validator reads JSON as a parser returns it, with
     arrays as lists. A model's `to_json` returns tuples, and a Python
     validator does not accept tuples as arrays.
@@ -273,7 +273,7 @@ def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
     """An array document: its TypedDict, at least one codec, and a constraint on its fill value for each data type in scope, which applies when the document names that data type.
 
     The TypedDict cannot declare a minimum length, so the schema adds it:
-    a pipeline needs its array -> bytes codec, and the validator rejects an
+    a pipeline needs its array -> bytes codec, and the reader rejects an
     empty `codecs`.
     """
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)

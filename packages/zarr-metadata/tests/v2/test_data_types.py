@@ -335,14 +335,14 @@ def test_a_base64_fill_value_is_as_long_as_its_item(
     dtype: JSONValue, fill_value: str, accepted: bool
 ) -> None:
     """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each, and a struct with no fields takes no bytes. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
-    from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
+    from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
 
     document = {
         **ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json(),
         "dtype": dtype,
         "fill_value": fill_value,
     }
-    found = validate_array_metadata_v2(document)
+    found = read_array_metadata_v2(document).problems
     assert (len(found) == 0) is accepted, [p.message for p in found]
     if not accepted:
         assert [(p.loc, p.kind) for p in found] == [(("fill_value",), "invalid_value")]

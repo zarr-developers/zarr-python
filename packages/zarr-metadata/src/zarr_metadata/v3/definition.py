@@ -15,7 +15,7 @@ for each kind: `data_types`, `chunk_grids`, `chunk_key_encodings`,
 this package provides.
 
 A scope reads whole documents as well as fields.
-`validate_array_metadata_v3(document, context=CONTEXT)`, from
+`read_array_metadata_v3(document, context=CONTEXT)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `CONTEXT`, and so do the model's `from_json` and
 `from_key_value`. The fill value is checked against the data type it

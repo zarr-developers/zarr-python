@@ -19,7 +19,7 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
-    validate_array_metadata_v3,
+    read_array_metadata_v3,
 )
 from zarr_metadata.v3._pipeline import (
     read_pipeline,
@@ -237,7 +237,7 @@ def test_error_an_array_document_s_shard_is_read_where_it_sits() -> None:
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(16, 16)).to_json())
     document["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": [8, 6]}}
     document["codecs"] = [_shard([4, 4], index=["bytes"])]
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 0, "configuration", "chunk_shape", 1), "invalid_value"),
         (
             ("codecs", 0, "configuration", "index_codecs", 0, "configuration", "endian"),

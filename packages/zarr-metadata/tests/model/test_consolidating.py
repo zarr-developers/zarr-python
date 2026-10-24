@@ -8,7 +8,7 @@ from typing import Any, cast, get_type_hints
 
 import pytest
 
-from zarr_metadata._json import JSON_DEPTH
+from zarr_metadata._json import JSON_DEPTH, is_canonical_json
 from zarr_metadata.definition import EmptyConfiguration
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
@@ -16,9 +16,8 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
     ZarrV3NodeMetadataInput,
-    is_group_metadata_v3,
     read_consolidated_metadata_v3,
-    validate_group_metadata_v3,
+    read_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -95,7 +94,9 @@ def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_sc
     written = {path: _documents(entry) for path, entry in beside.items()}
     assert held == _consolidated(context, a=child.to_json(), **written)
     group = ZarrV3GroupMetadata.create_default(context=context, consolidated_metadata=held)
-    assert is_group_metadata_v3(group.to_json())
+    document = group.to_json()
+    assert is_canonical_json(document, finite=False)
+    assert read_group_metadata_v3(document).problems == ()
 
 
 def _documents(value: object) -> object:
@@ -284,7 +285,7 @@ def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
         ZarrV3ConsolidatedMetadata(member)
     assert [
         problem.loc[:4]
-        for problem in validate_group_metadata_v3(_group_document(a=child.to_json()))
+        for problem in read_group_metadata_v3(_group_document(a=child.to_json())).problems
     ] == [("consolidated_metadata", "metadata", "a", "attributes")]
 
 

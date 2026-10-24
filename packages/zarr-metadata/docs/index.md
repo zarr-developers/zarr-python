@@ -29,8 +29,8 @@ closely model the content of the Zarr specifications, such as:
   few widely-used-but-unspecified entities (e.g. consolidated metadata).
 - **Document models** ([`zarr_metadata.model`](api/model.md)): immutable
   models of whole metadata documents, each one a document and the scope
-  it was read in, with validators, loc-aware parsers, and store-key
-  (de)serialization. A document
+  it was read in, with readers that report every problem at its
+  location, and store-key (de)serialization. A document
   produced by `to_json` shares no mutable state with the model that produced
   it.
 - **Definitions and scopes** ([`zarr_metadata.definition`](api/definition.md),
@@ -92,7 +92,7 @@ closely model the content of the Zarr specifications, such as:
 
 ## Validation boundary
 
-The model validators enforce the declared document structure and a small set
+The readers and model constructors enforce the declared document structure and a small set
 of context-free consistency rules, e.g.:
 - fixed format literals,
 - finite JSON numbers outside `attributes` and the members nothing in scope reads
@@ -103,9 +103,9 @@ In a v3 document, validation also checks each extension point: the data
 type, the chunk grid, the chunk key encoding, each codec, and each storage
 transformer. Each one is checked by the definition that claims its name in
 a scope. The scope is `CORE_AND_EXTENSIONS` unless a `context` is passed.
-If the definition rejects a configuration, the validator rejects it too,
+If the definition rejects a configuration, the reader rejects it too,
 and a configuration key the definition does not declare is reported as
-`unknown_key`. If no definition in the scope claims a name, the validator
+`unknown_key`. If no definition in the scope claims a name, the reader
 does not check that extension point, and the consumer decides whether to
 support it.
 
@@ -118,7 +118,7 @@ Some checks relate one part of a v3 document to another:
   checks the codec against the chunk it receives. This includes a shard's
   inner codecs and index codecs.
 
-The validators do no arithmetic on values. For example, they do not check
+The readers do no arithmetic on values. For example, they do not check
 whether a fill value survives a `cast_value` round trip.
 
 Some choices that the spec text leaves open, or answers in two ways:
@@ -348,7 +348,7 @@ equal to itself. Equal models have equal hashes, but may write different
 documents, because `to_json` writes each document as it was given. A
 model holds nothing that can be changed in place.
 
-`node_metadata_json_schema_v3` writes the rules the validators apply as a
+`node_metadata_json_schema_v3` writes the rules the readers apply as a
 JSON Schema (draft 2020-12). Use it in an editor that checks a `zarr.json`
 while you write it, or with a validator in another language. Each
 extension point is described as a field as its scope reads it: a claimed
@@ -359,7 +359,7 @@ value must be a valid fill value for the data type the document names.
 `json_schema` writes the schema of any TypedDict as `check` reads it. All
 three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
 relate members to each other, so a document the schema accepts may still
-have a problem. Every JSON document the validators accept, the schema also
+have a problem. Every JSON document the readers accept, the schema also
 accepts. A schema validator reads JSON as a parser produces it, with
 arrays as lists. A model's `to_json` returns tuples, which a Python
 validator does not accept as arrays.

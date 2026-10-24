@@ -36,7 +36,7 @@ STORE_C = {".zmetadata": json.dumps(CONSOLIDATED).encode()}
 
 
 def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
-    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, an empty problem tuple, a guard that returns True, or a field that was read or left unclaimed."""
+    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, or a field that was read or left unclaimed."""
 
     def accepted(context: Context | None) -> bool:
         try:
@@ -45,10 +45,6 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
             return False
         if isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], tuple):
             return len(found[1]) == 0  # a resolved field and its problems
-        if isinstance(found, tuple):
-            return len(found) == 0
-        if isinstance(found, bool):
-            return found
         reading = getattr(found, "reading", found)
         metadata = getattr(reading, "metadata", found)
         return metadata is not None
@@ -57,13 +53,6 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
 
 
 ENTRY_POINTS: dict[str, Callable[..., object]] = {
-    "validate_array_metadata_v2": lambda context: zm.validate_array_metadata_v2(
-        BAD, context=context
-    ),
-    "is_array_metadata_v2": lambda context: zm.is_array_metadata_v2(
-        zm.parse_array_metadata_v2(BAD, context=EMPTY), context=context
-    ),
-    "parse_array_metadata_v2": lambda context: zm.parse_array_metadata_v2(BAD, context=context),
     "read_array_metadata_v2": lambda context: zm.read_array_metadata_v2(BAD, context=context),
     "ZarrV2ArrayMetadata": lambda context: zm.ZarrV2ArrayMetadata(BAD, context=context),
     "ZarrV2ArrayMetadata.from_json": lambda context: zm.ZarrV2ArrayMetadata.from_json(
@@ -81,11 +70,6 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "ZarrV2ArrayMetadata.refined_in": lambda context: zm.ZarrV2ArrayMetadata(
         BAD, context=EMPTY
     ).refined_in(context),
-    "validate_group_metadata_v2": lambda context: zm.validate_group_metadata_v2(
-        GROUP, context=context
-    ),
-    "is_group_metadata_v2": lambda context: zm.is_group_metadata_v2(GROUP, context=context),
-    "parse_group_metadata_v2": lambda context: zm.parse_group_metadata_v2(GROUP, context=context),
     "ZarrV2GroupMetadata": lambda context: zm.ZarrV2GroupMetadata(GROUP, context=context),
     "ZarrV2GroupMetadata.from_json": lambda context: zm.ZarrV2GroupMetadata.from_json(
         GROUP, context=context
@@ -116,9 +100,6 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
         CONSOLIDATED, context=context
     ),
     "read_node_metadata_v2": lambda context: zm.read_node_metadata_v2(
-        {".zarray": BAD}, context=context
-    ),
-    "validate_node_metadata_v2": lambda context: zm.validate_node_metadata_v2(
         {".zarray": BAD}, context=context
     ),
     "node_metadata_from_key_value_v2": lambda context: zm.node_metadata_from_key_value_v2(

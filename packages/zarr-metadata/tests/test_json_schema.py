@@ -32,7 +32,7 @@ from zarr_metadata.json_schema import (
     json_schema,
     node_metadata_json_schema_v3,
 )
-from zarr_metadata.model import validate_node_metadata_v3
+from zarr_metadata.model import read_node_metadata_v3
 from zarr_metadata.typed_json import JSONValue, check
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3.codec.gzip import GzipCodecConfiguration
@@ -772,7 +772,7 @@ def _consolidated(**metadata: object) -> dict[str, Any]:
 
 
 # Each document, whether the schema accepts it, and whether
-# `validate_node_metadata_v3` finds no problem with it.
+# `read_node_metadata_v3` finds no problem with it.
 DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
     ("array", ARRAY, True, True),
     ("group", {**GROUP, "attributes": {"a": [1, None]}}, True, True),
@@ -853,7 +853,7 @@ def test_node_metadata_json_schema_says_what_a_zarr_json_holds(
     document: dict[str, Any], accepted: bool, clean: bool
 ) -> None:
     assert Draft202012Validator(NODE_SCHEMA).is_valid(document) == accepted
-    assert (validate_node_metadata_v3(document) == ()) == clean
+    assert (read_node_metadata_v3(document).problems == ()) == clean
 
 
 _BASES: tuple[dict[str, Any], ...] = (
@@ -890,11 +890,11 @@ def _node_validator(context: int) -> Draft202012Validator:
 @given(st.data())
 def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
     # Each document is changed in one place and read in one of three scopes.
-    # If `validate_node_metadata_v3` finds no problem, the schema accepts it.
+    # If `read_node_metadata_v3` finds no problem, the schema accepts it.
     base = data.draw(st.sampled_from(_BASES), label="base")
     context = data.draw(st.sampled_from(range(len(_CONTEXTS))), label="context")
     document = data.draw(_changed(json.loads(json.dumps(base))), label="document")
-    read = validate_node_metadata_v3(document, context=_CONTEXTS[context]) == ()
+    read = read_node_metadata_v3(document, context=_CONTEXTS[context]).problems == ()
     event("read without a problem" if read else "a problem")
     if read:
         assert _node_validator(context).is_valid(cast("Any", document))

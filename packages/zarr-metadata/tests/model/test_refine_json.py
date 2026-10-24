@@ -176,7 +176,6 @@ def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
     from zarr_metadata.model import (
         ZarrV3ArrayMetadata,
         read_array_metadata_v3,
-        validate_array_metadata_v3,
     )
 
     refined, problems = refine_json({"x": [10**5000]})
@@ -185,11 +184,11 @@ def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
     assert "digits" in problems[0].message
     document = {**ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json()}
     document["attributes"] = {"x": 10**5000}
-    found = validate_array_metadata_v3(document)
+    found = read_array_metadata_v3(document).problems
     assert [(p.loc, p.kind) for p in found] == [(("attributes", "x"), "invalid_value")]
     assert read_array_metadata_v3(document).problems == found
     shaped = {**document, "attributes": {}, "shape": [10**5000]}
-    assert [p.loc for p in validate_array_metadata_v3(shaped)] == [("shape", 0)]
+    assert [p.loc for p in read_array_metadata_v3(shaped).problems] == [("shape", 0)]
 
 
 def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:

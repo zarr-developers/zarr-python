@@ -8,7 +8,7 @@ import functools
 import re
 from typing import Final
 
-from zarr_metadata._json import ValidationProblem, is_object, shown, shown_key, validate_json
+from zarr_metadata._json import ValidationProblem, is_object, shown, shown_key
 
 ENVELOPE_KEYS: frozenset[str] = frozenset({"name", "configuration", "must_understand"})
 """The keys a metadata field's envelope declares. Any other key is an unknown key."""
@@ -124,28 +124,9 @@ def envelope_problems(
     return tuple(problems)
 
 
-def configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]:
-    """A located problem for each member of `value`'s configuration that is not JSON. Returns nothing if there is no configuration object with string keys to walk."""
-    if not is_object(value):
-        return ()
-    configuration = value.get("configuration")
-    if not is_object(configuration):
-        return ()
-    members = configuration
-    if not all(isinstance(key, str) for key in members):
-        return ()
-    return tuple(
-        found
-        for key, item in members.items()
-        if isinstance(key, str)
-        for found in validate_json(item, ("configuration", key))
-    )
-
-
 __all__ = [
     "ENVELOPE_KEYS",
     "EXTENSION_NAME_SCHEMA_PATTERN",
-    "configuration_json_problems",
     "envelope_problems",
     "name_problem",
     "well_named",

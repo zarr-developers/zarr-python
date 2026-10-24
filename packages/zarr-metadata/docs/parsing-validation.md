@@ -189,6 +189,20 @@ for problem in reading.problems:
 
 If you only want the model, `ZarrV3ArrayMetadata.from_json(raw)` returns it, or raises `MetadataValidationError` with every problem in `.problems`.
 
+To read one field on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the field, the kind of field, and the scope, and returns the field as read and its problems:
+
+```python
+from zarr_metadata.definition import resolve
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+
+field, problems = resolve(
+    {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_AND_EXTENSIONS
+)
+for problem in problems:
+    print(problem.loc, problem.kind)
+# ('configuration', 'level') invalid_value
+```
+
 A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed:
 
 ```python

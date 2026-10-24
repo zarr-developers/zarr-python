@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -15,7 +15,6 @@ from zarr_metadata._hierarchy import NodeType, tree_problems
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
-    arrays_to_tuples,
     copied,
     frozen,
     is_json_object,
@@ -29,7 +28,6 @@ from zarr_metadata._json import (
     shown,
     with_input,
 )
-from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._scope import Claims, Conflict, ScopeConflictError
@@ -56,7 +54,7 @@ from zarr_metadata.model._shared import (
     validate_attributes,
 )
 
-# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+# A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
@@ -89,17 +87,8 @@ _GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 )
 
 
-def validate_group_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a structurally-valid v2 group doc.
-
-    Validates the in-memory merged form: the `.zgroup` fields plus an
-    optional `attributes` mapping folded in from `.zattrs`. A group has no
-    fields for a scope to read. `context` is accepted for consistency with
-    every other v2 reader.
-    """
-    scoped(context, CORE_V2)
+def _group_problems_v2(value: object) -> tuple[ValidationProblem, ...]:
+    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no fields for a scope to read, so no scope is needed."""
     if not is_object(value):
         return not_an_object(value)
     doc = value
@@ -109,25 +98,6 @@ def validate_group_metadata_v2(
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))
     return with_input(problems, doc)
-
-
-def is_group_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> TypeGuard[ZarrV2GroupMetadataJSON]:
-    """Whether `value` is a v2 group document, written with tuples, that `validate_group_metadata_v2` finds no problems with. `context` is accepted for consistency with every other v2 reader."""
-    return _is_canonical_json(value, finite=False) and not validate_group_metadata_v2(
-        value, context=context
-    )
-
-
-def parse_group_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> ZarrV2GroupMetadataJSON:
-    """Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or raise `MetadataValidationError`. `context` is accepted for consistency with every other v2 reader."""
-    problems = validate_group_metadata_v2(value, context=context)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast(ZarrV2GroupMetadataJSON, arrays_to_tuples(value))
 
 
 _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
@@ -162,9 +132,9 @@ class ZarrV2GroupMetadataReading:
 def read_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataReading:
-    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem `validate_group_metadata_v2` finds, and the model when there are none."""
+    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem, and the model when there are none. A group has no fields for a scope to read; `context` is taken for consistency with every other v2 reader."""
     context = scoped(context, CORE_V2)
-    problems = validate_group_metadata_v2(value, context=context)
+    problems = _group_problems_v2(value)
     if len(problems) != 0:
         return ZarrV2GroupMetadataReading(problems=problems)
     return ZarrV2GroupMetadata(value, context=context).reading
@@ -264,13 +234,6 @@ def node_metadata_from_key_value_v2(
     return reading.metadata
 
 
-def validate_node_metadata_v2(
-    files: Mapping[str, object], *, context: ZarrV2Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `files` (each of a node's files, decoded) are not a valid v2 node, as `read_node_metadata_v2` reads them."""
-    return read_node_metadata_v2(files, context=context).problems
-
-
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
     """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
@@ -311,7 +274,7 @@ class ZarrV2GroupMetadata(Keyed):
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2)
-        problems = validate_group_metadata_v2(document, context=context)
+        problems = _group_problems_v2(document)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
         # Refine once. The attributes the model holds are taken from the
@@ -460,7 +423,7 @@ class ZarrV2GroupMetadata(Keyed):
         )
         if len(problems) != 0:
             if document is not None:
-                problems = (*problems, *validate_group_metadata_v2(document, context=context))
+                problems = (*problems, *_group_problems_v2(document))
             raise MetadataValidationError(problems)
         return cls(document, context=context)
 
@@ -886,7 +849,7 @@ def _read_node_v2(
         if members is None or len(beside) != 0:
             return None, [*beside, *located(reading.problems)]
         return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
-    found = validate_group_metadata_v2(merged, context=context)
+    found = _group_problems_v2(merged)
     if len(found) != 0 or len(beside) != 0:
         return None, [*beside, *located(found)]
     document = refined_object(merged)

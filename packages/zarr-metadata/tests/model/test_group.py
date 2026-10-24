@@ -22,6 +22,7 @@ from zarr_metadata.model import (
     UNSET,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
+    ZarrV2GroupMetadataReading,
     ZarrV2GroupMetadataUpdate,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
@@ -31,18 +32,12 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadataReading,
     ZarrV3GroupMetadataUpdate,
     ZarrV3UnknownNodeMetadataReading,
-    is_group_metadata_v2,
-    is_group_metadata_v3,
     node_metadata_from_json_v3,
     node_metadata_from_key_value_v3,
-    parse_group_metadata_v2,
-    parse_group_metadata_v3,
     read_consolidated_metadata_v3,
+    read_group_metadata_v2,
     read_group_metadata_v3,
     read_node_metadata_v3,
-    validate_group_metadata_v2,
-    validate_group_metadata_v3,
-    validate_node_metadata_v3,
 )
 from zarr_metadata.model._group_v3 import GroupMembersV3
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
@@ -112,37 +107,39 @@ def test_group_v3_json_extra_field_roundtrips_as_must_understand() -> None:
 
 
 def test_group_v3_missing_required_key() -> None:
-    """parse_group_metadata_v3 reports each missing required key."""
+    """`ZarrV3GroupMetadata.from_json` reports each missing required key."""
     with pytest.raises(MetadataValidationError, match="node_type"):
-        parse_group_metadata_v3({"zarr_format": 3})
+        ZarrV3GroupMetadata.from_json({"zarr_format": 3})
 
 
 def test_group_v3_bad_attributes() -> None:
-    """parse_group_metadata_v3 rejects a non-mapping attributes value."""
+    """`ZarrV3GroupMetadata.from_json` rejects a non-mapping attributes value."""
     with pytest.raises(MetadataValidationError, match="attributes"):
-        parse_group_metadata_v3({"zarr_format": 3, "node_type": "group", "attributes": 5})
+        ZarrV3GroupMetadata.from_json({"zarr_format": 3, "node_type": "group", "attributes": 5})
 
 
 @pytest.mark.parametrize(
-    ("document", "validate"),
+    ("document", "read"),
     [
         pytest.param(
             {"zarr_format": 2.0},
-            validate_group_metadata_v2,
+            read_group_metadata_v2,
             id="v2",
         ),
         pytest.param(
             {"zarr_format": 3.0, "node_type": "group"},
-            validate_group_metadata_v3,
+            read_group_metadata_v3,
             id="v3",
         ),
     ],
 )
 def test_group_zarr_format_rejects_float(
-    document: object, validate: Callable[[object], list[ValidationProblem]]
+    document: object,
+    read: Callable[[object], ZarrV2GroupMetadataReading | ZarrV3GroupMetadataReading],
 ) -> None:
     """Integer-valued floats do not satisfy integer format literals."""
-    assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
+    problems = read(document).problems
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
 
 
 def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, ...], str]]:
@@ -160,7 +157,7 @@ def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]
     [
         (
             lambda: [
-                (p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})
+                (p.loc, p.kind) for p in read_group_metadata_v2({"zarr_format": 2, "x": 1}).problems
             ],
             [(("x",), "unknown_key")],
         ),
@@ -173,9 +170,9 @@ def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]
         (
             lambda: [
                 (p.loc, p.kind)
-                for p in validate_group_metadata_v3(
+                for p in read_group_metadata_v3(
                     _group(consolidated_metadata={**_inline(), "x": 1})
-                )
+                ).problems
             ],
             [(("consolidated_metadata", "x"), "unknown_key")],
         ),
@@ -211,35 +208,33 @@ def test_v2_group_document_types_are_closed(document_type: type) -> None:
 
 
 @pytest.mark.parametrize(
-    ("parse", "document"),
+    ("model", "document"),
     [
-        pytest.param(parse_group_metadata_v2, {"zarr_format": 2}, id="v2"),
+        pytest.param(ZarrV2GroupMetadata, {"zarr_format": 2}, id="v2"),
         pytest.param(
-            parse_group_metadata_v3,
+            ZarrV3GroupMetadata,
             {"zarr_format": 3, "node_type": "group"},
             id="v3",
         ),
     ],
 )
-def test_group_parser_materializes_abstract_mapping(
-    parse: Callable[[object], object], document: dict[str, object]
+def test_group_model_materializes_abstract_mapping(
+    model: type[ZarrV2GroupMetadata | ZarrV3GroupMetadata], document: dict[str, object]
 ) -> None:
-    """A successful group parser always returns the declared concrete TypedDict shape."""
-    parsed = parse(UserDict(document))
+    """A group model read from an abstract mapping writes the declared concrete TypedDict shape."""
+    written = model.from_json(UserDict(document)).to_json()
 
-    assert type(parsed) is dict
-    assert parsed == document
+    assert type(written) is dict
+    assert written == document
 
 
-def test_group_guards_reject_noncanonical_nested_json() -> None:
-    """Document guards cannot narrow values that only parsers can materialize."""
+def test_group_model_materializes_abstract_nested_json() -> None:
+    """A group model reads an abstract sequence nested in its document, and writes it as a tuple."""
     v3 = {"zarr_format": 3, "node_type": "group", "extension": range(2)}
     v2 = {"zarr_format": 2, "attributes": {"values": range(2)}}
 
-    assert not is_group_metadata_v3(v3)
-    assert not is_group_metadata_v2(v2)
-    assert parse_group_metadata_v3(v3)["extension"] == (0, 1)
-    assert parse_group_metadata_v2(v2).get("attributes") == {"values": (0, 1)}
+    assert ZarrV3GroupMetadata.from_json(v3).to_json()["extension"] == (0, 1)
+    assert ZarrV2GroupMetadata.from_json(v2).to_json().get("attributes") == {"values": (0, 1)}
 
 
 def test_group_v3_extension_fields_are_validated() -> None:
@@ -249,7 +244,7 @@ def test_group_v3_extension_fields_are_validated() -> None:
         "node_type": "group",
         "ext": {"must_understand": False, "payload": object()},
     }
-    assert [(problem.loc, problem.kind) for problem in validate_group_metadata_v3(doc)] == [
+    assert [(problem.loc, problem.kind) for problem in read_group_metadata_v3(doc).problems] == [
         (("ext", "payload"), "invalid_type")
     ]
 
@@ -277,13 +272,13 @@ def test_a_v2_group_nested_as_deep_as_a_reader_walks_is_read_and_written() -> No
     for _ in range(JSON_DEPTH - 2):
         attributes = {"x": attributes}
     document = {"zarr_format": 2, "attributes": attributes}
-    assert validate_group_metadata_v2(document) == ()
+    assert read_group_metadata_v2(document).problems == ()
     model = ZarrV2GroupMetadata.from_json(document)
     assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
     assert ZarrV2GroupMetadata.from_key_value(model.to_key_value()) == model
     assert pickle.loads(pickle.dumps(model)) == model
     assert copy.deepcopy(model) == model
-    problems = validate_group_metadata_v2({**document, "attributes": {"x": attributes}})
+    problems = read_group_metadata_v2({**document, "attributes": {"x": attributes}}).problems
     assert [(problem.kind, len(problem.loc)) for problem in problems] == [
         ("invalid_value", JSON_DEPTH)
     ]
@@ -309,7 +304,7 @@ def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks(
     """Each document is read from its location in the input document, so a chain is bounded like any other nesting: by a group, which refines its consolidated metadata without reading the documents, and by the consolidated metadata, which reads each document. Previously the reader used three stack frames per document with no bound, and a 20 KB chain overflowed."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
     deepest = (JSON_DEPTH - 1) // 3
-    assert validate_group_metadata_v3(_chain_of_groups(deepest)) == ()
+    assert read_group_metadata_v3(_chain_of_groups(deepest)).problems == ()
     member = _chain_of_groups(deepest)["consolidated_metadata"]
     problems = read_consolidated_metadata_v3(member).problems
     assert all(len(problem.loc) < JSON_DEPTH - 1 for problem in problems)
@@ -319,7 +314,8 @@ def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks(
     for documents in (deepest + 1, 350):
         chain = _chain_of_groups(documents)
         assert [
-            (len(problem.loc), problem.message) for problem in validate_group_metadata_v3(chain)
+            (len(problem.loc), problem.message)
+            for problem in read_group_metadata_v3(chain).problems
         ] == [(JSON_DEPTH, depth)]
         problems = read_consolidated_metadata_v3(chain["consolidated_metadata"]).problems
         # Located in the member, one level below the group document.
@@ -357,12 +353,12 @@ def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
             {"name": "acme.x", "configuration": {"y": nested(JSON_DEPTH - 6)}},
         ],
     }
-    assert validate_node_metadata_v3(group) == ()
-    assert validate_node_metadata_v3(array) == ()
+    assert read_node_metadata_v3(group).problems == ()
+    assert read_node_metadata_v3(array).problems == ()
     member = {"kind": "inline", "must_understand": False, "metadata": {"g": group, "h": array}}
     document = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member}
     assert [
-        (len(problem.loc), problem.message) for problem in validate_group_metadata_v3(document)
+        (len(problem.loc), problem.message) for problem in read_group_metadata_v3(document).problems
     ] == [(JSON_DEPTH, depth)] * 4
     # Located in the member, one level below the group document.
     assert [
@@ -394,7 +390,7 @@ def test_a_document_a_level_before_the_cap_holds_its_scalars_and_nothing_else() 
         return document
 
     scalars: dict[str, object] = {"zarr_format": 3, "node_type": "group"}
-    problems = validate_group_metadata_v3(a_level_before_the_cap(scalars))
+    problems = read_group_metadata_v3(a_level_before_the_cap(scalars)).problems
     assert all(len(problem.loc) < JSON_DEPTH for problem in problems)
     array = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
     for document in ({**scalars, "attributes": {"a": 1}}, dict(array)):
@@ -402,7 +398,7 @@ def test_a_document_a_level_before_the_cap_holds_its_scalars_and_nothing_else() 
             key for key, item in document.items() if isinstance(item, (dict, list, tuple))
         )
         assert len(containers) != 0
-        problems = validate_group_metadata_v3(a_level_before_the_cap(document))
+        problems = read_group_metadata_v3(a_level_before_the_cap(document)).problems
         assert sorted(
             (problem.loc[-1], len(problem.loc), problem.message)
             for problem in problems
@@ -433,7 +429,7 @@ def test_a_group_reads_the_documents_it_holds_from_where_they_sit() -> None:
         "consolidated_metadata": {**_INLINE_ENVELOPE, "metadata": {"a": child.to_json()}},
     }
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
-    assert [(len(p.loc), p.message) for p in validate_group_metadata_v3(written)] == [
+    assert [(len(p.loc), p.message) for p in read_group_metadata_v3(written).problems] == [
         (JSON_DEPTH, depth)
     ]
     with pytest.raises(MetadataValidationError):
@@ -515,15 +511,15 @@ def test_group_v2_omits_empty_attributes() -> None:
 
 
 def test_group_v2_not_a_mapping() -> None:
-    """parse_group_metadata_v2 rejects a non-mapping document."""
+    """`ZarrV2GroupMetadata.from_json` rejects a non-mapping document."""
     with pytest.raises(MetadataValidationError, match="expected an object"):
-        parse_group_metadata_v2([1, 2, 3])
+        ZarrV2GroupMetadata.from_json([1, 2, 3])
 
 
 def test_group_v2_missing_required_key() -> None:
-    """parse_group_metadata_v2 reports a missing zarr_format key."""
+    """`ZarrV2GroupMetadata.from_json` reports a missing zarr_format key."""
     with pytest.raises(MetadataValidationError, match="zarr_format"):
-        parse_group_metadata_v2({})
+        ZarrV2GroupMetadata.from_json({})
 
 
 # --- Partial TypedDict drift guards -----------------------------------------
@@ -626,7 +622,7 @@ def _group(**members: object) -> dict[str, object]:
 
 def test_error_a_consolidated_envelope_reports_the_members_it_lacks_in_its_order() -> None:
     document = _group(consolidated_metadata={"kind": "inline"})
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_group_metadata_v3(document).problems] == [
         (("consolidated_metadata", "must_understand"), "missing_key"),
         (("consolidated_metadata", "metadata"), "missing_key"),
     ]
@@ -782,7 +778,7 @@ def test_error_consolidated_metadata_holds_the_group_holding_each_document() -> 
 def test_error_a_consolidated_metadata_key_that_is_not_a_string() -> None:
     listing: dict[object, object] = {"a": _array(), 1: _array()}
     document = _group(consolidated_metadata={**_inline(), "metadata": listing})
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_group_metadata_v3(document).problems] == [
         (("consolidated_metadata", "metadata"), "invalid_type")
     ]
 
@@ -846,7 +842,7 @@ def test_a_listed_group_s_own_listing_lists_what_the_group_lists(
     member = _inline(g=_group(consolidated_metadata=_inline(**listed)), **flat)
     problems = read_consolidated_metadata_v3(member).problems
     assert [(p.loc, p.message, p.kind) for p in problems] == expected
-    assert validate_group_metadata_v3(_group(consolidated_metadata=member)) == ()
+    assert read_group_metadata_v3(_group(consolidated_metadata=member)).problems == ()
 
 
 def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
@@ -932,7 +928,7 @@ def test_a_node_is_read_as_the_node_its_node_type_says(
     read = read_node_metadata_v3(document)
     assert type(read) is reading
     assert [(p.loc, p.kind) for p in read.problems] == problems
-    assert [(p.loc, p.kind) for p in validate_node_metadata_v3(document)] == problems
+    assert [(p.loc, p.kind) for p in read_node_metadata_v3(document).problems] == problems
     assert (read.metadata is not None) is (len(problems) == 0)
 
 
@@ -989,7 +985,7 @@ def test_error_a_document_of_another_format_says_so(
     assert isinstance(read, ZarrV3UnknownNodeMetadataReading)
     assert [(p.loc, p.kind) for p in read.problems] == problems
     # The validator reads a node's type as the reader does.
-    assert [(p.loc, p.kind) for p in validate_node_metadata_v3(document)] == problems
+    assert [(p.loc, p.kind) for p in read_node_metadata_v3(document).problems] == problems
 
 
 def test_error_a_node_that_is_not_an_object() -> None:
@@ -1163,21 +1159,21 @@ def test_group_v3_literals_enforced() -> None:
     """A v3 group doc with wrong zarr_format or node_type is rejected with invalid_value."""
     base = ZarrV3GroupMetadata.create_default().to_json()
     for key, bad in (("zarr_format", 2), ("node_type", "array")):
-        problems = validate_group_metadata_v3(dict(base) | {key: bad})
+        problems = read_group_metadata_v3(dict(base) | {key: bad}).problems
         assert [(p.loc, p.kind) for p in problems] == [((key,), "invalid_value")], key
 
 
 def test_group_v2_zarr_format_literal_enforced() -> None:
     """A v2 group doc claiming zarr_format 3 is rejected with invalid_value."""
-    problems = validate_group_metadata_v2({"zarr_format": 3})
+    problems = read_group_metadata_v2({"zarr_format": 3}).problems
     assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
 
 
-# --- Consolidated envelope validated by the group validator ------------------
+# --- Consolidated envelope validated by the group reader ---------------------
 
 
-def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
-    """The group validator checks the consolidated envelope, as `from_json` does, so `is_group_metadata_v3` never vouches for a document `from_json` would reject."""
+def test_group_v3_reader_agrees_with_from_json_on_consolidated() -> None:
+    """The group reader checks the consolidated envelope, as `from_json` does, so the reader never finds no problem with a document `from_json` would reject."""
     bad_docs = (
         # empty envelope: missing kind/must_understand/metadata
         {"zarr_format": 3, "node_type": "group", "consolidated_metadata": {}},
@@ -1199,8 +1195,7 @@ def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
         },
     )
     for doc in bad_docs:
-        assert validate_group_metadata_v3(doc) != (), doc
-        assert not is_group_metadata_v3(doc)
+        assert read_group_metadata_v3(doc).problems != (), doc
         with pytest.raises(MetadataValidationError):
             ZarrV3GroupMetadata.from_json(doc)
 
@@ -1214,8 +1209,8 @@ def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
     ],
     ids=["an-array", "an-array-with-a-problem", "no-node-type"],
 )
-def test_group_v3_valid_consolidated_passes_validator(listed: dict[str, object]) -> None:
-    """A group whose consolidated metadata has the envelope the core spec fixes validates cleanly, and the guard accepts it, whatever the documents it lists hold: the group does not read them."""
+def test_group_v3_valid_consolidated_passes_the_reader(listed: dict[str, object]) -> None:
+    """A group whose consolidated metadata has the envelope the core spec fixes validates cleanly, whatever the documents it lists hold: the group does not read them."""
     doc = {
         "zarr_format": 3,
         "node_type": "group",
@@ -1225,8 +1220,7 @@ def test_group_v3_valid_consolidated_passes_validator(listed: dict[str, object])
             "metadata": {"a": listed, "g": {"zarr_format": 3, "node_type": "group"}},
         },
     }
-    assert validate_group_metadata_v3(doc) == ()
-    assert is_group_metadata_v3(doc)
+    assert read_group_metadata_v3(doc).problems == ()
     assert ZarrV3GroupMetadata(doc).to_json() == arrays_to_tuples(doc)
 
 
@@ -1283,7 +1277,7 @@ def test_group_must_understand_fields_partition() -> None:
 def test_error_a_null_consolidated_metadata_is_a_value_the_document_wrote() -> None:
     """zarr-python 3.0 and 3.1 wrote `consolidated_metadata: null`. The spec requires an object, and the package treats nothing else as valid. A reader of those stores must remove the key first."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(null_doc)] == [
+    assert [(p.loc, p.kind) for p in read_group_metadata_v3(null_doc).problems] == [
         (("consolidated_metadata",), "invalid_type")
     ]
     with pytest.raises(MetadataValidationError):
@@ -1397,7 +1391,7 @@ def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists(
 def test_error_a_model_inside_consolidated_metadata_is_not_json() -> None:
     """A group holds its consolidated metadata as JSON, so a node model inside the member is a value that is not JSON. `ZarrV3ConsolidatedMetadata` is the place that takes node models as entries."""
     member = _inline(a=ZarrV3ArrayMetadata.create_default())
-    problems = validate_group_metadata_v3(_group(consolidated_metadata=member))
+    problems = read_group_metadata_v3(_group(consolidated_metadata=member)).problems
     assert [(p.loc, p.kind) for p in problems] == [(("consolidated_metadata", *A), "invalid_type")]
     with pytest.raises(MetadataValidationError):
         ZarrV3GroupMetadata.create_default(consolidated_metadata=cast("Any", member))
@@ -1419,7 +1413,7 @@ def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_memb
         "attributes": {},
         "consolidated_metadata": UNSET,
     }
-    assert [(found.loc, found.kind) for found in validate_group_metadata_v3(document)] == [
+    assert [(found.loc, found.kind) for found in read_group_metadata_v3(document).problems] == [
         (("consolidated_metadata",), "invalid_type")
     ]
     with pytest.raises(MetadataValidationError):

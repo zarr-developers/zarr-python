@@ -1,4 +1,4 @@
-"""Types, models and validators for Zarr v2 and v3 metadata documents.
+"""Types, models and readers for Zarr v2 and v3 metadata documents.
 
 This namespace is a convenience: it re-exports the names most code needs,
 with Zarr v3 first. Each name also has one home module, where its

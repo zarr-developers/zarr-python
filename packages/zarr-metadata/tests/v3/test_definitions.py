@@ -37,9 +37,7 @@ from zarr_metadata.definition._definition import resolve_refined
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,
-    is_metadata_field_v3,
-    validate_array_metadata_v3,
-    validate_metadata_field_v3,
+    read_array_metadata_v3,
 )
 from zarr_metadata.typed_json import (
     check,
@@ -720,7 +718,7 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
     at = (member, 0) if listed else (member,)
     by_model = [
         (problem.loc[len(at) :], problem.kind)
-        for problem in validate_array_metadata_v3(document)
+        for problem in read_array_metadata_v3(document).problems
         if problem.loc[: len(at)] == at
     ]
     assert _locs(resolve(field, kind, CORE_AND_EXTENSIONS)[1]) == by_model
@@ -1447,7 +1445,7 @@ def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
     ],
 )
 def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> None:
-    """An extension name matches the spec's regex `^[a-z][a-z0-9-_.]+$`, or is a URI, which earlier versions of the spec required. Any other name is refused before any definition is consulted, by the field validator and by the reader alike."""
+    """An extension name matches the spec's regex `^[a-z][a-z0-9-_.]+$`, or is a URI, which earlier versions of the spec required. Any other name is refused before any definition is consulted."""
     for field, at in ((name, ()), ({"name": name}, ("name",))):
         resolved, problems = resolve(field, CodecDefinition, CORE)
         if valid:
@@ -1457,10 +1455,6 @@ def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> 
             assert isinstance(resolved, RefusedField)
             assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
             assert "expected an extension name" in problems[0].message
-        assert [(p.loc, p.kind) for p in validate_metadata_field_v3(field)] == (
-            [] if valid else [(at, "invalid_value")]
-        )
-        assert is_metadata_field_v3(field) is valid
 
 
 def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:

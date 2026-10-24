@@ -9,8 +9,8 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.json_schema`](json_schema.md) — JSON Schema output for
   any `TypedDict`, one v3 field, or a whole v3 `zarr.json`
 - [`zarr_metadata.model`](model.md) — document models (each one a
-  document and the scope it was read in), readers, validators,
-  loc-aware parsers, and the `UNSET` sentinel
+  document and the scope it was read in), the readers that return
+  problems instead of raising them, and the `UNSET` sentinel
 - [`zarr_metadata.problems`](problems.md) — `ValidationProblem`,
   `ProblemKind`, `Problems` and `MetadataValidationError`, which every
   reader reports, and `shown`, which formats a value for a message
@@ -41,7 +41,7 @@ The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so
 `from zarr_metadata import ZarrV3ArrayMetadataJSON` and
 `from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON` are equivalent.
-The model layer's validators, parsers and type guards are imported from
+The model layer's readers are imported from
 [`zarr_metadata.model`](model.md) directly, and the problem types every
 reader reports from [`zarr_metadata.problems`](problems.md).
 

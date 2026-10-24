@@ -15,10 +15,7 @@ from zarr_metadata.definition import (
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
-    is_array_metadata_v2,
-    parse_array_metadata_v2,
     read_array_metadata_v2,
-    validate_array_metadata_v2,
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
@@ -102,14 +99,13 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     ],
     ids=["dtype", "compressor", "fill", "not-an-object"],
 )
-def test_error_a_reading_reports_what_the_validator_reports(
+def test_error_a_reading_reports_every_problem(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """Reading an invalid document reports every problem that `validate_array_metadata_v2` finds. A refused field is held as a `RefusedField`, and the reading has no model."""
+    """Reading an invalid document reports every problem. A refused field is held as a `RefusedField`, and the reading has no model."""
     reading = read_array_metadata_v2(value)
     assert [(p.loc, p.kind) for p in reading.problems] == problems
     assert reading.metadata is None
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(value)] == problems
     if isinstance(value, dict) and "dtype" in problems[0][0]:
         assert isinstance(reading.dtype, RefusedField)
 
@@ -122,14 +118,13 @@ def test_error_filters_that_are_not_an_array_are_not_read_as_null() -> None:
 
 
 def test_the_v2_readers_read_in_the_scope_given() -> None:
-    """`validate_array_metadata_v2`, `is_array_metadata_v2` and `parse_array_metadata_v2` take a scope. In a scope that does not claim `|u1`, the default document still validates, because an unclaimed dtype is not checked. In a scope where a private `zlib` definition takes no level, a `level` in the document is a problem."""
-    assert validate_array_metadata_v2(BASE, context=PRIVATE) == ()
-    assert is_array_metadata_v2(BASE, context=PRIVATE)
-    assert parse_array_metadata_v2(BASE, context=PRIVATE)["dtype"] == "|u1"
+    """`read_array_metadata_v2` and the model's `from_json` take a scope. In a scope that does not claim `|u1`, the default document still validates, because an unclaimed dtype is not checked. In a scope where a private `zlib` definition takes no level, a `level` in the document is a problem."""
+    assert read_array_metadata_v2(BASE, context=PRIVATE).problems == ()
+    assert ZarrV2ArrayMetadata.from_json(BASE, context=PRIVATE).to_json()["dtype"] == "|u1"
     bare = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
     doc = {**BASE, "compressor": {"id": "zlib", "level": 1}}
-    assert validate_array_metadata_v2(doc) == ()
-    found = validate_array_metadata_v2(doc, context=CORE_V2.extended_with(codecs=[bare]))
+    assert read_array_metadata_v2(doc).problems == ()
+    found = read_array_metadata_v2(doc, context=CORE_V2.extended_with(codecs=[bare])).problems
     assert [p.loc for p in found] == [("compressor", "level")]
 
 
@@ -155,7 +150,7 @@ def test_error_a_v2_member_that_only_compares_equal_to_an_allowed_value_is_refus
 ) -> None:
     """`order` and `dimension_separator` are checked after refinement. A value that is not a string, but compares equal to an allowed string, is outside the allowed set. It is reported as the wrong type, and no model accepts it."""
     document = {**BASE, key: value}
-    problems = validate_array_metadata_v2(document)
+    problems = read_array_metadata_v2(document).problems
     assert [(found.loc, found.kind) for found in problems] == [((key,), "invalid_type")]
     assert read_array_metadata_v2(document).metadata is None
     with pytest.raises(MetadataValidationError):

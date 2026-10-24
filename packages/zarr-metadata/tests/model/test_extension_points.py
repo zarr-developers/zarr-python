@@ -20,10 +20,8 @@ from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
-    is_array_metadata_v3,
-    parse_array_metadata_v3,
+    read_array_metadata_v3,
     read_consolidated_metadata_v3,
-    validate_array_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
@@ -95,12 +93,12 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
 ) -> None:
     # Definitions in the scope check their fields. Fields with no definition
     # in the scope are left to the reader. The model reads in the same scope
-    # as the validators, and its output reads back in that scope as the same
+    # as the reader, and its output reads back in that scope as the same
     # model.
-    assert validate_array_metadata_v3(document, context=context) == ()
-    assert is_array_metadata_v3(document, context=context)
-    assert parse_array_metadata_v3(document, context=context) is not None
+    reading = read_array_metadata_v3(document, context=context)
+    assert reading.problems == ()
     model = ZarrV3ArrayMetadata.from_json(document, context=context)
+    assert reading.metadata == model
     assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value(), context=context) == model
 
 
@@ -154,13 +152,12 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
 def test_error_a_configuration_its_definition_refuses(
     fields: dict[str, Any], loc: tuple[str | int, ...], kind: str
 ) -> None:
-    # The problem is located at the field's position in the document. Every
-    # validating entry point refuses the document, and so does the model.
+    # The problem is located at the field's position in the document. The
+    # reader reports it, and the model refuses the document.
     document = _document(**fields)
-    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(document)] == [
-        (loc, kind)
-    ]
-    assert not is_array_metadata_v3(document)
+    assert [
+        (problem.loc, problem.kind) for problem in read_array_metadata_v3(document).problems
+    ] == [(loc, kind)]
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
 
@@ -192,9 +189,9 @@ def test_error_an_envelope_is_judged_once() -> None:
     document = _document(
         codecs=[BYTES, {"name": "gzip", "configuration": {"level": 5}, "must_understand": False}]
     )
-    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(document)] == [
-        (("codecs", 1, "must_understand"), "invalid_value")
-    ]
+    assert [
+        (problem.loc, problem.kind) for problem in read_array_metadata_v3(document).problems
+    ] == [(("codecs", 1, "must_understand"), "invalid_value")]
 
 
 def test_error_a_field_that_is_not_json_is_not_read() -> None:
@@ -206,6 +203,6 @@ def test_error_a_field_that_is_not_json_is_not_read() -> None:
             {"name": "gzip", "configuration": {"level": 99}, "must_understand": math.nan},
         ]
     )
-    assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(document)] == [
-        (("codecs", 1, "must_understand"), "invalid_value")
-    ]
+    assert [
+        (problem.loc, problem.kind) for problem in read_array_metadata_v3(document).problems
+    ] == [(("codecs", 1, "must_understand"), "invalid_value")]

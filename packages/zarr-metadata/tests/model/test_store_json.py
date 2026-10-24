@@ -23,12 +23,12 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
-    is_array_metadata_v2,
-    is_array_metadata_v3,
-    is_group_metadata_v2,
-    is_group_metadata_v3,
+    read_array_metadata_v2,
+    read_array_metadata_v3,
+    read_group_metadata_v2,
+    read_group_metadata_v3,
 )
-from zarr_metadata.problems import MetadataValidationError
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -46,6 +46,13 @@ class _Stored(Protocol):
     def to_json(self) -> Mapping[str, object]: ...
 
     def to_key_value(self, *, indent: int | str | None = None) -> _Written: ...
+
+
+class _Reading(Protocol):
+    """What a reader returns: every problem it found."""
+
+    @property
+    def problems(self) -> tuple[ValidationProblem, ...]: ...
 
 
 ATTRIBUTES: dict[str, object] = {
@@ -126,44 +133,45 @@ def _consolidated_node_attributes(store: Mapping[str, bytes]) -> object:
 
 
 # Each case: the store, its reader, a function that reads the attributes
-# from a store, and the guard that the model's document passes. The type is
-# declared so that each reader and lambda is type-checked against its model.
+# from a store, and the reader of the model's document, which finds no
+# problem with it. The type is declared so that each reader and lambda is
+# type-checked against its model.
 _Case = tuple[
     Callable[[], Mapping[str, bytes]],
     Callable[[Mapping[str, bytes]], _Stored],
     Callable[[Mapping[str, bytes]], object],
-    Callable[[object], bool] | None,
+    Callable[[object], _Reading] | None,
 ]
 _CASES: dict[str, _Case] = {
     "v3-array": (
         _v3_array,
         ZarrV3ArrayMetadata.from_key_value,
         lambda store: ZarrV3ArrayMetadata.from_key_value(store).attributes,
-        is_array_metadata_v3,
+        read_array_metadata_v3,
     ),
     "v3-group": (
         _v3_group,
         ZarrV3GroupMetadata.from_key_value,
         lambda store: ZarrV3GroupMetadata.from_key_value(store).attributes,
-        is_group_metadata_v3,
+        read_group_metadata_v3,
     ),
     "v3-consolidated-node": (
         _v3_consolidated,
         ZarrV3GroupMetadata.from_key_value,
         _consolidated_node_attributes,
-        is_group_metadata_v3,
+        read_group_metadata_v3,
     ),
     "v2-array": (
         _v2_array,
         ZarrV2ArrayMetadata.from_key_value,
         lambda store: ZarrV2ArrayMetadata.from_key_value(store).attributes,
-        is_array_metadata_v2,
+        read_array_metadata_v2,
     ),
     "v2-group": (
         _v2_group,
         ZarrV2GroupMetadata.from_key_value,
         lambda store: ZarrV2GroupMetadata.from_key_value(store).attributes,
-        is_group_metadata_v2,
+        read_group_metadata_v2,
     ),
     "v2-consolidated": (
         _v2_consolidated,
@@ -175,19 +183,19 @@ _CASES: dict[str, _Case] = {
 
 
 @pytest.mark.parametrize(
-    ("store", "read", "attributes_in", "guard"), list(_CASES.values()), ids=list(_CASES)
+    ("store", "read", "attributes_in", "reader"), list(_CASES.values()), ids=list(_CASES)
 )
 def test_attributes_holding_non_finite_numbers_round_trip_through_the_store(
     store: Callable[[], Mapping[str, bytes]],
     read: Callable[[Mapping[str, bytes]], _Stored],
     attributes_in: Callable[[Mapping[str, bytes]], object],
-    guard: Callable[[object], bool] | None,
+    reader: Callable[[object], _Reading] | None,
 ) -> None:
     stored = store()
     assert _held(attributes_in(stored)) == (True, True, True)
     model = read(stored)
-    if guard is not None:
-        assert guard(model.to_json())
+    if reader is not None:
+        assert reader(model.to_json()).problems == ()
     written = dict(model.to_key_value().items())
     assert b"NaN" in b"".join(written.values())
     assert _held(attributes_in(written)) == (True, True, True)

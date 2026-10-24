@@ -660,9 +660,9 @@ def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
     """Whether `value` already uses the concrete containers in `JSONValue`, nested no deeper than `JSON_DEPTH`.
 
-    A non-finite number counts only when `finite` is false, which is how a
-    document's guard calls this function: the document's validator decides
-    where such a number is allowed. The walk uses one frame per level of
+    A non-finite number counts only when `finite` is false, as in user data
+    such as attributes: the document's reader decides where such a number
+    is allowed. The walk uses one frame per level of
     nesting, `JSON_DEPTH` at most, as `refine_json` does. A reader does not
     accept a container deeper than that as JSON, so this function does not
     either, and the walk stops there.

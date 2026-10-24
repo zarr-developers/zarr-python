@@ -212,7 +212,7 @@ def validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
     """Validate an `attributes` value: a mapping with string keys.
 
     Returns a problem at `("attributes",)` if it is not, else `()`. Shared by the
-    v2 and v3 validators. The loc is relative to the document, not to the
+    v2 and v3 readers. The loc is relative to the document, not to the
     value, since this function is only called with a document's `attributes`
     value.
     """
@@ -266,12 +266,12 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
     """Decode the JSON document stored at `key` in `mapping`.
 
     Returns `object`, not `Any`: what a store holds is unknown until a
-    validator says otherwise, and `Any` would let unchecked values flow
-    into typed positions silently. Narrow the result with a `parse_*`.
+    reader says otherwise, and `Any` would let unchecked values flow
+    into typed positions silently. Read the result with a reader.
 
     Decoding uses Python's `json` module, so `NaN`, `Infinity` and
     `-Infinity` are read as the corresponding floats, which matches how
-    zarr-python writes attributes. The document's validator decides where
+    zarr-python writes attributes. The document's reader decides where
     such values are allowed. Every ingestion failure here
     surfaces as `MetadataValidationError`: a missing store key is a
     `missing_key` problem, a value that is not `bytes` an `invalid_type`
@@ -303,11 +303,11 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
 
 
 def dump_store_json(value: object, *, indent: int | str | None = None) -> bytes:
-    """Encode a document that its validator has accepted as JSON bytes.
+    """Encode a document that its reader has accepted as JSON bytes.
 
     A non-finite number is written as Python's `json` module writes it
     (`NaN`, `Infinity`, `-Infinity`), which matches how zarr-python
-    writes attributes. The validator keeps such numbers out of every
+    writes attributes. The reader keeps such numbers out of every
     other place in the document.
     """
     return json.dumps(value, indent=indent, allow_nan=True).encode("utf-8")

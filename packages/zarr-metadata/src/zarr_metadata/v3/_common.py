@@ -1,31 +1,18 @@
-"""The v3 metadata field: its JSON type, the type aliases for members that hold a field, and the validators that check a single field.
+"""The v3 metadata field: its JSON type, and the type aliases for members that hold a field.
 
 This module is private. It sits below both code paths that read a field:
 the model, which checks the fields of a document, and the definitions,
 which read a field's configuration. Public consumers import
-`ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`, the aliases from
-`zarr_metadata.v3.definition`, and the validators from
-`zarr_metadata.model`.
+`ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`, and the aliases from
+`zarr_metadata.v3.definition`. One field is read with
+`zarr_metadata.definition.resolve`.
 """
 
-from typing import TypeAlias, TypeGuard, cast
+from typing import TypeAlias
 
 from typing_extensions import TypeAliasType
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import (
-    MetadataValidationError,
-    ValidationProblem,
-    arrays_to_tuples,
-    is_canonical_json,
-    is_object,
-    with_input,
-)
-from zarr_metadata.definition._envelope import (
-    configuration_json_problems,
-    envelope_problems,
-    well_named,
-)
 
 ZarrV3ExtensionField: TypeAlias = JSONValue
 """The JSON value of an unknown top-level v3 metadata field.
@@ -69,38 +56,6 @@ ZarrV3StorageTransformerField = TypeAliasType(
 """A member that holds a storage transformer. A document's `storage_transformers` is `tuple[ZarrV3StorageTransformerField, ...]`."""
 
 
-def validate_metadata_field_v3(
-    value: object, *, allow_must_understand_false: bool = True
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a v3 metadata field.
-
-    A metadata field is either a bare name or an envelope around a
-    configuration whose members are JSON. The envelope is an object with a
-    `name` that is a valid extension name under the spec, a `configuration`
-    that is an object with string keys, a boolean `must_understand`, and no
-    other keys.
-    """
-    envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
-    return with_input((*envelope, *configuration_json_problems(value)), value)
-
-
-def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
-    """Whether `value` is a v3 metadata field: a bare name that is a valid extension name under the spec, or a named config."""
-    if isinstance(value, str):
-        return well_named(value)
-    if not is_object(value) or not isinstance(value, dict):
-        return False
-    return is_canonical_json(value) and not validate_metadata_field_v3(value)
-
-
-def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
-    """Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or raise `MetadataValidationError`."""
-    problems = validate_metadata_field_v3(value)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast(ZarrV3MetadataFieldJSON, arrays_to_tuples(value))
-
-
 __all__ = [
     "ZarrV3ChunkGridField",
     "ZarrV3ChunkKeyEncodingField",
@@ -110,7 +65,4 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "ZarrV3StaticCodecField",
     "ZarrV3StorageTransformerField",
-    "is_metadata_field_v3",
-    "parse_metadata_field_v3",
-    "validate_metadata_field_v3",
 ]

@@ -13,7 +13,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -21,10 +21,8 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
-    arrays_to_tuples,
     copied,
     frozen,
-    is_canonical_json,
     is_object,
     json_text,
     nested_past_the_levels,
@@ -79,7 +77,7 @@ from zarr_metadata.model._shared import (
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField
 
-# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+# A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import GroupExtraFieldDefinition
@@ -774,14 +772,6 @@ def node_metadata_from_key_value_v3(
     return node_metadata_from_json_v3(document, context=context)
 
 
-def validate_node_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a valid v3 `zarr.json`: the problems `validate_array_metadata_v3` or `validate_group_metadata_v3` finds for the node type its `node_type` declares, or why it declares neither."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    return _read_node_v3(value, context)[0].problems
-
-
 def _read_node_v3(
     value: object, context: ZarrV3Context, at: tuple[str | int, ...] = ()
 ) -> tuple[ZarrV3NodeMetadataReading, ArrayMembersV3 | GroupMembersV3 | None]:
@@ -847,12 +837,17 @@ class GroupMembersV3:
 def read_group_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3GroupMetadataReading:
-    """Read `value`, a v3 group document, in `context`, whatever it holds: every problem `validate_group_metadata_v3` finds, and the model when there are none.
+    """Read `value`, a v3 group document, in `context`, whatever it holds: every problem, and the model when there are none.
 
-    The documents listed in its `consolidated_metadata` are not read; see
-    `ZarrV3GroupMetadata`. This is the form of
-    `ZarrV3GroupMetadata(value, context)` that returns problems instead
-    of raising them.
+    Unknown top-level keys are allowed (they map to `extra_fields`). A
+    reader must understand each one that does not declare
+    `must_understand: false`; the model reports these as
+    `must_understand_fields`. A `consolidated_metadata` member, if
+    present and claimed by the scope, as `CORE` claims it, is checked
+    against the envelope the core spec fixes. The documents it lists are
+    not read; `read_consolidated_metadata_v3` reads them. This is the
+    form of `ZarrV3GroupMetadata(value, context)` that returns problems
+    instead of raising them.
     """
     context = scoped(context, CORE_AND_EXTENSIONS)
     reading, members = read_group_v3(value, context)
@@ -1281,44 +1276,3 @@ def _nested_models(
                 child.document, context, reading, child
             )
     return models
-
-
-def validate_group_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a valid v3 group document.
-
-    Unknown top-level keys are allowed (they map to `extra_fields`). A
-    reader must understand each one that does not declare
-    `must_understand: false`; the model reports these as
-    `must_understand_fields`. A `consolidated_metadata` member, if
-    present and claimed by the scope, as `CORE` claims it, is checked
-    against the envelope the core spec fixes. The documents it lists are
-    not read; `read_consolidated_metadata_v3` reads them. The result equals the `problems` of
-    `read_group_metadata_v3`.
-    """
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    return read_group_v3(value, context)[0].problems
-
-
-def is_group_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> TypeGuard[ZarrV3GroupMetadataJSON]:
-    """Whether `value` is a v3 group document, written with tuples, that `validate_group_metadata_v3` finds no problems with."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    return (
-        is_canonical_json(value, finite=False)
-        and isinstance(value, dict)
-        and not validate_group_metadata_v3(value, context=context)
-    )
-
-
-def parse_group_metadata_v3(
-    value: object, *, context: ZarrV3Context | None = None
-) -> ZarrV3GroupMetadataJSON:
-    """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    problems = validate_group_metadata_v3(value, context=context)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(value))

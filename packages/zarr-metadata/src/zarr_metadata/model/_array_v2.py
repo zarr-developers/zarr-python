@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -14,7 +14,6 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
-    arrays_to_tuples,
     copied,
     frozen,
     is_array,
@@ -27,7 +26,6 @@ from zarr_metadata._json import (
     with_input,
     within,
 )
-from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._context import scoped
@@ -61,7 +59,7 @@ from zarr_metadata.model._shared import (
     unclaimed_fields_of,
 )
 
-# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+# A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.array import (
@@ -117,24 +115,6 @@ def _is_canonical_dtype_v2(value: object) -> bool:
         if len(fields) == 3 and not isinstance(fields[2], tuple):
             return False
     return True
-
-
-def _is_canonical_array_metadata_v2(value: object) -> bool:
-    """Whether a validated v2 array document matches `ZarrV2ArrayMetadataJSON` at runtime."""
-    if not is_object(value) or not isinstance(value, dict):
-        return False
-    doc = value
-    if not isinstance(doc["shape"], tuple) or not isinstance(doc["chunks"], tuple):
-        return False
-    if not _is_canonical_dtype_v2(doc["dtype"]):
-        return False
-    compressor = doc["compressor"]
-    if compressor is not None and not isinstance(compressor, dict):
-        return False
-    filters = doc["filters"]
-    return filters is None or (
-        is_tuple(filters) and all(isinstance(item, dict) for item in filters)
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,40 +328,6 @@ def read_array_v2(
     return reading, members
 
 
-def validate_array_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a valid v2 array document, read in `context` (`CORE_V2` when none is given).
-
-    `dtype`, `compressor` and `filters` are read in the scope. A dtype or
-    codec that the scope refuses is a problem. One that the scope does
-    not claim is not a problem. `fill_value` is checked against the
-    dtype the scope read.
-    """
-    return read_array_v2(value, scoped(context, CORE_V2))[0].problems
-
-
-def is_array_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
-    """Whether `value` is a v2 array document, written with tuples, that `validate_array_metadata_v2` finds no problems with, read in `context` (`CORE_V2` when none is given). A document with lists, as `json.loads` returns it, is not one; `parse_array_metadata_v2` returns it with tuples."""
-    return (
-        _is_canonical_json(value, finite=False)
-        and not validate_array_metadata_v2(value, context=context)
-        and _is_canonical_array_metadata_v2(value)
-    )
-
-
-def parse_array_metadata_v2(
-    value: object, *, context: ZarrV2Context | None = None
-) -> ZarrV2ArrayMetadataJSON:
-    """Return `value` as `ZarrV2ArrayMetadataJSON`, read in `context` (`CORE_V2` when none is given), or raise `MetadataValidationError` with every problem."""
-    problems = validate_array_metadata_v2(value, context=context)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast("ZarrV2ArrayMetadataJSON", arrays_to_tuples(value))
-
-
 NODE_FILES_V2: Final = (
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
     ZARR_V2_GROUP_METADATA_STORE_KEY,
@@ -450,8 +396,10 @@ def read_array_metadata_v2(
     The result holds everything the read finds: the dtype, the compressor
     and each filter as the scope read them (an `AcceptedField` read by
     the definition that claims the typestr or id, an `UnclaimedField`, or
-    a `RefusedField`), every problem `validate_array_metadata_v2` finds,
-    and, when there are no problems, the document's model.
+    a `RefusedField`), every problem, and, when there are no problems,
+    the document's model. A dtype or codec that the scope refuses is a
+    problem. One that the scope does not claim is not a problem.
+    `fill_value` is checked against the dtype the scope read.
     """
     context = scoped(context, CORE_V2)
     reading, members = read_array_v2(value, context)

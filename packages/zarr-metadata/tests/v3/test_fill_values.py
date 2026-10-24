@@ -34,8 +34,8 @@ from zarr_metadata.definition import (
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,
+    read_array_metadata_v3,
     read_consolidated_metadata_v3,
-    validate_array_metadata_v3,
 )
 from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
@@ -277,7 +277,7 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
     # Checked against the data type the document names. In consolidated
     # metadata, the problem is located where the array sits.
     document = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"fill_value": 300}
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("fill_value",), "invalid_value")
     ]
     member = {"kind": "inline", "must_understand": False, "metadata": {"a": document}}
@@ -310,7 +310,7 @@ def test_a_fill_value_nested_as_deep_as_a_reader_walks_is_read() -> None:
         # `c` is two levels down, and holds the deepest value the depth limit allows.
         "fill_value": {"a": 1, "b": 0.5, "c": deep(JSON_DEPTH - 3)},
     }
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("fill_value", "c"), "unknown_key")
     ]
 

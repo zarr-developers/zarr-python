@@ -21,7 +21,7 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
-    validate_array_metadata_v3,
+    read_array_metadata_v3,
 )
 from zarr_metadata.v3._pipeline import (
     read_pipeline,
@@ -435,7 +435,7 @@ def test_an_array_document_s_codecs_are_each_judged_against_the_chunk_they_are_h
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
     document["data_type"] = "int8"
     document["codecs"] = [_cast("float32"), _scale(offset=0.5), _cast("int8"), "bytes"]
-    assert validate_array_metadata_v3(document) == ()
+    assert read_array_metadata_v3(document).problems == ()
 
 
 def test_error_a_transpose_of_another_rank_than_the_array_under_a_grid_nothing_claims() -> None:
@@ -444,7 +444,7 @@ def test_error_a_transpose_of_another_rank_than_the_array_under_a_grid_nothing_c
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["chunk_grid"] = {"name": "acme.grid", "configuration": {}}
     document["codecs"] = [_transpose(0), "bytes"]
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 0, "configuration", "order"), "invalid_value")
     ]
 
@@ -455,7 +455,7 @@ def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["data_type"] = "int16"
     document["codecs"] = [_transpose(0), "bytes", "crc32c", _transpose(0, 1)]
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 3), "invalid_value"),
         (("codecs", 0, "configuration", "order"), "invalid_value"),
         (("codecs", 1, "configuration", "endian"), "missing_key"),

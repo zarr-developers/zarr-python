@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
+from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
 from zarr_metadata.problems import MetadataValidationError
 
 Loc = tuple[str | int, ...]
@@ -45,7 +45,7 @@ BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default().to_json())
 )
 def test_a_v2_document_the_scope_reads_has_no_problem(changes: dict[str, Any]) -> None:
     """Each of these validates with no problem: a dtype that the scope reads with a fill value that its family allows, a compressor or filters that the scope reads or leaves unclaimed, and a null fill value."""
-    assert validate_array_metadata_v2({**BASE, **changes}) == ()
+    assert read_array_metadata_v2({**BASE, **changes}).problems == ()
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
     changes: dict[str, Any], at: Loc, kind: str
 ) -> None:
     """A dtype, fill value, compressor or filter that the scope refuses produces one problem in the document, at the wrong field or parameter. Previously, the string content of a dtype and the parameters of a codec were not checked."""
-    problems = validate_array_metadata_v2({**BASE, **changes})
+    problems = read_array_metadata_v2({**BASE, **changes}).problems
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
 
 

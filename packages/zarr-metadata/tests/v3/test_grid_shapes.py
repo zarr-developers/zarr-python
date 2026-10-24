@@ -16,7 +16,7 @@ import pytest
 from zarr_metadata.definition import EmptyConfiguration, resolve
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
-    validate_array_metadata_v3,
+    read_array_metadata_v3,
 )
 from zarr_metadata.v3._definition import (
     chunk_grid_lengths,
@@ -125,7 +125,7 @@ def test_error_an_array_document_s_chunk_grid_that_does_not_fit_its_shape() -> N
     # The problem is located in the document's grid.
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["chunk_grid"] = _regular(4)
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("chunk_grid", "configuration", "chunk_shape"), "invalid_value")
     ]
 
@@ -134,7 +134,7 @@ def test_error_an_array_document_s_shape_that_is_not_read_leaves_its_grid_unjudg
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["chunk_grid"] = _regular(4)
     document["shape"] = (4, -1)
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("shape",), "invalid_value")
     ]
 

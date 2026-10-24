@@ -37,17 +37,13 @@ STORE_G = {"zarr.json": json.dumps(GROUP).encode()}
 
 
 def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
-    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, an empty problem tuple, or a guard that returns True."""
+    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, or a reading with a model."""
 
     def accepted(context: Context | None) -> bool:
         try:
             found = read(context=context)
         except MetadataValidationError:
             return False
-        if isinstance(found, tuple):
-            return len(found) == 0
-        if isinstance(found, bool):
-            return found
         reading = getattr(found, "reading", found)
         metadata = getattr(reading, "metadata", found)
         return metadata is not None
@@ -56,13 +52,6 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
 
 
 ENTRY_POINTS: dict[str, Callable[..., object]] = {
-    "validate_array_metadata_v3": lambda context: zm.validate_array_metadata_v3(
-        BAD, context=context
-    ),
-    "is_array_metadata_v3": lambda context: zm.is_array_metadata_v3(
-        zm.parse_array_metadata_v3(BAD, context=EMPTY), context=context
-    ),
-    "parse_array_metadata_v3": lambda context: zm.parse_array_metadata_v3(BAD, context=context),
     "read_array_metadata_v3": lambda context: zm.read_array_metadata_v3(BAD, context=context),
     "ZarrV3ArrayMetadata": lambda context: zm.ZarrV3ArrayMetadata(BAD, context=context),
     "ZarrV3ArrayMetadata.from_json": lambda context: zm.ZarrV3ArrayMetadata.from_json(
@@ -84,7 +73,6 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
         GROUP["consolidated_metadata"], context=context
     ),
     "read_node_metadata_v3": lambda context: zm.read_node_metadata_v3(BAD, context=context),
-    "validate_node_metadata_v3": lambda context: zm.validate_node_metadata_v3(BAD, context=context),
     "node_metadata_from_json_v3": lambda context: zm.node_metadata_from_json_v3(
         BAD, context=context
     ),
@@ -98,13 +86,6 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
 """Each entry point that reads `BAD`, as a document or as an entry of consolidated metadata."""
 
 GROUP_ENTRY_POINTS: dict[str, Callable[..., object]] = {
-    "validate_group_metadata_v3": lambda context: zm.validate_group_metadata_v3(
-        GROUP, context=context
-    ),
-    "is_group_metadata_v3": lambda context: zm.is_group_metadata_v3(
-        zm.parse_group_metadata_v3(GROUP, context=EMPTY), context=context
-    ),
-    "parse_group_metadata_v3": lambda context: zm.parse_group_metadata_v3(GROUP, context=context),
     "read_group_metadata_v3": lambda context: zm.read_group_metadata_v3(GROUP, context=context),
     "ZarrV3GroupMetadata": lambda context: zm.ZarrV3GroupMetadata(GROUP, context=context),
     "ZarrV3GroupMetadata.from_json": lambda context: zm.ZarrV3GroupMetadata.from_json(
