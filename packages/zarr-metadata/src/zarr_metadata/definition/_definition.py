@@ -29,6 +29,13 @@ The kind of metadata it defines is its type (`CodecDefinition`,
 definition files it nowhere: only a scope built from it does.
 """
 
+# The hooks of `Definition` (`_named_configuration`, `_envelope_problems` and
+# the rest) are private: a kind overrides them, and no user calls them. The
+# functions in this module that read a field call them, from outside the
+# class body, which pyright reports as private use. This module is where
+# reading is implemented, so it is allowed here, and nowhere else.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import dataclasses
@@ -126,45 +133,6 @@ _FIELD_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
 """Maps each field alias to the kind that a member annotated with it is read as. Each kind adds its aliases when its class is built."""
 
 
-@dataclass(frozen=True, slots=True)
-class Hooks:
-    """The hooks of one class of definitions, bound to that class: how a document of its format names, writes and locates a field of its kind.
-
-    `Definition` declares each hook as a private method, and a kind
-    overrides the hooks its format or its kind changes. The functions that
-    read a field are not methods of the class, and a type checker reports
-    a private member used outside its class. So each class's hooks are
-    bound here when the class is built, and those functions call them
-    through `hooks_of`. Each member is the hook of the same name, with a
-    leading underscore, on `Definition`.
-    """
-
-    name_problem: Callable[[str, Loc], ValidationProblem | None]
-    well_named: Callable[[str], bool]
-    filed_under: Callable[[str], tuple[str | None, dict[str, JSONValue] | None]]
-    carrying_name: Callable[[Definition[Any], Mapping[str, JSONValue]], str | None]
-    """Called with the definition whose name it gives, as the first argument."""
-    named_configuration: Callable[
-        [object], tuple[str | None, Mapping[str, object] | None, Problems]
-    ]
-    envelope_problems: Callable[[object], Problems]
-    envelope_json: Callable[[str, Mapping[str, JSONValue]], JSONValue]
-    unclaimed_json: Callable[[JSONValue, str, Mapping[str, JSONValue]], JSONValue]
-    refined: Callable[[object, Loc, Definition[Any] | None], tuple[JSONValue | None, Problems]]
-    configuration_loc: Callable[[Loc], Loc]
-    name_loc: Callable[[Loc], Loc]
-    alias_problems: Callable[[TypeAliasType, Definition[Any], Loc], Problems]
-
-
-_HOOKS: Final[dict[type[Definition[Any]], Hooks]] = {}
-"""The hooks of each subclass of `Definition`, bound when the class is built."""
-
-
-def hooks_of(kind: type[Definition[Any]]) -> Hooks:
-    """The hooks of `kind`, a subclass of `Definition`, bound to it."""
-    return _HOOKS[kind]
-
-
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Definition(Generic[C]):
     """One extension's metadata as JSON: its name, its configuration TypedDict, and its rules.
@@ -234,7 +202,7 @@ class Definition(Generic[C]):
 
     @classmethod
     def _well_named(cls, name: str) -> bool:
-        """Whether a document of the format may use `name` for a field of this kind, as decided by `_name_problem`."""
+        """Whether a document of the format may use `name` for a field of this kind, as decided by `name_problem`."""
         return cls._name_problem(name, ()) is None
 
     @classmethod
@@ -250,7 +218,7 @@ class Definition(Generic[C]):
         return name, None
 
     def _carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
-        """The name that encodes `configuration` for this definition. This is the inverse of `_filed_under`: `r16` for `r*` with `{"bits": 16}`. None when this definition's names encode nothing."""
+        """The name that encodes `configuration` for this definition. This is the inverse of `filed_under`: `r16` for `r*` with `{"bits": 16}`. None when this definition's names encode nothing."""
         return None
 
     @classmethod
@@ -311,7 +279,7 @@ class Definition(Generic[C]):
     def __init_subclass__(
         cls, *, kind: bool = False, format: Literal[2, 3] | None = None, **kwargs: object
     ) -> None:
-        """Register a subclass, and bind its hooks for `hooks_of`. `kind=True` declares a kind, with the Zarr `format` of the documents that contain its fields. This marks the class but not its subclasses, as `typing.Protocol` and SQLAlchemy's `__abstract__` do."""
+        """Register a subclass. `kind=True` declares a kind, with the Zarr `format` of the documents that contain its fields. This marks the class but not its subclasses, as `typing.Protocol` and SQLAlchemy's `__abstract__` do."""
         # Use the explicit form, not bare `super()`. A dataclass with slots
         # is rebuilt, and the cell that bare `super()` reads refers to the
         # discarded class.
@@ -319,7 +287,7 @@ class Definition(Generic[C]):
         # A dataclass with slots is built twice. The second build has no
         # class keywords but reuses the first class's namespace, and the
         # last class built is the one used to read documents. So the mark is
-        # kept in the namespace, and the aliases and hooks are registered last.
+        # kept in the namespace, and the aliases are registered last.
         if kind:
             if format not in (2, 3):
                 msg = (
@@ -334,25 +302,9 @@ class Definition(Generic[C]):
             raise TypeError(msg)
         for alias in cls.__dict__.get("field_aliases", ()):
             _FIELD_KINDS[alias] = cls
-        _HOOKS[cls] = Hooks(
-            name_problem=cls._name_problem,
-            well_named=cls._well_named,
-            filed_under=cls._filed_under,
-            carrying_name=lambda definition, configuration: definition._carrying_name(
-                configuration
-            ),
-            named_configuration=cls._named_configuration,
-            envelope_problems=cls._envelope_problems,
-            envelope_json=cls._envelope_json,
-            unclaimed_json=cls._unclaimed_json,
-            refined=cls._refined,
-            configuration_loc=cls._configuration_loc,
-            name_loc=cls._name_loc,
-            alias_problems=cls._alias_problems,
-        )
 
     def __post_init__(self) -> None:
-        refusal = self._malformed() or self._refusal()
+        refusal = _malformed(self) or self._refusal()
         if refusal is not None:
             raise TypeError(refusal)
         kind = kind_of(self)
@@ -367,25 +319,6 @@ class Definition(Generic[C]):
         # them. A full repr would show every function the definition holds,
         # with its address.
         return f"{type(self).__name__}(name={self.name!r})"
-
-    def _malformed(self) -> str | None:
-        """A description of what makes a hand-built definition unusable, checked before its configuration is examined; None if it is usable."""
-        name = cast("object", self.name)
-        if not isinstance(name, str):
-            return f"a definition's name is a string, got {name!r}"
-        for member in _function_members(type(self)):
-            value = getattr(self, member)
-            if not callable(value):
-                return f"{name!r}: {member} is a function, got {value!r}"
-        kind = type(self)
-        filed, _ = kind._filed_under(name)
-        bad = None if filed is None else kind._name_problem(name, ())
-        if bad is not None:
-            return (
-                f"{name!r}: {bad.message}, so no document names it, and nothing would ever read "
-                "with this definition"
-            )
-        return None
 
     def _refusal(self) -> str | None:
         """A description of what is wrong with the members a kind adds; None if nothing is wrong, or if the kind adds no members."""
@@ -435,6 +368,26 @@ class Definition(Generic[C]):
         )
 
 
+def _malformed(definition: Definition[Any]) -> str | None:
+    """A description of what makes a hand-built definition unusable, checked before its configuration is examined; None if it is usable."""
+    name = cast("object", definition.name)
+    if not isinstance(name, str):
+        return f"a definition's name is a string, got {name!r}"
+    for member in _function_members(type(definition)):
+        value = getattr(definition, member)
+        if not callable(value):
+            return f"{name!r}: {member} is a function, got {value!r}"
+    kind = type(definition)
+    filed, _ = kind._filed_under(name)
+    bad = None if filed is None else kind._name_problem(name, ())
+    if bad is not None:
+        return (
+            f"{name!r}: {bad.message}, so no document names it, and nothing would ever read "
+            "with this definition"
+        )
+    return None
+
+
 @functools.cache
 def _function_members(kind: type[Definition[Any]]) -> tuple[str, ...]:
     """The members `kind` declares as functions: each member whose annotation is a `Callable`."""
@@ -455,7 +408,7 @@ def filed_under(
     `r*` itself is filed under nothing, `(None, None)`, because no document
     uses it.
     """
-    return hooks_of(kind).filed_under(name)
+    return kind._filed_under(name)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -510,7 +463,7 @@ def _kind_of_class(cls: type[object]) -> type[Definition[Any]] | None:
 
 def format_of(kind: type[Definition[Any]]) -> Literal[2, 3]:
     """The Zarr format of the documents that contain fields of `kind`, as declared by the kind. Raises `TypeError` for a class that is not a kind."""
-    found = as_kind(kind)._format  # pyright: ignore[reportPrivateUsage]
+    found = as_kind(kind)._format
     if found is None:  # a kind cannot be declared without one
         msg = f"{kind!r} declares no format"
         raise TypeError(msg)
@@ -835,7 +788,7 @@ def ruled(
 
 
 def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
-    """`problems`, each located under `prefix`. The input may be lazy, because a kind's `_envelope_problems` may return an iterator."""
+    """`problems`, each located under `prefix`. The input may be lazy, because a kind's `envelope_problems` may return an iterator."""
     found = tuple(problems)
     if len(found) == 0:
         return ()
@@ -844,7 +797,7 @@ def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
 
 def _envelope(field: _NestedField) -> Problems:
     """The problems with a nested field's envelope, located at the field."""
-    return _located(field.loc, hooks_of(field.kind).envelope_problems(field.json))
+    return _located(field.loc, field.kind._envelope_problems(field.json))
 
 
 def _configuration_checked(
@@ -1033,15 +986,14 @@ class UnclaimedField:
         # Check the annotations at runtime. Remove type arguments from
         # `read_as`, as `resolve` does.
         object.__setattr__(self, "read_as", as_kind(self.read_as))
-        hooks = hooks_of(self.read_as)
         name = cast("object", self.name)
-        if not isinstance(name, str) or not hooks.well_named(name):
+        if not isinstance(name, str) or not self.read_as._well_named(name):
             msg = (
                 "a field nothing in scope claims is named as a document names a "
                 f"{self.read_as.label}, got {name!r}"
             )
             raise TypeError(msg)
-        _, written, _ = hooks.named_configuration(self.json)
+        _, written, _ = self.read_as._named_configuration(self.json)
         configuration: Mapping[str, object] = {} if written is None else written
         object.__setattr__(self, "json", frozen(self.json))
         object.__setattr__(
@@ -1227,12 +1179,12 @@ def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
 
 def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
     """A field that a scope accepted or left unclaimed, as a document writes it. This is `document_json` for a field that is JSON."""
-    hooks = hooks_of(field.read_as)
+    kind = field.read_as
     if isinstance(field, UnclaimedField):
-        return hooks.unclaimed_json(field.json, field.name, field.configuration)
-    if hooks.filed_under(field.name)[1] is not None:
-        return hooks.envelope_json(field.name, {})
-    return hooks.envelope_json(field.name, field.configuration)
+        return kind._unclaimed_json(field.json, field.name, field.configuration)
+    if kind._filed_under(field.name)[1] is not None:
+        return kind._envelope_json(field.name, {})
+    return kind._envelope_json(field.name, field.configuration)
 
 
 Nested: TypeAlias = Mapping[Loc, ResolvedField[Any]]
@@ -1258,15 +1210,14 @@ def fields_of(
     """Yield `resolved` (a field a scope read) with its location, then each nested field recursively, each with its location.
 
     `loc` is the location of `resolved`. A nested field is located inside
-    the configuration, at the kind's configuration location followed by the
+    the configuration, at the kind's `configuration_loc` followed by the
     field's place, the same way `resolve` locates problems. Each field's
     nested fields are its `nested`. A field whose configuration was not
     checked has none.
     """
     yield loc, resolved
     for place, inner in resolved.nested.items():
-        at = hooks_of(resolved.read_as).configuration_loc(loc)
-        yield from fields_of(inner, (*at, *place))
+        yield from fields_of(inner, (*resolved.read_as._configuration_loc(loc), *place))
 
 
 def with_problems(
@@ -1416,12 +1367,11 @@ def resolve(
         msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {described(context)}"
         raise TypeError(msg)
     asked = as_kind(kind)
-    hooks = hooks_of(asked)
-    name = hooks.named_configuration(data)[0]
+    name = asked._named_configuration(data)[0]
     definition = (
-        None if name is None or not hooks.well_named(name) else context.claimant(asked, name)
+        None if name is None or not asked._well_named(name) else context.claimant(asked, name)
     )
-    refined, problems = hooks.refined(data, loc, definition)
+    refined, problems = asked._refined(data, loc, definition)
     return resolve_refined(data, refined, problems, kind, context, loc)
 
 
@@ -1481,9 +1431,8 @@ def resolve_refined(
         # name still determines which definition claims it. A name that is
         # not a valid extension name under the spec is a problem here, as on
         # the other path, and no definition is looked up for it.
-        hooks = hooks_of(asked)
-        name = hooks.named_configuration(data)[0]
-        bad = None if name is None else hooks.name_problem(name, hooks.name_loc(loc))
+        name = asked._named_configuration(data)[0]
+        bad = None if name is None else asked._name_problem(name, asked._name_loc(loc))
         claimant = None if name is None or bad is not None else context.claimant(asked, name)
         refused = RefusedField(json=UNSET, name=name, read_as=asked, definition=claimant)
         found = problems if bad is None else (bad, *problems)
@@ -1502,7 +1451,7 @@ def _resolve_field(
     configuration, so it is reported alongside the field that was read,
     and later layers can still check that field.
     """
-    envelope = _located(loc, hooks_of(kind).envelope_problems(data))
+    envelope = _located(loc, kind._envelope_problems(data))
     resolved, found = _read(data, kind, context, loc)
     return resolved, (*envelope, *found)
 
@@ -1510,11 +1459,10 @@ def _resolve_field(
 def _read(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
-    hooks = hooks_of(kind)
-    name, given, malformed = hooks.named_configuration(data)
+    name, given, malformed = kind._named_configuration(data)
     if name is None:
         return RefusedField(json=data, name=None, read_as=kind), ()
-    if not hooks.well_named(name):
+    if not kind._well_named(name):
         # The envelope check that every reader runs first reports this. No
         # definition is looked up for the name.
         return RefusedField(json=data, name=name, read_as=kind), ()
@@ -1526,10 +1474,10 @@ def _read(
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
         return UnclaimedField(json=data, name=name, read_as=kind), ()
-    _, carried = hooks.filed_under(name)
+    _, carried = kind._filed_under(name)
     if carried is not None:
         return _read_carried(data, name, kind, definition, given, carried, loc)
-    at = hooks.configuration_loc(loc)
+    at = kind._configuration_loc(loc)
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), missing
@@ -1582,7 +1530,7 @@ def _read(
 
 def _named(field: _NestedField) -> bool:
     """Whether a nested field has a name, and its configuration (if any) is an object."""
-    name, _, malformed = hooks_of(field.kind).named_configuration(field.json)
+    name, _, malformed = field.kind._named_configuration(field.json)
     return name is not None and len(malformed) == 0
 
 
@@ -1605,7 +1553,7 @@ def _read_carried(
     _, beside, _ = _checked(
         EmptyConfiguration,
         {} if given is None else given,
-        hooks_of(kind).configuration_loc(loc),
+        kind._configuration_loc(loc),
     )
     configuration, judged = definition.read_configuration(carried)
     # A problem with the configuration encoded in the name belongs to the
@@ -1636,7 +1584,7 @@ def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
     definition = inner.definition
     if definition is None:
         return ()
-    return hooks_of(field.kind).alias_problems(field.alias, definition, field.loc)
+    return field.kind._alias_problems(field.alias, definition, field.loc)
 
 
 def canonicalize(
@@ -1722,11 +1670,10 @@ def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
             f"{list(refused)!r}"
         )
         raise ValueError(msg)
-    hooks = hooks_of(resolved.read_as)
-    carrying = hooks.carrying_name(definition, simplified)
+    carrying = definition._carrying_name(simplified)
     if carrying is not None:
         return carrying
-    return hooks.envelope_json(name, simplified)
+    return resolved.read_as._envelope_json(name, simplified)
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
@@ -1748,7 +1695,6 @@ __all__ = [
     "Context",
     "Definition",
     "EmptyConfiguration",
-    "Hooks",
     "Nested",
     "Problems",
     "RefusedField",
@@ -1770,7 +1716,6 @@ __all__ = [
     "fill_value_problems",
     "format_of",
     "held",
-    "hooks_of",
     "is_field",
     "kind_of",
     "named_configuration",
