@@ -84,26 +84,17 @@ def _delta_canonical(configuration: ZarrV2DeltaParameters) -> ZarrV2DeltaParamet
     return {**configuration, "dtype": dtype, "astype": astype}
 
 
-def _as_float(value: float) -> float:
-    """`value` as a float, which numcodecs computes with. An integer too large for a float is kept as written."""
-    try:
-        return float(value)
-    except OverflowError:
-        return value
-
-
 def _fixedscaleoffset_canonical(
     configuration: ZarrV2FixedScaleOffsetParameters,
 ) -> ZarrV2FixedScaleOffsetParameters:
-    """Fill in an `astype` that is omitted or null with the `dtype`, and write each dtype as NumPy spells it, as numcodecs writes them. Write `offset` and `scale` as floats, so a `scale` of 10 and of 10.0 are one parameter."""
+    """Fill in an `astype` that is omitted or null with the `dtype`, and write each dtype as NumPy spells it, as numcodecs writes them.
+
+    `offset` and `scale` are kept as written. NumPy computes with an
+    integer and a float differently for integer and half-precision dtypes,
+    so numcodecs encodes a `scale` of 10 and of 10.0 differently.
+    """
     dtype, astype = _typestrs(configuration["dtype"], configuration.get("astype"))
-    return {
-        **configuration,
-        "offset": _as_float(configuration["offset"]),
-        "scale": _as_float(configuration["scale"]),
-        "dtype": dtype,
-        "astype": astype,
-    }
+    return {**configuration, "dtype": dtype, "astype": astype}
 
 
 def _quantize_canonical(configuration: ZarrV2QuantizeParameters) -> ZarrV2QuantizeParameters:

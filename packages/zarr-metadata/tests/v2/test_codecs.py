@@ -36,6 +36,8 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
         {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": True, "blocksize": 0},
         {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": False, "blocksize": 0},
         {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": 1, "blocksize": -1},
+        # numcodecs passes `typesize` to C as an `int`, and Blosc refuses one past it.
+        {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": 0, "typesize": 2**31 - 1},
     ),
     # zstd clamps a level outside its own range.
     "zstd": (
@@ -144,8 +146,14 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
         ({"id": "blosc", "shuffle": False}, {**BLOSC_DEFAULTS, "shuffle": 0}),
         ({"id": "blosc", "typesize": None}, BLOSC_DEFAULTS),
         ({"id": "blosc", "typesize": 4}, {**BLOSC_DEFAULTS, "typesize": 4}),
-        ({"id": "blosc", "shuffle": 0, "typesize": 4}, {**BLOSC_DEFAULTS, "shuffle": 0}),
-        ({"id": "blosc", "shuffle": False, "typesize": 4}, {**BLOSC_DEFAULTS, "shuffle": 0}),
+        (
+            {"id": "blosc", "shuffle": 0, "typesize": 4},
+            {**BLOSC_DEFAULTS, "shuffle": 0, "typesize": 4},
+        ),
+        (
+            {"id": "blosc", "shuffle": False, "typesize": 4},
+            {**BLOSC_DEFAULTS, "shuffle": 0, "typesize": 4},
+        ),
         (
             {"id": "blosc", "shuffle": 2, "typesize": 4},
             {**BLOSC_DEFAULTS, "shuffle": 2, "typesize": 4},
@@ -175,23 +183,11 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
         ({"id": "vlen-array", "dtype": "<i1"}, {"id": "vlen-array", "dtype": "|i1"}),
         (
             {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8"},
-            {
-                "id": "fixedscaleoffset",
-                "offset": 0.0,
-                "scale": 1.0,
-                "dtype": "<f8",
-                "astype": "<f8",
-            },
+            {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8", "astype": "<f8"},
         ),
         (
             {"id": "fixedscaleoffset", "offset": 2, "scale": 10, "dtype": "<f8", "astype": "<u1"},
-            {
-                "id": "fixedscaleoffset",
-                "offset": 2.0,
-                "scale": 10.0,
-                "dtype": "<f8",
-                "astype": "|u1",
-            },
+            {"id": "fixedscaleoffset", "offset": 2, "scale": 10, "dtype": "<f8", "astype": "|u1"},
         ),
         (
             {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": None},
@@ -208,7 +204,7 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
 def test_the_canonical_form_fills_in_defaults_and_writes_each_value_one_way(
     field: dict[str, Any], canonical: dict[str, Any]
 ) -> None:
-    """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. It writes each value that numcodecs reads alike in one way: a dtype parameter as NumPy spells it (`<i1` is `|i1`, `μs` is `us`), as an array's dtype compares; a fixedscaleoffset `offset` and `scale` as floats; and a blosc `typesize` is dropped under `shuffle` 0, where nothing is shuffled. So a configuration and its canonical form are one codec: they compare equal, with equal hashes. A codec with nothing to fill in or respell is unchanged."""
+    """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. It writes a dtype parameter as NumPy spells it (`<i1` is `|i1`, `μs` is `us`), as an array's dtype compares, since numcodecs reads both spellings alike. So a configuration and its canonical form are one codec: they compare equal, with equal hashes. A codec with nothing to fill in or respell is unchanged."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
     filled, _ = resolve(canonical, ZarrV2CodecDefinition, CONTEXT)
     assert canonical_of(resolved, problems) == canonical
@@ -216,11 +212,49 @@ def test_the_canonical_form_fills_in_defaults_and_writes_each_value_one_way(
     assert hash(resolved) == hash(filled)
 
 
-def test_a_parameter_set_away_from_its_default_is_another_codec() -> None:
-    """A parameter written with another value than its numcodecs default gives another codec."""
-    resolved, _ = resolve({"id": "zstd", "level": 3}, ZarrV2CodecDefinition, CONTEXT)
-    default, _ = resolve({"id": "zstd"}, ZarrV2CodecDefinition, CONTEXT)
-    assert resolved != default
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ({"id": "zstd", "level": 3}, {"id": "zstd"}),
+        (
+            {"id": "blosc", "shuffle": 0, "typesize": 1},
+            {"id": "blosc", "shuffle": 0, "typesize": 8},
+        ),
+        (
+            {"id": "fixedscaleoffset", "offset": 2**53 + 1, "scale": 1, "dtype": "<i8"},
+            {"id": "fixedscaleoffset", "offset": 2**53, "scale": 1, "dtype": "<i8"},
+        ),
+        (
+            {
+                "id": "fixedscaleoffset",
+                "offset": 1000,
+                "scale": 10,
+                "dtype": "<f2",
+                "astype": "<i4",
+            },
+            {
+                "id": "fixedscaleoffset",
+                "offset": 1000.0,
+                "scale": 10.0,
+                "dtype": "<f2",
+                "astype": "<i4",
+            },
+        ),
+    ],
+    ids=[
+        "away-from-a-default",
+        "blosc-typesize-unshuffled",
+        "large-integer-offset",
+        "int-or-float-scale",
+    ],
+)
+def test_codecs_numcodecs_encodes_differently_are_different_codecs(
+    first: dict[str, Any], second: dict[str, Any]
+) -> None:
+    """Two configurations that numcodecs encodes the same data with differently are two codecs: a parameter away from its default; a blosc `typesize` under `shuffle` 0, which still sets Blosc's block split and header; and a fixedscaleoffset `offset` or `scale` written as an integer or as a float, which NumPy computes with differently for integer and half-precision dtypes."""
+    one, _ = resolve(first, ZarrV2CodecDefinition, CONTEXT)
+    other, _ = resolve(second, ZarrV2CodecDefinition, CONTEXT)
+    assert one != other
 
 
 @pytest.mark.parametrize(
@@ -246,6 +280,7 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
         ({"id": "blosc", "clevel": -1}, ("c", "clevel"), "invalid_value"),
         ({"id": "blosc", "shuffle": 3}, ("c", "shuffle"), "invalid_value"),
         ({"id": "blosc", "blocksize": 2**31}, ("c", "blocksize"), "invalid_value"),
+        ({"id": "blosc", "typesize": 2**31}, ("c", "typesize"), "invalid_value"),
         ({"id": "blosc", "shuffle": None}, ("c", "shuffle"), "invalid_type"),
         ({"id": "zstd", "level": 2**31}, ("c", "level"), "invalid_value"),
         ({"id": "zstd", "level": -(2**31) - 1}, ("c", "level"), "invalid_value"),

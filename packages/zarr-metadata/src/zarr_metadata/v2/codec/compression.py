@@ -70,7 +70,7 @@ class ZarrV2BloscParameters(TypedDict, closed=True):
     clevel: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=9)]]]
     shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2] | bool]]
     blocksize: NotRequired[ReadOnly[_CInt]]
-    typesize: NotRequired[ReadOnly[Annotated[int, Ge(1)] | None]]
+    typesize: NotRequired[ReadOnly[Annotated[int, Interval(ge=1, le=2**31 - 1)] | None]]
 
 
 class ZarrV2ZstdParameters(TypedDict, closed=True):
@@ -110,10 +110,10 @@ def _blosc_canonical(configuration: ZarrV2BloscParameters) -> ZarrV2BloscParamet
     """Fill in the defaults, as numcodecs writes them, and write a `shuffle` of `true` or `false` as 1 or 0, which numcodecs reads it as.
 
     numcodecs 0.16 reads `typesize` but never writes it. A null `typesize`
-    is the default, and is dropped. Under `shuffle` 0 nothing is shuffled,
-    so `typesize` is dropped there too, as the v3 blosc codec drops it
-    under `noshuffle`. Under any other `shuffle`, it sets the element size
-    that Blosc shuffles by, and is kept.
+    is the default, and is dropped. Any other `typesize` is kept, whatever
+    the `shuffle`: Blosc writes it into each chunk's header and splits
+    blocks by it, so it changes the encoded chunk even when nothing is
+    shuffled.
     """
     shuffle = configuration.get("shuffle", 1)
     filled: ZarrV2BloscParameters = {
@@ -123,7 +123,7 @@ def _blosc_canonical(configuration: ZarrV2BloscParameters) -> ZarrV2BloscParamet
         "blocksize": configuration.get("blocksize", 0),
     }
     typesize = configuration.get("typesize")
-    if typesize is None or filled["shuffle"] == 0:
+    if typesize is None:
         return filled
     return {**filled, "typesize": typesize}
 
