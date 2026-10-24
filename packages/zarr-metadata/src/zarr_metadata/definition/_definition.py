@@ -1120,7 +1120,7 @@ def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
         )
         return ("read", definition, spelled, _nested_key(field.nested))
     if isinstance(field, UnclaimedField):
-        return ("unclaimed", field.read_as, field.name, json_text(field.configuration))
+        return ("unclaimed", field.read_as, field.name, json_text(written_json(field)))
     return (
         "refused",
         field.read_as,

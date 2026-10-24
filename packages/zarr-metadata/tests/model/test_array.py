@@ -49,17 +49,13 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._array_v3 import (
-    _ARRAY_METADATA_OPTIONAL_KEYS_V3,
-    _ARRAY_METADATA_REQUIRED_KEYS_V3,
-    _ARRAY_METADATA_STANDARD_KEYS_V3,
-)
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    ArrayExtraFieldDefinition,
 )
 
 if TYPE_CHECKING:
@@ -342,23 +338,15 @@ def test_v3_to_key_value_is_valid_json_under_zarr_json() -> None:
 # --- V3 standard-key sets --------------------------------------------------
 
 
-def test_standard_keys_is_union_of_required_and_optional() -> None:
-    """The standard-key set is the union of the required and optional key sets."""
+def test_spec_members_are_the_members_the_spec_defines() -> None:
+    """`ArrayExtraFieldDefinition.spec_members` holds every member of `ZarrV3ArrayMetadataJSON`, required or not, and nothing else: any other member of an array document is an extra field."""
+    members = ArrayExtraFieldDefinition.spec_members
     assert (
-        _ARRAY_METADATA_STANDARD_KEYS_V3
-        == _ARRAY_METADATA_REQUIRED_KEYS_V3 | _ARRAY_METADATA_OPTIONAL_KEYS_V3
+        members
+        == ZarrV3ArrayMetadataJSON.__required_keys__ | ZarrV3ArrayMetadataJSON.__optional_keys__
     )
-
-
-def test_standard_keys_contains_known_fields_and_excludes_extensions() -> None:
-    """The standard-key set contains known fields and excludes extension keys."""
-    assert {
-        "zarr_format",
-        "node_type",
-        "shape",
-        "codecs",
-    } <= _ARRAY_METADATA_STANDARD_KEYS_V3
-    assert "my_ext" not in _ARRAY_METADATA_STANDARD_KEYS_V3
+    assert {"zarr_format", "node_type", "shape", "codecs", "dimension_names"} <= members
+    assert "my_ext" not in members
 
 
 # --- create_default --------------------------------------------------------

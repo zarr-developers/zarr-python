@@ -27,7 +27,7 @@ from typing import (
     get_args,
 )
 
-from typing_extensions import TypeAliasType
+from typing_extensions import TypeAliasType, is_typeddict
 
 from zarr_metadata._json import (
     ValidationProblem,
@@ -37,7 +37,7 @@ from zarr_metadata._json import (
     refine_user_data,
     with_input,
 )
-from zarr_metadata._typed_json import Loc, problem
+from zarr_metadata._typed_json import Loc, problem, typeddict_keys
 from zarr_metadata.definition._definition import (
     AcceptedField,
     C,
@@ -60,6 +60,8 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecField,
     ZarrV3StorageTransformerField,
 )
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
@@ -375,57 +377,94 @@ class ExtraFieldDefinition(Definition[C]):
     `finite` says whether every number in the member must be finite, as
     RFC 8259 JSON requires. A member that holds user data sets it to
     False: consolidated metadata holds node documents, whose attributes
-    may hold `NaN`, `Infinity` and `-Infinity`.
+    may hold `NaN`, `Infinity` and `-Infinity`. A member that nothing
+    claims is not read, so like attributes it may hold any number.
+
+    The spec lets every extension member carry `"must_understand": false`,
+    which tells a reader that does not understand the member that it may
+    ignore it. So the configuration declares `must_understand`, and a
+    definition whose configuration does not is refused. A member the spec
+    defines, such as an array's `shape`, is never an extra field, and a
+    definition named after one is refused too.
     """
 
     finite: bool = True
     """Whether every number in the member must be finite."""
 
+    spec_members: ClassVar[frozenset[str]] = frozenset()
+    """The members the spec defines in a document this kind reads extra fields of, which are never extra fields."""
+
     def _finite_numbers(self) -> bool:
         return self.finite
 
+    def _refusal(self) -> str | None:
+        finite = cast("object", self.finite)
+        if not isinstance(finite, bool):
+            return f"{self.name!r}: finite is a boolean, got {finite!r}"
+        if is_typeddict(self.configuration) and (
+            "must_understand" not in typeddict_keys(self.configuration).members
+        ):
+            return (
+                f"{self.name!r}: the configuration declares must_understand, which the spec "
+                "lets every extension member carry"
+            )
+        return None
+
     @classmethod
     def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
-        # No registry names extra fields, so any key may name one.
+        # No registry names extra fields, so any key the spec does not
+        # define may name one.
+        if name in cls.spec_members:
+            return ValidationProblem(
+                at, f"{name!r} is a member the spec defines, not an extra field", "invalid_value"
+            )
         return None
 
     @classmethod
     def named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
+        # A member whose value is not an object has no configuration. Only
+        # a definition that claims the member reads it, and `refined`
+        # refuses such a value then.
         if not is_object(value) or len(value) != 1:
             return None, None, ()
         ((name, member),) = value.items()
         if not isinstance(name, str):
             return None, None, ()
         if not is_object(member):
-            return name, None, (ValidationProblem((), "expected an object", "invalid_type"),)
+            return name, None, ()
         return name, {key: item for key, item in member.items() if isinstance(key, str)}, ()
 
     @classmethod
     def envelope_problems(cls, value: object) -> Problems:
-        name, _, malformed = cls.named_configuration(value)
+        name = cls.named_configuration(value)[0]
         if name is None:
             return (
                 ValidationProblem(
                     (), "expected a member, as an object with one string key", "invalid_type"
                 ),
             )
-        return malformed
+        bad = cls.name_problem(name, ())
+        return () if bad is None else (bad,)
 
     @classmethod
     def refined(
         cls, data: object, loc: Loc, definition: Definition[Any] | None
     ) -> tuple[JSONValue | None, Problems]:
-        # The member's value is at the member's location, `loc`. It is user
-        # data when the definition that claims it says so.
+        # The member's value is at the member's location, `loc`. A member
+        # nothing claims is not read, so like attributes it is user data.
+        # A claimed member is user data when its definition says so, and
+        # its value must be an object.
         name = cls.named_configuration(data)[0]
         if name is None or not is_object(data):
             return refine_json(data, loc)
+        if definition is not None and not is_object(data[name]):
+            return None, (ValidationProblem(loc, "expected an object", "invalid_type"),)
         refine = (
-            refine_user_data
-            if isinstance(definition, ExtraFieldDefinition) and not definition.finite
-            else refine_json
+            refine_json
+            if isinstance(definition, ExtraFieldDefinition) and definition.finite
+            else refine_user_data
         )
         value, problems = refine(data[name], loc)
         return (None if len(problems) != 0 else {name: value}), problems
@@ -456,6 +495,9 @@ class ArrayExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
     """An extra field of a v3 array document: a member the spec does not define, read by its key."""
 
     label: ClassVar[str] = "array extra field"
+    spec_members: ClassVar[frozenset[str]] = frozenset(
+        typeddict_keys(ZarrV3ArrayMetadataJSON).members
+    )
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -463,6 +505,9 @@ class GroupExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
     """An extra field of a v3 group document: a member the spec does not define, read by its key. `consolidated_metadata` is one."""
 
     label: ClassVar[str] = "group extra field"
+    spec_members: ClassVar[frozenset[str]] = frozenset(
+        typeddict_keys(ZarrV3GroupMetadataJSON).members
+    )
 
 
 STATIC_SIZE_ALIASES: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecField})

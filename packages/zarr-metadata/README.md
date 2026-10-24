@@ -93,7 +93,7 @@ closely model the content of the Zarr specifications, such as:
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, e.g.:
 - fixed format literals,
-- finite JSON numbers outside `attributes`
+- finite JSON numbers outside `attributes` and the members nothing in scope reads
 - non-negative dimensions
 - one `dimension_names` entry per array dimension.
 
@@ -125,8 +125,10 @@ Some choices that the spec text leaves open, or answers in two ways:
   does not interpret attributes, and zarr-python and xarray write these
   numbers there (for example, a CF `_FillValue`). The models read them,
   and `to_key_value` writes them back as bare tokens, which a strict JSON
-  parser rejects. `check`, from `zarr_metadata.typed_json`, rejects a
-  non-finite number anywhere, including in attributes.
+  parser rejects. So may a member the spec does not define when no
+  definition in scope claims it: nothing reads it, so it is kept as
+  written. `check`, from `zarr_metadata.typed_json`, rejects a non-finite
+  number anywhere, including in attributes.
 - **A reader walks at most 256 levels of nesting.** A value nested deeper
   is an `invalid_value` problem at the first level past the limit,
   wherever it is. Every reader, writer and comparison uses one stack

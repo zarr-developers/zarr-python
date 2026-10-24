@@ -193,6 +193,29 @@ def test_attributes_holding_non_finite_numbers_round_trip_through_the_store(
     assert _held(attributes_in(written)) == (True, True, True)
 
 
+@pytest.mark.parametrize(
+    ("key", "member"),
+    [
+        ("extension", {"must_understand": False, "x": math.nan}),
+        # Only a v3 group holds node documents inline. In an array, a member
+        # with that name is an extra field that nothing in scope claims.
+        (
+            "consolidated_metadata",
+            {"must_understand": False, "metadata": {"a": {"attributes": {"x": math.nan}}}},
+        ),
+    ],
+    ids=["extension-field", "consolidated-in-an-array"],
+)
+def test_an_unclaimed_member_holding_non_finite_numbers_round_trips_through_the_store(
+    key: str, member: dict[str, object]
+) -> None:
+    """Nothing reads a member that no definition in scope claims, so like attributes it may hold `NaN` and the infinities: the model reads it, and writes it back as bare tokens."""
+    model = ZarrV3ArrayMetadata.from_key_value(_stored("zarr.json", {**_ARRAY, key: member}))
+    written = model.to_key_value()
+    assert b"NaN" in written["zarr.json"]
+    assert ZarrV3ArrayMetadata.from_key_value(written) == model
+
+
 def test_a_sequence_is_written_as_an_array() -> None:
     # The writer writes the document that passed the reader's validation,
     # with arrays normalized the same way the reader normalizes them.
@@ -226,11 +249,6 @@ _REFUSED: dict[str, _Refused] = {
         ),
         ("codecs", 0, "configuration", "scale"),
     ),
-    "extension-field": (
-        ZarrV3ArrayMetadata.from_key_value,
-        _stored("zarr.json", {**_ARRAY, "extension": {"must_understand": False, "x": math.nan}}),
-        ("extension", "x"),
-    ),
     # A group does not read the documents its consolidated metadata lists;
     # reading them finds the number.
     "consolidated-node": (
@@ -247,22 +265,6 @@ _REFUSED: dict[str, _Refused] = {
             },
         ),
         ("metadata", "a", "fill_value"),
-    ),
-    # Only a v3 group holds node documents inline. In an array, a member with
-    # that name is an extension that the spec does not declare.
-    "consolidated-in-an-array": (
-        ZarrV3ArrayMetadata.from_key_value,
-        _stored(
-            "zarr.json",
-            {
-                **_ARRAY,
-                "consolidated_metadata": {
-                    "must_understand": False,
-                    "metadata": {"a": {"attributes": {"x": math.nan}}},
-                },
-            },
-        ),
-        ("consolidated_metadata", "metadata", "a", "attributes", "x"),
     ),
     # A v2 array's attributes live in `.zattrs`. Its `.zarray` must be RFC 8259
     # JSON throughout, and zarr-python 3.0 once wrote a bare `NaN` there.

@@ -97,20 +97,10 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.group import ZarrV3GroupMetadataStoreKey
 
 
-# The standard top-level keys of a v3 group metadata document. Anything outside
-# this set is an extension field.
+# The members a v3 group document must have. The members the spec defines
+# are `GroupExtraFieldDefinition.spec_members`; any other is an extra field.
 _GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3GroupMetadataJSON.__required_keys__
-)
-
-
-_GROUP_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
-    ZarrV3GroupMetadataJSON.__optional_keys__
-)
-
-
-_GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
-    _GROUP_METADATA_REQUIRED_KEYS_V3 | _GROUP_METADATA_OPTIONAL_KEYS_V3
 )
 
 
@@ -823,9 +813,7 @@ def read_group_v3(
     past = members_past_the_levels(doc, at)
     found.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
-    extra_fields, extra, others = read_extra_fields_v3(
-        doc, _GROUP_METADATA_STANDARD_KEYS_V3, GroupExtraFieldDefinition, context, at
-    )
+    extra_fields, extra, others = read_extra_fields_v3(doc, GroupExtraFieldDefinition, context, at)
     found.extend(others)
     found.extend(check_literal(doc, "zarr_format", 3))
     found.extend(check_literal(doc, "node_type", "group"))

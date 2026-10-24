@@ -88,21 +88,10 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataStoreKey
 
 
-# The standard top-level keys of a v3 array metadata document. Anything outside
-# this set is an extension field. Built from the TypedDict's required/optional
-# key sets (which resolve inherited keys, unlike `__annotations__`).
+# The members a v3 array document must have. The members the spec defines
+# are `ArrayExtraFieldDefinition.spec_members`; any other is an extra field.
 _ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3ArrayMetadataJSON.__required_keys__
-)
-
-
-_ARRAY_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
-    ZarrV3ArrayMetadataJSON.__optional_keys__
-)
-
-
-_ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
-    _ARRAY_METADATA_REQUIRED_KEYS_V3 | _ARRAY_METADATA_OPTIONAL_KEYS_V3
 )
 
 
@@ -276,9 +265,7 @@ def read_array_v3(
     past = members_past_the_levels(doc, at)
     problems.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
-    extra_fields, extra, found = read_extra_fields_v3(
-        doc, _ARRAY_METADATA_STANDARD_KEYS_V3, ArrayExtraFieldDefinition, context, at
-    )
+    extra_fields, extra, found = read_extra_fields_v3(doc, ArrayExtraFieldDefinition, context, at)
     problems.extend(found)
     problems.extend(check_literal(doc, "zarr_format", 3))
     problems.extend(check_literal(doc, "node_type", "array"))
@@ -467,19 +454,19 @@ def parse_array_metadata_v3(
 
 def read_extra_fields_v3(
     doc: Mapping[object, object],
-    standard_keys: frozenset[str],
     kind: type[ExtraFieldDefinition[Any]],
     context: ZarrV3Context,
     at: Loc,
 ) -> tuple[dict[str, JSONValue], dict[str, ResolvedField[Any]], tuple[ValidationProblem, ...]]:
-    """Read each member of `doc` (a document at `at`) that is not one of `standard_keys` as an extra field of `kind`.
+    """Read each member of `doc` (a document at `at`) that is not one of the `spec_members` of `kind` as an extra field of `kind`.
 
     Returns three values: each member that is JSON, refined; each member
     as the scope read it, by key; and every problem, located in `doc`. A
     member that a definition in `context` claims is read by that
-    definition, and must be an object. Any other member is not read: it is
-    an `UnclaimedField`, and need only be JSON. Every number in a member
-    must be finite, unless the definition that claims it reads user data.
+    definition, and must be an object whose numbers are finite, unless the
+    definition reads user data. Any other member is not read: it is an
+    `UnclaimedField`, and, like attributes, need only be JSON as Python's
+    `json` module reads it.
     """
     values: dict[str, JSONValue] = {}
     fields: dict[str, ResolvedField[Any]] = {}
@@ -490,7 +477,7 @@ def read_extra_fields_v3(
                 ValidationProblem((), f"non-string top-level key {shown_key(key)}", "invalid_type")
             )
             continue
-        if key in standard_keys:
+        if key in kind.spec_members:
             continue
         member = {key: value}
         definition = context.claimant(kind, key)

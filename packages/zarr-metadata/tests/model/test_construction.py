@@ -226,7 +226,7 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
         (ARRAY, {"attributes": None}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": ()}, [(("attributes",), "invalid_type")]),
-        (GROUP, {"acme": math.nan}, [(("acme",), "invalid_value")]),
+        (GROUP, {"acme": {1: "a"}}, [(("acme",), "invalid_type")]),
     ],
     ids=[
         "fill-value-not-json",
