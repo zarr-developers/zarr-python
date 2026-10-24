@@ -13,7 +13,7 @@ def test_single_root_url() -> None:
     assert segment.scheme == "s3"
     assert segment.body == "//bucket/key"
     assert segment.query is None
-    assert segment.raw == "s3://bucket/key"
+    assert segment.url == "s3://bucket/key"
 
 
 @pytest.mark.parametrize("url", ["/local/path", "/local/path|zip:", "relative/path|zip:"])
@@ -45,10 +45,10 @@ def test_scheme_case_insensitive() -> None:
     assert segments[1].body == "Inner/Path"
 
 
-def test_case_preserved_in_raw() -> None:
+def test_body_case_preserved() -> None:
     # e.g. icechunk snapshot IDs are case-significant
     segments = _parse_pipeline("file:/tmp/repo|icechunk://ABCDEFGH12345678ABCD/x")
-    assert segments[1].raw == "icechunk://ABCDEFGH12345678ABCD/x"
+    assert segments[1].url == "icechunk://ABCDEFGH12345678ABCD/x"
     assert segments[1].body == "//ABCDEFGH12345678ABCD/x"
 
 
@@ -144,13 +144,20 @@ def test_scheme_detection_ignores_authority_syntax() -> None:
     """Scheme detection works on the raw text, so a malformed authority does not affect it."""
     segments = _parse_pipeline("xy://[authority]/path|zip:")
     assert segments[0].scheme == "xy"
-    assert segments[0].raw == "xy://[authority]/path"
+    assert segments[0].url == "xy://[authority]/path"
 
 
 def test_round_trip() -> None:
     url = "s3://bucket/a.zip?v=2|zip:b/inner.zip|zip:c|zarr3:"
     segments = _parse_pipeline(url)
-    assert "|".join(s.raw for s in segments) == url
+    assert "|".join(s.url for s in segments) == url
+
+
+def test_url_is_canonical() -> None:
+    """`url` is built from the parts: lowercase scheme, and `scheme:` always written."""
+    segments = _parse_pipeline("S3://Bucket/K?|ZIP|Zip:Inner")
+    assert [s.url for s in segments] == ["s3://Bucket/K?", "zip:", "zip:Inner"]
+    assert _parse_pipeline("|".join(s.url for s in segments)) == segments
 
 
 # --- property-based tests -----------------------------------------------
@@ -186,7 +193,7 @@ def pipelines(
         query = draw(st.none() | _QUERY)
         raw = f"{scheme}:{body}" + (f"?{query}" if query is not None else "")
         parts.append(raw)
-        expected.append((scheme.lower(), body, query, raw))
+        expected.append((scheme.lower(), body, query, raw.replace(scheme, scheme.lower(), 1)))
     return "|".join(parts), expected
 
 
@@ -197,9 +204,9 @@ def test_valid_pipeline_invariants(
     url, expected = case
     segments = _parse_pipeline(url)
     # schemes lowercased; bodies and queries preserved verbatim
-    assert [(s.scheme, s.body, s.query, s.raw) for s in segments] == expected
-    # lossless round trip
-    assert "|".join(s.raw for s in segments) == url
+    assert [(s.scheme, s.body, s.query, s.url) for s in segments] == expected
+    # the canonical form re-parses to the same segments
+    assert _parse_pipeline("|".join(s.url for s in segments)) == segments
 
 
 @given(pipelines(), st.data())

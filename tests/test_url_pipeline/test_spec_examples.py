@@ -9,7 +9,7 @@ validates each example (and an uppercased-scheme variant) against its ABNF
 grammar, so this corpus is grammar-valid by construction.
 
 The parser must accept every example, whether or not an adapter exists for its
-schemes, split it into the expected schemes, and preserve the text losslessly. To
+schemes, split it into the expected schemes, and re-parse its canonical form identically. To
 regenerate, re-extract the examples and recompute the expected schemes with
 `_parse_pipeline`, reviewing changes against the spec diff.
 """
@@ -244,8 +244,8 @@ def _uppercase_schemes(example: str) -> str:
 def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> None:
     segments = _parse_pipeline(url)
     assert tuple(segment.scheme for segment in segments) == expected_schemes
-    # lossless round-trip of the original text
-    assert "|".join(segment.raw for segment in segments) == url
+    # the canonical form re-parses to the same segments
+    assert _parse_pipeline("|".join(segment.url for segment in segments)) == segments
 
 
 @pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=str)

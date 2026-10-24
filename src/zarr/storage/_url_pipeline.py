@@ -45,9 +45,9 @@ def _redact(text: str) -> str:
     return re.sub(r"\?[^|]*", "?…", text)
 
 
-def _check_scheme(scheme: str, raw: str) -> None:
+def _check_scheme(scheme: str, sub_url: str) -> None:
     if not _URL_SCHEME_RE.fullmatch(scheme):
-        raise URLPipelineError(f"invalid URL scheme {scheme!r} in the sub-URL {_redact(raw)!r}")
+        raise URLPipelineError(f"invalid URL scheme {scheme!r} in the sub-URL {_redact(sub_url)!r}")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,17 +64,14 @@ class PipelineSegment:
         content such as Icechunk snapshot IDs is preserved).
     query : str | None
         The raw query string after `?`, or None.
-    raw : str
-        The original sub-URL text.
     """
 
     scheme: str
     body: str
     query: str | None
-    raw: str
 
     def __post_init__(self) -> None:
-        for name in ("scheme", "body", "raw"):
+        for name in ("scheme", "body"):
             if not isinstance(getattr(self, name), str):
                 raise TypeError(
                     f"PipelineSegment.{name} must be a str, "
@@ -84,12 +81,18 @@ class PipelineSegment:
             raise TypeError(
                 f"PipelineSegment.query must be a str or None, not {type(self.query).__name__}"
             )
-        _check_scheme(self.scheme, self.raw)
+        if not _URL_SCHEME_RE.fullmatch(self.scheme):
+            raise URLPipelineError(f"invalid URL scheme {self.scheme!r}")
         if self.scheme != self.scheme.lower():
             raise URLPipelineError(f"PipelineSegment.scheme must be lowercase: {self.scheme!r}")
 
+    @property
+    def url(self) -> str:
+        """The sub-URL in canonical form: lowercase scheme, and `scheme:` always written."""
+        return f"{self.scheme}:{self.body}" + ("" if self.query is None else f"?{self.query}")
+
     def __repr__(self) -> str:
-        return f"PipelineSegment({_redact(self.raw)!r})"
+        return f"PipelineSegment({_redact(self.url)!r})"
 
 
 @dataclasses.dataclass(frozen=True, eq=False)
@@ -132,13 +135,13 @@ class PipelineContext:
     @property
     def preceding_url(self) -> str:
         """
-        The pipeline to the left of this segment, reconstructed exactly.
+        The pipeline to the left of this segment, in canonical form.
 
         An adapter that consumes this string instead of calling
         `resolve_preceding` must validate every preceding segment itself,
         and raise `URLPipelineError` for any it does not understand.
         """
-        return "|".join(segment.raw for segment in self.preceding)
+        return "|".join(segment.url for segment in self.preceding)
 
     async def resolve_preceding(self) -> StorePath:
         """
@@ -202,7 +205,7 @@ def _parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
                 )
         else:
             _check_scheme(scheme, part)
-        segments.append(PipelineSegment(scheme=scheme.lower(), body=body, query=query, raw=part))
+        segments.append(PipelineSegment(scheme=scheme.lower(), body=body, query=query))
     return tuple(segments)
 
 
@@ -214,6 +217,7 @@ class URLPipeline:
     Build one with [`from_url`][zarr.storage.URLPipeline.from_url] and pass it to
     any `StoreLike`-taking function, e.g.
     `zarr.open_group(URLPipeline.from_url("s3://bucket/data.zip|zip:|zarr3:"))`.
+    `str()` gives the canonical URL, so `URLPipeline.from_url(str(p)) == p`.
     Instances are immutable and hashable values; nothing is resolved until the
     pipeline is opened.
 
@@ -281,7 +285,7 @@ class URLPipeline:
         return cls(_parse_pipeline(url))
 
     def __str__(self) -> str:
-        return "|".join(segment.raw for segment in self.segments)
+        return "|".join(segment.url for segment in self.segments)
 
     def __repr__(self) -> str:
         return f"URLPipeline({_redact(str(self))!r})"
@@ -354,7 +358,7 @@ def _reject_dot_segments(path: str, segment: PipelineSegment) -> None:
     if any(part in (".", "..") for part in re.split(r"[/\\]", path)):
         raise URLPipelineError(
             f"'{segment.scheme}:' pipeline root paths must not contain '.' or '..' "
-            f"components: {_redact(segment.raw)!r}"
+            f"components: {_redact(segment.url)!r}"
         )
 
 
@@ -372,7 +376,7 @@ async def _resolve_root(
 
     if segment.scheme in _NATIVE_ROOT_SCHEMES and segment.query is not None:
         raise URLPipelineError(
-            f"'{segment.scheme}:' pipeline roots do not accept a query: {_redact(segment.raw)!r}"
+            f"'{segment.scheme}:' pipeline roots do not accept a query: {_redact(segment.url)!r}"
         )
 
     if segment.scheme == "memory":
@@ -395,14 +399,14 @@ async def _resolve_root(
             authority, sep, rest = body[2:].partition("/")
             if authority.lower() not in ("", "localhost"):
                 raise URLPipelineError(
-                    f"unsupported authority in the 'file:' pipeline root {_redact(segment.raw)!r}; "
+                    f"unsupported authority in the 'file:' pipeline root {_redact(segment.url)!r}; "
                     "only an empty authority or 'localhost' is allowed"
                 )
             body = f"/{rest}" if sep else ""
             if body.startswith("//"):
                 raise URLPipelineError(
                     f"'file:' pipeline root paths must not start with '//': "
-                    f"{_redact(segment.raw)!r}"
+                    f"{_redact(segment.url)!r}"
                 )
         if sys.platform == "win32":
             # a file URL spells a drive path /C:/...; drop the leading slash
@@ -416,23 +420,22 @@ async def _resolve_root(
                 # elsewhere ':' names an NTFS alternate data stream
                 raise URLPipelineError(
                     f"':' is only allowed in the drive of a 'file:' pipeline root on "
-                    f"Windows: {_redact(segment.raw)!r}"
+                    f"Windows: {_redact(segment.url)!r}"
                 )
         else:
             is_absolute = body.startswith("/")
         if not is_absolute:
             raise URLPipelineError(
                 f"'file:' pipeline roots must carry an absolute local path: "
-                f"{_redact(segment.raw)!r}"
+                f"{_redact(segment.url)!r}"
             )
         _reject_dot_segments(body, segment)
         return await make_store(Path(body), mode=mode, storage_options=storage_options)
 
-    # fsspec matches protocols case-sensitively; URL schemes are not
-    url = segment.scheme + segment.raw[len(segment.scheme) :]
+    # the canonical URL has a lowercase scheme: fsspec matches protocols case-sensitively
     try:
-        return await make_store(url, mode=mode, storage_options=storage_options)
+        return await make_store(segment.url, mode=mode, storage_options=storage_options)
     except ValueError as exc:
         raise URLPipelineError(
-            f"could not resolve the pipeline root {_redact(segment.raw)!r}: {_redact(str(exc))}"
+            f"could not resolve the pipeline root {_redact(segment.url)!r}: {_redact(str(exc))}"
         ) from exc

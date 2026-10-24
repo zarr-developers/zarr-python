@@ -8,20 +8,25 @@ from zarr.storage._url_pipeline import _parse_pipeline
 
 
 @pytest.mark.parametrize(
-    "url",
+    ("url", "canonical"),
     [
-        "s3://bucket/data.zip|zip:inner|zarr3:",
-        "file:///data/node.zarr|zarr2",
-        "file:///repo|icechunk:|zarr3:/path/to/array/",
-        "memory://x|wrap:a",
-        "s3://bucket/key",
+        ("s3://bucket/data.zip|zip:inner|zarr3:", "s3://bucket/data.zip|zip:inner|zarr3:"),
+        # the optional colon is always written, and schemes are lowercased
+        ("FILE:///data/node.zarr|zarr2", "file:///data/node.zarr|zarr2:"),
+        (
+            "file:///repo|icechunk:|zarr3:/path/to/array/",
+            "file:///repo|icechunk:|zarr3:/path/to/array/",
+        ),
+        ("memory://x|wrap:a", "memory://x|wrap:a"),
+        ("s3://bucket/key", "s3://bucket/key"),
     ],
 )
-def test_from_url(url: str) -> None:
-    """`from_url` holds every parsed segment; `str()` reproduces the URL exactly."""
+def test_from_url(url: str, canonical: str) -> None:
+    """`from_url` holds every parsed segment; `str()` is the canonical URL, which re-parses equal."""
     pipeline = URLPipeline.from_url(url)
     assert pipeline.segments == _parse_pipeline(url)
-    assert str(pipeline) == url
+    assert str(pipeline) == canonical
+    assert URLPipeline.from_url(str(pipeline)) == pipeline
     assert URLPipeline(pipeline.segments) == pipeline
 
 
@@ -46,7 +51,7 @@ def test_empty_pipeline_rejected() -> None:
 
 @pytest.mark.parametrize(
     "segments",
-    ["s3://b|zip:", ["s3://b"], ("s3://b",), [PipelineSegment("s3", "//b", None, "s3://b")]],
+    ["s3://b|zip:", ["s3://b"], ("s3://b",), [PipelineSegment("s3", "//b", None)]],
 )
 def test_direct_construction_rejects_non_segments(segments: object) -> None:
     """Only a tuple of `PipelineSegment` is accepted; `from_url` parses strings."""

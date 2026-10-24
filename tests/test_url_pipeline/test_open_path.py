@@ -272,13 +272,12 @@ class TestSegmentValidation:
     @pytest.mark.parametrize(
         ("fields", "error"),
         [
-            ((1, "b", None, "r"), TypeError),
-            (("s", 2, None, "r"), TypeError),
-            (("s", "b", 3, "r"), TypeError),
-            (("s", "b", None, None), TypeError),
-            (("S3", "b", None, "r"), URLPipelineError),
-            (("", "b", None, "r"), URLPipelineError),
-            (("a b", "b", None, "r"), URLPipelineError),
+            ((1, "b", None), TypeError),
+            (("s", 2, None), TypeError),
+            (("s", "b", 3), TypeError),
+            (("S3", "b", None), URLPipelineError),
+            (("", "b", None), URLPipelineError),
+            (("a b", "b", None), URLPipelineError),
         ],
     )
     def test_invalid_fields(self, fields: tuple[object, ...], error: type[Exception]) -> None:
@@ -375,8 +374,8 @@ class TestEntryPointNames:
 
 class TestLimits:
     def test_hand_built_pipeline_segment_limit(self) -> None:
-        segment = PipelineSegment("w", "", None, "w")
-        root = PipelineSegment("memory", "", None, "memory:")
+        segment = PipelineSegment("w", "", None)
+        root = PipelineSegment("memory", "", None)
         URLPipeline((root, *[segment] * 31))
         with pytest.raises(URLPipelineError, match="1 to 32 segments"):
             URLPipeline((root, *[segment] * 32))
