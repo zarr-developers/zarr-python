@@ -13,11 +13,11 @@ here file, look up, extend and join such tables.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeAlias, cast, get_args, get_origin, get_type_hints
 
-from typing_extensions import TypeVar
+from typing_extensions import TypeIs, TypeVar
 
 from zarr_metadata.definition._definition import (
     Context,
@@ -45,19 +45,28 @@ Tables: TypeAlias = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]
 _NOTHING: Mapping[str, Definition[Any]] = MappingProxyType({})
 
 
-def slot_kinds(slots: type) -> Mapping[str, type[Definition[Any]]]:
-    """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K]` for a kind `K`. A scope class derives its slots from it, so they are declared once.
+K = TypeVar("K", bound=Definition[Any])
 
-    Raises `TypeError` for a member that is not an iterable of a kind,
-    when the scope class is defined.
+
+def slot_kinds(
+    slots: type, accepts: Callable[[type[Definition[Any]]], TypeIs[type[K]]]
+) -> Mapping[str, type[K]]:
+    """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K]` for a kind `K` that `accepts`, the check for a kind of the scope's format. A scope class derives its slots from it, so they are declared once.
+
+    Raises `TypeError` for a member that is not an iterable of a kind of
+    the format, when the scope class is defined.
     """
-    kinds: dict[str, type[Definition[Any]]] = {}
+    kinds: dict[str, type[K]] = {}
     for slot, annotation in get_type_hints(slots).items():
         arguments = get_args(annotation)
         if get_origin(annotation) is not Iterable or len(arguments) != 1:
             msg = f"{slots.__name__}.{slot}: a slot is annotated Iterable[K] for a kind K, got {annotation!r}"
             raise TypeError(msg)
-        kinds[slot] = as_kind(arguments[0])
+        kind = as_kind(arguments[0])
+        if not accepts(kind):
+            msg = f"{slots.__name__}.{slot}: {kind.__name__} is not a kind of the scope's format"
+            raise TypeError(msg)
+        kinds[slot] = kind
     return MappingProxyType(kinds)
 
 
@@ -143,8 +152,20 @@ def joined_tables(
 
 
 def definitions_in(tables: Tables, kind: type[D]) -> Mapping[str, D]:
-    """The table of `kind` in `tables`, by the name each definition is filed under; empty for a kind the tables do not hold."""
-    return cast("Mapping[str, D]", tables.get(as_kind(kind), _NOTHING))
+    """The table of `kind` in `tables`, by the name each definition is filed under.
+
+    Tables hold every kind of their format, so a kind they do not hold is
+    a kind of the other format, and raises `TypeError`, as anything that is
+    not a kind does.
+    """
+    asked = as_kind(kind)
+    if asked not in tables:
+        msg = (
+            f"a v{format_of(next(iter(tables)))} scope holds the kinds of its format, "
+            f"got {kind_name(asked)} definitions, a kind of v{format_of(asked)}"
+        )
+        raise TypeError(msg)
+    return cast("Mapping[str, D]", tables[asked])
 
 
 def claimant_in(tables: Tables, kind: type[D], name: str) -> D | None:

@@ -35,9 +35,10 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     GroupExtraFieldDefinition,
     ZarrV3Context,
+    ZarrV3Kind,
 )
 
-KINDS: dict[str, type[Definition[Any]]] = {
+KINDS: dict[str, type[ZarrV3Kind]] = {
     "codecs": CodecDefinition,
     "data_type": DataTypeDefinition,
     "chunk_grid": ChunkGridDefinition,

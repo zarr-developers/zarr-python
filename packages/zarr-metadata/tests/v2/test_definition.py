@@ -33,7 +33,6 @@ def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
     assert CORE_V2.zarr_format == 2
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not None
-    assert CORE_V2.claimant(CodecDefinition, "gzip") is None
     assert CORE_AND_EXTENSIONS.claimant(CodecDefinition, "gzip") is GZIP_CODEC
     assert CORE_V2.claimant(ZarrV2DataTypeDefinition, "<f4") is not None
     with pytest.raises(TypeError, match="one Zarr format"):

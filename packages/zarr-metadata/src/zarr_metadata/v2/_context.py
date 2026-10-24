@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, TypeAlias, get_args, get_origin
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict, TypeIs, TypeVar, Unpack
 
 from zarr_metadata.definition._context import (
     Tables,
@@ -26,6 +26,21 @@ if TYPE_CHECKING:
 
     from zarr_metadata.definition._definition import D, Definition
     from zarr_metadata.definition._scope import Claims, Disagreements
+
+ZarrV2Kind: TypeAlias = ZarrV2DataTypeDefinition[Any] | ZarrV2CodecDefinition[Any]
+"""A definition of a kind of v2 field."""
+
+_K = TypeVar("_K", bound=ZarrV2Kind)
+"""A kind of v2 field, so a type checker refuses a kind of the other format."""
+
+_KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
+    get_origin(member) for member in get_args(ZarrV2Kind)
+)
+
+
+def is_v2_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV2Kind]]:
+    """Whether `kind` is a kind of v2 field: one of the kinds in `ZarrV2Kind`."""
+    return kind in _KINDS
 
 
 class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
@@ -62,7 +77,7 @@ class ZarrV2Context:
 
     __slots__ = ("_tables",)
 
-    kinds: ClassVar[Mapping[str, type[Definition[Any]]]] = slot_kinds(ZarrV2ContextSlots)
+    kinds: ClassVar[Mapping[str, type[ZarrV2Kind]]] = slot_kinds(ZarrV2ContextSlots, is_v2_kind)
     """The kind of definition each slot holds, by slot, as `ZarrV2ContextSlots` declares them."""
 
     _tables: Tables
@@ -97,12 +112,12 @@ class ZarrV2Context:
         """The codec definitions in scope, by numcodecs id."""
         return self.definitions_of(ZarrV2CodecDefinition)
 
-    def definitions_of(self, kind: type[D]) -> Mapping[str, D]:
-        """The definitions of `kind` in scope, by the name each is filed under: the slot that holds `kind`. Empty for a kind that no slot holds, such as a kind of the other format."""
+    def definitions_of(self, kind: type[_K]) -> Mapping[str, _K]:
+        """The definitions of `kind` in scope, by the name each is filed under: the slot that holds `kind`. Raises `TypeError` for a kind of the other format."""
         return definitions_in(self._tables, kind)
 
     def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none.
+        """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none. Raises `TypeError` for a kind of the other format.
 
         This is the definition filed under the name that `filed_under`
         maps `name` to. That is `name` itself, except for raw bits, where
@@ -163,4 +178,4 @@ class ZarrV2Context:
         return hash((ZarrV2Context, tables_key(self._tables)))
 
 
-__all__ = ["ZarrV2Context", "ZarrV2ContextSlots"]
+__all__ = ["ZarrV2Context", "ZarrV2ContextSlots", "ZarrV2Kind", "is_v2_kind"]

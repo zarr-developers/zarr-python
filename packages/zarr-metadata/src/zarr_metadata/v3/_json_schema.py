@@ -14,7 +14,7 @@ from zarr_metadata.definition._definition import (
     field_kind,
 )
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
-from zarr_metadata.v3._context import ZarrV3Context
+from zarr_metadata.v3._context import ZarrV3Context, ZarrV3Kind, is_v3_kind
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
@@ -48,7 +48,7 @@ valid name, would be read as raw bits.
 
 
 def field_json_schema_v3(
-    kind: type[Definition[Any]], *, context: ZarrV3Context | None = None
+    kind: type[ZarrV3Kind], *, context: ZarrV3Context | None = None
 ) -> JSONSchema:
     """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
 
@@ -67,7 +67,7 @@ def field_json_schema_v3(
     a problem.
     """
     asked = as_kind(kind)
-    if not any(issubclass(asked, known) for known in ZarrV3Context.kinds.values()):
+    if not is_v3_kind(asked):
         msg = (
             f"{asked.__name__} is a kind of another format; the JSON Schema writer writes "
             "Zarr v3 fields only"
@@ -99,7 +99,10 @@ def field_schemas(context: ZarrV3Context) -> SchemaLeaf:
 def _field_schema(
     kind: type[Definition[Any]], static: bool, context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
-    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims."""
+    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims. Raises `TypeError` for a kind of the other format, whose fields no v3 schema holds."""
+    if not is_v3_kind(kind):
+        msg = f"{kind.__name__} is a kind of another format, which a v3 schema does not hold"
+        raise TypeError(msg)
     table = context.definitions_of(kind)
     branches: list[JSONValue] = []
     for definition in table.values():
@@ -111,7 +114,7 @@ def _field_schema(
 
 
 def _extra_field_schema(
-    kind: type[Definition[Any]], context: ZarrV3Context, schemas: Schemas
+    kind: type[ZarrV3Kind], context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
     """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key and any JSON value."""
     claimed = list(context.definitions_of(kind).values())

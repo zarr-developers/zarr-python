@@ -45,6 +45,7 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     StorageTransformerDefinition,
     ZarrV3Context,
+    ZarrV3Kind,
 )
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
@@ -479,10 +480,10 @@ _FIELD_BASES: tuple[tuple[str, object], ...] = (
     ("data_type:acme.t", {"name": "acme.t", "configuration": {"bits": 8}}),
     ("chunk_grid:acme.g", {"name": "acme.g", "configuration": {"chunk_shape": [0]}}),
 )
-_FIELD_SCHEMAS: dict[tuple[type[Definition[Any]], int], Draft202012Validator] = {}
+_FIELD_SCHEMAS: dict[tuple[type[ZarrV3Kind], int], Draft202012Validator] = {}
 
 
-def _field_validator(kind: type[Definition[Any]], context: int) -> Draft202012Validator:
+def _field_validator(kind: type[ZarrV3Kind], context: int) -> Draft202012Validator:
     if (kind, context) not in _FIELD_SCHEMAS:
         schema = field_json_schema_v3(kind, context=_CONTEXTS[context])
         _FIELD_SCHEMAS[(kind, context)] = Draft202012Validator(schema)
@@ -496,7 +497,7 @@ _INDEXED = {"chunk_shape": [2], "codecs": ["bytes"]}
 # Each field, the kind and scope it is read in, whether the schema accepts
 # it, and whether the scope reads it without a problem. Where the two
 # differ, a rule found a problem that the schema cannot express.
-FIELDS: list[tuple[str, object, type[Definition[Any]], ZarrV3Context, bool, bool]] = [
+FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = [
     ("object", {"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CORE, True, True),
     (
         "out-of-bounds",
@@ -701,7 +702,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], ZarrV3Context, bool, bool
     ids=[case[0] for case in FIELDS],
 )
 def test_field_json_schema_says_what_the_scope_reads(
-    field: object, kind: type[Definition[Any]], context: ZarrV3Context, accepted: bool, clean: bool
+    field: object, kind: type[ZarrV3Kind], context: ZarrV3Context, accepted: bool, clean: bool
 ) -> None:
     schema = field_json_schema_v3(kind, context=context)
     Draft202012Validator.check_schema(schema)
@@ -740,7 +741,7 @@ def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
 
 def test_field_json_schema_refuses_what_is_not_a_kind() -> None:
     with pytest.raises(TypeError, match="is not a kind of metadata"):
-        field_json_schema_v3(Definition, context=CORE)
+        field_json_schema_v3(Definition, context=CORE)  # pyright: ignore[reportArgumentType]
 
 
 # --- a zarr.json ------------------------------------------------------------

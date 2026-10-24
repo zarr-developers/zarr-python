@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import pickle
+from collections.abc import Iterable
 from typing import Any
 
 import pytest
@@ -15,6 +16,7 @@ from zarr_metadata.definition._context import slot_kinds
 from zarr_metadata.v2 import CORE_V2, GZIP_V2, ZarrV2Context
 from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2ContextSlots
 from zarr_metadata.v3 import CORE, GZIP_CODEC, ZarrV3Context
+from zarr_metadata.v3._context import is_v3_kind
 from zarr_metadata.v3.definition import CodecDefinition, ZarrV3ContextSlots
 
 
@@ -87,12 +89,28 @@ def test_error_a_slot_refuses_a_definition_of_the_other_format(
         cls(codecs=[other])
 
 
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_error_a_scope_refuses_a_kind_of_the_other_format(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """A scope holds the kinds of its own format only, so asking it for the definitions of the other format's codec kind, or for the one that claims a name, raises `TypeError` rather than answering that there are none."""
+    other = ZarrV2CodecDefinition if zarr_format == 3 else CodecDefinition
+    with pytest.raises(TypeError, match="kinds of its format"):
+        core.definitions_of(other)
+    with pytest.raises(TypeError, match="kinds of its format"):
+        core.claimant(other, "gzip")
+
+
 @pytest.mark.parametrize("cls", [ZarrV3Context, ZarrV2Context], ids=["v3", "v2"])
 def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - either scope class
     """Each scope class reads its slots from its `...Slots` TypedDict, so the slots are declared once. Each slot has a view of the same name, which is the slot that holds its kind: a type checker cannot match a view's name to a declared slot, so this test does."""
     slots_type = ZarrV3ContextSlots if cls is ZarrV3Context else ZarrV2ContextSlots
     assert list(cls.kinds) == list(slots_type.__annotations__)
-    scope = CORE if cls is ZarrV3Context else CORE_V2
+    scope: Any = CORE if cls is ZarrV3Context else CORE_V2
     for slot, kind in cls.kinds.items():
         assert getattr(scope, slot) == scope.definitions_of(kind)
 
@@ -104,4 +122,14 @@ def test_error_a_slot_is_declared_as_an_iterable_of_a_kind() -> None:
         codecs: list[CodecDefinition[Any]]
 
     with pytest.raises(TypeError, match=r"Wrong\.codecs: a slot is annotated Iterable\[K\]"):
-        slot_kinds(Wrong)
+        slot_kinds(Wrong, is_v3_kind)
+
+
+def test_error_a_slot_holds_a_kind_of_its_format() -> None:
+    """`slot_kinds` checks each slot's kind with the format's own check, so a v3 scope that declared a slot of v2 codecs raises `TypeError` when the scope class is defined."""
+
+    class Mixed(TypedDict, total=False):
+        codecs: Iterable[ZarrV2CodecDefinition[Any]]
+
+    with pytest.raises(TypeError, match=r"Mixed\.codecs: ZarrV2CodecDefinition is not a kind"):
+        slot_kinds(Mixed, is_v3_kind)
