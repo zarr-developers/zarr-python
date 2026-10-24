@@ -181,6 +181,9 @@ read the result strictly, and return each change they made as a `Repair`:
 - A non-finite v2 fill value that zarr-python 3.0.0 to 3.0.6 wrote as a
   bare `NaN`, `Infinity` or `-Infinity` is written as the string the v2
   spec uses, such as `"NaN"`.
+- A non-finite float or complex fill value in a v3 group's consolidated
+  metadata, which zarr-python 3.0.0 to 3.0.6 wrote as a bare token, is
+  written as the string the v3 spec uses, such as `"NaN"`.
 
 The repair readers do not undo these known writer bugs, so a document
 with one of them is refused:
