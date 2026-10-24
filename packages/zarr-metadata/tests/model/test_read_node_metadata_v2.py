@@ -157,6 +157,33 @@ def test_read_consolidated_metadata_v2_reads_a_zmetadata() -> None:
     assert [loc for loc, _ in reading.fields()] == [("metadata", "a/.zarray", "dtype")]
 
 
+@pytest.mark.parametrize(
+    ("entries", "key"),
+    [
+        ({".zgroup": {"zarr_format": 2}, "a/.zarray": ZARRAY}, "a/.zarray"),
+        ({".zgroup": {"zarr_format": 2}, "/a/.zarray": ZARRAY}, "/a/.zarray"),
+        (
+            {
+                ".zgroup": {"zarr_format": 2},
+                "a/.zgroup": {"zarr_format": 2},
+                "a//b/.zarray": ZARRAY,
+            },
+            "a//b/.zarray",
+        ),
+        ({".zarray": ZARRAY}, ".zarray"),
+        ({"/.zarray": ZARRAY}, "/.zarray"),
+    ],
+    ids=["path", "leading-slash", "doubled-slash", "root", "root-with-slash"],
+)
+def test_consolidated_fields_are_located_at_the_keys_the_document_writes(
+    entries: dict[str, Any], key: str
+) -> None:
+    """`fields()` locates each node's fields under the key that the `.zmetadata` writes for the node's `.zarray`, however that key spells the node's path, so each location leads into the document."""
+    reading = read_consolidated_metadata_v2({"zarr_consolidated_format": 1, "metadata": entries})
+    assert reading.problems == ()
+    assert [loc for loc, _ in reading.fields()] == [("metadata", key, "dtype")]
+
+
 def test_error_read_consolidated_metadata_v2_reports_problems_instead_of_raising() -> None:
     """A `.zmetadata` with a problem gives a reading with every problem and no model, where the constructor raises."""
     bad = {

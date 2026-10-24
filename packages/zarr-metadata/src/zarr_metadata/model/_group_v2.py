@@ -458,16 +458,13 @@ class ZarrV2ConsolidatedMetadataReading:
     """The document's model when there is no problem; None otherwise."""
 
     def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry. Nothing when there is no model, and nothing for a group, which has no fields."""
+        """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no fields."""
         if self.metadata is None:
             return
+        by_path, _ = _entries_by_path(self.metadata.metadata)
         for path, node in self.metadata.nodes.items():
             if isinstance(node, ZarrV2ArrayMetadata):
-                key = (
-                    ZARR_V2_ARRAY_METADATA_STORE_KEY
-                    if path == ""
-                    else f"{path}/{ZARR_V2_ARRAY_METADATA_STORE_KEY}"
-                )
+                key = by_path[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
                 for loc, field in node.reading.fields():
                     yield ("metadata", key, *loc), field
 
