@@ -81,9 +81,9 @@ class ZarrV2ZstdParameters(TypedDict, closed=True):
 
 
 class ZarrV2Lz4Parameters(TypedDict, closed=True):
-    """`numcodecs.LZ4(acceleration=1)`."""
+    """`numcodecs.LZ4(acceleration=1)`. numcodecs passes `acceleration` to C as an `int`, and lz4 reads one below 1 as 1."""
 
-    acceleration: NotRequired[ReadOnly[int]]
+    acceleration: NotRequired[ReadOnly[_CInt]]
 
 
 def _zlib_canonical(configuration: ZarrV2ZlibParameters) -> ZarrV2ZlibParameters:

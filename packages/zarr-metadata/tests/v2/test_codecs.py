@@ -44,9 +44,20 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
         {"id": "zstd", "level": -200000, "checksum": False},
         {"id": "zstd", "level": 2**31 - 1, "checksum": False},
     ),
-    "lz4": ({"id": "lz4", "acceleration": 1},),
-    # An element size of 1 or less leaves the bytes as they are.
-    "shuffle": ({"id": "shuffle", "elementsize": 4}, {"id": "shuffle", "elementsize": 0}),
+    # numcodecs passes `acceleration` to C as an `int`, and lz4 reads one below 1 as 1.
+    "lz4": (
+        {"id": "lz4", "acceleration": 1},
+        {"id": "lz4", "acceleration": 2**31 - 1},
+        {"id": "lz4", "acceleration": -(2**31)},
+    ),
+    # An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger
+    # one to C as a `Py_ssize_t`.
+    "shuffle": (
+        {"id": "shuffle", "elementsize": 4},
+        {"id": "shuffle", "elementsize": 0},
+        {"id": "shuffle", "elementsize": -(2**63) - 1},
+        {"id": "shuffle", "elementsize": 2**63 - 1},
+    ),
     "delta": (
         {"id": "delta", "dtype": "<i4", "astype": "<i4"},
         {"id": "delta", "dtype": "<f8"},
@@ -238,6 +249,9 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
         ({"id": "blosc", "shuffle": None}, ("c", "shuffle"), "invalid_type"),
         ({"id": "zstd", "level": 2**31}, ("c", "level"), "invalid_value"),
         ({"id": "zstd", "level": -(2**31) - 1}, ("c", "level"), "invalid_value"),
+        ({"id": "lz4", "acceleration": 2**31}, ("c", "acceleration"), "invalid_value"),
+        ({"id": "lz4", "acceleration": -(2**31) - 1}, ("c", "acceleration"), "invalid_value"),
+        ({"id": "shuffle", "elementsize": 2**63}, ("c", "elementsize"), "invalid_value"),
         ({"id": "shuffle", "elementsize": 1.5}, ("c", "elementsize"), "invalid_type"),
         ({"id": "delta"}, ("c", "dtype"), "missing_key"),
         ({"id": "delta", "dtype": "float32"}, ("c", "dtype"), "invalid_value"),

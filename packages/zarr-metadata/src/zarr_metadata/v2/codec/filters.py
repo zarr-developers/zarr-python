@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Final, NotRequired
 
-from annotated_types import Ge, Interval
+from annotated_types import Ge, Interval, Le
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.definition._definition import EmptyConfiguration
@@ -20,9 +20,9 @@ from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
 
 
 class ZarrV2ShuffleParameters(TypedDict, closed=True):
-    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are."""
+    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger one to C as a `Py_ssize_t`, so it is at most 2**63 - 1, and raises `OverflowError` for any other."""
 
-    elementsize: NotRequired[ReadOnly[int]]
+    elementsize: NotRequired[ReadOnly[Annotated[int, Le(2**63 - 1)]]]
 
 
 class ZarrV2DeltaParameters(TypedDict, closed=True):
