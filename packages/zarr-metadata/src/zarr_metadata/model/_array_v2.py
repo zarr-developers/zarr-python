@@ -430,9 +430,12 @@ def node_document_v2(
 
 
 ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
-    ("attributes",), "unexpected document member", "invalid_value"
+    ("attributes",),
+    f"unexpected key 'attributes' in {ZARR_V2_ARRAY_METADATA_STORE_KEY}: an array's attributes "
+    f"belong in {ZARR_V2_ATTRIBUTES_STORE_KEY}",
+    "invalid_value",
 )
-"""The problem of a `.zarray` that holds `attributes`, which belong in `.zattrs`."""
+"""The problem of a `.zarray` that holds `attributes`, which belong in `.zattrs`. A `.zarray` may hold members the spec does not define, so the key is not unknown, but this one is taken by the attributes."""
 
 
 def read_array_metadata_v2(

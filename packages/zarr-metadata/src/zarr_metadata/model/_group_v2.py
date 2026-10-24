@@ -131,7 +131,10 @@ def parse_group_metadata_v2(
 
 
 _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
-    ("attributes",), "unexpected key 'attributes'", "unknown_key"
+    ("attributes",),
+    f"unexpected key 'attributes' in {ZARR_V2_GROUP_METADATA_STORE_KEY}: a group's attributes "
+    f"belong in {ZARR_V2_ATTRIBUTES_STORE_KEY}",
+    "unknown_key",
 )
 """The problem of a `.zgroup` that holds `attributes`, which `.zgroup` does not declare: a group's attributes belong in `.zattrs`."""
 
@@ -831,11 +834,9 @@ def _read_node_v2(
         ]
     merged = dict(document)
     if "attributes" in merged:
-        return None, [
-            ValidationProblem(
-                ("metadata", key, "attributes"), "unexpected document member", "invalid_value"
-            )
-        ]
+        # The same problem the node reader reports for the file, at the entry.
+        beside = ARRAY_FILE_ATTRIBUTES if zarray is not None else _GROUP_FILE_ATTRIBUTES
+        return None, [dataclasses.replace(beside, loc=("metadata", key, *beside.loc))]
     if zattrs is not None:
         merged["attributes"] = entries[zattrs]
 

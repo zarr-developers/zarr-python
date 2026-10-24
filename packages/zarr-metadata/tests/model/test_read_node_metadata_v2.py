@@ -121,6 +121,31 @@ def test_error_files_with_both_node_files_are_no_node() -> None:
     assert [(p.loc, p.kind) for p in reading.problems] == [((".zgroup",), "invalid_value")]
 
 
+@pytest.mark.parametrize(
+    ("name", "document", "kind"),
+    [(".zarray", ZARRAY, "invalid_value"), (".zgroup", {"zarr_format": 2}, "unknown_key")],
+    ids=["array", "group"],
+)
+def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and_a_zmetadata(
+    name: str, document: dict[str, Any], kind: str
+) -> None:
+    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem, of the same kind, at the file and at its entry. For a `.zgroup`, which declares no other member, the kind is `unknown_key`."""
+    held = {**document, "attributes": {}}
+    from_files = read_node_metadata_v2({name: held}).problems
+    from_entries = read_consolidated_metadata_v2(
+        {
+            "zarr_consolidated_format": 1,
+            "metadata": {".zgroup": {"zarr_format": 2}, f"a/{name}": held},
+        }
+    ).problems
+    assert [(p.loc, p.kind) for p in from_files] == [(("attributes",), kind)]
+    assert [(p.loc, p.kind) for p in from_entries] == [
+        (("metadata", f"a/{name}", "attributes"), kind)
+    ]
+    assert from_files[0].message == from_entries[0].message
+    assert "belong in .zattrs" in from_files[0].message
+
+
 def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> None:
     """Decoding is the store's step: a store file whose bytes are not JSON makes `node_metadata_from_key_value_v2` raise with an `invalid_json` problem at the file."""
     with pytest.raises(MetadataValidationError) as raised:
