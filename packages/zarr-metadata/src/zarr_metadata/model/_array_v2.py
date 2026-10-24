@@ -155,8 +155,9 @@ class ArrayMembersV2:
 class ZarrV2ArrayMetadataReading:
     """A v2 array document as a scope read it, whatever it holds: its dtype, compressor and filters, every problem, and the model when there are no problems.
 
-    A field the document does not hold is `UNSET`; a `compressor` or
-    `filters` written as `null` is None.
+    A field the document does not hold is `UNSET`, and so is a `filters`
+    that is not an array, which holds no filters to read. A `compressor`
+    or `filters` written as `null` is None.
     """
 
     dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
@@ -267,38 +268,40 @@ def read_array_v2(
             problems.extend(found)
     filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
     if "filters" in doc:
-        filters = None
-        refined["filters"] = None
         entries = doc["filters"]
-        if entries is not None:
-            if not is_array(entries):
-                problems.append(
-                    ValidationProblem(
-                        ("filters",),
-                        "expected null or an array of codec configurations",
-                        "invalid_type",
-                    )
+        if entries is None:
+            filters = None
+            refined["filters"] = None
+        elif not is_array(entries):
+            # There are no filters to read, so `filters` stays UNSET: None
+            # means that the document writes null.
+            problems.append(
+                ValidationProblem(
+                    ("filters",),
+                    "expected null or an array of codec configurations",
+                    "invalid_type",
                 )
-            else:
-                # "A list of JSON objects providing codec configurations, or
-                # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
-                read: list[ResolvedField[ZarrV2CodecDefinition[Any]]] = []
-                items: list[JSONValue] = []
-                for index, item in enumerate(entries):
-                    refined_item, found = refine_json(item, ("filters", index))
-                    items.append(refined_item)
-                    entry, found = resolve_refined(
-                        item,
-                        refined_item,
-                        found,
-                        ZarrV2CodecDefinition,
-                        context,
-                        ("filters", index),
-                    )
-                    read.append(entry)
-                    problems.extend(found)
-                filters = tuple(read)
-                refined["filters"] = tuple(items)
+            )
+        else:
+            # "A list of JSON objects providing codec configurations, or
+            # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
+            read: list[ResolvedField[ZarrV2CodecDefinition[Any]]] = []
+            items: list[JSONValue] = []
+            for index, item in enumerate(entries):
+                refined_item, found = refine_json(item, ("filters", index))
+                items.append(refined_item)
+                entry, found = resolve_refined(
+                    item,
+                    refined_item,
+                    found,
+                    ZarrV2CodecDefinition,
+                    context,
+                    ("filters", index),
+                )
+                read.append(entry)
+                problems.extend(found)
+            filters = tuple(read)
+            refined["filters"] = tuple(items)
     if "dimension_separator" in doc:
         separator, found = refine_json(doc["dimension_separator"], ("dimension_separator",))
         refined["dimension_separator"] = separator

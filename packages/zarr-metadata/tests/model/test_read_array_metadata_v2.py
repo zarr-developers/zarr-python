@@ -114,6 +114,13 @@ def test_error_a_reading_reports_what_the_validator_reports(
         assert isinstance(reading.dtype, RefusedField)
 
 
+def test_error_filters_that_are_not_an_array_are_not_read_as_null() -> None:
+    """A `filters` member that is neither null nor an array is a problem, and the reading holds no filters for it: `UNSET`, not None, because None means that the document writes `null`."""
+    reading = read_array_metadata_v2({**BASE, "filters": {"id": "crc32"}})
+    assert [(p.loc, p.kind) for p in reading.problems] == [(("filters",), "invalid_type")]
+    assert reading.filters is UNSET
+
+
 def test_the_v2_readers_read_in_the_scope_given() -> None:
     """`validate_array_metadata_v2`, `is_array_metadata_v2` and `parse_array_metadata_v2` take a scope. In a scope that does not claim `|u1`, the default document still validates, because an unclaimed dtype is not checked. In a scope where a private `zlib` definition takes no level, a `level` in the document is a problem."""
     assert validate_array_metadata_v2(BASE, context=PRIVATE) == ()
