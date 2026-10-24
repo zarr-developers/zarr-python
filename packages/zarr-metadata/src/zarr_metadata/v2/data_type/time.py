@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
@@ -66,7 +66,7 @@ def _rules(configuration: ZarrV2TimeConfiguration, nested: Nested) -> Iterator[V
 def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguration:
     """Write `μs` as `us`, as NumPy writes it."""
     if configuration.get("unit") == "μs":
-        return cast("ZarrV2TimeConfiguration", {**configuration, "unit": "us"})
+        return {**configuration, "unit": "us"}
     return configuration
 
 
@@ -80,9 +80,7 @@ def _fill_value_canonical(
     """Return `NaT` for not-a-time however it is written, and any other value as written."""
     if value is None:
         return None
-    return cast(
-        "ZarrV2TimeFillValue", numpy_time_fill_value_canonical(configuration, nested, value)
-    )
+    return numpy_time_fill_value_canonical(configuration, nested, value)
 
 
 DATETIME64_V2: Final = ZarrV2DataTypeDefinition(

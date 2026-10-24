@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from collections.abc import Iterator
-from typing import Annotated, Final, Literal, NotRequired, cast
+from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge, Interval
 from typing_extensions import TypedDict
@@ -103,10 +103,9 @@ def _canonical(configuration: BloscCodecConfiguration) -> BloscCodecConfiguratio
     """
     if configuration["shuffle"] != BLOSC_NO_SHUFFLE or "typesize" not in configuration:
         return configuration
-    return cast(
-        "BloscCodecConfiguration",
-        {key: value for key, value in configuration.items() if key != "typesize"},
-    )
+    simpler = configuration.copy()
+    del simpler["typesize"]
+    return simpler
 
 
 BLOSC_CODEC: Final = CodecDefinition(

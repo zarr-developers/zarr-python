@@ -16,7 +16,7 @@ import struct
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
-from typing import Any, Final, Literal, get_args
+from typing import Final, Literal, get_args
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, choices, shown
@@ -195,7 +195,7 @@ def _shortest(value: float, bits: int, width: FloatWidth) -> float:
 
 
 def complex_fill_value_rules(
-    component: Callable[[EmptyConfiguration, Nested, Any], Iterable[ValidationProblem]],
+    component: Callable[[EmptyConfiguration, Nested, float | str], Iterable[ValidationProblem]],
 ) -> Callable[
     [EmptyConfiguration, Nested, tuple[float | str, float | str]], Iterator[ValidationProblem]
 ]:
@@ -210,7 +210,7 @@ def complex_fill_value_rules(
 class _ComplexFillValue:
     """The rules for a complex fill value, which check each component at its index. This is a value rather than a closure, for the same reason as `_FloatFillValue`."""
 
-    component: Callable[[EmptyConfiguration, Nested, Any], Iterable[ValidationProblem]]
+    component: Callable[[EmptyConfiguration, Nested, float | str], Iterable[ValidationProblem]]
 
     def __call__(
         self,
@@ -224,7 +224,7 @@ class _ComplexFillValue:
 
 
 def complex_fill_value_canonical(
-    component: Callable[[EmptyConfiguration, Nested, Any], JSONValue],
+    component: Callable[[EmptyConfiguration, Nested, float | str], JSONValue],
 ) -> Callable[[EmptyConfiguration, Nested, tuple[float | str, float | str]], JSONValue]:
     """Return the canonical spelling of a complex fill value. Each component is spelled by `component`, the canonical spelling of its float type."""
     return _ComplexCanonical(component)
@@ -234,7 +234,7 @@ def complex_fill_value_canonical(
 class _ComplexCanonical:
     """The canonical spelling of a complex fill value. This is a value rather than a closure, for the same reason as `_FloatFillValue`."""
 
-    component: Callable[[EmptyConfiguration, Nested, Any], JSONValue]
+    component: Callable[[EmptyConfiguration, Nested, float | str], JSONValue]
 
     def __call__(
         self,

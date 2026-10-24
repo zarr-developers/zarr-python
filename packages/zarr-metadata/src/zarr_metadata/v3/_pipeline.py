@@ -198,7 +198,7 @@ def _order_problems(
 
 def _chunk_problems(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,
@@ -211,7 +211,7 @@ def _chunk_problems(
 
 def _inner_pipelines(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,
@@ -252,7 +252,10 @@ def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
 
 
 def _held(
-    definition: CodecDefinition[Any], configuration: Mapping[str, Any], nested: Nested, member: str
+    definition: CodecDefinition[Any],
+    configuration: Mapping[str, object],
+    nested: Nested,
+    member: str,
 ) -> tuple[ResolvedField[CodecDefinition[Any]], ...]:
     """The codecs in configuration member `member`, as the scope read them.
 
@@ -272,7 +275,7 @@ def _held(
 
 def _handed_on(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,

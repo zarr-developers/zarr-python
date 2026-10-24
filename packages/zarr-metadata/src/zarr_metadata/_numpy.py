@@ -5,7 +5,7 @@ values the same way, so each encoding is defined once here.
 """
 
 import re
-from typing import Annotated, Final, NewType
+from typing import Annotated, Final, Literal, NewType
 
 from annotated_types import Interval
 
@@ -51,8 +51,8 @@ The `numpy.timedelta64` spec says the same
 
 
 def numpy_time_fill_value_canonical(
-    configuration: object, nested: object, value: int | str
-) -> int | str:
+    configuration: object, nested: object, value: NumpyTimeTicks | Literal["NaT"]
+) -> NumpyTimeTicks | Literal["NaT"]:
     """Return the canonical spelling of a numpy time fill value: `"NaT"` for `NaT` however it is written, and any other count of ticks as written."""
     return "NaT" if value in ("NaT", NOT_A_TIME_TICKS) else value
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata._numpy import base64_bytes
@@ -68,7 +68,7 @@ class _OrderlessAt:
     def __call__(self, configuration: ZarrV2ScalarConfiguration) -> ZarrV2ScalarConfiguration:
         orderless = self.sizes is None or configuration["itemsize"] in self.sizes
         if orderless and configuration["byteorder"] != "|":
-            return cast("ZarrV2ScalarConfiguration", {**configuration, "byteorder": "|"})
+            return {**configuration, "byteorder": "|"}
         return configuration
 
 

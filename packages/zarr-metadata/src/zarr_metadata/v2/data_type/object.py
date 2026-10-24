@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final, cast
+from typing import Final
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -20,7 +20,7 @@ class ZarrV2ObjectConfiguration(TypedDict, closed=True):
 
 def _canonical(configuration: ZarrV2ObjectConfiguration) -> ZarrV2ObjectConfiguration:
     """Set the byte order to `|` (no byte order), as NumPy writes it."""
-    return cast("ZarrV2ObjectConfiguration", {**configuration, "byteorder": "|"})
+    return {**configuration, "byteorder": "|"}
 
 
 OBJECT_V2: Final = ZarrV2DataTypeDefinition(

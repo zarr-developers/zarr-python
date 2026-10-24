@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from collections.abc import Iterator, Mapping
-from typing import Annotated, Final, Literal, NotRequired, cast
+from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
 from typing_extensions import TypedDict
@@ -184,10 +184,9 @@ def _canonical(
     """
     if configuration.get("index_location") != "end":
         return configuration
-    return cast(
-        "ShardingIndexedCodecConfiguration",
-        {key: value for key, value in configuration.items() if key != "index_location"},
-    )
+    simpler = configuration.copy()
+    del simpler["index_location"]
+    return simpler
 
 
 SHARDING_INDEXED_CODEC: Final = CodecDefinition(

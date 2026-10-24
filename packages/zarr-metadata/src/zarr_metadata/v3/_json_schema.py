@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final, cast
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Final
 
 from zarr_metadata._typed_json import Schemas, is_alias
 from zarr_metadata.definition._context import scoped
@@ -27,8 +28,6 @@ from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import JSONSchema, SchemaLeaf
 
@@ -104,7 +103,7 @@ def _field_schema(
     table = context.definitions_of(kind)
     branches: list[JSONValue] = []
     for definition in table.values():
-        if static and cast("CodecDefinition[Any]", definition).size != "static":
+        if static and isinstance(definition, CodecDefinition) and definition.size != "static":
             continue
         branches.extend(_read_by(definition, schemas))
     branches.extend(_unclaimed(table))
@@ -246,11 +245,20 @@ def _with_extra_fields(
     """`schema`, a node document's schema, with a property for each extra field in `definitions`: the member's value, as the configuration TypedDict of the definition that claims its key declares it."""
     if len(definitions) == 0:
         return schema
-    properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
+    properties = _member_object(schema, "properties")
     extra: dict[str, JSONValue] = {
         key: schemas.of(definition.configuration) for key, definition in definitions.items()
     }
     return {**schema, "properties": {**properties, **extra}}
+
+
+def _member_object(schema: Mapping[str, JSONValue], key: str) -> Mapping[str, JSONValue]:
+    """The object at member `key` of `schema`, or an empty one when the member is absent. Raises `TypeError` for a member that is not an object, which is a bug in the schema this module built."""
+    found = schema.get(key, {})
+    if not isinstance(found, Mapping):
+        msg = f"the schema member {key!r} is an object, got {found!r}"
+        raise TypeError(msg)
+    return found
 
 
 def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
@@ -261,8 +269,8 @@ def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
     empty `codecs`.
     """
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
-    properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
-    codecs = cast("dict[str, JSONValue]", properties["codecs"])
+    properties = _member_object(schema, "properties")
+    codecs = _member_object(properties, "codecs")
     schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     schema = _with_extra_fields(schema, context.array_extra_fields, schemas)
     held: list[JSONValue] = []

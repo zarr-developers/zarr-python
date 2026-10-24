@@ -889,7 +889,7 @@ class AcceptedField(Generic[D]):
         # extension may do this) fails here, not later in a function that
         # trusts it.
         definition = cast("object", self.definition)
-        kind = kind_of(cast("Definition[Any]", definition))
+        kind = kind_of(definition)
         refusal = (
             f"a field read is read by a definition of a kind, got {definition!r}"
             if kind is None
@@ -1084,7 +1084,7 @@ def _misread(definition: object, kind: type[Definition[Any]], name: object) -> s
     """A description of why `definition` cannot be the definition that read a field named `name` as a `kind`; None when it can."""
     if not isinstance(definition, kind):
         return f"a field read as a {kind.__name__} is read by one, got {definition!r}"
-    filed = cast("Definition[Any]", definition).name
+    filed = definition.name
     if not isinstance(name, str) or filed_under(kind, name)[0] != filed:
         return f"a field named {name!r} is read by the definition filed under it, got {filed!r}"
     return None

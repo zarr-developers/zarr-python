@@ -339,7 +339,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
         """A codec of dynamic size in a member annotated with `ZarrV3StaticCodecField`, which admits only codecs of static size, is a problem at the field."""
         if alias not in STATIC_SIZE_ALIASES:
             return ()
-        if cast("CodecDefinition[Any]", definition).size == "static":
+        if not isinstance(definition, CodecDefinition) or definition.size == "static":
             return ()
         return problem(
             loc,

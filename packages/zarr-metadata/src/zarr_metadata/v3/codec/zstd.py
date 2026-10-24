@@ -6,7 +6,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 proposed the codec, was never merged).
 """
 
-from typing import Annotated, Final, Literal, NotRequired, cast
+from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Interval
 from typing_extensions import TypedDict
@@ -66,10 +66,9 @@ def _canonical(configuration: ZstdCodecConfiguration) -> ZstdCodecConfiguration:
     """
     if configuration.get("checksum") is not False:
         return configuration
-    return cast(
-        "ZstdCodecConfiguration",
-        {key: value for key, value in configuration.items() if key != "checksum"},
-    )
+    simpler = configuration.copy()
+    del simpler["checksum"]
+    return simpler
 
 
 ZSTD_CODEC: Final = CodecDefinition(

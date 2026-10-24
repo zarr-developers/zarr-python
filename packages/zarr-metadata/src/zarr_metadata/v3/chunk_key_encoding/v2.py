@@ -13,7 +13,7 @@ names carry — this package's version-prefixed names always spell it
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired, cast
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -70,7 +70,7 @@ def _canonical(configuration: V2ChunkKeyEncodingConfiguration) -> V2ChunkKeyEnco
     """
     if configuration.get("separator") != ".":
         return configuration
-    return cast("V2ChunkKeyEncodingConfiguration", {})
+    return {}
 
 
 V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(

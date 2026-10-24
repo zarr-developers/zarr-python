@@ -17,7 +17,7 @@ This module is private. Consumers import `NodeName` and `NodePath` from
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NewType, TypeGuard, cast
+from typing import TYPE_CHECKING, NewType, TypeGuard
 
 from zarr_metadata._hierarchy import tree_problems
 from zarr_metadata._json import MetadataValidationError, ValidationProblem, shown, with_input
@@ -154,10 +154,9 @@ def is_node_name_v3(value: object) -> TypeGuard[NodeName]:
 
 def parse_node_name_v3(value: object) -> NodeName:
     """Return `value` as a `NodeName`, or raise `MetadataValidationError` with every reason it is not one."""
-    problems = validate_node_name_v3(value)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return NodeName(cast("str", value))
+    if not is_node_name_v3(value):
+        raise MetadataValidationError(validate_node_name_v3(value))
+    return value
 
 
 def validate_node_path_v3(value: object) -> tuple[ValidationProblem, ...]:
@@ -178,10 +177,9 @@ def is_node_path_v3(value: object) -> TypeGuard[NodePath]:
 
 def parse_node_path_v3(value: object) -> NodePath:
     """Return `value` as a `NodePath`, or raise `MetadataValidationError` with every reason it is not one."""
-    problems = validate_node_path_v3(value)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return NodePath(cast("str", value))
+    if not is_node_path_v3(value):
+        raise MetadataValidationError(validate_node_path_v3(value))
+    return value
 
 
 __all__ = [

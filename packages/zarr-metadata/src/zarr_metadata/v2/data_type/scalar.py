@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import struct
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Final, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Final, Literal
 
 from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
@@ -72,10 +72,10 @@ def _float_canonical(
     configuration: ZarrV2ScalarConfiguration, nested: Nested, value: ZarrV2FloatFillValue
 ) -> ZarrV2FloatFillValue:
     """Return the canonical spelling of a float fill value. An integer written for a float becomes the float, so `0` and `0.0` are one value. A number past the largest float of the dtype's width becomes the infinity of its sign. This matches how the v3 float types read a number and how NumPy stores it."""
-    return _held_in(value, configuration["itemsize"])
+    return None if value is None else _held_in(value, configuration["itemsize"])
 
 
-def _held_in(value: ZarrV2FloatFillValue, itemsize: int) -> ZarrV2FloatFillValue:
+def _held_in(value: ZarrV2ComplexComponent, itemsize: int) -> ZarrV2ComplexComponent:
     """Return `value` as a float of `itemsize` bytes holds it: the value as a float, or the infinity of its sign if it is past the largest such float. If no float has that width, the value is kept."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return value
@@ -107,8 +107,8 @@ def _complex_canonical(
     real, imag = value
     width = configuration["itemsize"] // 2
     return (
-        cast("ZarrV2ComplexComponent", _held_in(real, width)),
-        cast("ZarrV2ComplexComponent", _held_in(imag, width)),
+        _held_in(real, width),
+        _held_in(imag, width),
     )
 
 
