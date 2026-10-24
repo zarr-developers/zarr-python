@@ -112,7 +112,7 @@ def _complex_canonical(
     )
 
 
-BOOL_V2: Final = ZarrV2DataTypeDefinition(
+BOOL_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="bool",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((1,), None),
@@ -121,7 +121,7 @@ BOOL_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`|b1`: one byte, true or false."""
 
-INT_V2: Final = ZarrV2DataTypeDefinition(
+INT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="int",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
@@ -131,7 +131,7 @@ INT_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`i1` to `i8`: signed integers. The fill value must be in the type's range."""
 
-UINT_V2: Final = ZarrV2DataTypeDefinition(
+UINT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="uint",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
@@ -141,7 +141,7 @@ UINT_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`u1` to `u8`: unsigned integers. The fill value must be in the type's range."""
 
-FLOAT_V2: Final = ZarrV2DataTypeDefinition(
+FLOAT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="float",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((2, 4, 8), frozenset()),
@@ -150,7 +150,7 @@ FLOAT_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`f2`, `f4`, `f8`: IEEE 754 floats. The fill value is a number or a named non-finite value."""
 
-COMPLEX_V2: Final = ZarrV2DataTypeDefinition(
+COMPLEX_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="complex",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((8, 16), frozenset()),
@@ -160,11 +160,11 @@ COMPLEX_V2: Final = ZarrV2DataTypeDefinition(
 """`c8`, `c16`: complex floats. The fill value is `[real, imag]`."""
 
 __all__ = [
-    "BOOL_V2",
-    "COMPLEX_V2",
-    "FLOAT_V2",
-    "INT_V2",
-    "UINT_V2",
+    "BOOL_DATA_TYPE_V2",
+    "COMPLEX_DATA_TYPE_V2",
+    "FLOAT_DATA_TYPE_V2",
+    "INT_DATA_TYPE_V2",
+    "UINT_DATA_TYPE_V2",
     "ZarrV2ByteOrder",
     "ZarrV2ComplexComponent",
     "ZarrV2ComplexFillValue",

@@ -32,7 +32,7 @@ def _bytes_fill_value_rules(
     yield from sized_base64_rules(value, configuration["itemsize"], exact=False)
 
 
-BYTES_V2: Final = ZarrV2DataTypeDefinition(
+BYTES_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="bytes",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized(None, None),
@@ -42,7 +42,7 @@ BYTES_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`|S<n>`: byte strings of `n` bytes. The fill value is base64 of at most `n` bytes."""
 
-STR_V2: Final = ZarrV2DataTypeDefinition(
+STR_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="str",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized(None, frozenset(), unit=CODE_POINT_BYTES),
@@ -50,7 +50,7 @@ STR_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`<U<n>`: strings of `n` code points. Each code point takes four bytes, in the written byte order. The fill value is a string."""
 
-VOID_V2: Final = ZarrV2DataTypeDefinition(
+VOID_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="void",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized(None, None),
@@ -61,8 +61,8 @@ VOID_V2: Final = ZarrV2DataTypeDefinition(
 """`|V<n>`: `n` untyped bytes. The fill value is base64 of exactly `n` bytes."""
 
 __all__ = [
-    "BYTES_V2",
-    "STR_V2",
-    "VOID_V2",
+    "BYTES_DATA_TYPE_V2",
+    "STR_DATA_TYPE_V2",
+    "VOID_DATA_TYPE_V2",
     "ZarrV2Base64FillValue",
 ]

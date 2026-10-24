@@ -25,8 +25,8 @@ from zarr_metadata.model import (
     read_consolidated_metadata_v2,
 )
 from zarr_metadata.problems import MetadataValidationError
-from zarr_metadata.v2.codec.compression import ZLIB_V2
-from zarr_metadata.v2.data_type.scalar import FLOAT_V2, UINT_V2
+from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
+from zarr_metadata.v2.data_type.scalar import FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
@@ -48,7 +48,7 @@ ARRAY: dict[str, Any] = {
     "attributes": {"a": [1, 2]},
 }
 BARE_ZLIB = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
-SMALL = ZarrV2Context(data_types=[FLOAT_V2, UINT_V2])
+SMALL = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2])
 PRIVATE = CORE_V2.extended_with(codecs=[BARE_ZLIB])
 
 
@@ -75,9 +75,9 @@ def test_properties_are_what_the_reading_holds() -> None:
     """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `claims` is keyed the same way the scope files its definitions."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
     assert isinstance(model.dtype, AcceptedField)
-    assert model.dtype.definition is FLOAT_V2
+    assert model.dtype.definition is FLOAT_DATA_TYPE_V2
     assert isinstance(model.compressor, AcceptedField)
-    assert model.compressor.definition is ZLIB_V2
+    assert model.compressor.definition is ZLIB_CODEC_V2
     assert model.filters is not None
     assert isinstance(model.filters[0], UnclaimedField)
     members = (model.shape, model.chunks, model.fill_value, model.order, model.dimension_separator)

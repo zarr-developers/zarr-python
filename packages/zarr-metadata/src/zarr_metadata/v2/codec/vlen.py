@@ -22,11 +22,15 @@ def _vlen_array_canonical(configuration: ZarrV2VLenArrayParameters) -> ZarrV2VLe
     return {**configuration, "dtype": canonical_typestr(configuration["dtype"])}
 
 
-VLEN_UTF8_V2: Final = ZarrV2CodecDefinition(name="vlen-utf8", configuration=EmptyConfiguration)
+VLEN_UTF8_CODEC_V2: Final = ZarrV2CodecDefinition(
+    name="vlen-utf8", configuration=EmptyConfiguration
+)
 """`numcodecs.VLenUTF8`. It has no configuration."""
-VLEN_BYTES_V2: Final = ZarrV2CodecDefinition(name="vlen-bytes", configuration=EmptyConfiguration)
+VLEN_BYTES_CODEC_V2: Final = ZarrV2CodecDefinition(
+    name="vlen-bytes", configuration=EmptyConfiguration
+)
 """`numcodecs.VLenBytes`. It has no configuration."""
-VLEN_ARRAY_V2: Final = ZarrV2CodecDefinition(
+VLEN_ARRAY_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="vlen-array",
     configuration=ZarrV2VLenArrayParameters,
     rules=dtype_parameter("dtype"),
@@ -34,4 +38,9 @@ VLEN_ARRAY_V2: Final = ZarrV2CodecDefinition(
 )
 """`numcodecs.VLenArray`."""
 
-__all__ = ["VLEN_ARRAY_V2", "VLEN_BYTES_V2", "VLEN_UTF8_V2", "ZarrV2VLenArrayParameters"]
+__all__ = [
+    "VLEN_ARRAY_CODEC_V2",
+    "VLEN_BYTES_CODEC_V2",
+    "VLEN_UTF8_CODEC_V2",
+    "ZarrV2VLenArrayParameters",
+]

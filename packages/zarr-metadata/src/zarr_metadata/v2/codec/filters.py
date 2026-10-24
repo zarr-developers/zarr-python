@@ -112,51 +112,53 @@ def _astype_canonical(configuration: ZarrV2AsTypeParameters) -> ZarrV2AsTypePara
     }
 
 
-SHUFFLE_V2: Final = ZarrV2CodecDefinition(
+SHUFFLE_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="shuffle", configuration=ZarrV2ShuffleParameters, canonical=_shuffle_canonical
 )
 """`numcodecs.Shuffle`."""
-DELTA_V2: Final = ZarrV2CodecDefinition(
+DELTA_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="delta",
     configuration=ZarrV2DeltaParameters,
     rules=dtype_parameter("dtype", "astype"),
     canonical=_delta_canonical,
 )
 """`numcodecs.Delta`."""
-FIXEDSCALEOFFSET_V2: Final = ZarrV2CodecDefinition(
+FIXEDSCALEOFFSET_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="fixedscaleoffset",
     configuration=ZarrV2FixedScaleOffsetParameters,
     rules=dtype_parameter("dtype", "astype"),
     canonical=_fixedscaleoffset_canonical,
 )
 """`numcodecs.FixedScaleOffset`."""
-QUANTIZE_V2: Final = ZarrV2CodecDefinition(
+QUANTIZE_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="quantize",
     configuration=ZarrV2QuantizeParameters,
     rules=dtype_parameter("dtype", "astype", float_only=True),
     canonical=_quantize_canonical,
 )
 """`numcodecs.Quantize`."""
-BITROUND_V2: Final = ZarrV2CodecDefinition(name="bitround", configuration=ZarrV2BitRoundParameters)
+BITROUND_CODEC_V2: Final = ZarrV2CodecDefinition(
+    name="bitround", configuration=ZarrV2BitRoundParameters
+)
 """`numcodecs.BitRound`."""
-ASTYPE_V2: Final = ZarrV2CodecDefinition(
+ASTYPE_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="astype",
     configuration=ZarrV2AsTypeParameters,
     rules=dtype_parameter("encode_dtype", "decode_dtype"),
     canonical=_astype_canonical,
 )
 """`numcodecs.AsType`."""
-PACKBITS_V2: Final = ZarrV2CodecDefinition(name="packbits", configuration=EmptyConfiguration)
+PACKBITS_CODEC_V2: Final = ZarrV2CodecDefinition(name="packbits", configuration=EmptyConfiguration)
 """`numcodecs.PackBits`. It has no configuration."""
 
 __all__ = [
-    "ASTYPE_V2",
-    "BITROUND_V2",
-    "DELTA_V2",
-    "FIXEDSCALEOFFSET_V2",
-    "PACKBITS_V2",
-    "QUANTIZE_V2",
-    "SHUFFLE_V2",
+    "ASTYPE_CODEC_V2",
+    "BITROUND_CODEC_V2",
+    "DELTA_CODEC_V2",
+    "FIXEDSCALEOFFSET_CODEC_V2",
+    "PACKBITS_CODEC_V2",
+    "QUANTIZE_CODEC_V2",
+    "SHUFFLE_CODEC_V2",
     "ZarrV2AsTypeParameters",
     "ZarrV2BitRoundParameters",
     "ZarrV2DeltaParameters",

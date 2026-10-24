@@ -51,7 +51,7 @@ def _fill_value_canonical(
     return numpy_time_fill_value_canonical(configuration, nested, value)
 
 
-DATETIME64_V2: Final = ZarrV2DataTypeDefinition(
+DATETIME64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="datetime64",
     configuration=ZarrV2TimeConfiguration,
     rules=time_rules("M"),
@@ -61,7 +61,7 @@ DATETIME64_V2: Final = ZarrV2DataTypeDefinition(
 )
 """`<M8[unit]`: a point in time, as ticks of the unit since the epoch."""
 
-TIMEDELTA64_V2: Final = ZarrV2DataTypeDefinition(
+TIMEDELTA64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="timedelta64",
     configuration=ZarrV2TimeConfiguration,
     rules=time_rules("m"),
@@ -72,8 +72,8 @@ TIMEDELTA64_V2: Final = ZarrV2DataTypeDefinition(
 """`<m8[unit]`: a duration, as ticks of the unit."""
 
 __all__ = [
-    "DATETIME64_V2",
-    "TIMEDELTA64_V2",
+    "DATETIME64_DATA_TYPE_V2",
+    "TIMEDELTA64_DATA_TYPE_V2",
     "ZarrV2TimeConfiguration",
     "ZarrV2TimeFillValue",
 ]

@@ -23,9 +23,9 @@ def _canonical(configuration: ZarrV2ObjectConfiguration) -> ZarrV2ObjectConfigur
     return {**configuration, "byteorder": "|"}
 
 
-OBJECT_V2: Final = ZarrV2DataTypeDefinition(
+OBJECT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="object", configuration=ZarrV2ObjectConfiguration, canonical=_canonical
 )
 """`|O`: Python objects, each encoded by a filter. The fill value may be any JSON value."""
 
-__all__ = ["OBJECT_V2", "ZarrV2ObjectConfiguration"]
+__all__ = ["OBJECT_DATA_TYPE_V2", "ZarrV2ObjectConfiguration"]

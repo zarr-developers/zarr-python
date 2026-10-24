@@ -101,12 +101,12 @@ def test_a_scope_has_the_format_of_its_class() -> None:
 
 def test_error_a_scope_files_one_format() -> None:
     """Definitions of two formats cannot share a scope: a slot refuses a definition of the other format's kind, in the constructor and in `extended_with`, and `joined` refuses scopes of two formats. Each raises `TypeError`."""
-    from zarr_metadata.v2.data_type.scalar import UINT_V2
+    from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
 
     with pytest.raises(TypeError, match="v2 data type"):
-        ZarrV3Context(data_types=[UINT_V2])  # pyright: ignore[reportArgumentType]
+        ZarrV3Context(data_types=[UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="v2 data type"):
-        CORE.extended_with(data_types=[UINT_V2])  # pyright: ignore[reportArgumentType]
+        CORE.extended_with(data_types=[UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="format"):
         ZarrV3Context.joined(CORE, CORE_V2)  # pyright: ignore[reportArgumentType]
 

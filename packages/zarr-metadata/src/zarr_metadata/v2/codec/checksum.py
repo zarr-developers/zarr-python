@@ -22,19 +22,27 @@ def _checksum_canonical(configuration: ZarrV2Checksum32Parameters) -> ZarrV2Chec
     return {"location": "start" if location is None else location}
 
 
-CRC32_V2: Final = ZarrV2CodecDefinition(
+CRC32_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="crc32", configuration=ZarrV2Checksum32Parameters, canonical=_checksum_canonical
 )
 """`numcodecs.CRC32`."""
-CRC32C_V2: Final = ZarrV2CodecDefinition(
+CRC32C_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="crc32c", configuration=ZarrV2Checksum32Parameters, canonical=_checksum_canonical
 )
 """`numcodecs.CRC32C`."""
-ADLER32_V2: Final = ZarrV2CodecDefinition(
+ADLER32_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="adler32", configuration=ZarrV2Checksum32Parameters, canonical=_checksum_canonical
 )
 """`numcodecs.Adler32`."""
-FLETCHER32_V2: Final = ZarrV2CodecDefinition(name="fletcher32", configuration=EmptyConfiguration)
+FLETCHER32_CODEC_V2: Final = ZarrV2CodecDefinition(
+    name="fletcher32", configuration=EmptyConfiguration
+)
 """`numcodecs.Fletcher32`. It has no configuration."""
 
-__all__ = ["ADLER32_V2", "CRC32C_V2", "CRC32_V2", "FLETCHER32_V2", "ZarrV2Checksum32Parameters"]
+__all__ = [
+    "ADLER32_CODEC_V2",
+    "CRC32C_CODEC_V2",
+    "CRC32_CODEC_V2",
+    "FLETCHER32_CODEC_V2",
+    "ZarrV2Checksum32Parameters",
+]

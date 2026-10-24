@@ -14,7 +14,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField, resolve
 from zarr_metadata.definition._context import slot_kinds
 from zarr_metadata.model import ZarrV3ArrayMetadata, read_array_metadata_v3
-from zarr_metadata.v2 import CORE_V2, GZIP_V2, ZarrV2Context
+from zarr_metadata.v2 import CORE_V2, GZIP_CODEC_V2, ZarrV2Context
 from zarr_metadata.v2.definition import (
     ZarrV2CodecDefinition,
     ZarrV2ContextSlots,
@@ -34,7 +34,7 @@ ARRAY = ZarrV3ArrayMetadata.create_default().to_json()
 
 FORMATS = [
     pytest.param(ZarrV3Context, CORE, CodecDefinition, GZIP_CODEC, 3, id="v3"),
-    pytest.param(ZarrV2Context, CORE_V2, ZarrV2CodecDefinition, GZIP_V2, 2, id="v2"),
+    pytest.param(ZarrV2Context, CORE_V2, ZarrV2CodecDefinition, GZIP_CODEC_V2, 2, id="v2"),
 ]
 
 
@@ -92,7 +92,7 @@ def test_error_a_slot_refuses_a_definition_of_the_other_format(
     zarr_format: int,
 ) -> None:
     """A scope's `codecs` slot holds its own format's codecs only: the other format's gzip raises `TypeError`."""
-    other = GZIP_V2 if zarr_format == 3 else GZIP_CODEC
+    other = GZIP_CODEC_V2 if zarr_format == 3 else GZIP_CODEC
     with pytest.raises(TypeError, match="codecs holds"):
         cls(codecs=[other])
 

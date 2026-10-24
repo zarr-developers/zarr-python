@@ -21,8 +21,8 @@ from zarr_metadata.model import (
     validate_array_metadata_v2,
 )
 from zarr_metadata.problems import MetadataValidationError
-from zarr_metadata.v2.codec.compression import ZLIB_V2
-from zarr_metadata.v2.data_type.scalar import FLOAT_V2
+from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
+from zarr_metadata.v2.data_type.scalar import FLOAT_DATA_TYPE_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
@@ -31,7 +31,7 @@ from zarr_metadata.v2.definition import (
 
 Loc = tuple[str | int, ...]
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default(shape=(4,)).to_json())
-PRIVATE = ZarrV2Context(data_types=[FLOAT_V2], codecs=[ZLIB_V2])
+PRIVATE = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2], codecs=[ZLIB_CODEC_V2])
 
 
 @pytest.mark.parametrize(

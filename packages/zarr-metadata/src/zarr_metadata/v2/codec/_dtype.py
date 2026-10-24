@@ -11,7 +11,7 @@ from zarr_metadata.v2._context import ZarrV2Context
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition, parse_typestr
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
 from zarr_metadata.v2.data_type._rules import time_rules
-from zarr_metadata.v2.data_type.time import DATETIME64_V2, TIMEDELTA64_V2
+from zarr_metadata.v2.data_type.time import DATETIME64_DATA_TYPE_V2, TIMEDELTA64_DATA_TYPE_V2
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -23,10 +23,10 @@ _DATA_TYPES: Final = ZarrV2Context(
         *(
             definition
             for definition in DATA_TYPES_V2
-            if definition.name not in {DATETIME64_V2.name, TIMEDELTA64_V2.name}
+            if definition.name not in {DATETIME64_DATA_TYPE_V2.name, TIMEDELTA64_DATA_TYPE_V2.name}
         ),
-        replace(DATETIME64_V2, rules=time_rules("M", unit_required=False)),
-        replace(TIMEDELTA64_V2, rules=time_rules("m", unit_required=False)),
+        replace(DATETIME64_DATA_TYPE_V2, rules=time_rules("M", unit_required=False)),
+        replace(TIMEDELTA64_DATA_TYPE_V2, rules=time_rules("m", unit_required=False)),
     ]
 )
 """The scope a dtype parameter is read in: the data types that zarr-python 2.x writes, `DATA_TYPES_V2`, whatever scope the array is read in, because numcodecs reads the parameter with NumPy. A time type may leave out its unit here, as in `<M8`: numcodecs writes `np.dtype("M8").str` for a NumPy time type without a unit, and runs it. The v2 spec requires the unit only of an array's dtype."""

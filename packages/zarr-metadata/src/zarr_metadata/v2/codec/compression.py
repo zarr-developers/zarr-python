@@ -138,43 +138,43 @@ def _lz4_canonical(configuration: ZarrV2Lz4Parameters) -> ZarrV2Lz4Parameters:
     return {"acceleration": 1, **configuration}
 
 
-ZLIB_V2: Final = ZarrV2CodecDefinition(
+ZLIB_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="zlib", configuration=ZarrV2ZlibParameters, canonical=_zlib_canonical
 )
 """`numcodecs.Zlib`."""
-GZIP_V2: Final = ZarrV2CodecDefinition(
+GZIP_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="gzip", configuration=ZarrV2GzipParameters, canonical=_gzip_canonical
 )
 """`numcodecs.GZip`."""
-BZ2_V2: Final = ZarrV2CodecDefinition(
+BZ2_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="bz2", configuration=ZarrV2Bz2Parameters, canonical=_bz2_canonical
 )
 """`numcodecs.BZ2`."""
-LZMA_V2: Final = ZarrV2CodecDefinition(
+LZMA_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="lzma", configuration=ZarrV2LzmaParameters, canonical=_lzma_canonical
 )
 """`numcodecs.LZMA`."""
-BLOSC_V2: Final = ZarrV2CodecDefinition(
+BLOSC_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="blosc", configuration=ZarrV2BloscParameters, canonical=_blosc_canonical
 )
 """`numcodecs.Blosc`."""
-ZSTD_V2: Final = ZarrV2CodecDefinition(
+ZSTD_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="zstd", configuration=ZarrV2ZstdParameters, canonical=_zstd_canonical
 )
 """`numcodecs.Zstd`."""
-LZ4_V2: Final = ZarrV2CodecDefinition(
+LZ4_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="lz4", configuration=ZarrV2Lz4Parameters, canonical=_lz4_canonical
 )
 """`numcodecs.LZ4`."""
 
 __all__ = [
-    "BLOSC_V2",
-    "BZ2_V2",
-    "GZIP_V2",
-    "LZ4_V2",
-    "LZMA_V2",
-    "ZLIB_V2",
-    "ZSTD_V2",
+    "BLOSC_CODEC_V2",
+    "BZ2_CODEC_V2",
+    "GZIP_CODEC_V2",
+    "LZ4_CODEC_V2",
+    "LZMA_CODEC_V2",
+    "ZLIB_CODEC_V2",
+    "ZSTD_CODEC_V2",
     "ZarrV2BloscCName",
     "ZarrV2BloscParameters",
     "ZarrV2Bz2Parameters",

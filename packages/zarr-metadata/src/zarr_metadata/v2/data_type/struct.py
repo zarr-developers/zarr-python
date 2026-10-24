@@ -86,7 +86,7 @@ def _item_size(field: AcceptedField[Any]) -> int | None:
     return item_bytes(field.name)
 
 
-STRUCT_V2: Final = ZarrV2DataTypeDefinition(
+STRUCT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name=STRUCT_NAME,
     configuration=ZarrV2StructConfiguration,
     rules=_rules,
@@ -95,4 +95,4 @@ STRUCT_V2: Final = ZarrV2DataTypeDefinition(
 )
 """A structured type: an array of field records. The fill value is base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""
 
-__all__ = ["STRUCT_V2", "ZarrV2StructConfiguration", "ZarrV2StructRecord"]
+__all__ = ["STRUCT_DATA_TYPE_V2", "ZarrV2StructConfiguration", "ZarrV2StructRecord"]
