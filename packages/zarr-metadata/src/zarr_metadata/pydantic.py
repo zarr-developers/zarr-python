@@ -42,8 +42,9 @@ the same format pydantic uses for its own errors. Each line error has the
 problem's `kind` as its `type`, the problem's `loc` under the field's
 `loc`, the `input` found there, and the problem's `ctx`. If the message
 contains a ctx placeholder, the message is passed in the ctx as
-`message`. Annotate a field with these types, not the
-core classes, because pydantic cannot build a schema for the core classes.
+`message`. Annotate a field with these types, or with a core class and
+`InScope`, not with a bare core class, because pydantic cannot build a
+schema for the core classes.
 
 A node's attributes may hold `NaN`, `Infinity` or `-Infinity`, which the
 models read and write as zarr-python does. Pydantic writes JSON by its own
@@ -126,6 +127,7 @@ from zarr_metadata._pydantic_schema import (
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import Context
+from zarr_metadata.definition._scope import ScopeConflictError
 from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
 
@@ -210,7 +212,7 @@ def _read_in_context(
     def coerce(value: object, info: ValidationInfo) -> _M:
         given = _context_of(info.context, default, key)
         if isinstance(value, cls):
-            return value if given is None else refine(value, given)
+            return value if given is None else _refined(cls, value, refine, given)
         context = default if given is None else given
         return _as_pydantic_raises(cls, value, lambda: read(value, context=context))
 
@@ -224,10 +226,26 @@ def _read_in(
 
     def coerce(value: object) -> _M:
         if isinstance(value, cls):
-            return refine(value, context)
+            return _refined(cls, value, refine, context)
         return _as_pydantic_raises(cls, value, lambda: read(value, context=context))
 
     return coerce
+
+
+def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
+    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
+    try:
+        return _as_pydantic_raises(cls, value, lambda: refine(value, context))
+    except ScopeConflictError as error:
+        line_errors = [
+            InitErrorDetails(
+                type=PydanticCustomError("scope_conflict", "{message}", {"message": str(conflict)}),
+                loc=() if conflict.loc is None else conflict.loc,
+                input=value,
+            )
+            for conflict in error.conflicts
+        ]
+        raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
 
 
 def _is_context(value: object) -> TypeGuard[ZarrV3Context | ZarrV2Context]:
@@ -401,10 +419,17 @@ class InScope:
     differently is refused rather than passed through in its own scope.
     The field writes the document as written, and a type checker sees the
     model class. A scope of the other format raises `TypeError` when
-    pydantic builds the schema.
+    pydantic builds the schema. `InScope` builds the field's whole schema,
+    as pydantic's `PlainValidator` does, so `Annotated` metadata before it
+    is not applied: put a validator of your own after it.
     """
 
     context: ZarrV3Context | ZarrV2Context
+
+    def __post_init__(self) -> None:
+        if not _is_context(self.context):
+            msg = f"InScope takes a ZarrV3Context or a ZarrV2Context, got {self.context!r}"
+            raise TypeError(msg)
 
     def __get_pydantic_core_schema__(
         self,

@@ -251,6 +251,17 @@ def test_error_a_group_s_listing_with_a_problem_is_located_in_the_group() -> Non
     ]
 
 
+def test_error_a_group_s_listing_that_is_not_an_object() -> None:
+    """In a scope that leaves `consolidated_metadata` unclaimed, a group holding one that is not an object opens. The group still writes a listing, so `consolidated()` refuses it, located at the member, rather than answering that the group lists none."""
+    group = ZarrV3GroupMetadata(
+        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": 5},
+        context=ZarrV3Context(),
+    )
+    with pytest.raises(MetadataValidationError) as raised:
+        group.consolidated()
+    assert [problem.loc for problem in raised.value.problems] == [("consolidated_metadata",)]
+
+
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
     """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)

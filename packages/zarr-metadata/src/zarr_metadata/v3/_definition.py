@@ -443,7 +443,7 @@ class ExtraFieldDefinition(Definition[C]):
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
         # A member whose value is not an object has no configuration. Only
-        # a definition that claims the member reads it, and `refined`
+        # a definition that claims the member reads it, and `_refined`
         # refuses such a value then.
         if not is_object(value) or len(value) != 1:
             return None, None, ()

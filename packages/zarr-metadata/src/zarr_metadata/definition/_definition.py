@@ -788,7 +788,7 @@ def ruled(
 
 
 def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
-    """`problems`, each located under `prefix`. The input may be lazy, because a kind's `envelope_problems` may return an iterator."""
+    """`problems`, each located under `prefix`. The input may be lazy, because a kind's `_envelope_problems` may return an iterator."""
     found = tuple(problems)
     if len(found) == 0:
         return ()
@@ -1210,7 +1210,7 @@ def fields_of(
     """Yield `resolved` (a field a scope read) with its location, then each nested field recursively, each with its location.
 
     `loc` is the location of `resolved`. A nested field is located inside
-    the configuration, at the kind's `configuration_loc` followed by the
+    the configuration, at the kind's `_configuration_loc` followed by the
     field's place, the same way `resolve` locates problems. Each field's
     nested fields are its `nested`. A field whose configuration was not
     checked has none.

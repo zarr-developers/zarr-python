@@ -632,7 +632,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @property
     def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims, its dtype or a codec, by its location in the document.
+        """Every field nothing in scope claims, its dtype or a codec, located as `reading.fields()` locates it: at its place in the document, except that a struct dtype's field types are located by record and position, as their problems are.
 
         This answers whether a reader can open the array: a reader cannot
         decode data with a dtype or a codec it does not understand, and the

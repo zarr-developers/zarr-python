@@ -273,11 +273,14 @@ The scope is what a reader recognizes, so the model's
 node with any such member. It covers members only. A data type, chunk
 grid, chunk key encoding, codec or storage transformer that nothing in
 scope claims is an `UnclaimedField` too, also when it sits inside another
-field, such as a codec inside a shard. `model.reading.fields()` yields
-every field with its location, nested ones included, so a reader finds
-each one it does not understand there. `CORE` holds
+field, such as a codec inside a shard. A model's `unclaimed_fields` lists
+every field nothing in scope claims, at any depth, by its location, and
+leaves out the members that waive `must_understand`: a reader can open
+the node when it is empty. `CORE` holds
 `CONSOLIDATED_METADATA_EXTRA_FIELD`, which reads a group's
-`consolidated_metadata` as the envelope the spec fixes.
+`consolidated_metadata` as the envelope the spec fixes. A group's
+`consolidated()` reads the documents that member lists, in the group's
+own scope.
 
 A v3 model consists of its document and the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the

@@ -324,18 +324,20 @@ class ZarrV3GroupMetadata(Keyed):
         return unclaimed_fields_of(self._reading.fields(), self.must_understand_fields)
 
     def consolidated(self) -> ZarrV3ConsolidatedMetadata | None:
-        """The documents this group's `consolidated_metadata` lists, read in this group's own scope; None when the group lists none.
+        """The documents this group's `consolidated_metadata` lists, read in this group's own scope; None when the group writes no such member.
 
         A group opens without reading them, so a document with a problem
         fails only here. Raises `MetadataValidationError` with every problem
         in them, located in this group's document, under
-        `consolidated_metadata`.
+        `consolidated_metadata`. A member that is not an object, which only a
+        scope that leaves it unclaimed opens, is such a problem too.
         """
-        member = self.consolidated_metadata
-        if member is UNSET:
+        if ZARR_V3_CONSOLIDATED_METADATA_KEY not in self._document:
             return None
         try:
-            return ZarrV3ConsolidatedMetadata(member, context=self._context)
+            return ZarrV3ConsolidatedMetadata(
+                self._document[ZARR_V3_CONSOLIDATED_METADATA_KEY], context=self._context
+            )
         except MetadataValidationError as error:
             raise MetadataValidationError(
                 prefixed(ZARR_V3_CONSOLIDATED_METADATA_KEY, error.problems)
