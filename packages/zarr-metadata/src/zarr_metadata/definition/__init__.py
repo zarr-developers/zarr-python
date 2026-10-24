@@ -145,7 +145,7 @@ but does not compare equal to its loaded copy.
         size="dynamic",
         rules=acme_lz4_rules,
     )
-    CONTEXT = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
+    CONTEXT = CORE_AND_EXTENSIONS.extended_with(codecs=[ACME_LZ4])
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,
@@ -211,13 +211,18 @@ and an invalid result raises `ValueError`, which indicates a bug in the
 definition. `canonical_fill_value` writes a fill value in the same way,
 using the data type that read it.
 
-**Scopes as values.** A scope reads documents of one Zarr format: the
-`format` declared by every kind it files. `ZarrV3Context` is the type
-of a v3 scope, and `ZarrV2Context` is the type of a v2 scope. A reader
-rejects a scope of the other format with `TypeError`. A scope that files
-nothing has no format and can be used by either reader. Two scopes are
-equal when they file the same definitions, and equal scopes have equal
-hashes. `Context.joined(*scopes)` returns the smallest scope that
+**Scopes as values.** A scope reads documents of one Zarr format.
+`ZarrV3Context`, in `zarr_metadata.v3.definition`, and `ZarrV2Context`,
+in `zarr_metadata.v2.definition`, are the scopes of each format, and
+`Context` is what they share. A scope has one slot for each kind of
+field its format has, named like the document member that holds such
+fields: `ZarrV3Context(codecs=[...], data_types=[...])` builds one, and
+`context.codecs["gzip"]` reads one slot. A type checker rejects a
+definition in the wrong slot, and a scope of one format given to a
+reader of the other. The constructor and the reader also reject them at
+run time, with `TypeError`. Two scopes are equal when they are of one
+format and file the same definitions, and equal scopes have equal
+hashes. `ZarrV3Context.joined(*scopes)` returns the smallest scope that
 contains each of them, or raises a `ScopeConflictError` naming each name
 filed with two different definitions. To replace a definition on
 purpose, use `extended_with`. A model's `refined_in` moves it to a scope
@@ -240,12 +245,10 @@ data type never does; a codec `kind` that is not one of the three, or a
 called for a codec of its kind (chunk rules or pipelines of a
 bytes -> bytes codec, which receives bytes, or a `transition` of a codec
 that outputs bytes); a data type named the way raw bits of one size are
-written. A scope rejects a definition of no kind, and a kind is
-declared with its format, `class Tag(Definition[C], kind=True,
-format=3)`. Nothing else happens at class creation.
+written. Nothing else happens at class creation.
 """
 
-from zarr_metadata.definition._context import Context, Tables
+from zarr_metadata.definition._context import Context
 from zarr_metadata.definition._definition import (
     AcceptedField,
     Definition,
@@ -284,7 +287,6 @@ __all__ = [
     "ResolvedField",
     "Scope",
     "ScopeConflictError",
-    "Tables",
     "UnclaimedField",
     "WithFillValue",
     "canonical_fill_value",

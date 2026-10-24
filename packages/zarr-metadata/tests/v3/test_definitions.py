@@ -59,6 +59,7 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     StorageTransformerDefinition,
     ZarrV3CodecField,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -201,14 +202,16 @@ ACME_PAIRED = CodecDefinition(
 )
 
 CONTEXT = CORE_AND_EXTENSIONS.extended_with(
-    ACME_STACK,
-    ACME_LEVEL,
-    ACME_TOTAL,
-    ACME_TREE,
-    ACME_FALLBACK,
-    ACME_ROUTES,
-    ACME_BOUNDED,
-    ACME_PAIRED,
+    codecs=[
+        ACME_STACK,
+        ACME_LEVEL,
+        ACME_TOTAL,
+        ACME_TREE,
+        ACME_FALLBACK,
+        ACME_ROUTES,
+        ACME_BOUNDED,
+        ACME_PAIRED,
+    ]
 )
 
 
@@ -689,7 +692,7 @@ def _ruled_by(
     rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
-    return CORE.extended_with(lying)
+    return CORE.extended_with(codecs=[lying])
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
@@ -963,7 +966,7 @@ def test_a_scope_takes_a_name_over() -> None:
             else []
         ),
     )
-    context = CORE_AND_EXTENSIONS.extended_with(strict)
+    context = CORE_AND_EXTENSIONS.extended_with(codecs=[strict])
     _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, context)
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
     assert context.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
@@ -971,7 +974,7 @@ def test_a_scope_takes_a_name_over() -> None:
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
     # Kept short, because `help` shows it as a validator's default argument.
-    assert repr(CORE) == f"Context(<{len(CORE.definitions)} definitions>)"
+    assert repr(CORE) == f"ZarrV3Context(<{len(CORE.definitions)} definitions>)"
 
 
 def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
@@ -1293,8 +1296,10 @@ def test_error_a_field_is_read_as_a_kind_of_metadata(kind: type[Definition[Any]]
 
 
 def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
+    """A definition that is no kind of v3 field has no slot, and a slot refuses it, at run time as a type checker does."""
+    kindless = Definition(name="acme.kindless", configuration=EmptyConfiguration)
     with pytest.raises(TypeError, match="a definition of no kind"):
-        Context.of(Definition(name="acme.kindless", configuration=EmptyConfiguration))
+        ZarrV3Context(codecs=[kindless])  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize(
@@ -1401,7 +1406,7 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
         cast("dict[str, object]", configuration)["level"] = -1
         yield from ()
 
-    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, rules=writes))
+    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, rules=writes)])
     with pytest.raises(TypeError, match="does not support item assignment") as raised:
         resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     assert raised.value.__notes__ == ["raised by the rules of 'gzip', reading ('configuration',)"]
@@ -1424,7 +1429,7 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         cast("dict[str, object]", configuration)["level"] = 0
         return configuration
 
-    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=folds_in_place))
+    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, canonical=folds_in_place)])
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(TypeError, match="does not support item assignment"):
         hash(read)
@@ -1434,7 +1439,7 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
+    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, canonical=refuses)])
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
         canonical_of(read, ())

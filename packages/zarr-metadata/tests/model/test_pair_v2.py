@@ -11,7 +11,6 @@ import pytest
 
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     EmptyConfiguration,
     ScopeConflictError,
     UnclaimedField,
@@ -29,6 +28,7 @@ from zarr_metadata.v2.data_type.scalar import FLOAT_V2, UINT_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
+    ZarrV2Context,
     ZarrV2DataTypeDefinition,
 )
 
@@ -46,8 +46,8 @@ ARRAY: dict[str, Any] = {
     "attributes": {"a": [1, 2]},
 }
 BARE_ZLIB = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
-SMALL = Context.of(FLOAT_V2, UINT_V2)
-PRIVATE = CORE_V2.extended_with(BARE_ZLIB)
+SMALL = ZarrV2Context(data_types=[FLOAT_V2, UINT_V2])
+PRIVATE = CORE_V2.extended_with(codecs=[BARE_ZLIB])
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:
@@ -134,12 +134,14 @@ def test_a_model_read_in_two_scopes_that_read_it_alike_is_one_model() -> None:
     """Equality depends on interpretation. The same document read with a private `zlib` that takes no parameters and with the core `zlib` gives two different models. Read in two scopes that hold the same `zlib`, it gives equal models."""
     document = {**ARRAY, "compressor": {"id": "zlib"}}
     assert ZarrV2ArrayMetadata(document) != ZarrV2ArrayMetadata(document, PRIVATE)
-    same = Context.of(*CORE_V2.definitions)
+    same = ZarrV2Context(data_types=CORE_V2.data_types.values(), codecs=CORE_V2.codecs.values())
     assert ZarrV2ArrayMetadata(document) == ZarrV2ArrayMetadata(document, same)
 
 
 @pytest.mark.parametrize("context", [None, SMALL, PRIVATE], ids=["core", "small", "private"])
-def test_a_model_round_trips_through_its_document_pickle_and_copy(context: Context | None) -> None:
+def test_a_model_round_trips_through_its_document_pickle_and_copy(
+    context: ZarrV2Context | None,
+) -> None:
     """`from_json(m.to_json(), context=m.context)`, `from_key_value(m.to_key_value())`, `pickle` and `copy.deepcopy` each give an equal model in the same scope. A pickled reading unpickles as its model's own reading."""
     model = ZarrV2ArrayMetadata(ARRAY, context)
     assert ZarrV2ArrayMetadata.from_json(model.to_json(), context=model.context) == model

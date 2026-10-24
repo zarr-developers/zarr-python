@@ -8,10 +8,10 @@ types. Each document type is in the submodule for its node: `array`,
 `definition`.
 
 This module also exports every v3 definition (`BYTES_CODEC`,
-`FLOAT64_DATA_TYPE`, `REGULAR_CHUNK_GRID`, ...) and the scopes `CORE` and
-`CORE_AND_EXTENSIONS`, so that one import builds or extends a scope. Each
-is the same object as in its own submodule, where its configuration
-types and constants are.
+`FLOAT64_DATA_TYPE`, `REGULAR_CHUNK_GRID`, ...), the scopes `CORE` and
+`CORE_AND_EXTENSIONS`, and the scope class `ZarrV3Context`, so that one
+import builds or extends a scope. Each is the same object as in its own
+submodule, where a definition's configuration types and constants are.
 """
 
 from zarr_metadata._common import ZarrV3NamedConfigJSON
@@ -53,6 +53,7 @@ from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    ZarrV3Context,
 )
 
 __all__ = [
@@ -93,6 +94,7 @@ __all__ = [
     "ZSTD_CODEC",
     "NodeName",
     "NodePath",
+    "ZarrV3Context",
     "ZarrV3ExtensionField",
     "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",

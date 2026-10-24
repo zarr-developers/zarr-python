@@ -254,7 +254,7 @@ To write consolidated metadata, build a `ZarrV3ConsolidatedMetadata` and
 pass it to the group's `update`, which writes its document. The model
 reads every document strictly, and also accepts node models as entries.
 Such an entry is accepted when its claims refine into the model's scope,
-and refused at its path otherwise. `Context.joined` returns a scope in
+and refused at its path otherwise. `ZarrV3Context.joined` returns a scope in
 which to consolidate children that were read in several scopes. Every
 reader takes `context=None` for the default scope, `CORE_AND_EXTENSIONS`.
 

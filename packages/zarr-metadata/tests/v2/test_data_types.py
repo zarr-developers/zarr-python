@@ -8,7 +8,6 @@ import pytest
 
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     RefusedField,
     UnclaimedField,
     canonical_fill_value,
@@ -18,12 +17,12 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.definition._definition import fields_of
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
-from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2.definition import ZarrV2Context, ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
     from zarr_metadata import JSONValue
 
-CONTEXT = Context.of(*DATA_TYPES_V2)
+CONTEXT = ZarrV2Context(data_types=DATA_TYPES_V2)
 
 Loc = tuple[str | int, ...]
 

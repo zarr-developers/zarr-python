@@ -17,7 +17,7 @@ from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
-from zarr_metadata.definition import AcceptedField, Context
+from zarr_metadata.definition import AcceptedField
 from zarr_metadata.json_schema import json_schema, node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -32,7 +32,7 @@ from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE
+from zarr_metadata.v3.definition import CORE, ZarrV3Context
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 V2_ARRAY_DOC = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())
@@ -453,17 +453,14 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
 
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context_v2` item. When it holds none, they read in `CORE_V2`. The v3 field types work the same way."""
-    from zarr_metadata.definition import (
-        Context,
-        UnclaimedField,
-    )
+    from zarr_metadata.definition import UnclaimedField
     from zarr_metadata.v2.data_type.scalar import UINT_V2
-    from zarr_metadata.v2.definition import CORE_V2
+    from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     assert adapter.validate_python(doc).context is CORE_V2
-    small = Context.of(UINT_V2)
+    small = ZarrV2Context(data_types=[UINT_V2])
     read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert read.context is small
     assert isinstance(read.compressor, UnclaimedField)
@@ -475,17 +472,14 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
 
 def test_each_format_reads_in_its_own_context_key() -> None:
     """A mapping context gives each format's scope under its own key: `zarr_metadata_context` for v3 and `zarr_metadata_context_v2` for v2. So a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2`. A bare `Context` is the scope for every field type."""
-    from zarr_metadata.definition import (
-        Context,
-        UnclaimedField,
-    )
+    from zarr_metadata.definition import UnclaimedField
     from zarr_metadata.v2.data_type.scalar import UINT_V2
-    from zarr_metadata.v2.definition import CORE_V2
+    from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
-    small = Context.of(UINT_V2)
+    small = ZarrV2Context(data_types=[UINT_V2])
     v3_only = adapter.validate_python(doc, context={"zarr_metadata_context": CORE_AND_EXTENSIONS})
     assert v3_only.context is CORE_V2
     with pytest.raises(ValidationError):
@@ -501,7 +495,7 @@ def test_each_format_reads_in_its_own_context_key() -> None:
 
 
 _TESTS = Path(__file__).parent.parent
-_NODE_SCHEMA_V3 = node_metadata_json_schema_v3(context=Context.of())
+_NODE_SCHEMA_V3 = node_metadata_json_schema_v3(context=ZarrV3Context())
 _SCHEMA_PAIRS: dict[str, tuple[object, Mapping[str, Any], str]] = {
     "v3-array": (zmp.ZarrV3ArrayMetadataField, _NODE_SCHEMA_V3, "v3/array"),
     "v3-group": (zmp.ZarrV3GroupMetadataField, _NODE_SCHEMA_V3, "v3/group"),

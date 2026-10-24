@@ -8,18 +8,19 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import zarr_metadata.model as zm
-from zarr_metadata.definition import Context
 from zarr_metadata.json_schema import node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
 )
 from zarr_metadata.problems import MetadataValidationError
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-EMPTY = Context.of()
+    from zarr_metadata.definition import Context
+
+EMPTY = ZarrV3Context()
 BASE: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 BAD: dict[str, Any] = {
     **BASE,

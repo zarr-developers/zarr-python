@@ -9,7 +9,7 @@ from typing import Any, cast, get_type_hints
 import pytest
 
 from zarr_metadata._json import JSON_DEPTH
-from zarr_metadata.definition import Context, EmptyConfiguration
+from zarr_metadata.definition import EmptyConfiguration
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
@@ -27,6 +27,7 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
+    ZarrV3Context,
 )
 
 ARRAY: dict[str, Any] = {
@@ -41,11 +42,13 @@ WITH_LOOSE_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], LOOSE_ZSTD)}
 MY_BYTES = CodecDefinition(
     name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
 )
-PRIVATE = CORE.extended_with(MY_BYTES)
+PRIVATE = CORE.extended_with(codecs=[MY_BYTES])
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
 
-def _consolidated(context: Context | None = None, **entries: object) -> ZarrV3ConsolidatedMetadata:
+def _consolidated(
+    context: ZarrV3Context | None = None, **entries: object
+) -> ZarrV3ConsolidatedMetadata:
     """The consolidated metadata that lists `entries`, read in `context`."""
     return ZarrV3ConsolidatedMetadata({**INLINE, "metadata": entries}, context=context)
 
@@ -67,15 +70,15 @@ def _group_document(**entries: object) -> dict[str, Any]:
         (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE), {}, True),
         (
             CORE,
-            ZarrV3GroupMetadata(_group_document(x=ARRAY), context=Context.of()),
-            {"a/x": ZarrV3ArrayMetadata(ARRAY, context=Context.of())},
+            ZarrV3GroupMetadata(_group_document(x=ARRAY), context=ZarrV3Context()),
+            {"a/x": ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context())},
             False,
         ),
     ],
     ids=["same-scope", "unused-definitions", "gain", "listed-group-and-its-child"],
 )
 def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_scope(
-    context: Context,
+    context: ZarrV3Context,
     child: ZarrV3ArrayMetadata | ZarrV3GroupMetadata,
     beside: dict[str, Any],
     gained: bool,
@@ -183,10 +186,10 @@ def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope()
 
 
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
-    """Children read in different scopes are consolidated in the scope `Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
+    """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)
     b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
-    context = Context.joined(a.context, b.context)
+    context = ZarrV3Context.joined(a.context, b.context)
     held = _consolidated(context, a=a, b=b)
     assert held.context == CORE_AND_EXTENSIONS
     assert held.metadata["a"] == a
@@ -227,7 +230,7 @@ def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> Non
     )
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "data_type": "r16", "fill_value": [0, 0], "codecs": ("bytes",)},
-        context=CORE.extended_with(strict),
+        context=CORE.extended_with(data_types=[strict]),
     )
     with pytest.raises(MetadataValidationError) as raised:
         _consolidated(CORE, a=child)
@@ -245,7 +248,7 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
     strict = dataclasses.replace(GZIP_CODEC, rules=lambda configuration, nested: iter(()))
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1}})},
-        context=CORE.extended_with(strict),
+        context=CORE.extended_with(codecs=[strict]),
     )
     with pytest.raises(MetadataValidationError) as raised:
         _consolidated(CORE, a=child)

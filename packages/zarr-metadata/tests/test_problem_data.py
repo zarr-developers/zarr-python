@@ -324,7 +324,7 @@ def test_a_problem_with_what_a_name_carries_is_the_field_s() -> None:
     # the document wrote there. The bound on `bits` is not a bound on the
     # name, so the problem's `ctx` is empty.
     context = CORE_AND_EXTENSIONS.extended_with(
-        DataTypeDefinition(name="r*", configuration=WideBits)
+        data_types=[DataTypeDefinition(name="r*", configuration=WideBits)]
     )
     _, problems = resolve("r24", DataTypeDefinition, context, ("data_type",))
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [(("data_type",), "r24", {})]

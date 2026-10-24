@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Annotated, Literal, TypeAlias, TypedDict, cast
 
 from annotated_types import Ge
 
@@ -33,8 +33,6 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._typed_json import Loc, check
 from zarr_metadata.definition._context import (
-    ZarrV2Context,
-    ZarrV3Context,
     scoped,
 )
 from zarr_metadata.model._group_v2 import (
@@ -46,6 +44,10 @@ from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
+
+if TYPE_CHECKING:
+    from zarr_metadata.v2._context import ZarrV2Context
+    from zarr_metadata.v3._context import ZarrV3Context
 
 RepairKind: TypeAlias = Literal[
     "zero_chunk_length", "null_consolidated_metadata", "consolidated_metadata_in_zgroup_entry"

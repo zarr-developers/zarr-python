@@ -170,7 +170,7 @@ class _Claimed:
     """The scope formed by a field's own claims: its definition and the definitions of its nested fields, keyed by kind and filed name. `_gained` re-reads a field in this scope."""
 
     filed: Mapping[ClaimKey, Definition[Any]]
-    format: Literal[2, 3] | None
+    zarr_format: Literal[2, 3]
 
     @classmethod
     def of(cls, field: AcceptedField[Any]) -> _Claimed:

@@ -9,16 +9,15 @@ import pytest
 
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     RefusedField,
     UnclaimedField,
     canonical_of,
     resolve,
 )
 from zarr_metadata.v2.codec import CODECS_V2, ZarrV2CodecMetadata
-from zarr_metadata.v2.definition import ZarrV2CodecDefinition
+from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2Context
 
-CONTEXT = Context.of(*CODECS_V2)
+CONTEXT = ZarrV2Context(codecs=CODECS_V2)
 Loc = tuple[str | int, ...]
 
 # The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists.

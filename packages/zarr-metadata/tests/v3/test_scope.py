@@ -38,6 +38,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     StorageTransformerDefinition,
+    ZarrV3Context,
 )
 
 SHARD = {
@@ -60,23 +61,27 @@ one reads `gzip` differently.
 """
 
 
-def _read(data: object, kind: type[Definition[Any]], context: Context) -> ResolvedField[Any]:
+def _read(data: object, kind: type[Definition[Any]], context: ZarrV3Context) -> ResolvedField[Any]:
     return resolve(data, kind, context)[0]
 
 
 @pytest.mark.parametrize(
     ("left", "right", "equal"),
     [
-        (Context.of(GZIP_CODEC, BYTES_CODEC), Context.of(BYTES_CODEC, GZIP_CODEC), True),
+        (
+            ZarrV3Context(codecs=[GZIP_CODEC, BYTES_CODEC]),
+            ZarrV3Context(codecs=[BYTES_CODEC, GZIP_CODEC]),
+            True,
+        ),
         (CORE, pickle.loads(pickle.dumps(CORE)), True),
         (CORE, CORE_AND_EXTENSIONS, False),
-        (Context.of(GZIP_CODEC), Context.of(GZIP_CODEC, ZSTD_CODEC), False),
-        (Context.of(), Context.of(), True),
+        (ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[GZIP_CODEC, ZSTD_CODEC]), False),
+        (ZarrV3Context(), ZarrV3Context(), True),
     ],
     ids=["order", "pickle", "core-vs-extensions", "subset", "empty"],
 )
 def test_a_scope_is_equal_to_another_by_the_definitions_it_files(
-    left: Context, right: Context, equal: bool
+    left: ZarrV3Context, right: ZarrV3Context, equal: bool
 ) -> None:
     """Two scopes are equal when they file the same definitions under the same names, however they were built. Equal scopes have equal hashes."""
     assert (left == right) is equal
@@ -142,7 +147,7 @@ def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
     """Fields read in two scopes that give one name two different definitions have no single set of claims. `claims_of` raises a `ScopeConflictError` that names the key."""
     fields = [
         *fields_of(_read("gzip", CodecDefinition, CORE), ("codecs", 0)),
-        *fields_of(_read("gzip", CodecDefinition, Context.of(MY_GZIP)), ("codecs", 1)),
+        *fields_of(_read("gzip", CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])), ("codecs", 1)),
     ]
     with pytest.raises(ScopeConflictError) as raised:
         claims_of(fields)
@@ -201,7 +206,7 @@ NESTED_ZSTD = {
         ),
         (
             _read(GZIP_FIELD, CodecDefinition, CORE),
-            _read(GZIP_FIELD, CodecDefinition, Context.of(MY_GZIP)),
+            _read(GZIP_FIELD, CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])),
             False,
         ),
         (
@@ -227,12 +232,12 @@ NESTED_ZSTD = {
         ),
         (
             _read("crc32c", CodecDefinition, CORE),
-            _read({"name": "crc32c"}, CodecDefinition, Context.of()),
+            _read({"name": "crc32c"}, CodecDefinition, ZarrV3Context()),
             True,
         ),
         (
             _read(BLOSC_LEVEL_ONE, CodecDefinition, CORE),
-            _read(BLOSC_LEVEL_TRUE, CodecDefinition, Context.of()),
+            _read(BLOSC_LEVEL_TRUE, CodecDefinition, ZarrV3Context()),
             False,
         ),
         (
@@ -274,7 +279,7 @@ DOCUMENTS = [
     BLOSC_LEVEL_ONE,
     SHARD_HOLDING_REFUSED,
 ]
-CONTEXTS = [Context.of(), CORE, CORE_AND_EXTENSIONS]
+CONTEXTS = [ZarrV3Context(), CORE, CORE_AND_EXTENSIONS]
 READINGS = [
     _read(document, CodecDefinition, context) for document in DOCUMENTS for context in CONTEXTS
 ]
@@ -310,7 +315,7 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
             (Conflict((CodecDefinition, "zstd"), ZSTD_CODEC, None),),
         ),
         (
-            Context.of(MY_GZIP),
+            ZarrV3Context(codecs=[MY_GZIP]),
             {(CodecDefinition, "gzip"): GZIP_CODEC},
             (),
             (Conflict((CodecDefinition, "gzip"), GZIP_CODEC, MY_GZIP),),
@@ -321,7 +326,7 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
     ids=["agrees", "gain", "loss", "conflict", "unclaimed-both", "raw-bits"],
 )
 def test_disagreements_says_where_a_scope_reads_claims_otherwise(
-    context: Context,
+    context: ZarrV3Context,
     claims: dict[Any, Any],
     gains: tuple[Any, ...],
     conflicts: tuple[Conflict, ...],
@@ -337,27 +342,30 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
     ("contexts", "joined"),
     [
         ((CORE, CORE_AND_EXTENSIONS), CORE_AND_EXTENSIONS),
-        ((Context.of(GZIP_CODEC), Context.of(ZSTD_CODEC)), Context.of(GZIP_CODEC, ZSTD_CODEC)),
-        ((), Context.of()),
+        (
+            (ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[ZSTD_CODEC])),
+            ZarrV3Context(codecs=[GZIP_CODEC, ZSTD_CODEC]),
+        ),
+        ((), ZarrV3Context()),
         ((CORE, CORE), CORE),
         (
-            (Context.of(BYTES_CODEC), Context.of(BYTES_DATA_TYPE)),
-            Context.of(BYTES_CODEC, BYTES_DATA_TYPE),
+            (ZarrV3Context(codecs=[BYTES_CODEC]), ZarrV3Context(data_types=[BYTES_DATA_TYPE])),
+            ZarrV3Context(data_types=[BYTES_DATA_TYPE], codecs=[BYTES_CODEC]),
         ),
     ],
     ids=["subset", "disjoint", "none", "same", "same-name-two-kinds"],
 )
 def test_joined_is_the_least_scope_above_each(
-    contexts: tuple[Context, ...], joined: Context
+    contexts: tuple[ZarrV3Context, ...], joined: ZarrV3Context
 ) -> None:
     """The join of scopes files every definition that any of them files, once. The same name in two kinds counts as two names."""
-    assert Context.joined(*contexts) == joined
+    assert ZarrV3Context.joined(*contexts) == joined
 
 
 def test_error_joined_refuses_one_name_filed_two_ways() -> None:
-    """Scopes that file different definitions under one name have no join. `Context.joined` raises a `ScopeConflictError` that names the key and both definitions."""
+    """Scopes that file different definitions under one name have no join. `ZarrV3Context.joined` raises a `ScopeConflictError` that names the key and both definitions."""
     with pytest.raises(ScopeConflictError) as raised:
-        Context.joined(CORE, Context.of(MY_GZIP))
+        ZarrV3Context.joined(CORE, ZarrV3Context(codecs=[MY_GZIP]))
     (conflict,) = raised.value.conflicts
     assert (conflict.key, conflict.claimed, conflict.found) == (
         (CodecDefinition, "gzip"),
@@ -395,7 +403,6 @@ def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> Non
 def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
     """An accepted field refines an unclaimed one when its definition, reading the JSON of the unclaimed field, produces the accepted field. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
     from zarr_metadata.definition import (
-        Context,
         resolve,
     )
     from zarr_metadata.v3.definition import (
@@ -403,7 +410,7 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
         ChunkKeyEncodingDefinition,
     )
 
-    nothing = Context.of()
+    nothing = ZarrV3Context()
     spelled_out, _ = resolve(
         {"name": "default", "configuration": {"separator": "/"}}, ChunkKeyEncodingDefinition, CORE
     )
@@ -441,7 +448,7 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
     import copy
 
     with pytest.raises(ScopeConflictError) as raised:
-        Context.joined(CORE, Context.of(OTHER_GZIP))
+        ZarrV3Context.joined(CORE, ZarrV3Context(codecs=[OTHER_GZIP]))
     error = raised.value
     error.add_note("seen in a join")
     for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
@@ -466,29 +473,56 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
     model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS)
     other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=EmptyConfiguration)
     with pytest.raises(ScopeConflictError) as raised:
-        model.refined_in(CORE_AND_EXTENSIONS.extended_with(other))
+        model.refined_in(CORE_AND_EXTENSIONS.extended_with(data_types=[other]))
     message = str(raised.value)
     assert message.startswith("data type 'r16'")
     assert "RawBytesConfiguration" in message
     assert "EmptyConfiguration" in message
     with pytest.raises(ScopeConflictError) as joined:
-        Context.joined(Context.of(GZIP_CODEC), Context.of(OTHER_GZIP))
+        ZarrV3Context.joined(ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[OTHER_GZIP]))
     assert str(joined.value).count("gzip") >= 2
     assert "EmptyConfiguration" in str(joined.value)
 
 
-def test_error_a_scope_built_from_tables_keeps_the_invariants_of() -> None:
-    """The constructor `Context(tables)` rejects what `Context.of` rejects: a key that is not a kind, and kinds of two formats. So the constructor cannot build a scope that `of` could not build."""
-    from types import MappingProxyType
+def test_each_slot_is_a_read_only_view_by_name() -> None:
+    """A v3 scope has one slot per kind, as `ZarrV3Context.kinds` lists them. Each slot maps the name each definition is filed under to the definition, and cannot be changed in place."""
+    assert dict(ZarrV3Context.kinds) == {
+        "data_types": DataTypeDefinition,
+        "chunk_grids": ChunkGridDefinition,
+        "chunk_key_encodings": ChunkKeyEncodingDefinition,
+        "codecs": CodecDefinition,
+        "storage_transformers": StorageTransformerDefinition,
+    }
+    assert CORE.codecs["gzip"] is GZIP_CODEC
+    assert CORE.data_types["r*"] is RAW_BYTES_DATA_TYPE
+    assert dict(CORE.storage_transformers) == {}
+    with pytest.raises(TypeError):
+        CORE.codecs["gzip"] = MY_GZIP  # pyright: ignore[reportIndexIssue]
 
-    from zarr_metadata.v2.data_type.scalar import UINT_V2
-    from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
 
+def test_error_a_slot_refuses_a_definition_of_another_kind() -> None:
+    """A definition of another kind than its slot holds raises `TypeError` naming the slot, the definition and its kind, at run time as a type checker does."""
+    with pytest.raises(
+        TypeError, match="codecs holds codec definitions, got 'bytes', a data type definition"
+    ):
+        ZarrV3Context(codecs=[BYTES_DATA_TYPE])  # pyright: ignore[reportArgumentType]
+
+
+def test_error_a_slot_refuses_two_definitions_under_one_name() -> None:
+    """Two different definitions under one name in a slot raise `ScopeConflictError` naming both, because the scope could not tell which one reads the name. `extended_with` is the way to replace a definition."""
+    with pytest.raises(ScopeConflictError) as raised:
+        ZarrV3Context(codecs=[GZIP_CODEC, OTHER_GZIP])
+    (conflict,) = raised.value.conflicts
+    assert (conflict.key, conflict.claimed, conflict.found) == (
+        (CodecDefinition, "gzip"),
+        GZIP_CODEC,
+        OTHER_GZIP,
+    )
+
+
+def test_error_the_shared_base_builds_no_scope() -> None:
+    """`Context` is what the scopes of both formats share. It builds no scope itself, because a scope reads one format, and its `joined` of no scopes raises for the same reason."""
     with pytest.raises(TypeError, match="one Zarr format"):
-        Context(
-            MappingProxyType(
-                {CodecDefinition: {"gzip": GZIP_CODEC}, ZarrV2DataTypeDefinition: {"uint": UINT_V2}}
-            )
-        )
-    with pytest.raises(TypeError, match="kind"):
-        Context(MappingProxyType({int: {"gzip": GZIP_CODEC}}))  # pyright: ignore[reportArgumentType]
+        Context({})
+    with pytest.raises(TypeError, match="ZarrV3Context or ZarrV2Context"):
+        Context.joined()

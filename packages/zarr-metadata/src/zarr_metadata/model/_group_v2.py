@@ -31,7 +31,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import Context, ZarrV2Context, scoped
+from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._scope import Claims, Conflict, ScopeConflictError
 from zarr_metadata.model._array_v2 import (
     ARRAY_FILE_ATTRIBUTES,
@@ -54,6 +54,9 @@ from zarr_metadata.model._shared import (
     unexpected_keys,
     validate_attributes,
 )
+
+# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
@@ -282,7 +285,7 @@ class ZarrV2GroupMetadata(Keyed):
     __slots__ = ("_attributes", "_context", "_document", "_shown")
 
     _attributes: dict[str, JSONValue] | UNSET
-    _context: Context
+    _context: ZarrV2Context
     _document: dict[str, JSONValue]
     _shown: Mapping[str, JSONValue] | UNSET
 
@@ -310,7 +313,7 @@ class ZarrV2GroupMetadata(Keyed):
     def _of(
         cls,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV2Context,
         attributes: dict[str, JSONValue] | UNSET,
     ) -> ZarrV2GroupMetadata:
         """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
@@ -321,7 +324,7 @@ class ZarrV2GroupMetadata(Keyed):
     def _adopt(
         self,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV2Context,
         attributes: dict[str, JSONValue] | UNSET,
     ) -> None:
         self._document = document
@@ -335,7 +338,7 @@ class ZarrV2GroupMetadata(Keyed):
         return ZarrV2GroupMetadataReading(metadata=self)
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV2Context:
         """The scope the document was read in. `update` reads new attributes in this scope."""
         return self._context
 
@@ -376,7 +379,7 @@ class ZarrV2GroupMetadata(Keyed):
         attributes = self._attributes
         return (UNSET if attributes is UNSET else json_text(attributes),)
 
-    def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
     def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
@@ -505,7 +508,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     __slots__ = ("_context", "_document", "_nodes", "_shown")
 
-    _context: Context
+    _context: ZarrV2Context
     _document: dict[str, JSONValue]
     _nodes: dict[str, ZarrV2NodeMetadata]
     _shown: Mapping[str, JSONValue]
@@ -521,7 +524,10 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     @classmethod
     def _of(
-        cls, document: dict[str, JSONValue], context: Context, nodes: dict[str, ZarrV2NodeMetadata]
+        cls,
+        document: dict[str, JSONValue],
+        context: ZarrV2Context,
+        nodes: dict[str, ZarrV2NodeMetadata],
     ) -> ZarrV2ConsolidatedMetadata:
         """Build a model of a document that a read found no problems with, holding the nodes that read built. The readers in this package build models through this method; pyright reports these calls as private use."""
         model = object.__new__(cls)
@@ -529,7 +535,10 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return model
 
     def _adopt(
-        self, document: dict[str, JSONValue], context: Context, nodes: dict[str, ZarrV2NodeMetadata]
+        self,
+        document: dict[str, JSONValue],
+        context: ZarrV2Context,
+        nodes: dict[str, ZarrV2NodeMetadata],
     ) -> None:
         self._document = document
         self._context = context
@@ -542,7 +551,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return ZarrV2ConsolidatedMetadataReading(metadata=self)
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV2Context:
         """The scope the nodes were read in."""
         return self._context
 
@@ -588,7 +597,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
                 consumed.update(names.values())
         return json_text({key: value for key, value in entries.items() if key not in consumed})
 
-    def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
@@ -705,7 +714,7 @@ def _entries_by_path(
 
 
 def _read_consolidated_v2(
-    data: object, context: Context
+    data: object, context: ZarrV2Context
 ) -> tuple[dict[str, JSONValue], dict[str, ZarrV2NodeMetadata], tuple[ValidationProblem, ...]]:
     """Read `data`, a `.zmetadata` document. Return each entry as read, the model of each node read in `context`, and every problem, located in the document.
 
@@ -795,7 +804,7 @@ def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[Val
 
 
 def _read_node_v2(
-    path: str, names: Mapping[str, str], entries: Mapping[str, JSONValue], context: Context
+    path: str, names: Mapping[str, str], entries: Mapping[str, JSONValue], context: ZarrV2Context
 ) -> tuple[ZarrV2NodeMetadata | None, list[ValidationProblem]]:
     """Read the node at `path` from its `.zarray` or `.zgroup` entry merged with its `.zattrs`. Return the node and every problem, located under the entries. Returns None and no problems when there is only a `.zattrs`."""
     zarray = names.get(ZARR_V2_ARRAY_METADATA_STORE_KEY)

@@ -8,18 +8,20 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import zarr_metadata.model as zm
-from zarr_metadata.definition import Context
 from zarr_metadata.model import ZarrV2ArrayMetadata
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.definition import (
     CORE_V2,
+    ZarrV2Context,
 )
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-EMPTY = Context.of()
+    from zarr_metadata.definition import Context
+
+EMPTY = ZarrV2Context()
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())
 BAD: dict[str, Any] = {**BASE, "compressor": {"id": "gzip", "level": "x"}}
 """An array that the v2 scope refuses (a gzip level that is not an integer) and that an empty scope does not check."""

@@ -8,10 +8,11 @@ configures (one per id that this package models). `CORE_V2` is that
 scope. To read one field in it, call `zarr_metadata.definition.resolve`
 with the field's kind, as for a v3 field:
 `resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2)` returns an
-`AcceptedField`, `UnclaimedField` or `RefusedField`, and every problem. The scope operations (`Context.of`, `extended_with`, `joined`,
-`claimant`) use the same `Context` class, with format 2. A v2 reader
-rejects a v3 scope with `TypeError`. `ZarrV2Context` is the type of a v2
-scope.
+`AcceptedField`, `UnclaimedField` or `RefusedField`, and every problem.
+`ZarrV2Context` is the class of a v2 scope. It has a slot for each kind
+of v2 field, `data_types` and `codecs`, and shares `extended_with`,
+`joined` and `claimant` with the v3 scope. A v2 reader rejects a v3
+scope with `TypeError`.
 
 A dtype reads as its family, and the byte order, size and unit of the
 typestr are its configuration. For example, `<f4` is `float` with
@@ -27,7 +28,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from zarr_metadata.definition._context import Context, ZarrV2Context
+from zarr_metadata.v2._context import ZarrV2Context
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
@@ -36,7 +37,7 @@ from zarr_metadata.v2._definition import (
 from zarr_metadata.v2.codec import CODECS_V2
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
 
-CORE_V2: Final[ZarrV2Context] = Context.of(*DATA_TYPES_V2, *CODECS_V2)
+CORE_V2: Final = ZarrV2Context(data_types=DATA_TYPES_V2, codecs=CODECS_V2)
 """The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
 
 

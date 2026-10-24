@@ -30,7 +30,7 @@ from zarr_metadata._json import (
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
-from zarr_metadata.definition._context import Context, ZarrV3Context, scoped
+from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import (
     AcceptedField,
     Definition,
@@ -60,6 +60,9 @@ from zarr_metadata.model._shared import (
     reading_of,
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+
+# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -233,7 +236,7 @@ class ArrayMembersV3:
 
 
 def read_array_v3(
-    value: object, context: Context, *, at: Loc = ()
+    value: object, context: ZarrV3Context, *, at: Loc = ()
 ) -> tuple[ZarrV3ArrayMetadataReading, ArrayMembersV3 | None]:
     """Read `value`, a v3 array document, in `context`, without building its model. Return the reading and the other members, refined; the members are None when the document has a problem.
 
@@ -523,7 +526,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def _of(
         cls,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV3Context,
         reading: ZarrV3ArrayMetadataReading,
         members: ArrayMembersV3,
     ) -> ZarrV3ArrayMetadata:
@@ -535,7 +538,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def _adopt(
         self,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV3Context,
         reading: ZarrV3ArrayMetadataReading,
         members: ArrayMembersV3,
     ) -> None:
@@ -555,7 +558,7 @@ class ZarrV3ArrayMetadata(Keyed):
     # --- the pair ---------------------------------------------------------
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV3Context:
         """The scope the document was read in. `update` reads new members in this scope."""
         return self._context
 
@@ -599,7 +602,7 @@ class ZarrV3ArrayMetadata(Keyed):
             json_text(members.extra_fields),
         )
 
-    def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, ZarrV3Context]]:
         # Pickle the pair and read it again on load, so a model's reading
         # always matches its document.
         return type(self), (self._document, self._context)

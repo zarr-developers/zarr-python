@@ -14,7 +14,6 @@ import pytest
 from zarr_metadata._json import refine_json
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     EmptyConfiguration,
     Nested,
     ScopeConflictError,
@@ -38,6 +37,7 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ MY_BYTES = CodecDefinition(
     name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
 )
 """A private `bytes` definition: a different meaning under the core name, with no configuration."""
-PRIVATE = CORE.extended_with(MY_BYTES)
+PRIVATE = CORE.extended_with(codecs=[MY_BYTES])
 SPELLED_OUT: dict[str, Any] = {
     **ARRAY,
     "data_type": {"name": "uint8"},
@@ -71,12 +71,12 @@ SPELLED_OUT: dict[str, Any] = {
     [
         (ARRAY, None, CORE_AND_EXTENSIONS),
         (ARRAY, CORE, CORE),
-        (SPELLED_OUT, Context.of(), Context.of()),
+        (SPELLED_OUT, ZarrV3Context(), ZarrV3Context()),
     ],
     ids=["default-scope", "core", "empty-scope"],
 )
 def test_a_model_is_its_document_read_in_its_scope(
-    document: dict[str, Any], context: Context | None, expected_context: Context
+    document: dict[str, Any], context: ZarrV3Context | None, expected_context: ZarrV3Context
 ) -> None:
     """A model built from a document holds that document, as written and refined, and the scope it was read in. The scope is `CORE_AND_EXTENSIONS` when none is given."""
     model = ZarrV3ArrayMetadata(document, context=context)
@@ -117,7 +117,7 @@ def test_properties_are_what_the_reading_holds() -> None:
         model.attributes["b"] = 1  # pyright: ignore[reportIndexIssue]
     with pytest.raises(AttributeError):
         model.shape = (5,)  # pyright: ignore[reportAttributeAccessIssue]
-    assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=Context.of()).data_type, UnclaimedField)
+    assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()).data_type, UnclaimedField)
 
 
 def test_a_reading_without_problems_builds_the_model_without_reading_again() -> None:
@@ -143,7 +143,7 @@ def test_error_a_document_with_a_problem_is_refused_at_construction() -> None:
         (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(SPELLED_OUT), True),
         (ZarrV3ArrayMetadata(ARRAY, context=CORE), ZarrV3ArrayMetadata(ARRAY), True),
         (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=PRIVATE), False),
-        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=Context.of()), False),
+        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()), False),
         (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata({**ARRAY, "attributes": {}}), True),
     ],
     ids=["spellings", "unused-definitions", "private-bytes", "unclaimed", "empty-attributes"],
@@ -158,9 +158,11 @@ def test_models_are_equal_by_what_their_documents_mean(
 
 
 @pytest.mark.parametrize(
-    "context", [None, CORE, PRIVATE, Context.of()], ids=["default", "core", "private", "empty"]
+    "context", [None, CORE, PRIVATE, ZarrV3Context()], ids=["default", "core", "private", "empty"]
 )
-def test_a_model_round_trips_through_its_document_in_its_scope(context: Context | None) -> None:
+def test_a_model_round_trips_through_its_document_in_its_scope(
+    context: ZarrV3Context | None,
+) -> None:
     """`from_json(m.to_json(), context=m.context) == m`. The document and the scope determine the model, and pickle preserves both."""
     model = ZarrV3ArrayMetadata(ARRAY, context=context)
     assert ZarrV3ArrayMetadata(model.to_json(), context=model.context) == model
@@ -180,7 +182,7 @@ def test_error_a_model_whose_scope_does_not_pickle_says_so() -> None:
         rules=lambda configuration, nested: iter(()),
     )
     model = ZarrV3ArrayMetadata(
-        {**ARRAY, "codecs": ["bytes", "acme.c"]}, context=CORE.extended_with(local)
+        {**ARRAY, "codecs": ["bytes", "acme.c"]}, context=CORE.extended_with(codecs=[local])
     )
     with pytest.raises((pickle.PicklingError, AttributeError)):
         pickle.dumps(model)
@@ -263,15 +265,15 @@ def test_error_update_refuses_a_document_with_a_problem() -> None:
 @pytest.mark.parametrize(
     ("model", "context", "gained"),
     [
-        (ZarrV3ArrayMetadata(ARRAY, context=Context.of()), CORE, True),
+        (ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()), CORE, True),
         (ZarrV3ArrayMetadata(ARRAY, context=CORE), CORE_AND_EXTENSIONS, False),
-        (ZarrV3ArrayMetadata(FLOAT, context=Context.of()), CORE, True),
-        (ZarrV3ArrayMetadata(SHARDED, context=Context.of()), CORE, True),
+        (ZarrV3ArrayMetadata(FLOAT, context=ZarrV3Context()), CORE, True),
+        (ZarrV3ArrayMetadata(SHARDED, context=ZarrV3Context()), CORE, True),
     ],
     ids=["gain", "nothing-to-gain", "gain-data-type-with-fill-value", "gain-of-a-shard"],
 )
 def test_refined_in_moves_a_model_up_the_order(
-    model: ZarrV3ArrayMetadata, context: Context, gained: bool
+    model: ZarrV3ArrayMetadata, context: ZarrV3Context, gained: bool
 ) -> None:
     """`refined_in` reads the document in a scope that claims what the current scope left unclaimed and contradicts nothing. The result refines the model and keeps its document. When the new scope reads nothing differently, the result equals the original model."""
     refined = model.refined_in(context)
@@ -288,12 +290,12 @@ def test_refined_in_moves_a_model_up_the_order(
     ("model", "context"),
     [
         (ZarrV3ArrayMetadata(ARRAY), PRIVATE),
-        (ZarrV3ArrayMetadata(ARRAY, context=CORE), Context.of()),
+        (ZarrV3ArrayMetadata(ARRAY, context=CORE), ZarrV3Context()),
     ],
     ids=["conflict", "loss"],
 )
 def test_error_refined_in_refuses_a_conflict_or_a_loss(
-    model: ZarrV3ArrayMetadata, context: Context
+    model: ZarrV3ArrayMetadata, context: ZarrV3Context
 ) -> None:
     """`refined_in` raises `ScopeConflictError` that names each name the new scope reads with another definition, or with no definition."""
     with pytest.raises(ScopeConflictError) as raised:
@@ -307,7 +309,7 @@ def test_with_context_reads_the_document_in_any_scope() -> None:
     private = model.with_context(PRIVATE)
     assert private.context == PRIVATE
     assert private.codecs[0].definition == MY_BYTES
-    assert isinstance(model.with_context(Context.of()).codecs[0], UnclaimedField)
+    assert isinstance(model.with_context(ZarrV3Context()).codecs[0], UnclaimedField)
     assert model.with_context(None).context == CORE_AND_EXTENSIONS
 
 
@@ -315,7 +317,7 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
     """`with_context` raises `MetadataValidationError` when the document has a problem in the new scope. Here the problem is a gzip `level` that the core definition refuses."""
     loose = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 12}}]},
-        context=Context.of(),
+        context=ZarrV3Context(),
     )
     with pytest.raises(MetadataValidationError):
         loose.with_context(CORE)
@@ -324,24 +326,24 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
 @pytest.mark.parametrize(
     ("upper", "lower", "expected"),
     [
-        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=Context.of()), True),
-        (ZarrV3ArrayMetadata(ARRAY, context=Context.of()), ZarrV3ArrayMetadata(ARRAY), False),
+        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()), True),
+        (ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()), ZarrV3ArrayMetadata(ARRAY), False),
         (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(SPELLED_OUT), True),
         (ZarrV3ArrayMetadata(ARRAY, context=PRIVATE), ZarrV3ArrayMetadata(ARRAY), False),
         (ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": 1}}), ZarrV3ArrayMetadata(ARRAY), False),
         (
             ZarrV3ArrayMetadata(FLOAT, context=CORE),
-            ZarrV3ArrayMetadata(FLOAT, context=Context.of()),
+            ZarrV3ArrayMetadata(FLOAT, context=ZarrV3Context()),
             True,
         ),
         (
             ZarrV3ArrayMetadata(SHARDED, context=CORE),
-            ZarrV3ArrayMetadata(SHARDED, context=Context.of()),
+            ZarrV3ArrayMetadata(SHARDED, context=ZarrV3Context()),
             True,
         ),
         (
             ZarrV3ArrayMetadata(FLOAT, context=CORE),
-            ZarrV3ArrayMetadata({**FLOAT, "fill_value": "banana"}, context=Context.of()),
+            ZarrV3ArrayMetadata({**FLOAT, "fill_value": "banana"}, context=ZarrV3Context()),
             False,
         ),
     ],
@@ -412,7 +414,7 @@ def test_consolidated_metadata_reads_each_nested_field_once() -> None:
         calls.append(1)
         return iter(())
 
-    context = CORE.extended_with(dataclasses.replace(BYTES_CODEC, rules=counted))
+    context = CORE.extended_with(codecs=[dataclasses.replace(BYTES_CODEC, rules=counted)])
     ZarrV3GroupMetadata(CONSOLIDATED, context=context)
     assert calls == []
     ZarrV3ConsolidatedMetadata(MEMBER, context=context)
@@ -486,7 +488,7 @@ def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[st
 
 def test_group_update_with_context_and_refined_in_keep_the_document() -> None:
     """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group has no fields, so `refined_in` and `with_context` hold the same document in the new scope, whatever that scope claims."""
-    group = ZarrV3GroupMetadata(CONSOLIDATED, context=Context.of())
+    group = ZarrV3GroupMetadata(CONSOLIDATED, context=ZarrV3Context())
     assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
     for moved in (group.refined_in(CORE), group.with_context(PRIVATE)):
         assert moved == group
@@ -496,7 +498,7 @@ def test_group_update_with_context_and_refined_in_keep_the_document() -> None:
 
 def test_consolidated_metadata_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
     """`refined_in` moves every document up the order. `with_context` reads every document in another scope."""
-    held = ZarrV3ConsolidatedMetadata(MEMBER, context=Context.of())
+    held = ZarrV3ConsolidatedMetadata(MEMBER, context=ZarrV3Context())
     refined = held.refined_in(CORE)
     assert refined.refines(held)
     assert refined.context == CORE
@@ -556,7 +558,7 @@ def test_the_held_field_machinery_is_gone() -> None:
 
 def test_error_refined_in_refuses_a_gain_that_surfaces_a_problem() -> None:
     """A scope that claims a name the current scope left unclaimed may refuse what was written under that name. Then `refined_in` raises `MetadataValidationError`, because the document has a problem in that scope."""
-    loose = ZarrV3ArrayMetadata({**ARRAY, "fill_value": "banana"}, context=Context.of())
+    loose = ZarrV3ArrayMetadata({**ARRAY, "fill_value": "banana"}, context=ZarrV3Context())
     with pytest.raises(MetadataValidationError) as raised:
         loose.refined_in(CORE)
     assert [problem.loc for problem in raised.value.problems] == [("fill_value",)]
@@ -566,7 +568,7 @@ def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
     """`refined_in` reports each conflict with the field's location in the document, the same way a problem is located. For example, a loss of `bytes` is reported at `codecs.0`, including inside the shard."""
     model = ZarrV3ArrayMetadata(SHARDED, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
-        model.refined_in(Context.of())
+        model.refined_in(ZarrV3Context())
     assert sorted((conflict.key[1], conflict.loc) for conflict in raised.value.conflicts) == [
         ("bytes", ("codecs", 0, "configuration", "codecs", 0)),
         ("bytes", ("codecs", 0, "configuration", "index_codecs", 0)),
@@ -595,7 +597,7 @@ def test_with_context_moves_every_listed_model_without_reading_again(
     assert held.reading.metadata is held
     for node in held.metadata.values():
         assert node.reading.metadata is node
-    context = CORE.extended_with(ZSTD_CODEC)
+    context = CORE.extended_with(codecs=[ZSTD_CODEC])
     moved = held.with_context(context)
     assert moved.context is context
     before = held.metadata["a"]

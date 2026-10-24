@@ -29,7 +29,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import Context, ZarrV2Context, scoped
+from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import (
     AcceptedField,
     ResolvedField,
@@ -57,6 +57,9 @@ from zarr_metadata.model._shared import (
     other_members,
     reading_of,
 )
+
+# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
@@ -183,7 +186,7 @@ class ZarrV2ArrayMetadataReading:
 
 
 def read_array_v2(
-    value: object, context: Context, *, at: Loc = ()
+    value: object, context: ZarrV2Context, *, at: Loc = ()
 ) -> tuple[ZarrV2ArrayMetadataReading, ArrayMembersV2 | None]:
     """Read `value`, a v2 array document, once in `context`. Return the reading, and the other members when there are no problems.
 
@@ -513,7 +516,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def _of(
         cls,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV2Context,
         reading: ZarrV2ArrayMetadataReading,
         members: ArrayMembersV2,
     ) -> ZarrV2ArrayMetadata:
@@ -525,7 +528,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def _adopt(
         self,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV2Context,
         reading: ZarrV2ArrayMetadataReading,
         members: ArrayMembersV2,
     ) -> None:
@@ -543,7 +546,7 @@ class ZarrV2ArrayMetadata(Keyed):
     # --- the pair ---------------------------------------------------------
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV2Context:
         """The scope the document was read in. `update` reads new members in this scope."""
         return self._context
 
@@ -623,7 +626,7 @@ class ZarrV2ArrayMetadata(Keyed):
             return json_text(spelled_canonically(self.dtype, fill_value))
         return json_text(fill_value)
 
-    def __reduce__(self) -> tuple[type[ZarrV2ArrayMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV2ArrayMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
     # --- typed views ------------------------------------------------------

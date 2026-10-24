@@ -16,7 +16,6 @@ import pytest
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     Definition,
     RefusedField,
     UnclaimedField,
@@ -39,6 +38,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     StorageTransformerDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -228,7 +228,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
 )
 def test_a_document_reads_as_each_field_where_it_sits_and_its_codecs_as_a_pipeline(
     document: dict[str, Any],
-    context: Context,
+    context: ZarrV3Context,
     fields: list[tuple[Loc, type[Definition[Any]], type]],
     handed: list[Lengths | None],
 ) -> None:

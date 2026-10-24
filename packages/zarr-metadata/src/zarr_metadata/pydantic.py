@@ -67,7 +67,7 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, Final, LiteralString, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Final, LiteralString, Protocol, TypeVar, cast
 
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
 from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
@@ -166,12 +166,16 @@ CONTEXT_KEY_V2: Final = "zarr_metadata_context_v2"
 _Read_co = TypeVar("_Read_co", covariant=True)
 
 
-class _Reads(Protocol[_Read_co]):
-    def __call__(self, data: object, /, *, context: Context) -> _Read_co: ...
+_Context_contra = TypeVar("_Context_contra", bound=Context, contravariant=True)
+_C = TypeVar("_C", bound=Context)
+
+
+class _Reads(Protocol[_Read_co, _Context_contra]):
+    def __call__(self, data: object, /, *, context: _Context_contra) -> _Read_co: ...
 
 
 def _read_in_context(
-    cls: type[_M], read: _Reads[_M], default: Context[Any], key: str
+    cls: type[_M], read: _Reads[_M, _C], default: _C, key: str
 ) -> Callable[[object, ValidationInfo], _M]:
     """A validator that returns instances of `cls` unchanged, and reads any other value in the `Context` stored in the validation context under `key`, or in `default` if there is none."""
 
@@ -185,7 +189,7 @@ def _read_in_context(
     return coerce
 
 
-def _context_of(validation_context: object, default: Context[Any], key: str) -> Context[Any]:
+def _context_of(validation_context: object, default: _C, key: str) -> _C:
     """The `Context` a pydantic validation context gives for one format. If the validation context is a `Context`, it is the context for every field type of its format. If it is a mapping with a `key` item, that item is the context for this format. Otherwise the context is `default`, the format's core context.
 
     A bare `Context` of the other format raises `TypeError`, as it does in
@@ -200,7 +204,7 @@ def _context_of(validation_context: object, default: Context[Any], key: str) -> 
     if not is_context(context):
         msg = f"{key}: the context to read in is a Context, got {context!r}"
         raise TypeError(msg)
-    return context
+    return scoped(context, default)
 
 
 ZarrV3ArrayMetadataField = Annotated[

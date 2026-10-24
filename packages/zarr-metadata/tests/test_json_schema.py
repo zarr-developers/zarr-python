@@ -24,7 +24,6 @@ from typing_extensions import Doc, TypeAliasType, TypedDict
 from tests.v3.test_every_definition import CASES, KINDS
 from zarr_metadata._typed_json import Schemas
 from zarr_metadata.definition import (
-    Context,
     Definition,
     resolve,
 )
@@ -45,6 +44,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     StorageTransformerDefinition,
+    ZarrV3Context,
 )
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
@@ -471,7 +471,7 @@ def _changed(draw: st.DrawFn, value: object) -> object:
     return value
 
 
-_CONTEXTS = (CORE, CORE_AND_EXTENSIONS, Context.of())
+_CONTEXTS = (CORE, CORE_AND_EXTENSIONS, ZarrV3Context())
 _FIELD_BASES: tuple[tuple[str, object], ...] = (
     *CASES,
     # Names that nothing claims, so nothing checks their configuration.
@@ -496,7 +496,7 @@ _INDEXED = {"chunk_shape": [2], "codecs": ["bytes"]}
 # Each field, the kind and scope it is read in, whether the schema accepts
 # it, and whether the scope reads it without a problem. Where the two
 # differ, a rule found a problem that the schema cannot express.
-FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
+FIELDS: list[tuple[str, object, type[Definition[Any]], ZarrV3Context, bool, bool]] = [
     ("object", {"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CORE, True, True),
     (
         "out-of-bounds",
@@ -562,7 +562,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
         "out-of-scope",
         {"name": "gzip", "configuration": {"level": 12}},
         CodecDefinition,
-        Context.of(),
+        ZarrV3Context(),
         True,
         True,
     ),
@@ -701,7 +701,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
     ids=[case[0] for case in FIELDS],
 )
 def test_field_json_schema_says_what_the_scope_reads(
-    field: object, kind: type[Definition[Any]], context: Context, accepted: bool, clean: bool
+    field: object, kind: type[Definition[Any]], context: ZarrV3Context, accepted: bool, clean: bool
 ) -> None:
     schema = field_json_schema_v3(kind, context=context)
     Draft202012Validator.check_schema(schema)
@@ -901,10 +901,10 @@ def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.Da
 
 @pytest.mark.parametrize(
     "context",
-    [CORE, CORE_AND_EXTENSIONS, Context.of()],
+    [CORE, CORE_AND_EXTENSIONS, ZarrV3Context()],
     ids=["core", "core-and-extensions", "empty"],
 )
-def test_every_schema_is_a_json_schema_written_the_same_each_time(context: Context) -> None:
+def test_every_schema_is_a_json_schema_written_the_same_each_time(context: ZarrV3Context) -> None:
     schema = node_metadata_json_schema_v3(context=context)
     Draft202012Validator.check_schema(schema)
     assert json.loads(json.dumps(schema)) == schema

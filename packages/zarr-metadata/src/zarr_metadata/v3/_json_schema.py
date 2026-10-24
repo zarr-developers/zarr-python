@@ -5,8 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from zarr_metadata._typed_json import Schemas, is_alias
-from zarr_metadata.definition._context import Context, ZarrV3Context, scoped
-from zarr_metadata.definition._definition import Definition, EmptyConfiguration, as_kind, field_kind
+from zarr_metadata.definition._context import scoped
+from zarr_metadata.definition._definition import (
+    Definition,
+    EmptyConfiguration,
+    as_kind,
+    field_kind,
+    kind_of,
+)
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
@@ -25,6 +31,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import JSONSchema, SchemaLeaf
+    from zarr_metadata.v3._context import ZarrV3Context
 
 
 def kind_field(kind: type[Definition[Any]]) -> object:
@@ -72,7 +79,7 @@ def field_json_schema_v3(
     return schemas.document(schemas.of(kind_field(asked)))
 
 
-def field_schemas(context: Context) -> SchemaLeaf:
+def field_schemas(context: ZarrV3Context) -> SchemaLeaf:
     """The schema leaf that `field_json_schema_v3` uses. It writes each field alias as a field of its kind, as `context` reads it."""
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
@@ -89,10 +96,14 @@ def field_schemas(context: Context) -> SchemaLeaf:
 
 
 def _field_schema(
-    kind: type[Definition[Any]], static: bool, context: Context, schemas: Schemas
+    kind: type[Definition[Any]], static: bool, context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
     """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims."""
-    table = context.tables.get(kind, {})
+    table = {
+        definition.name: definition
+        for definition in context.definitions
+        if kind_of(definition) is kind
+    }
     branches: list[JSONValue] = []
     for definition in table.values():
         if static and cast("CodecDefinition[Any]", definition).size != "static":
@@ -188,7 +199,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     return schemas.document({"anyOf": [array, group]})
 
 
-def _documents(context: Context) -> SchemaLeaf:
+def _documents(context: ZarrV3Context) -> SchemaLeaf:
     """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, and each field as `context` reads it."""
     fields = field_schemas(context)
 
@@ -206,7 +217,7 @@ def _documents(context: Context) -> SchemaLeaf:
     return leaf
 
 
-def _array(context: Context, schemas: Schemas) -> JSONSchema:
+def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
     """An array document: its TypedDict, at least one codec, and a constraint on its fill value for each data type in scope, which applies when the document names that data type.
 
     The TypedDict cannot declare a minimum length, so the schema adds it:
@@ -218,9 +229,7 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
     codecs = cast("dict[str, JSONValue]", properties["codecs"])
     schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     held: list[JSONValue] = []
-    for definition in context.definitions:
-        if not isinstance(definition, DataTypeDefinition):
-            continue
+    for definition in context.data_types.values():
         fill_value = schemas.of(definition.fill_value)
         if len(fill_value) == 0:
             continue  # a data type that declares no fill value shape accepts any JSON

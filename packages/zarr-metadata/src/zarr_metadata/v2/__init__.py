@@ -5,10 +5,10 @@ Each document type is in the submodule for its node or file: `array`
 `consolidated` (`.zmetadata`). The codecs and data types are in `codec`
 and `data_type`, and the v2 kinds and scope are in `definition`.
 
-This module also exports every v2 definition (`GZIP_V2`, `FLOAT_V2`, ...)
-and the scope `CORE_V2`, so that one import builds or extends a scope.
-Each is the same object as in its own submodule, where its configuration
-types and constants are.
+This module also exports every v2 definition (`GZIP_V2`, `FLOAT_V2`, ...),
+the scope `CORE_V2`, and the scope class `ZarrV2Context`, so that one
+import builds or extends a scope. Each is the same object as in its own
+submodule, where a definition's configuration types and constants are.
 """
 
 from zarr_metadata.v2.codec.checksum import (
@@ -58,7 +58,7 @@ from zarr_metadata.v2.data_type.time import (
     DATETIME64_V2,
     TIMEDELTA64_V2,
 )
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 
 __all__ = [
     "ADLER32_V2",
@@ -95,4 +95,5 @@ __all__ = [
     "VOID_V2",
     "ZLIB_V2",
     "ZSTD_V2",
+    "ZarrV2Context",
 ]

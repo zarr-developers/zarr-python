@@ -420,8 +420,8 @@ def _fill_value_parser(annotation: object) -> Parser:
     return parser(annotation, _no_field)
 
 
-def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
-    """The kind of `definition`: the nearest class in its MRO declared with `kind=True`. None for a definition with no kind, which no scope can file."""
+def kind_of(definition: object) -> type[Definition[Any]] | None:
+    """The kind of `definition`: the nearest class in its MRO declared with `kind=True`. None for a definition with no kind, which no scope can file, and for a value that is not a definition."""
     return _kind_of_class(type(definition))
 
 
@@ -471,8 +471,8 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     if found is not None:
         return found
     msg = (
-        f"{kind!r} is not a kind of metadata; read a field as a kind, such as a format's "
-        "CodecDefinition, or a subclass of Definition declared with kind=True and its format"
+        f"{kind!r} is not a kind of metadata; read a field as one of the kinds of a format, "
+        "such as CodecDefinition"
     )
     raise TypeError(msg)
 
@@ -488,7 +488,7 @@ class Scope(Protocol):
     """What reading a field needs from a scope: its format, and which definition of a kind claims a name. A `Context` satisfies this protocol, and so does any other object that provides these two."""
 
     @property
-    def format(self) -> Literal[2, 3] | None: ...
+    def zarr_format(self) -> Literal[2, 3]: ...
 
     def claimant(self, kind: type[D], name: str) -> D | None: ...
 
@@ -1325,11 +1325,11 @@ def resolve_refined(
     JSON. If it contains any problems, `refined` is not used.
     """
     asked = as_kind(kind)
-    scope_format = context.format
-    if scope_format is not None and scope_format != format_of(asked):
+    scope_format = context.zarr_format
+    if scope_format != format_of(asked):
         msg = (
             f"a {asked.label} is a field of a Zarr v{format_of(asked)} document, read in a scope "
-            f"of that format or of none, got a v{scope_format} scope"
+            f"of that format, got a v{scope_format} scope"
         )
         raise TypeError(msg)
     if len(problems) != 0:

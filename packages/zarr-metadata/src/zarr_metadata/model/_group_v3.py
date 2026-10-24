@@ -38,7 +38,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import Context, ZarrV3Context, scoped
+from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._scope import (
     Claims,
     Conflict,
@@ -70,6 +70,9 @@ from zarr_metadata.model._shared import (
     unexpected_keys,
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField
+
+# A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
+from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults, said
 from zarr_metadata.v3.consolidated import (
@@ -192,7 +195,7 @@ class ZarrV3GroupMetadata(Keyed):
 
     @classmethod
     def _of(
-        cls, document: dict[str, JSONValue], context: Context, members: GroupMembersV3
+        cls, document: dict[str, JSONValue], context: ZarrV3Context, members: GroupMembersV3
     ) -> ZarrV3GroupMetadata:
         """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
         model = object.__new__(cls)
@@ -200,7 +203,7 @@ class ZarrV3GroupMetadata(Keyed):
         return model
 
     def _adopt(
-        self, document: dict[str, JSONValue], context: Context, members: GroupMembersV3
+        self, document: dict[str, JSONValue], context: ZarrV3Context, members: GroupMembersV3
     ) -> None:
         self._document = document
         self._context = context
@@ -219,7 +222,7 @@ class ZarrV3GroupMetadata(Keyed):
     # --- the pair ---------------------------------------------------------
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV3Context:
         """The scope the document was read in. `update` reads new members in this scope."""
         return self._context
 
@@ -256,7 +259,7 @@ class ZarrV3GroupMetadata(Keyed):
             json_text(members.extra_fields),
         )
 
-    def __reduce__(self) -> tuple[type[ZarrV3GroupMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV3GroupMetadata], tuple[object, ZarrV3Context]]:
         # Pickle the pair, and read it again on load.
         return type(self), (self._document, self._context)
 
@@ -408,7 +411,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     def _of(
         cls,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV3Context,
         metadata: dict[str, ZarrV3NodeMetadata],
     ) -> ZarrV3ConsolidatedMetadata:
         """Build the model of a member that a read found no problems with, holding the models that read built. The readers in this package build models through this method; pyright reports these calls as private use."""
@@ -419,7 +422,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     def _adopt(
         self,
         document: dict[str, JSONValue],
-        context: Context,
+        context: ZarrV3Context,
         metadata: dict[str, ZarrV3NodeMetadata],
     ) -> None:
         self._document = document
@@ -432,7 +435,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         return ZarrV3ConsolidatedMetadataReading(metadata=self)
 
     @property
-    def context(self) -> Context:
+    def context(self) -> ZarrV3Context:
         """The scope the documents were read in."""
         return self._context
 
@@ -455,7 +458,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
             for path, node in sorted(self.metadata.items(), key=lambda item: item[0])
         )
 
-    def __reduce__(self) -> tuple[type[ZarrV3ConsolidatedMetadata], tuple[object, Context]]:
+    def __reduce__(self) -> tuple[type[ZarrV3ConsolidatedMetadata], tuple[object, ZarrV3Context]]:
         return type(self), (self._document, self._context)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ConsolidatedMetadata:
@@ -671,7 +674,7 @@ def validate_node_metadata_v3(
 
 
 def _read_node_v3(
-    value: object, context: Context, at: tuple[str | int, ...] = ()
+    value: object, context: ZarrV3Context, at: tuple[str | int, ...] = ()
 ) -> tuple[ZarrV3NodeMetadataReading, ArrayMembersV3 | GroupMembersV3 | None]:
     """Read `value` as `read_node_metadata_v3` does, without building models, and return its refined members.
 
@@ -750,7 +753,7 @@ def read_group_metadata_v3(
 
 
 def read_group_v3(
-    value: object, context: Context, *, at: tuple[str | int, ...] = ()
+    value: object, context: ZarrV3Context, *, at: tuple[str | int, ...] = ()
 ) -> tuple[ZarrV3GroupMetadataReading, GroupMembersV3 | None]:
     """Read `value`, a v3 group document, in `context`, without building a model. Return the reading and the refined members; the members are None when `value` is not an object.
 
@@ -849,7 +852,7 @@ def _envelope_of(
 
 
 def _read_node_model(
-    entry: ZarrV3ArrayMetadata | ZarrV3GroupMetadata, context: Context, at: Loc
+    entry: ZarrV3ArrayMetadata | ZarrV3GroupMetadata, context: ZarrV3Context, at: Loc
 ) -> tuple[ZarrV3NodeMetadataReading, ArrayMembersV3 | GroupMembersV3 | None]:
     """Read `entry`, a node model given in place of a listed document, in `context`.
 
@@ -929,7 +932,7 @@ class _Listing:
 
 
 def _read_consolidated_v3(
-    value: object, context: Context, at: tuple[str | int, ...] = ()
+    value: object, context: ZarrV3Context, at: tuple[str | int, ...] = ()
 ) -> tuple[
     dict[str, ZarrV3NodeMetadataReading],
     dict[str, ArrayMembersV3 | GroupMembersV3],
@@ -1158,7 +1161,7 @@ def _below_faults(path: str) -> list[str]:
 
 
 def _nested_models(
-    context: Context,
+    context: ZarrV3Context,
     readings: Mapping[str, ZarrV3NodeMetadataReading],
     members: Mapping[str, ArrayMembersV3 | GroupMembersV3],
 ) -> dict[str, ZarrV3NodeMetadata]:

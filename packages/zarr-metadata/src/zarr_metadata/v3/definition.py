@@ -5,9 +5,11 @@ The kind of metadata a definition defines is its type: `CodecDefinition`
 is determined by the input size, or `"dynamic"` if it depends on the
 values), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`. What a
-definition is, how a field is read, and the scope type `Context` are in
-`zarr_metadata.definition`, which both formats share. `CORE` and
-`CORE_AND_EXTENSIONS` are the v3 scopes this package provides.
+definition is and how a field is read are in `zarr_metadata.definition`,
+which both formats share. `ZarrV3Context` is the v3 scope, with one slot
+for each kind: `data_types`, `chunk_grids`, `chunk_key_encodings`,
+`codecs` and `storage_transformers`. `CORE` and `CORE_AND_EXTENSIONS`
+are the v3 scopes this package provides.
 
 A scope reads whole documents as well as fields.
 `validate_array_metadata_v3(document, context=CONTEXT)`, from
@@ -88,7 +90,6 @@ refers to nothing in any scope.
 `zarr.json`, as a JSON Schema.
 """
 
-from zarr_metadata.definition._context import ZarrV3Context
 from zarr_metadata.v3._common import (
     ZarrV3ChunkGridField,
     ZarrV3ChunkKeyEncodingField,
@@ -97,6 +98,7 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecField,
     ZarrV3StorageTransformerField,
 )
+from zarr_metadata.v3._context import ZarrV3Context
 from zarr_metadata.v3._core import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     Chunk,

@@ -8,7 +8,6 @@ import pytest
 
 from zarr_metadata.definition import (
     AcceptedField,
-    Context,
     EmptyConfiguration,
     RefusedField,
     UnclaimedField,
@@ -27,11 +26,12 @@ from zarr_metadata.v2.data_type.scalar import FLOAT_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
+    ZarrV2Context,
 )
 
 Loc = tuple[str | int, ...]
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default(shape=(4,)).to_json())
-PRIVATE = Context.of(FLOAT_V2, ZLIB_V2)
+PRIVATE = ZarrV2Context(data_types=[FLOAT_V2], codecs=[ZLIB_V2])
 
 
 @pytest.mark.parametrize(
@@ -72,7 +72,7 @@ PRIVATE = Context.of(FLOAT_V2, ZLIB_V2)
 )
 def test_a_reading_holds_each_field_as_the_scope_read_it(
     changes: dict[str, Any],
-    context: Context | None,
+    context: ZarrV2Context | None,
     dtype: type,
     compressor: object,
     filters: object,
@@ -122,7 +122,7 @@ def test_the_v2_readers_read_in_the_scope_given() -> None:
     bare = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
     doc = {**BASE, "compressor": {"id": "zlib", "level": 1}}
     assert validate_array_metadata_v2(doc) == ()
-    found = validate_array_metadata_v2(doc, context=CORE_V2.extended_with(bare))
+    found = validate_array_metadata_v2(doc, context=CORE_V2.extended_with(codecs=[bare]))
     assert [p.loc for p in found] == [("compressor", "level")]
 
 

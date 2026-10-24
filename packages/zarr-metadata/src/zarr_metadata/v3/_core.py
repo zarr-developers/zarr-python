@@ -10,9 +10,9 @@ as an `UnclaimedField` and not checked.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 
-from zarr_metadata.definition._context import Context, ZarrV3Context
+from zarr_metadata.v3._context import ZarrV3Context
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_key_encoding.default import DEFAULT_CHUNK_KEY_ENCODING
@@ -47,56 +47,49 @@ from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
 from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 
-if TYPE_CHECKING:
-    from zarr_metadata.definition._definition import Definition
-
-_CORE: Final[tuple[Definition[Any], ...]] = (
-    BLOSC_CODEC,
-    BYTES_CODEC,
-    CRC32C_CODEC,
-    GZIP_CODEC,
-    SHARDING_INDEXED_CODEC,
-    TRANSPOSE_CODEC,
-    BOOL_DATA_TYPE,
-    INT8_DATA_TYPE,
-    INT16_DATA_TYPE,
-    INT32_DATA_TYPE,
-    INT64_DATA_TYPE,
-    UINT8_DATA_TYPE,
-    UINT16_DATA_TYPE,
-    UINT32_DATA_TYPE,
-    UINT64_DATA_TYPE,
-    FLOAT16_DATA_TYPE,
-    FLOAT32_DATA_TYPE,
-    FLOAT64_DATA_TYPE,
-    COMPLEX64_DATA_TYPE,
-    COMPLEX128_DATA_TYPE,
-    RAW_BYTES_DATA_TYPE,
-    REGULAR_CHUNK_GRID,
-    DEFAULT_CHUNK_KEY_ENCODING,
-    V2_CHUNK_KEY_ENCODING,
+CORE: Final = ZarrV3Context(
+    data_types=(
+        BOOL_DATA_TYPE,
+        INT8_DATA_TYPE,
+        INT16_DATA_TYPE,
+        INT32_DATA_TYPE,
+        INT64_DATA_TYPE,
+        UINT8_DATA_TYPE,
+        UINT16_DATA_TYPE,
+        UINT32_DATA_TYPE,
+        UINT64_DATA_TYPE,
+        FLOAT16_DATA_TYPE,
+        FLOAT32_DATA_TYPE,
+        FLOAT64_DATA_TYPE,
+        COMPLEX64_DATA_TYPE,
+        COMPLEX128_DATA_TYPE,
+        RAW_BYTES_DATA_TYPE,
+    ),
+    chunk_grids=(REGULAR_CHUNK_GRID,),
+    chunk_key_encodings=(DEFAULT_CHUNK_KEY_ENCODING, V2_CHUNK_KEY_ENCODING),
+    codecs=(
+        BLOSC_CODEC,
+        BYTES_CODEC,
+        CRC32C_CODEC,
+        GZIP_CODEC,
+        SHARDING_INDEXED_CODEC,
+        TRANSPOSE_CODEC,
+    ),
 )
-"""What the Zarr v3 specification itself defines."""
-
-_EXTENSIONS: Final[tuple[Definition[Any], ...]] = (
-    CAST_VALUE_CODEC,
-    SCALE_OFFSET_CODEC,
-    ZSTD_CODEC,
-    BYTES_DATA_TYPE,
-    STRING_DATA_TYPE,
-    NUMPY_DATETIME64_DATA_TYPE,
-    NUMPY_TIMEDELTA64_DATA_TYPE,
-    STRUCT_DATA_TYPE,
-    RECTILINEAR_CHUNK_GRID,
-)
-"""The extensions that `zarr-extensions` registers and this package defines."""
-
-CORE: Final[ZarrV3Context] = Context.of(*_CORE)
 """A scope with only what the Zarr v3 specification defines."""
 
-CORE_AND_EXTENSIONS: Final[ZarrV3Context] = Context.of(*_CORE, *_EXTENSIONS)
-"""A scope with what the specification defines, plus what `zarr-extensions` registers."""
-
+CORE_AND_EXTENSIONS: Final = CORE.extended_with(
+    data_types=(
+        BYTES_DATA_TYPE,
+        STRING_DATA_TYPE,
+        NUMPY_DATETIME64_DATA_TYPE,
+        NUMPY_TIMEDELTA64_DATA_TYPE,
+        STRUCT_DATA_TYPE,
+    ),
+    chunk_grids=(RECTILINEAR_CHUNK_GRID,),
+    codecs=(CAST_VALUE_CODEC, SCALE_OFFSET_CODEC, ZSTD_CODEC),
+)
+"""A scope with what the specification defines, plus the extensions that `zarr-extensions` registers and this package defines."""
 
 __all__ = [
     "CORE",
