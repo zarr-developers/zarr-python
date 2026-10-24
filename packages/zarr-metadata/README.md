@@ -149,6 +149,10 @@ Some choices that the spec text leaves open, or answers in two ways:
   skips a codec reads wrong bytes, just as a reader that skips a data type
   reads wrong values. On an unknown top-level member, `must_understand`
   keeps its meaning: a reader can skip that member.
+- **A v2 datetime or timedelta dtype must have a unit**, as in `<M8[ns]`,
+  because the v2 spec requires the unit in brackets. zarr-python 3 writes
+  `<M8` or `<m8` for a NumPy `datetime64` or `timedelta64` with no unit,
+  and the package refuses those dtypes.
 
 A regular grid's chunk lengths must be at least 1, even along a dimension
 of length 0. The regular grid spec says "Chunk sizes must be greater than

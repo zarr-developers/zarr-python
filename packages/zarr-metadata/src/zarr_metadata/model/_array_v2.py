@@ -363,7 +363,7 @@ def validate_array_metadata_v2(
 def is_array_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
-    """Whether `value` is a valid v2 array metadata document, read in `context` (`CORE_V2` when none is given)."""
+    """Whether `value` is a v2 array document, written with tuples, that `validate_array_metadata_v2` finds no problems with, read in `context` (`CORE_V2` when none is given). A document with lists, as `json.loads` returns it, is not one; `parse_array_metadata_v2` returns it with tuples."""
     return (
         _is_canonical_json(value, finite=False)
         and not validate_array_metadata_v2(value, context=context)

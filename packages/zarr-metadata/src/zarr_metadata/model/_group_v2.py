@@ -114,7 +114,7 @@ def validate_group_metadata_v2(
 def is_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> TypeGuard[ZarrV2GroupMetadataJSON]:
-    """Whether `value` is a structurally-valid v2 group metadata document. `context` is accepted for consistency with every other v2 reader."""
+    """Whether `value` is a v2 group document, written with tuples, that `validate_group_metadata_v2` finds no problems with. `context` is accepted for consistency with every other v2 reader."""
     return _is_canonical_json(value, finite=False) and not validate_group_metadata_v2(
         value, context=context
     )
