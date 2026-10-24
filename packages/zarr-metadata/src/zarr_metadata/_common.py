@@ -33,6 +33,16 @@ building a `TypeAdapter`; a bare recursive `TypeAlias` raises
 `PydanticUserError`/`RecursionError` at validation time.
 """
 
+UserJSONValue = TypeAliasType("UserJSONValue", JSONValue)
+"""User data in a document, such as a node's attributes: a `JSONValue` in which a number may also be `NaN`, `Infinity` or `-Infinity`.
+
+The spec only requires attributes to be JSON values, and zarr-python
+writes these numbers as bare tokens, so a reader accepts them where a
+document holds user data. A configuration member annotated with this
+alias is checked that way; a member annotated `JSONValue` must hold
+finite numbers, as RFC 8259 requires.
+"""
+
 
 class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """

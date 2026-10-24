@@ -69,11 +69,12 @@ import annotated_types
 import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
-from zarr_metadata._common import JSONValue
+from zarr_metadata._common import JSONValue, UserJSONValue
 from zarr_metadata._json import (
     ValidationProblem,
     choices,
     copied,
+    is_canonical_json,
     is_json,
     is_list_or_tuple,
     is_object,
@@ -572,6 +573,7 @@ _BOOLEAN: Final = _scalar("a boolean", lambda value: isinstance(value, bool))
 _STRING: Final = _scalar("a string", lambda value: isinstance(value, str))
 _NULL: Final = _scalar("null", lambda value: value is None)
 _JSON: Final = _scalar("a JSON value", is_json)
+_USER_JSON: Final = _scalar("a JSON value", lambda value: is_canonical_json(value, finite=False))
 
 
 def one_of(allowed: tuple[object, ...]) -> Parser:
@@ -1065,6 +1067,8 @@ def _compile_type(inner: object, leaf: Leaf, building: _Building) -> Parser | No
         return _NULL
     if inner is JSONValue:
         return _JSON
+    if inner is UserJSONValue:
+        return _USER_JSON
     origin = get_origin(inner)
     if origin is Literal:
         return _literal(inner)

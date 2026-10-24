@@ -14,14 +14,15 @@ from zarr_metadata.definition._definition import (
     kind_of,
 )
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
+from zarr_metadata.v3._context import ZarrV3Context
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
-    KINDS,
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
     STATIC_SIZE_ALIASES,
     CodecDefinition,
     DataTypeDefinition,
+    ExtraFieldDefinition,
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import JSONSchema, SchemaLeaf
-    from zarr_metadata.v3._context import ZarrV3Context
 
 
 def kind_field(kind: type[Definition[Any]]) -> object:
@@ -52,7 +52,7 @@ valid name, would be read as raw bits.
 def field_json_schema_v3(
     kind: type[Definition[Any]], *, context: ZarrV3Context | None = None
 ) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader.
+    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
 
     The schema accepts a field that one of the definitions in scope reads
     (its name, its configuration as the TypedDict declares it, an optional
@@ -69,13 +69,16 @@ def field_json_schema_v3(
     a problem.
     """
     asked = as_kind(kind)
-    if not any(issubclass(asked, known) for known in KINDS):
+    if not any(issubclass(asked, known) for known in ZarrV3Context.kinds.values()):
         msg = (
             f"{asked.__name__} is a kind of another format; the JSON Schema writer writes "
             "Zarr v3 fields only"
         )
         raise TypeError(msg)
-    schemas = Schemas(field_schemas(scoped(context, CORE_AND_EXTENSIONS)))
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    schemas = Schemas(field_schemas(context))
+    if issubclass(asked, ExtraFieldDefinition):
+        return schemas.document(_extra_field_schema(asked, context, schemas))
     return schemas.document(schemas.of(kind_field(asked)))
 
 
@@ -110,6 +113,27 @@ def _field_schema(
             continue
         branches.extend(_read_by(definition, schemas))
     branches.extend(_unclaimed(table))
+    return {"anyOf": branches}
+
+
+def _extra_field_schema(
+    kind: type[Definition[Any]], context: ZarrV3Context, schemas: Schemas
+) -> JSONSchema:
+    """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key and any JSON value."""
+    claimed = [definition for definition in context.definitions if kind_of(definition) is kind]
+    branches: list[JSONValue] = [
+        {
+            "type": "object",
+            "properties": {definition.name: schemas.of(definition.configuration)},
+            "required": [definition.name],
+            "additionalProperties": False,
+        }
+        for definition in claimed
+    ]
+    unclaimed: JSONSchema = {"type": "object", "minProperties": 1, "maxProperties": 1}
+    if len(claimed) != 0:
+        unclaimed["propertyNames"] = {"not": {"enum": [definition.name for definition in claimed]}}
+    branches.append(unclaimed)
     return {"anyOf": branches}
 
 
@@ -200,7 +224,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
 
 
 def _documents(context: ZarrV3Context) -> SchemaLeaf:
-    """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, and each field as `context` reads it."""
+    """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, each field as `context` reads it, and each extra field that a definition in `context` claims."""
     fields = field_schemas(context)
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
@@ -210,11 +234,28 @@ def _documents(context: ZarrV3Context) -> SchemaLeaf:
             )
         if annotation is ZarrV3GroupMetadataJSON:
             return schemas.defined(
-                annotation, annotation.__name__, lambda: schemas.object_of(ZarrV3GroupMetadataJSON)
+                annotation,
+                annotation.__name__,
+                lambda: _with_extra_fields(
+                    schemas.object_of(ZarrV3GroupMetadataJSON), context.group_extra_fields, schemas
+                ),
             )
         return fields(annotation, schemas)
 
     return leaf
+
+
+def _with_extra_fields(
+    schema: JSONSchema, definitions: Mapping[str, ExtraFieldDefinition[Any]], schemas: Schemas
+) -> JSONSchema:
+    """`schema`, a node document's schema, with a property for each extra field in `definitions`: the member's value, as the configuration TypedDict of the definition that claims its key declares it."""
+    if len(definitions) == 0:
+        return schema
+    properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
+    extra: dict[str, JSONValue] = {
+        key: schemas.of(definition.configuration) for key, definition in definitions.items()
+    }
+    return {**schema, "properties": {**properties, **extra}}
 
 
 def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
@@ -228,6 +269,7 @@ def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
     properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
     codecs = cast("dict[str, JSONValue]", properties["codecs"])
     schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
+    schema = _with_extra_fields(schema, context.array_extra_fields, schemas)
     held: list[JSONValue] = []
     for definition in context.data_types.values():
         fill_value = schemas.of(definition.fill_value)

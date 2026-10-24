@@ -154,7 +154,7 @@ def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
     if member == "attributes":
         assert built.attributes == expected
     else:
-        assert built.extra_fields[member] == expected
+        assert built.extra_fields[member].to_json() == {member: expected}
     assert type(built).from_key_value(built.to_key_value()) == built
 
 

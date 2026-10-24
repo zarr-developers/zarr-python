@@ -72,7 +72,7 @@ def _group_document(**entries: object) -> dict[str, Any]:
             CORE,
             ZarrV3GroupMetadata(_group_document(x=ARRAY), context=ZarrV3Context()),
             {"a/x": ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context())},
-            False,
+            True,
         ),
     ],
     ids=["same-scope", "unused-definitions", "gain", "listed-group-and-its-child"],
@@ -83,7 +83,7 @@ def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_sc
     beside: dict[str, Any],
     gained: bool,
 ) -> None:
-    """A node model can be given wherever consolidated metadata lists a document. The model is accepted in two cases. If the scope of the consolidated metadata reads every claim of the model identically, the model's reading is kept and not read again. If that scope claims something that the model's scope left unclaimed, the model's document is read again in that scope. In both cases the consolidated metadata holds the model in its own scope, equals the one built from the documents, and a group it is given to writes plain JSON. A group model has no fields, so it is always kept. A listed group's own listing is listed flat next to it, as the convention asks."""
+    """A node model can be given wherever consolidated metadata lists a document. The model is accepted in two cases. If the scope of the consolidated metadata reads every claim of the model identically, the model's reading is kept and not read again. If that scope claims something that the model's scope left unclaimed, the model's document is read again in that scope. In both cases the consolidated metadata holds the model in its own scope, equals the one built from the documents, and a group it is given to writes plain JSON. A group model's fields are its extra fields: read in a scope that claims nothing, its `consolidated_metadata` is unclaimed, and the scope of the consolidated metadata gains it. A listed group's own listing is listed flat next to it, as the convention asks."""
     held = _consolidated(context, a=child, **beside)
     node = held.metadata["a"]
     assert node.context is held.context

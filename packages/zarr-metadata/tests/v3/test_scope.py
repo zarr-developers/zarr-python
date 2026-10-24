@@ -33,10 +33,12 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    ArrayExtraFieldDefinition,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
+    GroupExtraFieldDefinition,
     StorageTransformerDefinition,
     ZarrV3Context,
 )
@@ -485,13 +487,15 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
 
 
 def test_each_slot_is_a_read_only_view_by_name() -> None:
-    """A v3 scope has one slot per kind, as `ZarrV3Context.kinds` lists them. Each slot maps the name each definition is filed under to the definition, and cannot be changed in place."""
+    """A v3 scope has one slot per kind, as `ZarrV3Context.kinds` lists them: the five extension points, and the extra fields of arrays and of groups. Each slot maps the name each definition is filed under to the definition, and cannot be changed in place."""
     assert dict(ZarrV3Context.kinds) == {
         "data_types": DataTypeDefinition,
         "chunk_grids": ChunkGridDefinition,
         "chunk_key_encodings": ChunkKeyEncodingDefinition,
         "codecs": CodecDefinition,
         "storage_transformers": StorageTransformerDefinition,
+        "array_extra_fields": ArrayExtraFieldDefinition,
+        "group_extra_fields": GroupExtraFieldDefinition,
     }
     assert CORE.codecs["gzip"] is GZIP_CODEC
     assert CORE.data_types["r*"] is RAW_BYTES_DATA_TYPE

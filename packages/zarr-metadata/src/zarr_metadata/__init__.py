@@ -142,6 +142,7 @@ from zarr_metadata.v3.codec.transpose import (
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME, ZstdCodecMetadata, ZstdCodecName
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
+    ZarrV3ConsolidatedMetadataEnvelopeJSON,
     ZarrV3ConsolidatedMetadataJSON,
 )
 from zarr_metadata.v3.data_type.bool import (
@@ -244,7 +245,6 @@ from zarr_metadata.v3.data_type.uint64 import (
 )
 from zarr_metadata.v3.group import (
     ZARR_V3_GROUP_METADATA_STORE_KEY,
-    ZarrV3ConsolidatedMetadataEnvelopeJSON,
     ZarrV3GroupMetadataJSON,
     ZarrV3GroupMetadataJSONPartial,
     ZarrV3GroupMetadataStoreKey,

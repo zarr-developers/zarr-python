@@ -63,6 +63,7 @@ from zarr_metadata._json import (
     is_tuple,
     json_text,
     refine_json,
+    refine_user_data,
     shown,
     with_input,
 )
@@ -232,6 +233,20 @@ class Definition(Generic[C]):
         return {"name": name}
 
     @classmethod
+    def unclaimed_json(
+        cls, json: JSONValue, name: str, configuration: Mapping[str, JSONValue]
+    ) -> JSONValue:
+        """A field of this kind that no definition claims, as a document writes it: `json` is the field as written. By default the name and configuration go in the envelope every reader accepts, as for a field a definition read."""
+        return cls.envelope_json(name, configuration)
+
+    @classmethod
+    def refined(
+        cls, data: object, loc: Loc, definition: Definition[Any] | None
+    ) -> tuple[JSONValue | None, Problems]:
+        """`data`, a field of this kind at `loc`, refined to JSON before it is read, with every reason it is not JSON. `definition` is the definition that claims the field, if any. By default every number must be finite, as RFC 8259 requires."""
+        return refine_json(data, loc)
+
+    @classmethod
     def configuration_loc(cls, loc: Loc) -> Loc:
         """The location of the configuration of a field at `loc`: under `configuration` for v3, or at the field itself for a format that writes the parameters next to the name."""
         return (*loc, "configuration")
@@ -300,6 +315,10 @@ class Definition(Generic[C]):
         """A description of what is wrong with the members a kind adds; None if nothing is wrong, or if the kind adds no members."""
         return None
 
+    def _finite_numbers(self) -> bool:
+        """Whether every number in a configuration this definition reads must be finite, as RFC 8259 requires. A kind whose configuration may hold user data overrides this."""
+        return True
+
     @property
     def requires_configuration(self) -> bool:
         """Whether a document must include a configuration, meaning the TypedDict has a required key."""
@@ -312,7 +331,9 @@ class Definition(Generic[C]):
         method also checks the envelope of each metadata field that a
         member holds.
         """
-        configuration, problems = _configuration_checked(value, self.configuration, loc)
+        configuration, problems = _configuration_checked(
+            value, self.configuration, loc, finite=self._finite_numbers()
+        )
         return configuration, with_input(problems, value, loc)
 
     def read_configuration(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
@@ -748,7 +769,7 @@ def _envelope(field: _NestedField) -> Problems:
 
 
 def _configuration_checked(
-    value: object, shape: type[T], loc: Loc = ()
+    value: object, shape: type[T], loc: Loc = (), *, finite: bool = True
 ) -> tuple[T | None, Problems]:
     """Check `value` as `shape`, as `typed_json.check` does, and check the envelope of each nested field.
 
@@ -758,9 +779,12 @@ def _configuration_checked(
     is a problem of the configuration, and no value is returned. An extra
     member is an unknown key: it is reported and left out, and the value is
     still returned. This matches how the checker reports and leaves out a
-    key that a closed TypedDict does not declare.
+    key that a closed TypedDict does not declare. A number that is not
+    finite is a problem unless `finite` is false, for a configuration that
+    holds user data; the TypedDict still decides where such a number may
+    be.
     """
-    refined, problems = refine_json(value, loc)
+    refined, problems = (refine_json if finite else refine_user_data)(value, loc)
     if len(problems) != 0:
         return None, problems
     typed, found, nested = _typed(shape, refined, loc)
@@ -1124,7 +1148,9 @@ def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
 def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
     """A field that a scope accepted or left unclaimed, as a document writes it. This is `document_json` for a field that is JSON."""
     kind = field.read_as
-    if isinstance(field, AcceptedField) and kind.filed_under(field.name)[1] is not None:
+    if isinstance(field, UnclaimedField):
+        return kind.unclaimed_json(field.json, field.name, field.configuration)
+    if kind.filed_under(field.name)[1] is not None:
         return kind.envelope_json(field.name, {})
     return kind.envelope_json(field.name, field.configuration)
 
@@ -1305,7 +1331,12 @@ def resolve(
     `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`), with or
     without type arguments. Anything else raises `TypeError`.
     """
-    refined, problems = refine_json(data, loc)
+    asked = as_kind(kind)
+    name = asked.named_configuration(data)[0]
+    definition = (
+        None if name is None or not asked.well_named(name) else context.claimant(asked, name)
+    )
+    refined, problems = asked.refined(data, loc, definition)
     return resolve_refined(data, refined, problems, kind, context, loc)
 
 

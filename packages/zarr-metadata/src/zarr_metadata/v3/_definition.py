@@ -1,8 +1,9 @@
 """The kinds of metadata in a Zarr v3 document, and what reading one needs that is specific to v3.
 
-The five kinds are `DataTypeDefinition`, `ChunkGridDefinition`,
-`ChunkKeyEncodingDefinition`, `CodecDefinition` and
-`StorageTransformerDefinition`. This module also holds the chunk that a
+The kinds at the spec's five extension points are `DataTypeDefinition`,
+`ChunkGridDefinition`, `ChunkKeyEncodingDefinition`, `CodecDefinition`
+and `StorageTransformerDefinition`. `ArrayExtraFieldDefinition` and
+`GroupExtraFieldDefinition` read members the spec does not define. This module also holds the chunk that a
 codec receives, how a data type's values are stored, the raw bits name
 `r*`, and the JSON Schema of a v3 field. The reading itself is in
 `zarr_metadata.definition`, which both formats share.
@@ -28,7 +29,14 @@ from typing import (
 
 from typing_extensions import TypeAliasType
 
-from zarr_metadata._json import ValidationProblem, is_tuple, with_input
+from zarr_metadata._json import (
+    ValidationProblem,
+    is_object,
+    is_tuple,
+    refine_json,
+    refine_user_data,
+    with_input,
+)
 from zarr_metadata._typed_json import Loc, problem
 from zarr_metadata.definition._definition import (
     AcceptedField,
@@ -349,14 +357,112 @@ class StorageTransformerDefinition(Definition[C], kind=True, format=3):
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3StorageTransformerField,)
 
 
-KINDS: Final[tuple[type[Definition[Any]], ...]] = (
-    DataTypeDefinition,
-    ChunkGridDefinition,
-    ChunkKeyEncodingDefinition,
-    CodecDefinition,
-    StorageTransformerDefinition,
-)
-"""The kinds of metadata in a document. A scope files each kind separately."""
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ExtraFieldDefinition(Definition[C]):
+    """A member of a v3 document that the spec does not define, an extra field: its name is the member's key, and its configuration is the member's value.
+
+    This is not a kind. `ArrayExtraFieldDefinition` and
+    `GroupExtraFieldDefinition` are, because one key may mean different
+    things in an array document and in a group document. An extra field is
+    not one of the spec's extension points, and no registry names it, so
+    any key may name one. As a field it is written as the member alone,
+    `{key: value}`, and it is located at the member's key. A definition
+    reads a member whose value is an object. A member that no definition
+    in scope claims is not read: a reader keeps it as it is written, and
+    lists it in `must_understand_fields` unless it says
+    `"must_understand": false`.
+
+    `finite` says whether every number in the member must be finite, as
+    RFC 8259 JSON requires. A member that holds user data sets it to
+    False: consolidated metadata holds node documents, whose attributes
+    may hold `NaN`, `Infinity` and `-Infinity`.
+    """
+
+    finite: bool = True
+    """Whether every number in the member must be finite."""
+
+    def _finite_numbers(self) -> bool:
+        return self.finite
+
+    @classmethod
+    def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+        # No registry names extra fields, so any key may name one.
+        return None
+
+    @classmethod
+    def named_configuration(
+        cls, value: object
+    ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
+        if not is_object(value) or len(value) != 1:
+            return None, None, ()
+        ((name, member),) = value.items()
+        if not isinstance(name, str):
+            return None, None, ()
+        if not is_object(member):
+            return name, None, (ValidationProblem((), "expected an object", "invalid_type"),)
+        return name, {key: item for key, item in member.items() if isinstance(key, str)}, ()
+
+    @classmethod
+    def envelope_problems(cls, value: object) -> Problems:
+        name, _, malformed = cls.named_configuration(value)
+        if name is None:
+            return (
+                ValidationProblem(
+                    (), "expected a member, as an object with one string key", "invalid_type"
+                ),
+            )
+        return malformed
+
+    @classmethod
+    def refined(
+        cls, data: object, loc: Loc, definition: Definition[Any] | None
+    ) -> tuple[JSONValue | None, Problems]:
+        # The member's value is at the member's location, `loc`. It is user
+        # data when the definition that claims it says so.
+        name = cls.named_configuration(data)[0]
+        if name is None or not is_object(data):
+            return refine_json(data, loc)
+        refine = (
+            refine_user_data
+            if isinstance(definition, ExtraFieldDefinition) and not definition.finite
+            else refine_json
+        )
+        value, problems = refine(data[name], loc)
+        return (None if len(problems) != 0 else {name: value}), problems
+
+    @classmethod
+    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+        return {name: configuration}
+
+    @classmethod
+    def unclaimed_json(
+        cls, json: JSONValue, name: str, configuration: Mapping[str, JSONValue]
+    ) -> JSONValue:
+        # A member no definition claims is written as it is, whatever its
+        # value; only a definition reads it as an object.
+        return json
+
+    @classmethod
+    def configuration_loc(cls, loc: Loc) -> Loc:
+        return loc
+
+    @classmethod
+    def name_loc(cls, loc: Loc) -> Loc:
+        return loc
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
+    """An extra field of a v3 array document: a member the spec does not define, read by its key."""
+
+    label: ClassVar[str] = "array extra field"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class GroupExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
+    """An extra field of a v3 group document: a member the spec does not define, read by its key. `consolidated_metadata` is one."""
+
+    label: ClassVar[str] = "group extra field"
 
 
 STATIC_SIZE_ALIASES: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecField})
@@ -501,10 +607,10 @@ def chunk_grid_lengths(
 
 
 __all__ = [
-    "KINDS",
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
     "STATIC_SIZE_ALIASES",
+    "ArrayExtraFieldDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
@@ -512,6 +618,8 @@ __all__ = [
     "CodecKind",
     "CodecSize",
     "DataTypeDefinition",
+    "ExtraFieldDefinition",
+    "GroupExtraFieldDefinition",
     "Lengths",
     "StorageClass",
     "StorageTransformerDefinition",

@@ -39,22 +39,28 @@ from zarr_metadata._json import (
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import scoped
+from zarr_metadata.definition._definition import UnclaimedField, fields_of, held
 from zarr_metadata.definition._scope import (
     Claims,
     Conflict,
     ScopeConflictError,
+    claims_of,
     definition_said,
     kind_name,
 )
+from zarr_metadata.definition._scope import refines as refines_field
 from zarr_metadata.model._array_v3 import (
     ArrayMembersV3,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
     array_key_of,
+    extra_fields_key,
     members_past_the_levels,
     must_understand_subset,
+    no_extra_fields,
     read_array_metadata_v3,
     read_array_v3,
+    read_extra_fields_v3,
 )
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
@@ -65,7 +71,6 @@ from zarr_metadata.model._shared import (
     load_store_json,
     located_conflicts,
     missing_keys,
-    other_members,
     reading_of,
     unexpected_keys,
 )
@@ -74,6 +79,7 @@ from zarr_metadata.v3._common import ZarrV3ExtensionField
 # A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._definition import GroupExtraFieldDefinition
 from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults, said
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
@@ -86,7 +92,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._hierarchy import NodeType
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import ResolvedField
+    from zarr_metadata.definition._definition import AcceptedField, ResolvedField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataStoreKey
 
@@ -156,54 +162,64 @@ class ZarrV3GroupMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
     )
 
 
-_NO_CLAIMS: Final[Claims] = MappingProxyType({})
-"""The claims of a group's reading: none, since a group document has no fields."""
-
-
 class ZarrV3GroupMetadata(Keyed):
     """A v3 group document, and the scope it was read in.
 
     Like `ZarrV3ArrayMetadata`, the model is this pair. `to_json` returns
     the document as written, refined, and `context` is the scope.
-    `attributes`, `consolidated_metadata` and `extra_fields` are views of
-    the values the read refined. The read checks a `consolidated_metadata`
-    member against the envelope the core spec fixes, and does not read the
-    documents the member lists: they follow a convention of the reference
-    implementation, not the core spec. To read them, pass the member to
-    `ZarrV3ConsolidatedMetadata` or `read_consolidated_metadata_v3`, or
-    read one listed document with `read_node_metadata_v3`. A model is only
-    built by reading: the constructor reads `document` in `context` and
-    raises `MetadataValidationError` with every problem.
+    `attributes` and `consolidated_metadata` are views of the values the
+    read refined. Each member the spec does not define is an extra field,
+    in `extra_fields`, as the scope read it. `CORE` reads a
+    `consolidated_metadata` member as the envelope the core spec fixes,
+    and no definition reads the documents the member lists: they follow a
+    convention of the reference implementation, not the core spec. To
+    read them, pass the member to `ZarrV3ConsolidatedMetadata` or
+    `read_consolidated_metadata_v3`, or read one listed document with
+    `read_node_metadata_v3`. A model is only built by reading: the
+    constructor reads `document` in `context` and raises
+    `MetadataValidationError` with every problem.
     """
 
-    __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
+    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final = 3
     node_type: Final = "group"
 
     @property
     def claims(self) -> Claims:
-        """The claims the reading recorded: none, since a group document has no fields."""
-        return _NO_CLAIMS
+        """The claims the reading recorded for each name the document writes (its extra fields), keyed by kind and the name the scope files it under. Computed on first access."""
+        try:
+            return self._claims
+        except AttributeError:
+            self._claims = MappingProxyType(claims_of(self._reading.fields()))
+            return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS)
         reading, members = read_group_v3(document, context)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
-        self._adopt(_document_of(members), context, members)
+        self._adopt(_document_of(members), context, reading, members)
 
     @classmethod
     def _of(
-        cls, document: dict[str, JSONValue], context: ZarrV3Context, members: GroupMembersV3
+        cls,
+        document: dict[str, JSONValue],
+        context: ZarrV3Context,
+        reading: ZarrV3GroupMetadataReading,
+        members: GroupMembersV3,
     ) -> ZarrV3GroupMetadata:
-        """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
+        """Build a model of a document that a read found no problems with, holding that reading, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
         model = object.__new__(cls)
-        model._adopt(document, context, members)
+        model._adopt(document, context, reading, members)
         return model
 
     def _adopt(
-        self, document: dict[str, JSONValue], context: ZarrV3Context, members: GroupMembersV3
+        self,
+        document: dict[str, JSONValue],
+        context: ZarrV3Context,
+        reading: ZarrV3GroupMetadataReading,
+        members: GroupMembersV3,
     ) -> None:
         self._document = document
         self._context = context
@@ -216,8 +232,10 @@ class ZarrV3GroupMetadata(Keyed):
             frozen(members.attributes),
             frozen(members.extra_fields),
             UNSET if members.consolidated is UNSET else frozen(members.consolidated),
+            MappingProxyType({key: held(extra) for key, extra in reading.extra_fields.items()}),
         )
-        self._reading = ZarrV3GroupMetadataReading(metadata=self)
+        # The reading holds this model, no matter how the model was built.
+        self._reading = dataclasses.replace(reading, metadata=self)
 
     # --- the pair ---------------------------------------------------------
 
@@ -228,7 +246,7 @@ class ZarrV3GroupMetadata(Keyed):
 
     @property
     def reading(self) -> ZarrV3GroupMetadataReading:
-        """The document as the scope read it: no problems, and this model."""
+        """The document as the scope read it: its extra fields, no problems, and this model."""
         return self._reading
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
@@ -251,12 +269,10 @@ class ZarrV3GroupMetadata(Keyed):
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
     def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for a v3 group model: its attributes, consolidated metadata and extra fields as JSON text."""
-        members = self._members
+        """The key `==` and `hash` compare for a v3 group model: its attributes as JSON text, and what each extra field means, as `extra_fields_key` computes it."""
         return (
-            json_text(members.attributes),
-            UNSET if members.consolidated is UNSET else json_text(members.consolidated),
-            json_text(members.extra_fields),
+            json_text(self._members.attributes),
+            extra_fields_key(self._reading.extra_fields),
         )
 
     def __reduce__(self) -> tuple[type[ZarrV3GroupMetadata], tuple[object, ZarrV3Context]]:
@@ -271,13 +287,15 @@ class ZarrV3GroupMetadata(Keyed):
         return self._shown[0]
 
     @property
-    def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
-        """Each member the spec does not define, except `consolidated_metadata`, by name. Read-only at every level."""
-        return self._shown[1]
+    def extra_fields(
+        self,
+    ) -> Mapping[str, AcceptedField[GroupExtraFieldDefinition[Any]] | UnclaimedField]:
+        """Each member the spec does not define, by key, as the scope read it: an `AcceptedField` when a definition in scope claims the key (as `CORE` claims `consolidated_metadata`), and an `UnclaimedField` otherwise."""
+        return self._shown[3]
 
     @property
     def consolidated_metadata(self) -> Mapping[str, JSONValue] | UNSET:
-        """The `consolidated_metadata` member as written, refined, and read-only at every level; `UNSET` when the document writes none.
+        """The `consolidated_metadata` member as written, refined, and read-only at every level. `UNSET` when the document writes none, or writes one that is not an object, which only a scope that leaves the member unclaimed allows.
 
         The documents it lists are not read. Pass the member to
         `ZarrV3ConsolidatedMetadata` to read them all, or read one with
@@ -287,15 +305,15 @@ class ZarrV3GroupMetadata(Keyed):
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
-        """Extra fields the reader is obligated to understand.
+        """The extra fields, by key and as written, that no definition in scope reads and that a reader is obligated to understand.
 
-        Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
-        reader MUST fail to open the group if this contains any field it does
-        not recognize; the model layer only partitions by obligation, since
-        recognition is reader-specific.
+        Each unclaimed member of `extra_fields` not explicitly waived with
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). The scope is what
+        the reader recognizes, so a compliant reader MUST fail to open the
+        group when this is not empty. The model only reports these fields;
+        refusing to open is up to the reader.
         """
-        return must_understand_subset(self.extra_fields)
+        return must_understand_subset(self.extra_fields, self._shown[1])
 
     # --- changing ---------------------------------------------------------
 
@@ -313,17 +331,36 @@ class ZarrV3GroupMetadata(Keyed):
         return type(self)(document, context=self._context)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
-        """Return this document read in `context`: the same group, holding that scope. A group document has no fields, so it reads the same in every scope."""
+        """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
         context = scoped(context, CORE_AND_EXTENSIONS)
-        return self._of(self._document, context, self._members)
+        if context.disagreements(self.claims).agrees:
+            return self._of(self._document, context, self._reading, self._members)
+        return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
-        """Return this document read in `context`. A group has no fields, so no scope conflicts with its reading, and this is the same as `with_context`."""
+        """Return this document read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
+
+        Raises `ScopeConflictError` when `context` reads an extra field with
+        a different definition, or with no definition, naming each one and
+        its key. Raises `MetadataValidationError` when a definition that
+        `context` claims rejects what was written under its name.
+        """
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        found = context.disagreements(self.claims)
+        if len(found.conflicts) != 0:
+            raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(context)
 
     def refines(self, other: ZarrV3GroupMetadata) -> bool:
-        """Whether this group holds everything `other` holds, which means its attributes, consolidated metadata and extra fields are written the same way. False when `other` is not a v3 group."""
-        return type(other) is type(self) and self._model_key == other._model_key
+        """Whether this group holds everything `other` holds: the same attributes, and the same extra fields, each refining its counterpart in the order `refines` defines for fields. False when `other` is not a v3 group."""
+        if type(other) is not type(self):
+            return False
+        if json_text(self._members.attributes) != json_text(other._members.attributes):
+            return False
+        mine, theirs = self.extra_fields, other.extra_fields
+        if mine.keys() != theirs.keys():
+            return False
+        return all(refines_field(mine[key], theirs[key]) for key in mine)
 
     # --- constructors -----------------------------------------------------
 
@@ -517,22 +554,39 @@ def _node_refines(node: ZarrV3NodeMetadata, other: ZarrV3NodeMetadata) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class ZarrV3GroupMetadataReading:
-    """A v3 group document as a scope read it: every problem, and the model when there are no problems. A group has no fields for a scope to read."""
+    """A v3 group document as a scope read it: each extra field, every problem, and the model when there are no problems."""
 
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not valid."""
     metadata: ZarrV3GroupMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
+    extra_fields: Mapping[str, ResolvedField[GroupExtraFieldDefinition[Any]]] = dataclasses.field(
+        default_factory=no_extra_fields
+    )
+    """Each member the spec does not define, as the scope read it, by key: an `UnclaimedField` when no definition in scope claims the key."""
 
     def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Its fields as read: none, since a group has no fields."""
-        return iter(())
+        """Each field in the document, as the scope read it, with its location: the extra fields, each at its key."""
+        for key, extra in self.extra_fields.items():
+            yield from fields_of(extra, (key,))
 
     def __reduce__(self) -> str | tuple[object, ...]:
-        # Same as the other readings: pickle through the model, when there is one.
+        # Same as the other readings: pickle through the model, when there
+        # is one. A read-only view does not pickle, so the extra fields go
+        # as a dict.
         if self.metadata is not None:
             return (reading_of, (self.metadata,))
-        return object.__reduce__(self)
+        return (_group_reading, (self.problems, dict(self.extra_fields)))
+
+
+def _group_reading(
+    problems: tuple[ValidationProblem, ...],
+    extra_fields: dict[str, ResolvedField[GroupExtraFieldDefinition[Any]]],
+) -> ZarrV3GroupMetadataReading:
+    """Rebuild a group reading without a model from the values `ZarrV3GroupMetadataReading.__reduce__` returns, with its extra fields held read-only."""
+    return ZarrV3GroupMetadataReading(
+        problems=problems, extra_fields=MappingProxyType(extra_fields)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -749,7 +803,7 @@ def read_group_metadata_v3(
     reading, members = read_group_v3(value, context)
     if members is None or members.document is None:
         return reading
-    return ZarrV3GroupMetadata._of(members.document, context, members).reading  # pyright: ignore[reportPrivateUsage]
+    return ZarrV3GroupMetadata._of(members.document, context, reading, members).reading  # pyright: ignore[reportPrivateUsage]
 
 
 def read_group_v3(
@@ -759,8 +813,8 @@ def read_group_v3(
 
     `at` is the location of this document within the input document, as
     in `read_array_v3`, so nesting depth is counted from the outermost
-    root. A group document has no fields, so `context` changes nothing in
-    the read; it is taken so that every node reader has one signature.
+    root. Each member the spec does not define is read as an extra field
+    of the group, by the definition in `context` that claims its key.
     """
     if not is_object(value):
         return ZarrV3GroupMetadataReading(problems=not_an_object(value)), None
@@ -769,7 +823,9 @@ def read_group_v3(
     past = members_past_the_levels(doc, at)
     found.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
-    extra_fields, others = other_members(doc, _GROUP_METADATA_STANDARD_KEYS_V3, at=at)
+    extra_fields, extra, others = read_extra_fields_v3(
+        doc, _GROUP_METADATA_STANDARD_KEYS_V3, GroupExtraFieldDefinition, context, at
+    )
     found.extend(others)
     found.extend(check_literal(doc, "zarr_format", 3))
     found.extend(check_literal(doc, "node_type", "group"))
@@ -777,18 +833,11 @@ def read_group_v3(
     if "attributes" in doc:
         attributes, problems = attributes_of(doc["attributes"], at)
         found.extend(problems)
-    consolidated: dict[str, JSONValue] | UNSET = UNSET
-    if ZARR_V3_CONSOLIDATED_METADATA_KEY in doc:
-        # Read whatever is written there, including the `UNSET` sentinel.
-        # A document cannot hold a sentinel, and a reader that treated one
-        # as an absent key would write it as null.
-        member, inside = _envelope_of(
-            doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY)
-        )
-        found.extend(_prefix(ZARR_V3_CONSOLIDATED_METADATA_KEY, inside))
-        if member is not None:
-            consolidated = member
-    reading = ZarrV3GroupMetadataReading(problems=with_input(found, whole))
+    member = extra_fields.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
+    consolidated: dict[str, JSONValue] | UNSET = member if isinstance(member, dict) else UNSET
+    reading = ZarrV3GroupMetadataReading(
+        problems=with_input(found, whole), extra_fields=MappingProxyType(extra)
+    )
     document: dict[str, JSONValue] | None = None
     if len(found) == 0 and attributes is not None:
         # The document the model holds: each member as refined above, in
@@ -800,8 +849,6 @@ def read_group_v3(
             "node_type": "group",
             "attributes": attributes,
         }
-        if consolidated is not UNSET:
-            refined[ZARR_V3_CONSOLIDATED_METADATA_KEY] = consolidated
         document = {key: refined[key] for key in cast("Mapping[str, object]", doc)}
     return reading, GroupMembersV3(attributes, extra_fields, consolidated, document)
 
@@ -828,27 +875,6 @@ def _envelope_problems(member: Mapping[object, object]) -> list[ValidationProble
     if "metadata" in member and not is_object(member["metadata"]):
         problems.append(ValidationProblem(("metadata",), "expected an object", "invalid_type"))
     return problems
-
-
-def _envelope_of(
-    value: object, at: tuple[str | int, ...]
-) -> tuple[dict[str, JSONValue] | None, tuple[ValidationProblem, ...]]:
-    """Check `value`, a group's `consolidated_metadata` member at `at` in the input document, against the envelope the core spec fixes, and refine it.
-
-    The documents the member lists are not read. They must be JSON, and
-    may hold `NaN`, `Infinity` and `-Infinity`, as a node's attributes
-    may. Returns the refined member, or None when it has a problem, with
-    every problem, located in the member.
-    """
-    refined, found = refine_user_data(value, at)
-    if len(found) != 0:
-        return None, within(found, at)
-    if not isinstance(refined, dict):
-        return None, (ValidationProblem((), "expected an object", "invalid_type"),)
-    problems = _envelope_problems(cast("Mapping[object, object]", refined))
-    if len(problems) != 0:
-        return None, tuple(problems)
-    return refined, ()
 
 
 def _read_node_model(
@@ -1116,11 +1142,20 @@ def _read_alike(
             return True
         return array_key_of(reading, members) == array_key_of(other, other_members)
     if isinstance(members, GroupMembersV3) and isinstance(other_members, GroupMembersV3):
-        return (json_text(members.attributes), json_text(members.extra_fields)) == (
+        return (json_text(members.attributes), json_text(_unlisted(members))) == (
             json_text(other_members.attributes),
-            json_text(other_members.extra_fields),
+            json_text(_unlisted(other_members)),
         )
     return True
+
+
+def _unlisted(members: GroupMembersV3) -> dict[str, JSONValue]:
+    """The extra fields of a group's members, without its own consolidated listing."""
+    return {
+        key: value
+        for key, value in members.extra_fields.items()
+        if key != ZARR_V3_CONSOLIDATED_METADATA_KEY
+    }
 
 
 def _an(node_type: NodeType) -> str:
@@ -1177,9 +1212,13 @@ def _nested_models(
             models[path] = ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
                 child.document, context, reading, child
             )
-        elif isinstance(child, GroupMembersV3) and child.document is not None:
+        elif (
+            isinstance(reading, ZarrV3GroupMetadataReading)
+            and isinstance(child, GroupMembersV3)
+            and child.document is not None
+        ):
             models[path] = ZarrV3GroupMetadata._of(  # pyright: ignore[reportPrivateUsage]
-                child.document, context, child
+                child.document, context, reading, child
             )
     return models
 

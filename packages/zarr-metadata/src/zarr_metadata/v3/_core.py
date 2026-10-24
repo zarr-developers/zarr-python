@@ -26,6 +26,7 @@ from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
+from zarr_metadata.v3.consolidated import CONSOLIDATED_METADATA_EXTRA_FIELD
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
@@ -75,8 +76,9 @@ CORE: Final = ZarrV3Context(
         SHARDING_INDEXED_CODEC,
         TRANSPOSE_CODEC,
     ),
+    group_extra_fields=(CONSOLIDATED_METADATA_EXTRA_FIELD,),
 )
-"""A scope with only what the Zarr v3 specification defines."""
+"""A scope with only what the Zarr v3 specification defines, including the envelope of a group's `consolidated_metadata`, which the spec fixes."""
 
 CORE_AND_EXTENSIONS: Final = CORE.extended_with(
     data_types=(

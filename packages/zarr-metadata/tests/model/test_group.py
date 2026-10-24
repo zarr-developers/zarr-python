@@ -97,7 +97,9 @@ def test_group_v3_extra_fields_roundtrip() -> None:
         "my_extension": {"name": "thing", "must_understand": False},
     }
     model = ZarrV3GroupMetadata.from_json(doc)
-    assert model.extra_fields == {"my_extension": {"name": "thing", "must_understand": False}}
+    assert model.extra_fields["my_extension"].to_json() == {
+        "my_extension": {"name": "thing", "must_understand": False}
+    }
     assert model.to_json() == doc
 
 
@@ -683,11 +685,12 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
         # A group's consolidated metadata inside another group's, listing a node
         # the outer group also lists. The listed group's own listing is
         # checked against the outer one, and its documents are not models
-        # of the outer member.
+        # of the outer member. The listed group's member is its extra field,
+        # which `CORE` reads as an envelope.
         (
             _inline(g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}),
             ["g", "g/b"],
-            _fields_of_an_array("metadata", "g/b"),
+            [("metadata", "g", "consolidated_metadata"), *_fields_of_an_array("metadata", "g/b")],
         ),
     ],
     ids=["an-array-and-a-group", "paths", "nested"],

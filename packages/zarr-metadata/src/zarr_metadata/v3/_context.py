@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from zarr_metadata.definition._context import Context
 from zarr_metadata.v3._definition import (
+    ArrayExtraFieldDefinition,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
+    GroupExtraFieldDefinition,
     StorageTransformerDefinition,
 )
 
@@ -23,10 +25,12 @@ if TYPE_CHECKING:
 class ZarrV3Context(Context):
     """A scope that reads Zarr v3 documents. Every v3 reader takes one.
 
-    It has one slot for each kind of field a v3 document holds, named like
-    the document member that holds such fields: `data_types`,
-    `chunk_grids`, `chunk_key_encodings`, `codecs` and
-    `storage_transformers`. The constructor takes an iterable of
+    It has one slot for each kind of field a v3 document holds. The slots
+    for the spec's extension points are named like the document member
+    that holds such fields: `data_types`, `chunk_grids`,
+    `chunk_key_encodings`, `codecs` and `storage_transformers`.
+    `array_extra_fields` and `group_extra_fields` hold the definitions of
+    members the spec does not define, by key. The constructor takes an iterable of
     definitions for each slot, and each slot is a read-only mapping from
     the name each definition is filed under (`r*` for raw bits) to the
     definition. A definition of another kind than its slot holds raises
@@ -44,6 +48,8 @@ class ZarrV3Context(Context):
             "chunk_key_encodings": ChunkKeyEncodingDefinition,
             "codecs": CodecDefinition,
             "storage_transformers": StorageTransformerDefinition,
+            "array_extra_fields": ArrayExtraFieldDefinition,
+            "group_extra_fields": GroupExtraFieldDefinition,
         }
     )
 
@@ -55,6 +61,8 @@ class ZarrV3Context(Context):
         chunk_key_encodings: Iterable[ChunkKeyEncodingDefinition[Any]] = (),
         codecs: Iterable[CodecDefinition[Any]] = (),
         storage_transformers: Iterable[StorageTransformerDefinition[Any]] = (),
+        array_extra_fields: Iterable[ArrayExtraFieldDefinition[Any]] = (),
+        group_extra_fields: Iterable[GroupExtraFieldDefinition[Any]] = (),
     ) -> None:
         super().__init__(
             {
@@ -63,6 +71,8 @@ class ZarrV3Context(Context):
                 "chunk_key_encodings": chunk_key_encodings,
                 "codecs": codecs,
                 "storage_transformers": storage_transformers,
+                "array_extra_fields": array_extra_fields,
+                "group_extra_fields": group_extra_fields,
             }
         )
 
@@ -97,6 +107,20 @@ class ZarrV3Context(Context):
             self._held(StorageTransformerDefinition),
         )
 
+    @property
+    def array_extra_fields(self) -> Mapping[str, ArrayExtraFieldDefinition[Any]]:
+        """The definitions of members of an array document that the spec does not define, by key."""
+        return cast(
+            "Mapping[str, ArrayExtraFieldDefinition[Any]]", self._held(ArrayExtraFieldDefinition)
+        )
+
+    @property
+    def group_extra_fields(self) -> Mapping[str, GroupExtraFieldDefinition[Any]]:
+        """The definitions of members of a group document that the spec does not define, by key."""
+        return cast(
+            "Mapping[str, GroupExtraFieldDefinition[Any]]", self._held(GroupExtraFieldDefinition)
+        )
+
     def extended_with(
         self,
         *,
@@ -105,6 +129,8 @@ class ZarrV3Context(Context):
         chunk_key_encodings: Iterable[ChunkKeyEncodingDefinition[Any]] = (),
         codecs: Iterable[CodecDefinition[Any]] = (),
         storage_transformers: Iterable[StorageTransformerDefinition[Any]] = (),
+        array_extra_fields: Iterable[ArrayExtraFieldDefinition[Any]] = (),
+        group_extra_fields: Iterable[GroupExtraFieldDefinition[Any]] = (),
     ) -> ZarrV3Context:
         """This scope, plus definitions of your own, each in its slot.
 
@@ -120,6 +146,8 @@ class ZarrV3Context(Context):
                 "chunk_key_encodings": chunk_key_encodings,
                 "codecs": codecs,
                 "storage_transformers": storage_transformers,
+                "array_extra_fields": array_extra_fields,
+                "group_extra_fields": group_extra_fields,
             }
         )
 

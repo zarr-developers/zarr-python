@@ -260,7 +260,8 @@ def test_v3_array_schema_allows_unknown_extension_fields() -> None:
     doc["vendor_extension"] = {"anything": [1, 2]}
     adapter = TypeAdapter(zmp.ZarrV3ArrayMetadataField)
 
-    assert adapter.validate_python(doc).extra_fields == {"vendor_extension": {"anything": (1, 2)}}
+    held = adapter.validate_python(doc).extra_fields["vendor_extension"]
+    assert held.to_json() == {"vendor_extension": {"anything": (1, 2)}}
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 

@@ -30,6 +30,7 @@ from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
+from zarr_metadata.v3.consolidated import CONSOLIDATED_METADATA_EXTRA_FIELD
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
@@ -64,6 +65,7 @@ __all__ = [
     "CAST_VALUE_CODEC",
     "COMPLEX64_DATA_TYPE",
     "COMPLEX128_DATA_TYPE",
+    "CONSOLIDATED_METADATA_EXTRA_FIELD",
     "CORE",
     "CORE_AND_EXTENSIONS",
     "CRC32C_CODEC",

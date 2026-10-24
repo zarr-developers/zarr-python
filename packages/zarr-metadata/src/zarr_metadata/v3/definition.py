@@ -4,12 +4,15 @@ The kind of metadata a definition defines is its type: `CodecDefinition`
 (with the codec's `kind`, and its `size`: `"static"` if the output size
 is determined by the input size, or `"dynamic"` if it depends on the
 values), `DataTypeDefinition`, `ChunkGridDefinition`,
-`ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`. What a
+`ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`, and, for
+the members of a document that the spec does not define,
+`ArrayExtraFieldDefinition` and `GroupExtraFieldDefinition`. What a
 definition is and how a field is read are in `zarr_metadata.definition`,
 which both formats share. `ZarrV3Context` is the v3 scope, with one slot
 for each kind: `data_types`, `chunk_grids`, `chunk_key_encodings`,
-`codecs` and `storage_transformers`. `CORE` and `CORE_AND_EXTENSIONS`
-are the v3 scopes this package provides.
+`codecs`, `storage_transformers`, `array_extra_fields` and
+`group_extra_fields`. `CORE` and `CORE_AND_EXTENSIONS` are the v3 scopes
+this package provides.
 
 A scope reads whole documents as well as fields.
 `validate_array_metadata_v3(document, context=CONTEXT)`, from
@@ -101,6 +104,7 @@ from zarr_metadata.v3._common import (
 from zarr_metadata.v3._context import ZarrV3Context
 from zarr_metadata.v3._core import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
+    ArrayExtraFieldDefinition,
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -108,6 +112,8 @@ from zarr_metadata.v3._definition import (
     CodecKind,
     CodecSize,
     DataTypeDefinition,
+    ExtraFieldDefinition,
+    GroupExtraFieldDefinition,
     Lengths,
     StorageClass,
     StorageTransformerDefinition,
@@ -118,6 +124,7 @@ from zarr_metadata.v3._pipeline import Stage
 __all__ = [
     "CORE",
     "CORE_AND_EXTENSIONS",
+    "ArrayExtraFieldDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
@@ -125,6 +132,8 @@ __all__ = [
     "CodecKind",
     "CodecSize",
     "DataTypeDefinition",
+    "ExtraFieldDefinition",
+    "GroupExtraFieldDefinition",
     "Lengths",
     "Stage",
     "StorageClass",

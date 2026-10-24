@@ -214,9 +214,17 @@ types with the same names. `validate_node_name_v3`, `is_node_name_v3` and
 `parse_node_name_v3`, and the matching `node_path` functions, check a
 string against those rules.
 
-A top-level member that the spec does not define is not a field. The
-model's `must_understand_fields` lists the members that a reader must
-understand.
+A top-level member that the spec does not define is an extra field. A
+scope can hold a definition for one, by its key, in the
+`array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
+member whose key a definition claims is read by that definition, like any
+other field. Any other member is kept as written, as an `UnclaimedField`.
+The scope is what a reader recognizes, so the model's
+`must_understand_fields` lists each unclaimed member that does not say
+`"must_understand": false`: the spec requires a reader to fail to open a
+node with any such member. `CORE` holds `CONSOLIDATED_METADATA_EXTRA_FIELD`,
+which reads a group's `consolidated_metadata` as the envelope the spec
+fixes.
 
 A v3 model consists of its document and the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the

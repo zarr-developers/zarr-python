@@ -315,10 +315,15 @@ def test_v3_no_storage_transformers_omitted() -> None:
 # --- V3 extra fields -------------------------------------------------------
 
 
+def _written_extra_fields(model: ZarrV3ArrayMetadata) -> dict[str, object]:
+    """Each extra field of `model`, by key, as the document writes the member's value."""
+    return {key: cast("Any", extra.to_json())[key] for key, extra in model.extra_fields.items()}
+
+
 def test_v3_extra_fields_merged() -> None:
     """V3 to_json merges extra_fields into the top-level document."""
     model = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False})
-    assert model.extra_fields == {"my_ext": {"must_understand": False}}
+    assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
     assert model.to_json()["my_ext"] == {"must_understand": False}
 
 
@@ -489,7 +494,7 @@ def test_update_can_add_an_extension_member() -> None:
     """update can add a member the spec does not define, which the model holds in extra_fields."""
     base = ZarrV3ArrayMetadata.create_default()
     updated = base.update(my_ext={"must_understand": False})
-    assert updated.extra_fields == {"my_ext": {"must_understand": False}}
+    assert _written_extra_fields(updated) == {"my_ext": {"must_understand": False}}
 
 
 def test_update_reads_every_member_in_the_models_own_scope() -> None:
@@ -721,7 +726,7 @@ def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
         a={"must_understand": False, "x": 1}, b={"must_understand": False}
     )
     updated = base.update(a={"must_understand": False})
-    assert updated.extra_fields == {
+    assert _written_extra_fields(updated) == {
         "a": {"must_understand": False},
         "b": {"must_understand": False},
     }
@@ -820,10 +825,11 @@ def test_v3_from_json_defaults_for_omitted_optionals() -> None:
 
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
-    """V3 from_json routes unknown top-level keys into extra_fields."""
+    """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedField`, written as the document wrote it."""
     doc = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False}).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
-    assert model.extra_fields == {"my_ext": {"must_understand": False}}
+    assert isinstance(model.extra_fields["my_ext"], UnclaimedField)
+    assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
 
 
 def test_v3_from_json_standard_keys_not_in_extra_fields() -> None:
@@ -2182,7 +2188,7 @@ def test_v3_json_extension_without_waiver_is_preserved_as_must_understand() -> N
     parsed = parse_array_metadata_v3(doc)
     assert is_array_metadata_v3(parsed)
     model = ZarrV3ArrayMetadata.from_json(doc)
-    assert model.extra_fields["ext"] == 1
+    assert model.extra_fields["ext"].to_json() == {"ext": 1}
     assert model.must_understand_fields == {"ext": 1}
 
 

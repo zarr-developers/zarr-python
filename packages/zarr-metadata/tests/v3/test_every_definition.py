@@ -33,6 +33,7 @@ from zarr_metadata.v3.definition import (
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
+    GroupExtraFieldDefinition,
     ZarrV3Context,
 )
 
@@ -41,6 +42,7 @@ KINDS: dict[str, type[Definition[Any]]] = {
     "data_type": DataTypeDefinition,
     "chunk_grid": ChunkGridDefinition,
     "chunk_key_encoding": ChunkKeyEncodingDefinition,
+    "group_extra_field": GroupExtraFieldDefinition,
 }
 
 # Fields that read without problems, per extension: at least one per definition in scope.
@@ -140,6 +142,16 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
     ),
     "data_type:string": ("string",),
     "data_type:r*": ("r16", "r008"),
+    "group_extra_field:consolidated_metadata": (
+        {"consolidated_metadata": {"kind": "inline", "must_understand": False, "metadata": {}}},
+        {
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": {"attributes": {"x": float("nan")}}},
+            }
+        },
+    ),
 }
 
 CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]

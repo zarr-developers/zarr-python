@@ -66,7 +66,9 @@ bounds, or the values of a `Literal`).
 as a JSON Schema.
 
 `check` supports only annotations that describe JSON shapes: `int`,
-`float` for any number, `bool`, `str`, `None`, `JSONValue`, a `Literal`,
+`float` for any number, `bool`, `str`, `None`, `JSONValue`,
+`UserJSONValue` (a `JSONValue` whose numbers may also be non-finite, for
+user data such as attributes), a `Literal`,
 `tuple[T, ...]` and `tuple[T1, T2]`, a union, a TypedDict,
 `Mapping[str, V]`, a `NewType` and a type alias. A TypedDict that
 contains anything else raises `TypeError`, naming the member and the
@@ -81,7 +83,7 @@ evaluates its inherited annotations in its own module.
 `typing_extensions.TypedDict` records the bases on every version.
 """
 
-from zarr_metadata._common import JSONValue
+from zarr_metadata._common import JSONValue, UserJSONValue
 from zarr_metadata._typed_json import (
     Loc,
     check,
@@ -90,5 +92,6 @@ from zarr_metadata._typed_json import (
 __all__ = [
     "JSONValue",
     "Loc",
+    "UserJSONValue",
     "check",
 ]

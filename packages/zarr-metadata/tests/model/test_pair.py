@@ -111,7 +111,7 @@ def test_properties_are_what_the_reading_holds() -> None:
     assert model.dimension_names is UNSET
     assert isinstance(model.attributes, Mapping)
     assert model.attributes == {"a": (1,)}
-    assert model.extra_fields == {"acme": 1}
+    assert model.extra_fields["acme"].to_json() == {"acme": 1}
     assert (model.zarr_format, model.node_type) == (3, "array")
     with pytest.raises(TypeError):
         model.attributes["b"] = 1  # pyright: ignore[reportIndexIssue]
@@ -486,14 +486,26 @@ def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[st
     assert pickle.loads(pickle.dumps(group)) == group
 
 
-def test_group_update_with_context_and_refined_in_keep_the_document() -> None:
-    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group has no fields, so `refined_in` and `with_context` hold the same document in the new scope, whatever that scope claims."""
+def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
+    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group's fields are its extra fields: in a scope that claims nothing, `consolidated_metadata` is unclaimed, and `refined_in` and `with_context` move the group to a scope that reads it as the envelope, which is a gain."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=ZarrV3Context())
     assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
+    assert isinstance(group.extra_fields["consolidated_metadata"], UnclaimedField)
     for moved in (group.refined_in(CORE), group.with_context(PRIVATE)):
-        assert moved == group
+        assert isinstance(moved.extra_fields["consolidated_metadata"], AcceptedField)
+        assert moved.consolidated_metadata == group.consolidated_metadata
         assert moved.refines(group)
+        assert not group.refines(moved)
+        assert moved != group
     assert group.refined_in(CORE).context == CORE
+
+
+def test_error_group_refined_in_refuses_a_scope_that_loses_an_extra_field() -> None:
+    """A group read in `CORE` reads its `consolidated_metadata` as the envelope. A scope that leaves the member unclaimed would lose that reading, so `refined_in` raises `ScopeConflictError`, located at the member."""
+    group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
+    with pytest.raises(ScopeConflictError) as raised:
+        group.refined_in(ZarrV3Context())
+    assert [conflict.loc for conflict in raised.value.conflicts] == [("consolidated_metadata",)]
 
 
 def test_consolidated_metadata_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
