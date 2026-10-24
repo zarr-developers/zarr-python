@@ -119,7 +119,7 @@ def test_properties_are_what_the_reading_holds() -> None:
         ({"compressor": {"id": "zstd", "level": 0}}, {"compressor": {"id": "zstd"}}, True),
         ({"compressor": {"id": "zstd", "level": 1}}, {"compressor": {"id": "zstd"}}, False),
         ({"attributes": {"a": [1, 2]}}, {"attributes": {"a": [2, 1]}}, False),
-        ({"attributes": UNSET}, {"attributes": {}}, False),
+        ({"attributes": UNSET}, {"attributes": {}}, True),
         ({"extra": 1}, {}, False),
     ],
     ids=[
@@ -142,7 +142,7 @@ def test_properties_are_what_the_reading_holds() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: dict[str, Any], right: dict[str, Any], same: bool
 ) -> None:
-    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, a fill value written as an integer or a float, or a codec parameter written or left to its numcodecs default, gives equal models. A different byte order, a codec parameter away from its default, or a `.zattrs` present in one and absent in the other, gives different models. Equal models have equal hashes."""
+    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, a fill value written as an integer or a float, or a codec parameter written or left to its numcodecs default, gives equal models. No `.zattrs` and an empty one give equal models, since both mean no attributes, as in v3. A different byte order or a codec parameter away from its default gives different models. Equal models have equal hashes."""
     one, other = ZarrV2ArrayMetadata(_document(left)), ZarrV2ArrayMetadata(_document(right))
     assert (one == other) is same
     if same:

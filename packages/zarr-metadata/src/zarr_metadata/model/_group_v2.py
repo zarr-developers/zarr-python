@@ -254,7 +254,7 @@ class ZarrV2GroupMetadata(Keyed):
     scope conflicts with the reading. A model is only built by reading:
     the constructor raises `MetadataValidationError` with every problem.
     Two groups are equal when their attributes are written the same way,
-    as `_key_of` defines.
+    as `_key_of` defines; no `.zattrs` and an empty one are equal.
     """
 
     __slots__ = ("_attributes", "_context", "_document", "_shown")
@@ -356,9 +356,9 @@ class ZarrV2GroupMetadata(Keyed):
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
     def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for a v2 group model: its attributes as JSON text, or `UNSET` when there is no `.zattrs`."""
+        """The key `==` and `hash` compare for a v2 group model: its attributes as JSON text. No `.zattrs` counts as empty attributes, since both mean that the group has none, as in v3."""
         attributes = self._attributes
-        return (UNSET if attributes is UNSET else json_text(attributes),)
+        return (json_text({} if attributes is UNSET else attributes),)
 
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)

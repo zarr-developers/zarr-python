@@ -484,8 +484,10 @@ def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str) ->
 
 def test_group_v2_zattrs_presence_round_trips() -> None:
     """A v2 group with no .zattrs file has empty attributes and emits no
-    .zattrs; an explicit empty .zattrs stays a file — the stores remain
-    distinct through a round-trip."""
+    .zattrs; an explicit empty .zattrs stays a file, so the stores remain
+    distinct through a round-trip. Both mean no attributes, so the models
+    are equal, with equal hashes, as a v3 group with and without an empty
+    `attributes` are."""
     absent = ZarrV2GroupMetadata.from_key_value({".zgroup": b'{"zarr_format": 2}'})
     assert absent.attributes == {}
     assert ".zattrs" not in absent.to_key_value()
@@ -494,7 +496,8 @@ def test_group_v2_zattrs_presence_round_trips() -> None:
     )
     assert explicit.attributes == {}
     assert ".zattrs" in explicit.to_key_value()
-    assert absent != explicit
+    assert absent == explicit
+    assert hash(absent) == hash(explicit)
 
 
 def test_group_v2_json_roundtrip() -> None:

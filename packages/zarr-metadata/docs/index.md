@@ -340,7 +340,9 @@ is kept whatever the `shuffle`, unlike in v3: v2 codecs are defined by
 numcodecs, which writes it into each chunk's header, so two v2 blosc
 codecs that differ only in it encode different bytes, though they decode
 the same data. The v3 spec defines its blosc codec, and says `noshuffle`
-ignores `typesize`. Values the package does
+ignores `typesize`. A v2 node with no `.zattrs` equals one with an
+empty `.zattrs`, as a v3 document with and without an empty
+`attributes` are equal. Values the package does
 not interpret (attributes, extra fields, and the configuration of a field
 that nothing in the scope claims) are compared as JSON text. JSON text
 distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as

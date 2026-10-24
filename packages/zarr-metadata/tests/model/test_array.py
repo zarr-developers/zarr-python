@@ -1077,7 +1077,8 @@ def test_v2_from_json_reconstructs_fields() -> None:
 
 def test_v2_from_json_attributes_absent_is_empty() -> None:
     """V2 from_json reads an absent attributes key as empty attributes. The
-    document still differs from one with an explicit empty mapping."""
+    document still differs from one with an explicit empty mapping, but both
+    mean no attributes, so the models are equal, as in v3."""
     absent = ZarrV2ArrayMetadata.from_json(ZarrV2ArrayMetadata.create_default().to_json())
     explicit = ZarrV2ArrayMetadata.from_json(
         ZarrV2ArrayMetadata.create_default(attributes={}).to_json()
@@ -1086,7 +1087,7 @@ def test_v2_from_json_attributes_absent_is_empty() -> None:
     assert "attributes" not in absent.to_json()
     assert explicit.attributes == {}
     assert explicit.to_json().get("attributes") == {}
-    assert absent != explicit
+    assert absent == explicit
 
 
 # --- ZarrV2ArrayMetadata.from_key_value --------------------------------

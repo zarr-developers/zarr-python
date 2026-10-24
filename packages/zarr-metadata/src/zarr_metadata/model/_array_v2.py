@@ -561,7 +561,8 @@ class ZarrV2ArrayMetadata(Keyed):
         The key holds each field's `field_key`, and the fill value as JSON
         text, in its canonical spelling when a definition in scope read the
         dtype. Every other member is included as it is, with JSON members
-        as text. `attributes` is `UNSET` when there is no `.zattrs`.
+        as text. No `.zattrs` counts as empty attributes, since both mean
+        that the array has none, as in v3.
         """
         members = self._members
         return (
@@ -573,7 +574,7 @@ class ZarrV2ArrayMetadata(Keyed):
             field_key(self.dtype),
             None if self.compressor is None else field_key(self.compressor),
             None if self.filters is None else tuple(field_key(entry) for entry in self.filters),
-            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text({} if members.attributes is UNSET else members.attributes),
             json_text(members.extra_fields),
         )
 
@@ -588,7 +589,7 @@ class ZarrV2ArrayMetadata(Keyed):
             members.order,
             members.dimension_separator,
             json_text(spelled_canonically(dtype, members.fill_value)),
-            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text({} if members.attributes is UNSET else members.attributes),
             json_text(members.extra_fields),
         )
 
