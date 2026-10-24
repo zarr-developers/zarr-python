@@ -114,10 +114,15 @@ def _v2_consolidated() -> Mapping[str, bytes]:
     return {".zmetadata": json.dumps(document).encode()}
 
 
+def _consolidated_from_key_value(store: Mapping[str, bytes]) -> ZarrV3ConsolidatedMetadata:
+    """The consolidated metadata of the group at `zarr.json` in `store`, with every document it lists read."""
+    return ZarrV3ConsolidatedMetadata(
+        ZarrV3GroupMetadata.from_key_value(store).consolidated_metadata
+    )
+
+
 def _consolidated_node_attributes(store: Mapping[str, bytes]) -> object:
-    consolidated = ZarrV3GroupMetadata.from_key_value(store).consolidated_metadata
-    assert isinstance(consolidated, ZarrV3ConsolidatedMetadata)
-    return consolidated.metadata["a"].attributes
+    return _consolidated_from_key_value(store).metadata["a"].attributes
 
 
 # Each case: the store, its reader, a function that reads the attributes
@@ -226,8 +231,10 @@ _REFUSED: dict[str, _Refused] = {
         _stored("zarr.json", {**_ARRAY, "extension": {"must_understand": False, "x": math.nan}}),
         ("extension", "x"),
     ),
+    # A group does not read the documents its consolidated metadata lists;
+    # reading them finds the number.
     "consolidated-node": (
-        ZarrV3GroupMetadata.from_key_value,
+        _consolidated_from_key_value,
         _stored(
             "zarr.json",
             {
@@ -239,7 +246,7 @@ _REFUSED: dict[str, _Refused] = {
                 },
             },
         ),
-        ("consolidated_metadata", "metadata", "a", "fill_value"),
+        ("metadata", "a", "fill_value"),
     ),
     # Only a v3 group holds node documents inline. In an array, a member with
     # that name is an extension that the spec does not declare.

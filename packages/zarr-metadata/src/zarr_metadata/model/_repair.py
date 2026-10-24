@@ -112,11 +112,12 @@ class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
 def repair_node_metadata_v3(value: object) -> tuple[object, tuple[Repair, ...]]:
     """Undo each known writer bug in `value`, a v3 `zarr.json`, and return the result with the list of changes.
 
-    Each document in the consolidated metadata is repaired too. Content
-    that no repair applies to is left as it is. `value` is not modified:
-    a repaired document is a new object, which shares its unchanged parts
-    with `value`. A document with none of the bugs is returned as it is,
-    with no repairs.
+    Each document in the consolidated metadata is repaired too. A group
+    does not read those documents, but `ZarrV3ConsolidatedMetadata` reads
+    them from the repaired group's member. Content that no repair applies
+    to is left as it is. `value` is not modified: a repaired document is a
+    new object, which shares its unchanged parts with `value`. A document
+    with none of the bugs is returned as it is, with no repairs.
     """
     return _repaired(value, ())
 

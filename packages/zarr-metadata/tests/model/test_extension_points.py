@@ -19,11 +19,11 @@ from typing_extensions import TypedDict
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
-    ZarrV3GroupMetadata,
+    ZarrV3ConsolidatedMetadata,
     is_array_metadata_v3,
     parse_array_metadata_v3,
+    read_consolidated_metadata_v3,
     validate_array_metadata_v3,
-    validate_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
@@ -57,6 +57,9 @@ LENIENT_GZIP = CodecDefinition(
     size="dynamic",
 )
 """A reader's own gzip definition, which accepts any level. A scope can be extended, and an extension can replace a definition."""
+
+BAD_GZIP_ARRAY = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}])
+"""An array whose gzip level the core `gzip` definition refuses and `LENIENT_GZIP` accepts."""
 
 
 @pytest.mark.parametrize(
@@ -162,38 +165,24 @@ def test_error_a_configuration_its_definition_refuses(
         ZarrV3ArrayMetadata.from_json(document)
 
 
-def test_error_an_array_in_a_group_s_consolidated_metadata() -> None:
-    array = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}])
-    group = {
-        **ZarrV3GroupMetadata.create_default().to_json(),
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {"a": array},
-        },
-    }
-    assert [(problem.loc, problem.kind) for problem in validate_group_metadata_v3(group)] == [
-        (
-            ("consolidated_metadata", "metadata", "a", "codecs", 1, "configuration", "level"),
-            "invalid_value",
-        )
-    ]
+def test_error_an_array_in_consolidated_metadata() -> None:
+    """A codec configuration that the codec's definition refuses, in an array listed in consolidated metadata, is reported at its location in the member."""
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
+    assert [
+        (problem.loc, problem.kind) for problem in read_consolidated_metadata_v3(member).problems
+    ] == [(("metadata", "a", "codecs", 1, "configuration", "level"), "invalid_value")]
 
 
-def test_an_array_in_a_group_s_consolidated_metadata_reads_in_the_group_s_scope() -> None:
-    array = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}])
-    group = {
-        **ZarrV3GroupMetadata.create_default().to_json(),
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {"a": array},
-        },
-    }
+def test_an_array_in_consolidated_metadata_reads_in_the_scope_it_is_read_in() -> None:
+    """An array listed in consolidated metadata is read in the scope the member is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
     lenient = CORE.extended_with(LENIENT_GZIP)
-    assert validate_group_metadata_v3(group, context=lenient) == ()
-    model = ZarrV3GroupMetadata.from_json(group, context=lenient)
-    assert ZarrV3GroupMetadata.from_key_value(model.to_key_value(), context=lenient) == model
+    reading = read_consolidated_metadata_v3(member, context=lenient)
+    assert reading.problems == ()
+    assert reading.metadata is not None
+    assert (
+        ZarrV3ConsolidatedMetadata(reading.metadata.to_json(), context=lenient) == reading.metadata
+    )
 
 
 def test_error_an_envelope_is_judged_once() -> None:

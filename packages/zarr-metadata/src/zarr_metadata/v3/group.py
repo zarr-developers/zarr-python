@@ -12,6 +12,26 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import ZarrV3ExtensionField
 
 
+class ZarrV3ConsolidatedMetadataEnvelopeJSON(TypedDict, closed=True):
+    """
+    The `consolidated_metadata` member of a v3 group document, as the core spec fixes it.
+
+    The spec allows this one additional field on a group, for historical
+    reasons, and fixes its envelope: `kind` is `"inline"`,
+    `must_understand` is false, and `metadata` is an object. The spec
+    leaves the entries of `metadata` to the reference implementation, so
+    here they are any JSON. `ZarrV3ConsolidatedMetadataJSON`, in
+    `zarr_metadata.v3.consolidated`, types the entries as the reference
+    implementation writes them: an array or group document at each path.
+
+    See https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L802-L816
+    """
+
+    kind: Literal["inline"]
+    must_understand: Literal[False]
+    metadata: Mapping[str, JSONValue]
+
+
 class ZarrV3GroupMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
     Zarr v3 group metadata document (the `zarr.json` content for a group).
@@ -24,6 +44,7 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSONValue]]
+    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataEnvelopeJSON]
 
 
 class ZarrV3GroupMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3ExtensionField):
@@ -39,10 +60,10 @@ class ZarrV3GroupMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
     fields of a base template, or callers that build a fragment to be merged
     into a complete document elsewhere.
 
-    The `NotRequired[...]` wrapper on `attributes` is intentional: keeping it
+    The `NotRequired[...]` wrappers are intentional: keeping them
     preserves byte-identical `__annotations__` with `ZarrV3GroupMetadataJSON` so the
     `==` check in `tests/test_partial_equivalence.py` passes without
-    special-casing that field (PEP 655 explicitly permits `NotRequired` inside
+    special-casing those fields (PEP 655 explicitly permits `NotRequired` inside
     `total=False`).
 
     Drift between this type and `ZarrV3GroupMetadataJSON` is prevented by
@@ -52,6 +73,7 @@ class ZarrV3GroupMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSONValue]]
+    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataEnvelopeJSON]
 
 
 ZarrV3GroupMetadataStoreKey = Literal["zarr.json"]
@@ -67,6 +89,7 @@ distinguishes a group from an array.
 
 __all__ = [
     "ZARR_V3_GROUP_METADATA_STORE_KEY",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3GroupMetadataJSONPartial",
     "ZarrV3GroupMetadataStoreKey",

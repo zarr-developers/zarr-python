@@ -34,8 +34,8 @@ from zarr_metadata.definition import (
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,
+    read_consolidated_metadata_v3,
     validate_array_metadata_v3,
-    validate_group_metadata_v3,
 )
 from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
@@ -274,24 +274,15 @@ def test_error_a_struct_field_s_fill_value_its_own_type_refuses() -> None:
 
 
 def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
-    # Checked against the data type the document names. In a consolidated
-    # group, the problem is located where the array sits.
+    # Checked against the data type the document names. In consolidated
+    # metadata, the problem is located where the array sits.
     document = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"fill_value": 300}
     assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
         (("fill_value",), "invalid_value")
     ]
-    group = {
-        "zarr_format": 3,
-        "node_type": "group",
-        "attributes": {},
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {"a": document},
-        },
-    }
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(group)] == [
-        (("consolidated_metadata", "metadata", "a", "fill_value"), "invalid_value")
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": document}}
+    assert [(p.loc, p.kind) for p in read_consolidated_metadata_v3(member).problems] == [
+        (("metadata", "a", "fill_value"), "invalid_value")
     ]
 
 

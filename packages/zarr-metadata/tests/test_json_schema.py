@@ -826,13 +826,9 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
     ),
     ("consolidated", _consolidated(a=ARRAY, b=GROUP), True, True),
     ("consolidated-null", {**GROUP, "consolidated_metadata": None}, False, False),
-    ("consolidated-bad-array", _consolidated(a={**ARRAY, "fill_value": 300}), False, False),
-    (
-        "consolidated-within-consolidated",
-        _consolidated(b=_consolidated(c={**ARRAY, "fill_value": 300})),
-        False,
-        False,
-    ),
+    # A group's validator checks the envelope of its consolidated metadata,
+    # and does not read the documents it lists. Nor does the schema.
+    ("consolidated-entries-not-read", _consolidated(a={**ARRAY, "fill_value": 300}), True, True),
     (
         "consolidated-kind",
         {

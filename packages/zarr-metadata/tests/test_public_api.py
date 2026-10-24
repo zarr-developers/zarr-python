@@ -38,6 +38,7 @@ EXPECTED = [
     "ZarrV3GroupMetadataJSON",
     "ZarrV3GroupMetadataJSONPartial",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3NamedConfigJSON",
     "ZarrV3MetadataFieldJSON",
     "JSONValue",

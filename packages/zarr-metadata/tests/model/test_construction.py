@@ -59,6 +59,7 @@ GROUP = ZarrV3GroupMetadata.from_json(
         },
     }
 )
+CONSOLIDATED = ZarrV3ConsolidatedMetadata(GROUP.consolidated_metadata)
 V2_ARRAY = ZarrV2ArrayMetadata.create_default(shape=(4,), attributes={"a": 1})
 V2_GROUP = ZarrV2GroupMetadata.create_default(attributes={})
 V2_CONSOLIDATED = ZarrV2ConsolidatedMetadata.from_json(
@@ -77,7 +78,7 @@ _INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
 @pytest.mark.parametrize(
     "model",
-    [ARRAY, GROUP, GROUP.consolidated_metadata],
+    [ARRAY, GROUP, CONSOLIDATED],
     ids=["array", "group", "consolidated"],
 )
 def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None:
@@ -179,7 +180,7 @@ def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
 
 
 def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
-    """A model is read once, when it is built. `to_key_value` reads nothing. `update` reads the new document. A group reads the documents it holds once, as part of its own read."""
+    """A model is read once, when it is built. `to_key_value` reads nothing. `update` reads the new document. A group does not read the documents its consolidated metadata lists; `ZarrV3ConsolidatedMetadata` reads each of them once."""
     values: list[object] = []
 
     def counted(
@@ -196,11 +197,12 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
     assert values == [3]
     changed = model.update(fill_value=4)
     assert values == [3, 4]
-    group = ZarrV3GroupMetadata.create_default(
-        context=context, consolidated_metadata={**_INLINE, "metadata": {"a": changed.to_json()}}
-    )
-    assert values == [3, 4, 4]
+    member: dict[str, Any] = {**_INLINE, "metadata": {"a": changed.to_json()}}
+    group = ZarrV3GroupMetadata.create_default(context=context, consolidated_metadata=member)
+    assert values == [3, 4]
     group.to_key_value()
+    assert values == [3, 4]
+    ZarrV3ConsolidatedMetadata(group.consolidated_metadata, context=context).to_json()
     assert values == [3, 4, 4]
 
 

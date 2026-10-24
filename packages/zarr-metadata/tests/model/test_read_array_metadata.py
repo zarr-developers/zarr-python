@@ -29,7 +29,6 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
     read_array_metadata_v3,
-    read_group_metadata_v3,
 )
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.definition import (
@@ -268,22 +267,6 @@ def _array_fields(
     return with_problems(reading.fields(), reading.problems)
 
 
-def _group_fields(
-    document: object,
-) -> Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]:
-    group = {
-        "zarr_format": 3,
-        "node_type": "group",
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {"a": document},
-        },
-    }
-    reading = read_group_metadata_v3(group)
-    return with_problems(reading.fields(), reading.problems)
-
-
 def _field_fields(
     document: object,
 ) -> Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]:
@@ -309,7 +292,6 @@ _EACH_FIELD_S = {
     ("codecs", 2): [("codecs", 2)],
 }
 """Each field of `_WITH_PROBLEMS`, with the location of each of its problems."""
-_IN_A_GROUP = ("consolidated_metadata", "metadata", "a")
 
 
 @pytest.mark.parametrize(
@@ -317,18 +299,11 @@ _IN_A_GROUP = ("consolidated_metadata", "metadata", "a")
     [
         (_array_fields, _EACH_FIELD_S),
         (
-            _group_fields,
-            {
-                (*_IN_A_GROUP, *loc): [(*_IN_A_GROUP, *problem) for problem in problems]
-                for loc, problems in _EACH_FIELD_S.items()
-            },
-        ),
-        (
             _field_fields,
             {loc: problems for loc, problems in _EACH_FIELD_S.items() if loc[:2] == ("codecs", 0)},
         ),
     ],
-    ids=["an-array", "a-document-a-group-holds", "one-field"],
+    ids=["an-array", "one-field"],
 )
 def test_each_field_comes_with_the_problems_located_in_it(
     fields: Callable[

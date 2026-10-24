@@ -35,6 +35,7 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadataUpdate,
     ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     is_array_metadata_v2,
     is_array_metadata_v3,
@@ -389,11 +390,13 @@ def test_v3_create_default_applies_overrides() -> None:
         (
             ZarrV3GroupMetadata,
             {
-                "consolidated_metadata": {
-                    "kind": "inline",
-                    "must_understand": False,
-                    "metadata": {"x": ZarrV3ArrayMetadata.create_default()},
-                }
+                "consolidated_metadata": ZarrV3ConsolidatedMetadata(
+                    {
+                        "kind": "inline",
+                        "must_understand": False,
+                        "metadata": {"x": ZarrV3ArrayMetadata.create_default()},
+                    }
+                )
             },
         ),
         (ZarrV2ArrayMetadata, {"fill_value": 3, "attributes": {"k": "v"}}),
@@ -405,7 +408,7 @@ def test_v3_create_default_applies_overrides() -> None:
         "v3-array",
         "v3-array-unset",
         "v3-group",
-        "v3-group-consolidated-models",
+        "v3-group-consolidated-model",
         "v2-array",
         "v2-array-unset",
         "v2-group",
@@ -415,7 +418,7 @@ def test_v3_create_default_applies_overrides() -> None:
 def test_create_default_takes_the_members_update_takes(
     model: object, members: dict[str, Any]
 ) -> None:
-    """Every model's `create_default` takes the same keyword members as its `update`, including `UNSET` to drop a member and, for a v3 group, node models in `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
+    """Every model's `create_default` takes the same keyword members as its `update`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
     kind = cast("Any", model)
     assert kind.create_default(**members) == kind.create_default().update(**members)
 
@@ -602,14 +605,12 @@ def test_two_models_are_one_array_when_their_fill_values_are_one_value(
     # Equal models have equal hashes.
     if same:
         assert hash(models[0]) == hash(models[1])
-    # Groups holding the arrays compare the same way.
-    groups = [
-        ZarrV3GroupMetadata.create_default(
-            consolidated_metadata={**_INLINE, "metadata": {"a": model.to_json()}}
-        )
+    # Consolidated metadata holding the arrays compares the same way.
+    held = [
+        ZarrV3ConsolidatedMetadata({**_INLINE, "metadata": {"a": model.to_json()}})
         for model in models
     ]
-    assert (groups[0] == groups[1]) is same
+    assert (held[0] == held[1]) is same
 
 
 _INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}

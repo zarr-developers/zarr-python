@@ -190,8 +190,9 @@ simplest = {
 metadata = reading.metadata  # None when reading.problems is not empty
 ```
 
-`read_group_metadata_v3` reads a group the same way, and reads each
-document in its consolidated metadata once. `read_node_metadata_v3` reads
+`read_group_metadata_v3` reads a group the same way. It checks the
+envelope of the group's `consolidated_metadata`, and does not read the
+documents the member lists (see below). `read_node_metadata_v3` reads
 a `zarr.json` of either kind as the node type its `node_type` names, the
 same way a discriminated union uses its tag. A document whose `node_type`
 is neither reads as `ZarrV3UnknownNodeMetadataReading`, with the problems.
@@ -203,7 +204,8 @@ way the models' own `from_json` and `from_key_value` build one.
 Consolidated metadata holds the hierarchy below its group, with the group
 as the root. The document of the node at `/a/b` is stored under the key
 `a/b`. The documents and the group must form a tree: only groups have
-child nodes, and the parent of every node is present. `NodeName` and
+child nodes, and the parent of every node is present.
+`ZarrV3ConsolidatedMetadata` checks this when it reads the documents. `NodeName` and
 `NodePath`, in `zarr_metadata.v3`, are the types of strings that satisfy
 the spec's rules for node names and paths. They are modeled on the zarrs
 types with the same names. `validate_node_name_v3`, `is_node_name_v3` and
@@ -234,13 +236,23 @@ another scope. `refined_in` also reads the document in another scope, but
 only one that claims what this scope left unclaimed and contradicts
 nothing; otherwise it raises `ScopeConflictError`.
 
-The documents in a group's `consolidated_metadata` are models in the
-group's scope, built from the group's single read. `consolidated_metadata`
-also accepts node models as entries. Such an entry is accepted when its
-claims refine into the group's scope, and refused at its path otherwise.
-`Context.joined` returns a scope in which to consolidate children that
-were read in several scopes. Every reader takes `context=None` for the
-default scope, `CORE_AND_EXTENSIONS`.
+A group does not read the documents its `consolidated_metadata` lists.
+Consolidated metadata is a convention of the reference implementation,
+not core metadata, so a group holds the member as written, after it
+checks the envelope that the core spec fixes. A reader can use the
+member as a source of child documents in place of the store: read one
+document with `read_node_metadata_v3` when that node is opened, or read
+all of them with `ZarrV3ConsolidatedMetadata`, or with
+`read_consolidated_metadata_v3`, which returns problems instead of
+raising them. A document with a problem then fails only when it is read.
+
+To write consolidated metadata, build a `ZarrV3ConsolidatedMetadata` and
+pass it to the group's `update`, which writes its document. The model
+reads every document strictly, and also accepts node models as entries.
+Such an entry is accepted when its claims refine into the model's scope,
+and refused at its path otherwise. `Context.joined` returns a scope in
+which to consolidate children that were read in several scopes. Every
+reader takes `context=None` for the default scope, `CORE_AND_EXTENSIONS`.
 
 Two models are equal when they represent the same document, even if each
 is spelled differently. Values the package interprets (each field, and the

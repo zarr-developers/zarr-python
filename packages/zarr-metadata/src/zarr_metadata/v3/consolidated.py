@@ -5,10 +5,11 @@ models the inline-on-group convention used by the reference Python
 implementation (and zarrs), where consolidated metadata is embedded as
 an extension field on a group's `zarr.json`.
 
-This is a known non-core interoperability extension. Its
-`{kind, must_understand, metadata}` payload is an unknown top-level JSON value
-to the core document model; implementations that recognize the convention may
-interpret it through this dedicated type.
+This is a known non-core interoperability extension. The core spec fixes
+only its `{kind, must_understand, metadata}` envelope, which
+`ZarrV3ConsolidatedMetadataEnvelopeJSON` in `zarr_metadata.v3.group` types
+with any JSON as the entries. Implementations that recognize the convention
+may read the entries through this dedicated type.
 """
 
 from collections.abc import Mapping

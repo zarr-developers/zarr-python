@@ -13,8 +13,9 @@ that returns every problem found (a tuple of `ValidationProblem`, each
 with a machine-readable `kind`), an `is_*` type guard, and a `parse_*`
 function that narrows the value or raises `MetadataValidationError`.
 Every document type also gets a reader (`read_array_metadata_v3`,
-`read_group_metadata_v3`, `read_array_metadata_v2`,
-`read_group_metadata_v2`, `read_consolidated_metadata_v2`). Each does
+`read_group_metadata_v3`, `read_consolidated_metadata_v3`,
+`read_array_metadata_v2`, `read_group_metadata_v2`,
+`read_consolidated_metadata_v2`). Each does
 one read and returns what it read, the problems, and the model when there
 are no problems. It is the form of the model's constructor that returns
 problems as values instead of raising them. A node of either type is read by `read_node_metadata_v3`, from
@@ -35,10 +36,14 @@ scope and raises `MetadataValidationError` with every problem, so an
 invalid model is never built. `to_json` returns the document as written.
 `update` reads new members in the model's own scope. `with_context` and
 `refined_in` read the document in another scope. `to_key_value` writes
-the model as it is. A group's `consolidated_metadata` accepts node
-models as entries. An entry is accepted when its claims refine into the
-group's scope, and refused with a problem at its path otherwise. Every
-reader takes `context=None` for the default scope.
+the model as it is. A v3 group reads its `consolidated_metadata` as an
+envelope and does not read the documents it lists, because consolidated
+metadata is a convention of the reference implementation, not core
+metadata. `ZarrV3ConsolidatedMetadata` and
+`read_consolidated_metadata_v3` read those documents. The model also
+accepts node models as entries: an entry is accepted when its claims
+refine into the model's scope, and refused with a problem at its path
+otherwise. Every reader takes `context=None` for the default scope.
 """
 
 from zarr_metadata._sentinel import UNSET
@@ -81,6 +86,7 @@ from zarr_metadata.model._group_v2 import (
 from zarr_metadata.model._group_v3 import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3ConsolidatedMetadataInput,
+    ZarrV3ConsolidatedMetadataReading,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
     ZarrV3GroupMetadataUpdate,
@@ -92,6 +98,7 @@ from zarr_metadata.model._group_v3 import (
     node_metadata_from_json_v3,
     node_metadata_from_key_value_v3,
     parse_group_metadata_v3,
+    read_consolidated_metadata_v3,
     read_group_metadata_v3,
     read_node_metadata_v3,
     validate_group_metadata_v3,
@@ -142,6 +149,7 @@ __all__ = [
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadataInput",
+    "ZarrV3ConsolidatedMetadataReading",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataReading",
     "ZarrV3GroupMetadataUpdate",
@@ -170,6 +178,7 @@ __all__ = [
     "read_array_metadata_v2",
     "read_array_metadata_v3",
     "read_consolidated_metadata_v2",
+    "read_consolidated_metadata_v3",
     "read_group_metadata_v2",
     "read_group_metadata_v3",
     "read_node_metadata_v2",

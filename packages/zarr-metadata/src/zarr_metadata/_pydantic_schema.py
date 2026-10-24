@@ -79,8 +79,16 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
+class ZarrV3ConsolidatedMetadataEnvelopeJSON(TypedDict, closed=True):
+    """Schema input for a group's consolidated-metadata envelope, whose entries a group does not read."""
+
+    kind: Literal["inline"]
+    must_understand: Literal[False]
+    metadata: Mapping[str, JSONValue]
+
+
 class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
-    """Schema input for the closed inline consolidated-metadata envelope."""
+    """Schema input for the closed inline consolidated-metadata envelope, with each entry read."""
 
     kind: Literal["inline"]
     must_understand: Literal[False]
@@ -93,7 +101,7 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=JSONValue):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON]
+    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataEnvelopeJSON]
 
 
 class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
@@ -136,6 +144,7 @@ __all__ = [
     "ZarrV2ConsolidatedMetadataJSON",
     "ZarrV2GroupMetadataJSON",
     "ZarrV3ArrayMetadataJSON",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3MetadataFieldJSON",

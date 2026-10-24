@@ -73,6 +73,30 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "ZarrV3ArrayMetadata.create_default": lambda context: zm.ZarrV3ArrayMetadata.create_default(
         shape=(4,), codecs=BAD["codecs"], context=context
     ),
+    "ZarrV3ConsolidatedMetadata": lambda context: zm.ZarrV3ConsolidatedMetadata(
+        GROUP["consolidated_metadata"], context=context
+    ),
+    "ZarrV3ConsolidatedMetadata.from_json": lambda context: zm.ZarrV3ConsolidatedMetadata.from_json(
+        GROUP["consolidated_metadata"], context=context
+    ),
+    "read_consolidated_metadata_v3": lambda context: zm.read_consolidated_metadata_v3(
+        GROUP["consolidated_metadata"], context=context
+    ),
+    "read_node_metadata_v3": lambda context: zm.read_node_metadata_v3(BAD, context=context),
+    "validate_node_metadata_v3": lambda context: zm.validate_node_metadata_v3(BAD, context=context),
+    "node_metadata_from_json_v3": lambda context: zm.node_metadata_from_json_v3(
+        BAD, context=context
+    ),
+    "node_metadata_from_key_value_v3": lambda context: zm.node_metadata_from_key_value_v3(
+        STORE_A, context=context
+    ),
+    "read_repaired_node_metadata_v3": lambda context: zm.read_repaired_node_metadata_v3(
+        BAD, context=context
+    ),
+}
+"""Each entry point that reads `BAD`, as a document or as an entry of consolidated metadata."""
+
+GROUP_ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "validate_group_metadata_v3": lambda context: zm.validate_group_metadata_v3(
         GROUP, context=context
     ),
@@ -91,26 +115,12 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "ZarrV3GroupMetadata.create_default": lambda context: zm.ZarrV3GroupMetadata.create_default(
         consolidated_metadata=GROUP["consolidated_metadata"], context=context
     ),
-    "ZarrV3ConsolidatedMetadata": lambda context: zm.ZarrV3ConsolidatedMetadata(
-        GROUP["consolidated_metadata"], context=context
-    ),
-    "ZarrV3ConsolidatedMetadata.from_json": lambda context: zm.ZarrV3ConsolidatedMetadata.from_json(
-        GROUP["consolidated_metadata"], context=context
-    ),
-    "read_node_metadata_v3": lambda context: zm.read_node_metadata_v3(GROUP, context=context),
-    "validate_node_metadata_v3": lambda context: zm.validate_node_metadata_v3(
-        GROUP, context=context
-    ),
-    "node_metadata_from_json_v3": lambda context: zm.node_metadata_from_json_v3(
-        GROUP, context=context
-    ),
-    "node_metadata_from_key_value_v3": lambda context: zm.node_metadata_from_key_value_v3(
+    "read_node_metadata_v3-group": lambda context: zm.read_node_metadata_v3(GROUP, context=context),
+    "node_metadata_from_key_value_v3-group": lambda context: zm.node_metadata_from_key_value_v3(
         STORE_G, context=context
     ),
-    "read_repaired_node_metadata_v3": lambda context: zm.read_repaired_node_metadata_v3(
-        GROUP, context=context
-    ),
 }
+"""Each entry point that reads `GROUP`, which lists `BAD` in its consolidated metadata."""
 
 
 @pytest.mark.parametrize("read", ENTRY_POINTS.values(), ids=ENTRY_POINTS.keys())
@@ -122,13 +132,26 @@ def test_every_entry_point_reads_in_the_scope_it_is_given(read: Callable[..., ob
     assert accepted(None) is False
 
 
+@pytest.mark.parametrize("read", GROUP_ENTRY_POINTS.values(), ids=GROUP_ENTRY_POINTS.keys())
+def test_a_group_reads_the_same_in_every_scope(read: Callable[..., object]) -> None:
+    """A group document has no fields, and a group does not read the documents its consolidated metadata lists. So each group entry point accepts a group that lists `BAD`, in every scope."""
+    accepted = _accepts(read)
+    assert accepted(EMPTY) is True
+    assert accepted(CORE_AND_EXTENSIONS) is True
+    assert accepted(None) is True
+
+
 def test_the_json_schema_is_written_in_the_scope_it_is_given() -> None:
     """`node_metadata_json_schema_v3` takes `None` for the default scope, and writes a different schema for an empty one."""
     assert node_metadata_json_schema_v3(context=None) == node_metadata_json_schema_v3()
     assert node_metadata_json_schema_v3(context=EMPTY) != node_metadata_json_schema_v3()
 
 
-@pytest.mark.parametrize("read", ENTRY_POINTS.values(), ids=ENTRY_POINTS.keys())
+@pytest.mark.parametrize(
+    "read",
+    [*ENTRY_POINTS.values(), *GROUP_ENTRY_POINTS.values()],
+    ids=[*ENTRY_POINTS.keys(), *GROUP_ENTRY_POINTS.keys()],
+)
 def test_error_every_entry_point_refuses_a_scope_of_another_format(
     read: Callable[..., object],
 ) -> None:

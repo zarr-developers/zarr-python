@@ -15,7 +15,6 @@ from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text
 from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
-    RefusedField,
     UnclaimedField,
     resolve,
 )
@@ -32,13 +31,13 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadataReading,
     ZarrV3GroupMetadataUpdate,
     ZarrV3UnknownNodeMetadataReading,
-    is_array_metadata_v3,
     is_group_metadata_v2,
     is_group_metadata_v3,
     node_metadata_from_json_v3,
     node_metadata_from_key_value_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
+    read_consolidated_metadata_v3,
     read_group_metadata_v3,
     read_node_metadata_v3,
     validate_group_metadata_v2,
@@ -305,27 +304,32 @@ def _chain_of_groups(documents: int) -> dict[str, object]:
 
 
 def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks() -> None:
-    """Each document is read from its location in the input document, so a chain is bounded like any other nesting. Previously the reader used three stack frames per document with no bound, and a 20 KB chain overflowed."""
+    """Each document is read from its location in the input document, so a chain is bounded like any other nesting: by a group, which refines its consolidated metadata without reading the documents, and by the consolidated metadata, which reads each document. Previously the reader used three stack frames per document with no bound, and a 20 KB chain overflowed."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
     deepest = (JSON_DEPTH - 1) // 3
-    problems = validate_group_metadata_v3(_chain_of_groups(deepest))
-    assert all(len(problem.loc) < JSON_DEPTH for problem in problems)
+    assert validate_group_metadata_v3(_chain_of_groups(deepest)) == ()
+    member = _chain_of_groups(deepest)["consolidated_metadata"]
+    problems = read_consolidated_metadata_v3(member).problems
+    assert all(len(problem.loc) < JSON_DEPTH - 1 for problem in problems)
     assert {problem.message for problem in problems} == {
         'expected a node the group lists, got "/a/a", which "/a" lists alone'
     }
     for documents in (deepest + 1, 350):
-        problems = validate_group_metadata_v3(_chain_of_groups(documents))
+        chain = _chain_of_groups(documents)
         assert [
-            (len(problem.loc), problem.message)
-            for problem in problems
-            if len(problem.loc) >= JSON_DEPTH
+            (len(problem.loc), problem.message) for problem in validate_group_metadata_v3(chain)
         ] == [(JSON_DEPTH, depth)]
-        with pytest.raises(MetadataValidationError):
-            ZarrV3GroupMetadata.from_json(_chain_of_groups(documents))
+        problems = read_consolidated_metadata_v3(chain["consolidated_metadata"]).problems
+        # Located in the member, one level below the group document.
+        assert [
+            (len(problem.loc) + 1, problem.message)
+            for problem in problems
+            if len(problem.loc) + 1 >= JSON_DEPTH
+        ] == [(JSON_DEPTH, depth)]
 
 
 def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
-    """A consolidated document's levels are counted from the root of the input document. So a document that `read_node_metadata_v3` accepts on its own can be too deep when nested. The nested document's own reading locates the problem inside it."""
+    """A consolidated document's levels are counted from the root of the input document. So a document that `read_node_metadata_v3` accepts on its own can be too deep when nested. A group refuses each container past the cap, and so does its consolidated metadata, read on its own, at the same place in each document."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
 
     def nested(levels: int) -> dict[str, object]:
@@ -353,27 +357,20 @@ def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
     }
     assert validate_node_metadata_v3(group) == ()
     assert validate_node_metadata_v3(array) == ()
-    document = {
-        "zarr_format": 3,
-        "node_type": "group",
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {"g": group, "h": array},
-        },
-    }
-    reading = read_group_metadata_v3(document)
-    assert [(len(problem.loc), problem.message) for problem in reading.problems] == [
-        (JSON_DEPTH, depth)
-    ] * 4
+    member = {"kind": "inline", "must_understand": False, "metadata": {"g": group, "h": array}}
+    document = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member}
     assert [
-        (problem.loc[:2], len(problem.loc)) for problem in reading.consolidated["g"].problems
-    ] == [(("acme_extra", "a"), JSON_DEPTH - 3), (("attributes", "a"), JSON_DEPTH - 3)]
+        (len(problem.loc), problem.message) for problem in validate_group_metadata_v3(document)
+    ] == [(JSON_DEPTH, depth)] * 4
+    # Located in the member, one level below the group document.
     assert [
-        (problem.loc[:2], len(problem.loc)) for problem in reading.consolidated["h"].problems
+        (problem.loc[:4], len(problem.loc) + 1)
+        for problem in read_consolidated_metadata_v3(member).problems
     ] == [
-        (("fill_value", "a"), JSON_DEPTH - 3),
-        (("codecs", 1), JSON_DEPTH - 3),
+        (("metadata", "g", "acme_extra", "a"), JSON_DEPTH),
+        (("metadata", "g", "attributes", "a"), JSON_DEPTH),
+        (("metadata", "h", "fill_value", "a"), JSON_DEPTH),
+        (("metadata", "h", "codecs", 1), JSON_DEPTH),
     ]
 
 
@@ -414,16 +411,8 @@ def test_a_document_a_level_before_the_cap_holds_its_scalars_and_nothing_else() 
 def test_a_listing_key_too_long_to_write_is_shown_by_its_size(
     interpreter_writes_4300_digits: None,
 ) -> None:
-    document = {
-        "zarr_format": 3,
-        "node_type": "group",
-        "consolidated_metadata": {
-            "kind": "inline",
-            "must_understand": False,
-            "metadata": {10**5000: 1},
-        },
-    }
-    (problem,) = validate_group_metadata_v3(document)
+    member = {"kind": "inline", "must_understand": False, "metadata": {10**5000: 1}}
+    (problem,) = read_consolidated_metadata_v3(member).problems
     assert problem.message == f"non-string key an integer of {(10**5000).bit_length()} bits"
 
 
@@ -561,8 +550,7 @@ def test_update_takes_every_member_of_the_document_it_may_change() -> None:
 
 
 def test_consolidated_v3_roundtrip() -> None:
-    """A v3 group with inline consolidated metadata round-trips, with child
-    entries parsed into array/group models."""
+    """A v3 group with inline consolidated metadata round-trips, holding the member as written. Read on its own, the member holds an array model and a group model."""
     child = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
     doc = {
         "zarr_format": 3,
@@ -574,10 +562,11 @@ def test_consolidated_v3_roundtrip() -> None:
         },
     }
     model = ZarrV3GroupMetadata.from_json(doc)
-    assert isinstance(model.consolidated_metadata, ZarrV3ConsolidatedMetadata)
-    assert isinstance(model.consolidated_metadata.metadata["a"], ZarrV3ArrayMetadata)
-    assert isinstance(model.consolidated_metadata.metadata["g"], ZarrV3GroupMetadata)
     assert model.to_json() == doc
+    assert model.consolidated_metadata == doc["consolidated_metadata"]
+    held = ZarrV3ConsolidatedMetadata(model.consolidated_metadata)
+    assert isinstance(held.metadata["a"], ZarrV3ArrayMetadata)
+    assert isinstance(held.metadata["g"], ZarrV3GroupMetadata)
 
 
 def test_error_consolidated_v3_must_understand_is_not_a_member_to_set() -> None:
@@ -613,8 +602,8 @@ def test_consolidated_v3_not_a_mapping() -> None:
 LITTLE: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
 GZIP_99 = {"name": "gzip", "configuration": {"level": 99}}
 
-A: tuple[str, ...] = ("consolidated_metadata", "metadata", "a")
-"""The location, in the group document, of the document at path `a` in the group's consolidated metadata."""
+A: tuple[str, ...] = ("metadata", "a")
+"""The location, in a `consolidated_metadata` member, of the document at path `a`."""
 
 
 def _array(**members: object) -> dict[str, object]:
@@ -658,15 +647,19 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
     assert updated.consolidated_metadata == group.consolidated_metadata
 
 
-def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
-    """`update` reads the documents it is given in the group's scope, and `UNSET` removes them. `zstd` is an extension, so `CORE` leaves it unclaimed."""
+def test_group_update_writes_the_consolidated_metadata_it_is_given() -> None:
+    """`update` takes consolidated metadata as a document writes it, or as a `ZarrV3ConsolidatedMetadata`, whose document it writes; the group holds the same member either way. `UNSET` removes it. `zstd` is an extension, so `CORE` leaves it unclaimed, and the member read in the group's scope holds it as unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     member = cast("Any", _inline(a=_array(codecs=[LITTLE, zstd])))
-    updated = ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=member)
-    assert updated.consolidated_metadata is not UNSET
-    child = updated.consolidated_metadata.metadata["a"]
+    held = ZarrV3ConsolidatedMetadata(member, context=CORE)
+    child = held.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
     assert isinstance(child.codecs[1], UnclaimedField)
+    group = ZarrV3GroupMetadata.create_default(context=CORE)
+    updated = group.update(consolidated_metadata=held)
+    assert updated.consolidated_metadata == held.to_json()
+    assert updated == group.update(consolidated_metadata=member)
+    assert ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=CORE) == held
     removed = updated.update(consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
 
@@ -678,59 +671,37 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
 
 
 @pytest.mark.parametrize(
-    ("document", "paths", "locs"),
+    ("member", "paths", "locs"),
     [
-        (_group(), [], []),
-        (
-            _group(consolidated_metadata=_inline(a=_array(), g=_group())),
-            ["a", "g"],
-            _fields_of_an_array(*A),
-        ),
+        (_inline(a=_array(), g=_group()), ["a", "g"], _fields_of_an_array(*A)),
         # Every node below the group, including one below another group, at its path.
         (
-            _group(consolidated_metadata=_inline(g=_group(), **{"g/b": _array()})),
+            _inline(g=_group(), **{"g/b": _array()}),
             ["g", "g/b"],
-            _fields_of_an_array("consolidated_metadata", "metadata", "g/b"),
+            _fields_of_an_array("metadata", "g/b"),
         ),
         # A group's consolidated metadata inside another group's, listing a node
-        # the outer group also lists. Each field is located from the root of
-        # the outer document.
+        # the outer group also lists. The listed group's own listing is
+        # checked against the outer one, and its documents are not models
+        # of the outer member.
         (
-            _group(
-                consolidated_metadata=_inline(
-                    g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}
-                )
-            ),
+            _inline(g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}),
             ["g", "g/b"],
-            [
-                *_fields_of_an_array(
-                    "consolidated_metadata",
-                    "metadata",
-                    "g",
-                    "consolidated_metadata",
-                    "metadata",
-                    "b",
-                ),
-                *_fields_of_an_array("consolidated_metadata", "metadata", "g/b"),
-            ],
+            _fields_of_an_array("metadata", "g/b"),
         ),
     ],
-    ids=["no-consolidated-metadata", "an-array-and-a-group", "paths", "nested"],
+    ids=["an-array-and-a-group", "paths", "nested"],
 )
-def test_a_group_reads_each_document_its_consolidated_metadata_holds(
-    document: dict[str, object], paths: list[str], locs: list[tuple[str | int, ...]]
+def test_consolidated_metadata_reads_each_document_it_lists(
+    member: dict[str, object], paths: list[str], locs: list[tuple[str | int, ...]]
 ) -> None:
-    reading = read_group_metadata_v3(document)
+    """`read_consolidated_metadata_v3` reads each document a member lists as the node its `node_type` declares, and the reading's fields are each listed array's fields, located in the member. The model equals the one the constructor builds."""
+    reading = read_consolidated_metadata_v3(member)
     assert reading.problems == ()
-    assert list(reading.consolidated) == paths
+    assert reading.metadata is not None
+    assert list(reading.metadata.metadata) == paths
     assert [loc for loc, _ in reading.fields()] == locs
-    model = reading.metadata
-    assert model is not None
-    assert model == ZarrV3GroupMetadata.from_json(document)
-    # The model holds the model that each document's own reading built.
-    consolidated = model.consolidated_metadata
-    held = {} if consolidated is UNSET else consolidated.metadata
-    assert all(held[path] is reading.consolidated[path].metadata for path in paths)
+    assert reading.metadata == ZarrV3ConsolidatedMetadata(member)
 
 
 @pytest.mark.parametrize(
@@ -751,10 +722,10 @@ def test_error_a_document_in_consolidated_metadata_is_at_a_node_s_path_below_the
 ) -> None:
     # A path is node names joined by "/", as the reference implementation
     # stores it. The group's own path, "/", and this path make the node's path.
-    document = _group(consolidated_metadata=_inline(**{path: _group()}))
+    member = _inline(**{path: _group()})
     message = f"expected the path of a node below the group, got {json.dumps(path)}, which {fault}"
-    assert validate_group_metadata_v3(document) == (
-        ValidationProblem(("consolidated_metadata", "metadata", path), message, "invalid_value"),
+    assert read_consolidated_metadata_v3(member).problems == (
+        ValidationProblem(("metadata", path), message, "invalid_value"),
     )
 
 
@@ -772,31 +743,29 @@ def test_error_no_document_in_consolidated_metadata_is_below_an_array(
 ) -> None:
     # "Group nodes may have children but array nodes may not." The message
     # names each node by its path in the hierarchy below the group.
-    document = _group(consolidated_metadata=_inline(**documents))
+    member = _inline(**documents)
     message = f'expected a node below a group, got "/{path}", below the array "/a"'
-    assert validate_group_metadata_v3(document) == (
-        ValidationProblem(("consolidated_metadata", "metadata", path), message, "invalid_value"),
+    assert read_consolidated_metadata_v3(member).problems == (
+        ValidationProblem(("metadata", path), message, "invalid_value"),
     )
 
 
 def test_a_document_of_no_node_type_is_taken_as_a_group_s() -> None:
     # The document's own problem is reported at its location, and the nodes
     # below it are not refused because of it.
-    document = _group(
-        consolidated_metadata=_inline(a={"zarr_format": 3, "node_type": "x"}, **{"a/b": _array()})
-    )
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(document)] == [
-        (("consolidated_metadata", "metadata", "a", "node_type"), "invalid_value")
+    member = _inline(a={"zarr_format": 3, "node_type": "x"}, **{"a/b": _array()})
+    assert [(p.loc, p.kind) for p in read_consolidated_metadata_v3(member).problems] == [
+        ((*A, "node_type"), "invalid_value")
     ]
 
 
 def test_error_consolidated_metadata_holds_the_group_holding_each_document() -> None:
     # The nearest missing group above a node is reported once, with a count
     # of the missing groups above it, up to the group that holds the documents.
-    document = _group(consolidated_metadata=_inline(**{"a/b/c": _array(), "a/b/d": _array()}))
-    assert [(p.loc, p.message, p.kind) for p in validate_group_metadata_v3(document)] == [
+    member = _inline(**{"a/b/c": _array(), "a/b/d": _array()})
+    assert [(p.loc, p.message, p.kind) for p in read_consolidated_metadata_v3(member).problems] == [
         (
-            ("consolidated_metadata", "metadata", "a/b"),
+            ("metadata", "a/b"),
             'missing the group holding "/a/b/c", and 1 group above it',
             "missing_key",
         ),
@@ -811,8 +780,8 @@ def test_error_a_consolidated_metadata_key_that_is_not_a_string() -> None:
     ]
 
 
-NESTED = ("consolidated_metadata", "metadata", "g", "consolidated_metadata", "metadata")
-"""The location, in the outer document, of the own listing of the group at `g`."""
+NESTED = ("metadata", "g", "consolidated_metadata", "metadata")
+"""The location, in the outer member, of the own listing of the group at `g`."""
 
 
 @pytest.mark.parametrize(
@@ -845,8 +814,8 @@ NESTED = ("consolidated_metadata", "metadata", "g", "consolidated_metadata", "me
                 )
             ],
         ),
-        # A deeper listing is checked by the listed group itself, when its
-        # document is read. The problem belongs to that document, at its location.
+        # A deeper listing is checked against the listing that holds it, when
+        # that listing is read. The problem is located in that listing.
         (
             {"h": _group(consolidated_metadata=_inline(x=_array()))},
             {"g/h": _group()},
@@ -866,33 +835,15 @@ def test_a_listed_group_s_own_listing_lists_what_the_group_lists(
     flat: dict[str, object],
     expected: list[tuple[tuple[str, ...], str, str]],
 ) -> None:
-    document = _group(
-        consolidated_metadata=_inline(g=_group(consolidated_metadata=_inline(**listed)), **flat)
-    )
-    problems = validate_group_metadata_v3(document)
+    """A group listed in consolidated metadata may list nodes of its own, and each must be listed by the outer member too, with the same node type. A group holding the member does not read the listings, so it reads without problems."""
+    member = _inline(g=_group(consolidated_metadata=_inline(**listed)), **flat)
+    problems = read_consolidated_metadata_v3(member).problems
     assert [(p.loc, p.message, p.kind) for p in problems] == expected
-    # The consolidated member, read on its own, refuses what the group's read
-    # reports: a listed group whose own listing is wrong is refused.
-    listing = {"g": _group(consolidated_metadata=_inline(**listed)), **flat}
-    deeper = [(loc, message, kind) for loc, message, kind in expected if len(loc) > len(NESTED) + 1]
-    if len(deeper) != 0:
-        with pytest.raises(MetadataValidationError) as inner:
-            node_metadata_from_json_v3(listing["g"])
-        assert [(p.loc, p.message, p.kind) for p in inner.value.problems] == [
-            (loc[3:], message, kind) for loc, message, kind in deeper
-        ]
-        return
-    if expected == []:
-        assert ZarrV3ConsolidatedMetadata(_inline(**listing)).metadata.keys() == listing.keys()
-        return
-    with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3ConsolidatedMetadata(_inline(**listing))
-    assert [(p.loc[1:], p.message, p.kind) for p in raised.value.problems] == [
-        (loc[2:], message, kind) for loc, message, kind in expected
-    ]
+    assert validate_group_metadata_v3(_group(consolidated_metadata=member)) == ()
 
 
 def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
+    """A group does not read the documents its consolidated metadata lists. Reading the member reads each of them once."""
     reads: list[GzipCodecConfiguration] = []
 
     def counted(
@@ -903,10 +854,14 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
 
     context = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, rules=counted))
     array = _array(codecs=[LITTLE, {"name": "gzip", "configuration": {"level": 5}}])
-    group = _group(consolidated_metadata=_inline(a=array))
-    assert read_group_metadata_v3(group, context=context).problems == ()
+    member = _inline(a=array)
+    assert (
+        read_group_metadata_v3(_group(consolidated_metadata=member), context=context).problems == ()
+    )
+    assert reads == []
+    assert read_consolidated_metadata_v3(member, context=context).problems == ()
     assert reads == [{"level": 5}]
-    ZarrV3GroupMetadata.from_json(group, context=context)
+    ZarrV3ConsolidatedMetadata(member, context=context)
     assert len(reads) == 2
 
 
@@ -915,48 +870,35 @@ def test_error_a_group_document_that_is_not_an_object_reads_as_nothing() -> None
     assert read_group_metadata_v3([1]) == ZarrV3GroupMetadataReading(problems=(not_an_object,))
 
 
+def test_error_a_group_document_with_a_problem_reads_as_no_model() -> None:
+    """A group document with a problem of its own reads as its problems and no model."""
+    reading = read_group_metadata_v3(
+        _group(attributes=5, consolidated_metadata=_inline(a=_array()))
+    )
+    assert [(p.loc, p.kind) for p in reading.problems] == [(("attributes",), "invalid_type")]
+    assert reading.metadata is None
+
+
 @pytest.mark.parametrize(
-    ("document", "problems", "models", "refused"),
+    ("member", "problems"),
     [
-        # A problem in the group's own member: each held document still has its model.
         (
-            _group(attributes=5, consolidated_metadata=_inline(a=_array())),
-            [(("attributes",), "invalid_type")],
-            {"a": True},
-            [],
-        ),
-        # A problem in a held document: that document has no model, and its
-        # sibling has one. The refused field is found at its location, like
-        # every field.
-        (
-            _group(consolidated_metadata=_inline(a=_array(codecs=[LITTLE, GZIP_99]), b=_array())),
+            _inline(a=_array(codecs=[LITTLE, GZIP_99]), b=_array()),
             [((*A, "codecs", 1, "configuration", "level"), "invalid_value")],
-            {"a": False, "b": True},
-            [(*A, "codecs", 1)],
         ),
         # A document with no node type is read as no node, and nothing else in it is read.
-        (
-            _group(consolidated_metadata=_inline(a={"zarr_format": 3})),
-            [((*A, "node_type"), "missing_key")],
-            {"a": False},
-            [],
-        ),
+        (_inline(a={"zarr_format": 3}), [((*A, "node_type"), "missing_key")]),
     ],
-    ids=["group", "consolidated-document", "no-node-type"],
+    ids=["a-document", "no-node-type"],
 )
-def test_error_a_group_document_with_a_problem_reads_as_no_model(
-    document: dict[str, object],
-    problems: list[tuple[tuple[str | int, ...], str]],
-    models: dict[str, bool],
-    refused: list[tuple[str | int, ...]],
+def test_error_consolidated_metadata_with_a_problem_reads_as_no_model(
+    member: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    reading = read_group_metadata_v3(document)
+    """A problem in a listed document is a problem of the member, located at the document's path, and the reading holds no model. The group holding the member has no problem."""
+    reading = read_consolidated_metadata_v3(member)
     assert [(p.loc, p.kind) for p in reading.problems] == problems
     assert reading.metadata is None
-    assert {
-        path: read.metadata is not None for path, read in reading.consolidated.items()
-    } == models
-    assert [loc for loc, field in reading.fields() if isinstance(field, RefusedField)] == refused
+    assert read_group_metadata_v3(_group(consolidated_metadata=member)).problems == ()
 
 
 # --- read_node_metadata_v3 -------------------------------------------------
@@ -1226,21 +1168,10 @@ def test_group_v2_zarr_format_literal_enforced() -> None:
 
 
 def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
-    """The group validator validates the consolidated envelope and entries, so
-    is_group_metadata_v3 never vouches for a document from_json would reject."""
+    """The group validator checks the consolidated envelope, as `from_json` does, so `is_group_metadata_v3` never vouches for a document `from_json` would reject."""
     bad_docs = (
         # empty envelope: missing kind/must_understand/metadata
         {"zarr_format": 3, "node_type": "group", "consolidated_metadata": {}},
-        # entry without a recognizable node_type
-        {
-            "zarr_format": 3,
-            "node_type": "group",
-            "consolidated_metadata": {
-                "kind": "inline",
-                "must_understand": False,
-                "metadata": {"a": {"zarr_format": 3}},
-            },
-        },
         # must_understand: true
         {
             "zarr_format": 3,
@@ -1251,26 +1182,43 @@ def test_group_v3_validator_agrees_with_from_json_on_consolidated() -> None:
                 "metadata": {},
             },
         },
+        # metadata that is not an object
+        {
+            "zarr_format": 3,
+            "node_type": "group",
+            "consolidated_metadata": {"kind": "inline", "must_understand": False, "metadata": []},
+        },
     )
     for doc in bad_docs:
         assert validate_group_metadata_v3(doc) != (), doc
+        assert not is_group_metadata_v3(doc)
         with pytest.raises(MetadataValidationError):
             ZarrV3GroupMetadata.from_json(doc)
 
 
-def test_group_v3_valid_consolidated_passes_validator() -> None:
-    """A well-formed consolidated group validates cleanly (control case)."""
-    child = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
+@pytest.mark.parametrize(
+    "listed",
+    [
+        ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(),
+        {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "shape": [-1]},
+        {"zarr_format": 3},
+    ],
+    ids=["an-array", "an-array-with-a-problem", "no-node-type"],
+)
+def test_group_v3_valid_consolidated_passes_validator(listed: dict[str, object]) -> None:
+    """A group whose consolidated metadata has the envelope the core spec fixes validates cleanly, and the guard accepts it, whatever the documents it lists hold: the group does not read them."""
     doc = {
         "zarr_format": 3,
         "node_type": "group",
         "consolidated_metadata": {
             "kind": "inline",
             "must_understand": False,
-            "metadata": {"a": child, "g": {"zarr_format": 3, "node_type": "group"}},
+            "metadata": {"a": listed, "g": {"zarr_format": 3, "node_type": "group"}},
         },
     }
     assert validate_group_metadata_v3(doc) == ()
+    assert is_group_metadata_v3(doc)
+    assert ZarrV3GroupMetadata(doc).to_json() == arrays_to_tuples(doc)
 
 
 def test_v3_consolidated_rejects_unknown_envelope_member() -> None:
@@ -1419,50 +1367,31 @@ def test_a_group_writes_no_empty_attributes() -> None:
 
 
 def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists() -> None:
-    """Each node has one document. A group listed in consolidated metadata may list a node that the outer group also lists, but only with the same document (as read) that the outer group holds at the joined key. A document that reads differently is a problem at the nested entry. The validator, the group model, and models given as entries all report it the same way."""
+    """Each node has one document. A group listed in consolidated metadata may list a node that the outer member also lists, but only with the same document (as read) that the outer member holds at the joined key. A document that reads differently is a problem at the nested entry. The reader, the constructor, and models given as entries all report it the same way."""
     same = _array(shape=(4,), attributes={"a": 1})
     other = _array(shape=(9,), attributes={"a": 1})
-    agreed = _group(
-        consolidated_metadata=_inline(
-            b=_group(consolidated_metadata=_inline(c=same)), **{"b/c": same}
-        )
-    )
-    assert validate_group_metadata_v3(agreed) == ()
-    contradicted = _group(
-        consolidated_metadata=_inline(
-            b=_group(consolidated_metadata=_inline(c=other)), **{"b/c": same}
-        )
-    )
-    found = validate_group_metadata_v3(contradicted)
-    at = ("consolidated_metadata", "metadata", "b", "consolidated_metadata", "metadata", "c")
+    agreed = _inline(b=_group(consolidated_metadata=_inline(c=same)), **{"b/c": same})
+    assert read_consolidated_metadata_v3(agreed).problems == ()
+    contradicted = _inline(b=_group(consolidated_metadata=_inline(c=other)), **{"b/c": same})
+    found = read_consolidated_metadata_v3(contradicted).problems
+    at = ("metadata", "b", "consolidated_metadata", "metadata", "c")
     assert [(p.loc, p.kind) for p in found] == [(at, "invalid_value")]
     assert "/b/c" in found[0].message
     with pytest.raises(MetadataValidationError):
-        ZarrV3GroupMetadata(contradicted)
+        ZarrV3ConsolidatedMetadata(contradicted)
     inner = ZarrV3GroupMetadata(_group(consolidated_metadata=_inline(c=other)))
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3GroupMetadata(
-            _group(consolidated_metadata=_inline(b=inner, **{"b/c": ZarrV3ArrayMetadata(same)}))
-        )
+        ZarrV3ConsolidatedMetadata(_inline(b=inner, **{"b/c": ZarrV3ArrayMetadata(same)}))
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(at, "invalid_value")]
 
 
-def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
-    """`is_group_metadata_v3` returns False for a group whose consolidated metadata holds an array document written with lists, as `is_array_metadata_v3` returns False for that document. A guard narrows to the TypedDict, whose arrays are tuples at every level."""
-    array = _array()
-    listed = dict(array)
-    listed["shape"] = list(array["shape"])  # pyright: ignore[reportArgumentType]
-    assert not is_array_metadata_v3(listed)
-    group = _group(consolidated_metadata=_inline(a=listed))
-    assert validate_group_metadata_v3(group) == ()
-    assert not is_group_metadata_v3(group)
-    assert is_group_metadata_v3(parse_group_metadata_v3(group))
-    nested = _group(
-        consolidated_metadata=_inline(
-            g=_group(consolidated_metadata=_inline(a=listed)), **{"g/a": array}
-        )
-    )
-    assert not is_group_metadata_v3(nested)
+def test_error_a_model_inside_consolidated_metadata_is_not_json() -> None:
+    """A group holds its consolidated metadata as JSON, so a node model inside the member is a value that is not JSON. `ZarrV3ConsolidatedMetadata` is the place that takes node models as entries."""
+    member = _inline(a=ZarrV3ArrayMetadata.create_default())
+    problems = validate_group_metadata_v3(_group(consolidated_metadata=member))
+    assert [(p.loc, p.kind) for p in problems] == [(("consolidated_metadata", *A), "invalid_type")]
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata.create_default(consolidated_metadata=cast("Any", member))
 
 
 def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with() -> None:
@@ -1489,15 +1418,13 @@ def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_memb
 
 
 def test_a_consolidated_model_given_as_the_member_keeps_the_order_its_document_writes() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given as the member is read as its document, in the document's key order, so the group writes it the same way the member wrote it."""
+    """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document, in the document's key order, so the group writes it the same way the member wrote it."""
     array = ZarrV3ArrayMetadata.create_default(shape=(2,))
     member = ZarrV3ConsolidatedMetadata(
         {"metadata": {"a": array.to_json()}, "kind": "inline", "must_understand": False}
     )
-    group = ZarrV3GroupMetadata(
-        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member}
-    )
-    written = cast("dict[str, object]", group.to_json()["consolidated_metadata"])
+    group = ZarrV3GroupMetadata.create_default().update(consolidated_metadata=member)
+    written = cast("dict[str, Any]", group.to_json())["consolidated_metadata"]
     assert list(written) == ["metadata", "kind", "must_understand"]
     assert group == ZarrV3GroupMetadata(
         {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member.to_json()}

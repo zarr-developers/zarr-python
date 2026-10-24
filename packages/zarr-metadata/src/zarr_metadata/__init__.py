@@ -244,6 +244,7 @@ from zarr_metadata.v3.data_type.uint64 import (
 )
 from zarr_metadata.v3.group import (
     ZARR_V3_GROUP_METADATA_STORE_KEY,
+    ZarrV3ConsolidatedMetadataEnvelopeJSON,
     ZarrV3GroupMetadataJSON,
     ZarrV3GroupMetadataJSONPartial,
     ZarrV3GroupMetadataStoreKey,
@@ -408,6 +409,7 @@ __all__ = [
     "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3ExtensionField",
