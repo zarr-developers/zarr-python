@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, Any, Literal, NotRequired
 
 import pytest
 from annotated_types import Ge
@@ -141,7 +141,7 @@ def test_unclaimed_extra_fields_compare_as_written(first: object, second: object
 
 
 def test_an_extra_field_is_a_field_of_the_reading() -> None:
-    """A claimed extra field takes part in what the model's reading holds: it is a field at its key, a claim of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member."""
+    """A claimed extra field takes part in what the model's reading holds: it is a field at its key, a claim of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
     model = ZarrV3ArrayMetadata({**ARRAY, "acme.tiling": TILING}, context=CONTEXT)
     assert dict(model.reading.fields())[("acme.tiling",)] == model.extra_fields["acme.tiling"]
     assert model.claims[ArrayExtraFieldDefinition, "acme.tiling"] is ACME_TILING
@@ -151,6 +151,9 @@ def test_an_extra_field_is_a_field_of_the_reading() -> None:
     schema = field_json_schema_v3(ArrayExtraFieldDefinition, context=CONTEXT)
     assert Draft202012Validator(schema).is_valid({"acme.tiling": TILING})
     assert not Draft202012Validator(schema).is_valid({"acme.tiling": {"edge": 0}})
+    # A member the spec defines is not an extra field, as `resolve` says.
+    assert not Draft202012Validator(schema).is_valid({"shape": 5})
+    assert resolve({"shape": 5}, ArrayExtraFieldDefinition, CONTEXT)[1] != ()
 
 
 def test_the_simplest_spelling_of_an_extra_field_is_plain_json() -> None:
@@ -204,14 +207,46 @@ def test_error_an_extra_field_named_after_a_member_the_spec_defines(kind: Any, n
         kind(name=name, configuration=AcmeTilingConfiguration)
 
 
-def test_error_an_extra_field_configuration_that_does_not_declare_must_understand() -> None:
-    """The spec lets every extension member carry `must_understand`, so the configuration of an extra field declares it. A definition whose configuration does not is refused when it is built, rather than refusing the documents that waive it."""
+class _Bare(TypedDict, closed=True):
+    tool: str
 
-    class Bare(TypedDict, closed=True):
-        tool: str
 
+class _OnlyTrue(TypedDict, closed=True):
+    must_understand: NotRequired[Literal[True]]
+
+
+class _AnyInt(TypedDict, closed=True):
+    must_understand: NotRequired[int]
+
+
+class _Open(TypedDict, closed=False):
+    tool: str
+
+
+class _ExtraBooleans(TypedDict, extra_items=bool):
+    tool: str
+
+
+class _OnlyFalse(TypedDict, closed=True):
+    must_understand: NotRequired[Literal[False]]
+
+
+@pytest.mark.parametrize("configuration", [_ExtraBooleans, _OnlyFalse, AcmeTilingConfiguration])
+def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
+    """A configuration takes the spec's `"must_understand": false` when the type it gives the key admits `false` and only booleans: a declared `bool` or `Literal[False]`, or other keys typed `bool`."""
+    definition = ArrayExtraFieldDefinition(name="acme.ok", configuration=configuration)
+    assert definition.configuration is configuration
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [_Bare, _OnlyTrue, _AnyInt, _Open],
+    ids=["undeclared", "only-true", "any-int", "open"],
+)
+def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
+    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, is refused when it is built, rather than misreading the documents that carry it."""
     with pytest.raises(TypeError, match="must_understand"):
-        ArrayExtraFieldDefinition(name="acme.bare", configuration=Bare)
+        ArrayExtraFieldDefinition(name="acme.bad", configuration=configuration)
 
 
 def test_error_finite_is_a_boolean() -> None:

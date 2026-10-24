@@ -20,9 +20,11 @@ from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
     STATIC_SIZE_ALIASES,
+    ArrayExtraFieldDefinition,
     CodecDefinition,
     DataTypeDefinition,
     ExtraFieldDefinition,
+    GroupExtraFieldDefinition,
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
@@ -75,7 +77,7 @@ def field_json_schema_v3(
         raise TypeError(msg)
     context = scoped(context, CORE_AND_EXTENSIONS)
     schemas = Schemas(field_schemas(context))
-    if issubclass(asked, ExtraFieldDefinition):
+    if issubclass(asked, (ArrayExtraFieldDefinition, GroupExtraFieldDefinition)):
         return schemas.document(_extra_field_schema(asked, context, schemas))
     return schemas.document(schemas.of(kind_field(asked)))
 
@@ -114,9 +116,11 @@ def _field_schema(
 
 
 def _extra_field_schema(
-    kind: type[ZarrV3Kind], context: ZarrV3Context, schemas: Schemas
+    kind: type[ArrayExtraFieldDefinition[Any] | GroupExtraFieldDefinition[Any]],
+    context: ZarrV3Context,
+    schemas: Schemas,
 ) -> JSONSchema:
-    """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key and any JSON value."""
+    """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key that the spec does not define, and any JSON value."""
     claimed = list(context.definitions_of(kind).values())
     branches: list[JSONValue] = [
         {
@@ -128,8 +132,9 @@ def _extra_field_schema(
         for definition in claimed
     ]
     unclaimed: JSONSchema = {"type": "object", "minProperties": 1, "maxProperties": 1}
-    if len(claimed) != 0:
-        unclaimed["propertyNames"] = {"not": {"enum": [definition.name for definition in claimed]}}
+    # Neither a claimed key nor a member the spec defines is an unclaimed member.
+    others = sorted({definition.name for definition in claimed} | kind.spec_members)
+    unclaimed["propertyNames"] = {"not": {"enum": [*others]}}
     branches.append(unclaimed)
     return {"anyOf": branches}
 

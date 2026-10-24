@@ -303,6 +303,22 @@ def test_error_update_takes_fields_as_json() -> None:
         ARRAY.update(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
 
 
+def test_error_extra_fields_takes_values_as_json() -> None:
+    """A field given as the value of a member in `extra_fields`, or an extra field given as a member's value, is refused with a `TypeError` that names `to_json()[key]`, which is the member's value. Writing a whole field there would nest the member inside itself and lose its waiver."""
+    source = ZarrV3ArrayMetadata.create_default(extra_fields={"foo": {"must_understand": False}})
+    with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
+        ARRAY.update(extra_fields=dict(source.extra_fields))  # pyright: ignore[reportArgumentType]
+    member = GROUP.extra_fields["consolidated_metadata"]
+    with pytest.raises(TypeError, match=r"to_json\(\)\['consolidated_metadata'\]"):
+        GROUP.update(consolidated_metadata=member)  # pyright: ignore[reportArgumentType]
+
+
+def test_error_extra_fields_refuses_a_member_update_takes_by_name() -> None:
+    """A member that `update` takes by name, such as a group's `consolidated_metadata`, is refused in `extra_fields`, so one member is never given twice, and a listing given by name is never replaced unchecked."""
+    with pytest.raises(TypeError, match="give it by name"):
+        GROUP.update(extra_fields={"consolidated_metadata": UNSET})
+
+
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:
     """The consolidated member, read on its own, refuses documents at paths that no node can have. It also reports a missing parent group, as the group's read does."""
     documents = {

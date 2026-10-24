@@ -299,8 +299,9 @@ class Definition(Generic[C]):
         refusal = _malformed(self) or self._refusal()
         if refusal is not None:
             raise TypeError(refusal)
+        kind = kind_of(self)
         try:
-            _vet(self.configuration)
+            _vet(self.configuration, None if kind is None else format_of(kind))
         except TypeError as error:
             msg = f"{self.name!r}: {error}"
             raise TypeError(msg) from error
@@ -600,15 +601,29 @@ def _no_field(annotation: object) -> Parser | None:
 
 
 @functools.cache
-def _vet(configuration: type) -> None:
-    """Reject a configuration that no definition could read with, and say what is wrong with it."""
+def _vet(configuration: type, zarr_format: int | None) -> None:
+    """Reject a configuration that no definition of a kind of Zarr format `zarr_format` could read with, and say what is wrong with it."""
     if not is_typeddict(configuration):
         msg = (
             f"configuration is {configuration!r}; give the TypedDict the configuration's JSON takes"
         )
         raise TypeError(msg)
-    _vetting(configuration)
-    unread = unread_in(configuration, _vetting)
+
+    def vetting(annotation: object) -> Parser | None:
+        # A document of one format never holds a field of the other, so a
+        # definition never reads one.
+        kind = field_kind(annotation)
+        if kind is not None and zarr_format is not None and format_of(kind) != zarr_format:
+            msg = (
+                f"a member typed {getattr(annotation, '__name__', annotation)} holds a field of "
+                f"a Zarr v{format_of(kind)} document, which a definition of a v{zarr_format} "
+                "field never reads"
+            )
+            raise TypeError(msg)
+        return _vetting(annotation)
+
+    vetting(configuration)
+    unread = unread_in(configuration, vetting)
     if unread is not None:
         msg = f"{unread}; a finer rule goes in the definition's `rules`"
         raise TypeError(msg)

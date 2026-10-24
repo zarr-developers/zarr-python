@@ -37,7 +37,7 @@ from zarr_metadata._json import (
     refine_user_data,
     with_input,
 )
-from zarr_metadata._typed_json import Loc, problem, typeddict_keys
+from zarr_metadata._typed_json import Loc, parser, problem, typeddict_keys
 from zarr_metadata.definition._definition import (
     AcceptedField,
     C,
@@ -401,12 +401,10 @@ class ExtraFieldDefinition(Definition[C]):
         finite = cast("object", self.finite)
         if not isinstance(finite, bool):
             return f"{self.name!r}: finite is a boolean, got {finite!r}"
-        if is_typeddict(self.configuration) and (
-            "must_understand" not in typeddict_keys(self.configuration).members
-        ):
+        if is_typeddict(self.configuration) and not _takes_the_waiver(self.configuration):
             return (
-                f"{self.name!r}: the configuration declares must_understand, which the spec "
-                "lets every extension member carry"
+                f"{self.name!r}: the configuration takes must_understand as a boolean that may "
+                "be false, which the spec lets every extension member carry"
             )
         return None
 
@@ -488,6 +486,23 @@ class ExtraFieldDefinition(Definition[C]):
     @classmethod
     def name_loc(cls, loc: Loc) -> Loc:
         return loc
+
+
+def _takes_the_waiver(configuration: type) -> bool:
+    """Whether `configuration`, a TypedDict, takes the spec's `"must_understand": false`: the type it gives `must_understand`, declared or as another key, admits `false` and only booleans."""
+    keys = typeddict_keys(configuration)
+    declared = keys.members.get("must_understand")
+    try:
+        check = parser(keys.extra_items if declared is None else declared[0], _no_leaf)
+    except TypeError:
+        return False
+    if len(check(False, ())[1]) != 0:
+        return False
+    return all(len(check(value, ())[1]) != 0 for value in (0, 1, "false", None))
+
+
+def _no_leaf(annotation: object) -> None:
+    """A leaf that declines every annotation, so the checker reads only plain JSON shapes."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)

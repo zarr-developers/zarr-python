@@ -1255,36 +1255,55 @@ def test_a_union_of_a_string_and_another_shape_names_both() -> None:
     assert problem.message == "expected a string or an integer, got null"
 
 
+_PQ = TypeAliasType("_PQ", Literal["p", "q"])
+
+
 @pytest.mark.parametrize(
-    ("annotation", "value", "message", "kind"),
+    ("annotation", "value", "message", "kind", "expected"),
     [
         (
             float | Literal["NaN"] | None,
             "abc",
             'expected a number or "NaN" or null, got "abc"',
             "invalid_value",
+            ("NaN",),
         ),
         (
             Literal[-1, 0, 1, 2] | bool,
             3,
             "expected one of [-1, 0, 1, 2] or a boolean, got 3",
             "invalid_value",
+            (-1, 0, 1, 2),
         ),
         (
             Literal[1, "a"] | None,
             True,
             'expected one of ["a", 1] or null, got true',
             "invalid_type",
+            ("a", 1),
+        ),
+        (
+            _PQ | None,
+            "r",
+            'expected one of ["p", "q"] or null, got "r"',
+            "invalid_value",
+            ("p", "q"),
         ),
     ],
-    ids=["string-outside-the-literal", "number-outside-the-literal", "mixed-literal"],
+    ids=[
+        "string-outside-the-literal",
+        "number-outside-the-literal",
+        "mixed-literal",
+        "literal-behind-an-alias",
+    ],
 )
 def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
-    annotation: object, value: object, message: str, kind: str
+    annotation: object, value: object, message: str, kind: str, expected: tuple[object, ...]
 ) -> None:
-    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise."""
+    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. The `ctx` holds every value the `Literal` branches allow under `expected`, as one `Literal`'s problem does."""
     (problem,) = parser(annotation, no_leaf)(value, ())[1]
     assert (problem.message, problem.kind) == (message, kind)
+    assert problem.ctx == {"expected": expected}
 
 
 class _Three(TypedDict, closed=True):

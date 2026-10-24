@@ -15,7 +15,7 @@ import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Literal, TypeAlias, TypeGuard, cast, get_args, overload
+from typing import Final, Literal, TypeAlias, TypeGuard, TypeVar, cast, get_args, overload
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
@@ -605,13 +605,16 @@ def shown_by_python(value: object) -> str:
         return f"a value of type {type(value).__name__} the interpreter will not write"
 
 
+V = TypeVar("V")
+
+
 def choices(allowed: Sequence[object]) -> str:
     """A closed set of values as a message names it: `"C"` alone, or `one of ["C", "F"]`."""
     values = [shown(value) for value in listed(allowed)]
     return values[0] if len(values) == 1 else f"one of [{', '.join(values)}]"
 
 
-def listed(allowed: Sequence[object]) -> tuple[object, ...]:
+def listed(allowed: Sequence[V]) -> tuple[V, ...]:
     """A closed set of values without duplicates, in the order a message lists them: sorted by their JSON text."""
     written = {shown(value): value for value in allowed}
     return tuple(written[json_text] for json_text in sorted(written))

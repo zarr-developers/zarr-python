@@ -78,6 +78,7 @@ from zarr_metadata._json import (
     is_json,
     is_list_or_tuple,
     is_object,
+    listed,
     outside_of,
     refine_json,
     shown,
@@ -683,9 +684,18 @@ def any_of(
         if len(clean) != 0:
             return min(clean, key=lambda found: found[:2])[2]
         if len(failed) != 0 and all(index in literals for _, index, _ in failed):
-            # A `Literal` reports one problem, of the kind its own check decided.
+            # A `Literal` reports one problem, of the kind its own check
+            # decided, with the values it allows under `expected`.
             kind = min(failed, key=lambda found: found[:2])[2][1][0].kind
-            return value, problem(loc, f"expected {description}, got {shown(value)}", kind)
+            allowed = [
+                item
+                for _, _, (_, found) in failed
+                for refused in found
+                for item in _expected(refused)
+            ]
+            message = f"expected {description}, got {shown(value)}"
+            ctx: dict[str, JSONValue] = {"expected": listed(allowed)}
+            return value, (ValidationProblem(loc, message, kind, ctx=ctx),)
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
         return value, problem(loc, f"expected {description}, got {shown(value)}")
@@ -941,11 +951,25 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
         )
         branches.append((shape_of(branch), member, keys))
     literals = frozenset(
-        index
-        for index, branch in enumerate(arguments)
-        if get_origin(strip_annotation(branch)[0]) is Literal
+        index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
     return any_of(branches, describe(inner), _tag(arguments), literals)
+
+
+def _unaliased(annotation: object) -> object:
+    """`annotation` without its `Annotated` metadata, and with each type alias replaced by its value, until what remains is not an alias."""
+    inner = strip_annotation(annotation)[0]
+    seen: set[object] = set()
+    while is_alias(inner) and inner not in seen:
+        seen.add(inner)
+        inner = strip_annotation(alias_value(inner))[0]
+    return inner
+
+
+def _expected(refused: ValidationProblem) -> tuple[JSONValue, ...]:
+    """The values that `refused`, a `Literal`'s problem, says it allows, from its `ctx`."""
+    expected = refused.ctx.get("expected")
+    return expected if isinstance(expected, tuple) else ()
 
 
 def _tag(arguments: Sequence[object]) -> Tag | None:

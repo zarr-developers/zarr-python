@@ -100,7 +100,8 @@ def member_changes(
 
     Raises `TypeError` for a member that `update` does not declare, for a
     member of `extra_fields` that the spec defines (one of
-    `spec_members`), and for a field given where a member's JSON goes. So a misspelled member is never written as a member
+    `spec_members`) or that `update` takes by name, and for a field given
+    where a member's JSON goes. So a misspelled member is never written as a member
     the spec does not define, which a reader that must understand every
     such member would refuse.
     """
@@ -117,22 +118,33 @@ def member_changes(
         raise TypeError(msg)
     changes = {key: value for key, value in members.items() if key != "extra_fields"}
     for key, value in changes.items():
-        if any(is_field(item) for item in (value if is_array(value) else (value,))):
-            msg = (
-                f"{key}: a member is given as a document writes it, got a field; write a field "
-                "as JSON with its to_json()"
-            )
-            raise TypeError(msg)
+        _refuse_fields(key, value)
     extra = members.get("extra_fields", {})
     if not is_object(extra):
         msg = f"extra_fields maps members to their values, got {extra!r}"
         raise TypeError(msg)
     for key, value in extra.items():
-        if not isinstance(key, str) or key in spec_members:
-            msg = f"extra_fields holds members the spec does not define, got {key!r}"
+        if not isinstance(key, str):
+            msg = (
+                f"extra_fields maps each member's key, a string, to its value, got the key {key!r}"
+            )
             raise TypeError(msg)
+        if key in spec_members or key in declared:
+            msg = f"{key!r} is a member that update takes by name; give it by name, not in extra_fields"
+            raise TypeError(msg)
+        _refuse_fields(key, value)
         changes[key] = value
     return changes
+
+
+def _refuse_fields(key: str, value: object) -> None:
+    """Raise `TypeError` when `value`, given as the member at `key`, is a field or holds fields, rather than the JSON a document writes."""
+    if any(is_field(item) for item in (value if is_array(value) else (value,))):
+        msg = (
+            f"{key}: a member is given as a document writes it, got a field; give a field's "
+            f"JSON, field.to_json(), or for an extra field its value, field.to_json()[{key!r}]"
+        )
+        raise TypeError(msg)
 
 
 def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:

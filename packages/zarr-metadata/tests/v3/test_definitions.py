@@ -44,7 +44,7 @@ from zarr_metadata.model import (
 from zarr_metadata.typed_json import (
     check,
 )
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2, ZarrV2CodecDefinition, ZarrV2DataTypeField
 from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -320,6 +320,42 @@ def test_a_field_built_by_hand_is_of_the_kind_it_says(
     built: AcceptedField[Any] | UnclaimedField | RefusedField[Any], read_as: type[Definition[Any]]
 ) -> None:
     assert built.read_as is read_as
+
+
+class _HoldsAV2DataType(TypedDict, closed=True):
+    """A v3 configuration with a member that holds a v2 data type field."""
+
+    dt: ZarrV2DataTypeField
+
+
+class _HoldsAV3Codec(TypedDict, closed=True):
+    """A v2 configuration with a member that holds a v3 codec field."""
+
+    inner: ZarrV3CodecField
+
+
+@pytest.mark.parametrize(
+    ("build", "named"),
+    [
+        (
+            lambda: CodecDefinition(
+                name="acme.mix", configuration=_HoldsAV2DataType, kind="array_array", size="static"
+            ),
+            "ZarrV2DataTypeField",
+        ),
+        (
+            lambda: ZarrV2CodecDefinition(name="acme_mix", configuration=_HoldsAV3Codec),
+            "ZarrV3CodecField",
+        ),
+    ],
+    ids=["v3-holding-v2", "v2-holding-v3"],
+)
+def test_error_a_configuration_holding_a_field_of_the_other_format(
+    build: Callable[[], object], named: str
+) -> None:
+    """A definition reads the fields of its own format only: a document of one format never holds a field of the other. A configuration with a member typed by the other format's field alias is refused when the definition is built, so no read of it fails part way."""
+    with pytest.raises(TypeError, match=named):
+        build()
 
 
 @pytest.mark.parametrize("definition", [None, KINDLESS], ids=["none", "kindless"])
