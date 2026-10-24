@@ -108,6 +108,9 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "read_repaired_consolidated_metadata_v2": (
         lambda context: zm.read_repaired_consolidated_metadata_v2(CONSOLIDATED, context=context)
     ),
+    "read_repaired_node_metadata_v2": lambda context: zm.read_repaired_node_metadata_v2(
+        {".zarray": BAD}, context=context
+    ),
 }
 """Each v2 entry point, reading a document that contains the refused compressor wherever that document type allows one."""
 

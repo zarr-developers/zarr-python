@@ -23,8 +23,9 @@ a `zarr.json` and its `node_type`, or by `read_node_metadata_v2`, from
 the node's decoded `.zarray` or `.zgroup` and `.zattrs`, which can come
 from a store or from a `.zmetadata`. To read
 a store that another writer made with a known writer bug, use
-`read_repaired_node_metadata_v3`. It undoes each bug with
-`repair_node_metadata_v3` before the strict read, and reports what it
+`read_repaired_node_metadata_v3` or `read_repaired_node_metadata_v2`.
+They undo each bug with `repair_node_metadata_v3` or
+`repair_node_metadata_v2` before the strict read, and report what they
 changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
 validators read, except for the rules. The model constructors
 `from_json` and `from_key_value` raise `MetadataValidationError` for
@@ -108,10 +109,13 @@ from zarr_metadata.model._repair import (
     Repair,
     RepairKind,
     ZarrV2RepairedConsolidatedMetadataReading,
+    ZarrV2RepairedNodeMetadataReading,
     ZarrV3RepairedNodeMetadataReading,
     read_repaired_consolidated_metadata_v2,
+    read_repaired_node_metadata_v2,
     read_repaired_node_metadata_v3,
     repair_consolidated_metadata_v2,
+    repair_node_metadata_v2,
     repair_node_metadata_v3,
 )
 from zarr_metadata.v3._common import (
@@ -143,6 +147,7 @@ __all__ = [
     "ZarrV2NodeMetadata",
     "ZarrV2NodeMetadataReading",
     "ZarrV2RepairedConsolidatedMetadataReading",
+    "ZarrV2RepairedNodeMetadataReading",
     "ZarrV2UnknownNodeMetadataReading",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataReading",
@@ -184,8 +189,10 @@ __all__ = [
     "read_node_metadata_v2",
     "read_node_metadata_v3",
     "read_repaired_consolidated_metadata_v2",
+    "read_repaired_node_metadata_v2",
     "read_repaired_node_metadata_v3",
     "repair_consolidated_metadata_v2",
+    "repair_node_metadata_v2",
     "repair_node_metadata_v3",
     "validate_array_metadata_v2",
     "validate_array_metadata_v3",
