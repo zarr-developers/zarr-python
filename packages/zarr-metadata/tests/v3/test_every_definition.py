@@ -157,7 +157,7 @@ def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]
 
 def test_a_scope_s_definitions_pickle() -> None:
     # This lets a scope be sent to another process and rebuilt there.
-    definitions = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS.definitions()))
+    definitions = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS.definitions))
     context = Context.of(*definitions)
     resolved, _ = resolve("complex64", DataTypeDefinition, context)
     assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
@@ -166,9 +166,9 @@ def test_a_scope_s_definitions_pickle() -> None:
 
 
 def test_every_definition_in_scope_has_an_example() -> None:
-    names = {definition.name for definition in CORE_AND_EXTENSIONS.definitions()}
+    names = {definition.name for definition in CORE_AND_EXTENSIONS.definitions}
     assert names == {key.split(":")[1] for key in EXAMPLES}
-    assert set(CORE.definitions()) < set(CORE_AND_EXTENSIONS.definitions())
+    assert set(CORE.definitions) < set(CORE_AND_EXTENSIONS.definitions)
 
 
 @pytest.mark.parametrize(
@@ -660,7 +660,7 @@ def test_every_codec_says_whether_its_size_is_static() -> None:
     # on the values.
     sizes = {
         definition.name: definition.size
-        for definition in CORE_AND_EXTENSIONS.definitions()
+        for definition in CORE_AND_EXTENSIONS.definitions
         if isinstance(definition, CodecDefinition)
     }
     assert sizes == dict.fromkeys(STATIC_SIZE, "static") | dict.fromkeys(DYNAMIC_SIZE, "dynamic")

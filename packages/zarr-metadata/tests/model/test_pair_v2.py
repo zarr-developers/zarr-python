@@ -134,7 +134,7 @@ def test_a_model_read_in_two_scopes_that_read_it_alike_is_one_model() -> None:
     """Equality depends on interpretation. The same document read with a private `zlib` that takes no parameters and with the core `zlib` gives two different models. Read in two scopes that hold the same `zlib`, it gives equal models."""
     document = {**ARRAY, "compressor": {"id": "zlib"}}
     assert ZarrV2ArrayMetadata(document) != ZarrV2ArrayMetadata(document, PRIVATE)
-    same = Context.of(*CORE_V2.definitions())
+    same = Context.of(*CORE_V2.definitions)
     assert ZarrV2ArrayMetadata(document) == ZarrV2ArrayMetadata(document, same)
 
 

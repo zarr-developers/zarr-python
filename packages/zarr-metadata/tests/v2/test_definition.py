@@ -28,7 +28,7 @@ from zarr_metadata.v3.definition import (
 
 def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
     """`CORE_V2` files the 12 data types and 21 codecs by their v2 kinds, and is a scope of format 2: a v2 `gzip` and a v3 `gzip` are two definitions of two different kinds. No scope can file both, because `Context.joined` rejects scopes of two formats."""
-    assert set(CORE_V2.definitions()) == {*DATA_TYPES_V2, *CODECS_V2}
+    assert set(CORE_V2.definitions) == {*DATA_TYPES_V2, *CODECS_V2}
     assert CORE_V2.format == 2
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not None

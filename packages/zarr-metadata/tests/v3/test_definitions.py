@@ -221,7 +221,7 @@ def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
-    assert set(CORE.definitions()) <= set(CORE_AND_EXTENSIONS.definitions())
+    assert set(CORE.definitions) <= set(CORE_AND_EXTENSIONS.definitions)
 
 
 def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
@@ -971,13 +971,13 @@ def test_a_scope_takes_a_name_over() -> None:
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
     # Kept short, because `help` shows it as a validator's default argument.
-    assert repr(CORE) == f"Context(<{len(CORE.definitions())} definitions>)"
+    assert repr(CORE) == f"Context(<{len(CORE.definitions)} definitions>)"
 
 
 def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
     # A model holds the scope it was read in, and takes it along to another process.
     again = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS))
-    assert again.definitions() == CORE_AND_EXTENSIONS.definitions()
+    assert again.definitions == CORE_AND_EXTENSIONS.definitions
     assert copy.copy(CORE) is CORE
     assert copy.deepcopy(CORE) is CORE
 

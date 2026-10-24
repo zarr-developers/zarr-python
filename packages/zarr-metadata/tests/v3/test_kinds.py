@@ -202,9 +202,7 @@ def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
     _, problems = resolve(
         {"name": "sharding_indexed", "configuration": {"chunk_shape": [1], "codecs": [3]}},
         CodecDefinition,
-        Context.of(
-            *__import__("zarr_metadata.v3.definition", fromlist=["CORE"]).CORE.definitions()
-        ),
+        Context.of(*__import__("zarr_metadata.v3.definition", fromlist=["CORE"]).CORE.definitions),
     )
     assert any(p.message.endswith("got 3") for p in problems), [p.message for p in problems]
 

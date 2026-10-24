@@ -218,7 +218,7 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
     codecs = cast("dict[str, JSONValue]", properties["codecs"])
     schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     held: list[JSONValue] = []
-    for definition in context.definitions():
+    for definition in context.definitions:
         if not isinstance(definition, DataTypeDefinition):
             continue
         fill_value = schemas.of(definition.fill_value)

@@ -43,8 +43,8 @@ class Context(Generic[F]):
     """The definitions in scope while metadata of one Zarr format is read.
 
     A scope is a value and does no reading itself. `resolve` reads a field
-    in a scope. The only question a scope answers is `claimant`: which
-    definition a name belongs to. Build a scope from definitions with
+    in a scope. The question a scope answers for a reader is `claimant`:
+    which definition a name belongs to. Build a scope from definitions with
     `Context.of`, and add more with `extended_with`. Two scopes are equal
     when they file the same definitions, and equal scopes have equal
     hashes. Every kind a scope files declares one format, and that is the
@@ -55,6 +55,10 @@ class Context(Generic[F]):
 
     tables: Tables
     _format: Literal[2, 3] | None = field(init=False, repr=False)
+    _definitions: tuple[Definition[Any], ...] = field(init=False, repr=False)
+    _filed: frozenset[tuple[type[Definition[Any]], str, Definition[Any]]] = field(
+        init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         # The constructor enforces what `of` guarantees: each key is a kind,
@@ -67,6 +71,23 @@ class Context(Generic[F]):
             )
             raise TypeError(msg)
         object.__setattr__(self, "_format", formats[0] if len(formats) == 1 else None)
+        # A scope is immutable, so what it files is computed once: every
+        # definition, and every definition with the kind and name it is
+        # filed under, which scopes are compared by.
+        object.__setattr__(
+            self,
+            "_definitions",
+            tuple(entry for table in self.tables.values() for entry in table.values()),
+        )
+        object.__setattr__(
+            self,
+            "_filed",
+            frozenset(
+                (kind, name, definition)
+                for kind, table in self.tables.items()
+                for name, definition in table.items()
+            ),
+        )
 
     @property
     def format(self) -> Literal[2, 3] | None:
@@ -106,23 +127,24 @@ class Context(Generic[F]):
         own reading of a codec the package already defines, or of raw bits
         (by defining `r*`).
         """
-        return Context.of(*self.definitions(), *definitions)
+        return Context.of(*self.definitions, *definitions)
 
+    @property
     def definitions(self) -> tuple[Definition[Any], ...]:
         """Every definition in scope, grouped by kind."""
-        return tuple(entry for table in self.tables.values() for entry in table.values())
+        return self._definitions
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default
         # argument. A full repr would list every definition, and `help` on a
         # validator would run to pages.
-        return f"Context(<{len(self.definitions())} definitions>)"
+        return f"Context(<{len(self._definitions)} definitions>)"
 
     def __reduce__(self) -> tuple[Callable[..., Context], tuple[Definition[Any], ...]]:
         # A scope is defined by its definitions, so pickle it as them. This
         # lets a scope go to another process along with the documents it
         # will read there.
-        return (Context.of, self.definitions())
+        return (Context.of, self._definitions)
 
     def __copy__(self) -> Context:
         return self
@@ -134,18 +156,10 @@ class Context(Generic[F]):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Context):
             return NotImplemented
-        return self._filed() == other._filed()
+        return self._filed == other._filed
 
     def __hash__(self) -> int:
-        return hash(self._filed())
-
-    def _filed(self) -> frozenset[tuple[type[Definition[Any]], str, Definition[Any]]]:
-        """Every definition in scope with the kind and name it is filed under. Scopes are compared by this set."""
-        return frozenset(
-            (kind, name, definition)
-            for kind, table in self.tables.items()
-            for name, definition in table.items()
-        )
+        return hash(self._filed)
 
     def disagreements(self, claims: Claims) -> Disagreements:
         """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`.
