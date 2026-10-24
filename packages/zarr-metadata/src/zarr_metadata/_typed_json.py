@@ -224,12 +224,14 @@ def alias_value(alias: typing_extensions.TypeAliasType) -> object:
     holds that reference as a string. This function resolves the string in
     the alias's module.
     """
-    holder = type(
-        "_AliasValue",
-        (),
-        {"__annotations__": {"value": alias.__value__}, "__module__": alias.__module__},
-    )
     try:
+        # A `type` statement evaluates its value here, so a name in it that
+        # does not resolve raises here too.
+        holder = type(
+            "_AliasValue",
+            (),
+            {"__annotations__": {"value": alias.__value__}, "__module__": alias.__module__},
+        )
         return get_type_hints(holder, include_extras=True)["value"]
     except NameError as error:
         msg = f"{alias.__name__}: {error}; its value must resolve in its module"
@@ -954,13 +956,14 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
         index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
     # Each `Literal` names its values in the order `listed` gives, and the
-    # union names its branches in order.
+    # union names its branches in order. A value is kept once, by its JSON
+    # text, so `false` and `0` stay two values, as in `listed`.
     allowed: tuple[JSONValue, ...] = tuple(
-        dict.fromkeys(
-            value
+        {
+            shown(value): value
             for index in sorted(literals)
             for value in listed(get_args(_unaliased(arguments[index])))
-        )
+        }.values()
     )
     return any_of(branches, describe(inner), _tag(arguments), literals, allowed)
 

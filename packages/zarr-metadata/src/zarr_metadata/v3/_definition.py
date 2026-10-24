@@ -510,19 +510,15 @@ def _takes_the_waiver(configuration: type) -> bool:
 def _booleans(annotation: object, seen: frozenset[object]) -> frozenset[bool] | None:
     """The booleans `annotation` admits when it admits only booleans, read through its aliases, `NewType`s, unions and `Literal`s, as the checker reads them; None when it admits anything else."""
     inner = strip_annotation(annotation)[0]
-    if inner in seen:
-        # An alias that refers to itself adds nothing it has not already.
-        return frozenset()
-    if isinstance(inner, NewType):
-        return _booleans(inner.__supertype__, seen | {inner})
-    if is_alias(inner):
-        try:
-            value = alias_value(inner)
-        except NameError:
-            # An alias that names what is not defined admits nothing the
-            # checker can read.
-            return None
-        return _booleans(value, seen | {inner})
+    if isinstance(inner, NewType) or is_alias(inner):
+        if inner in seen:
+            # An alias that refers to itself adds nothing it has not already.
+            return frozenset()
+        if isinstance(inner, NewType):
+            return _booleans(inner.__supertype__, seen | {inner})
+        # An alias that names what is not defined raises `TypeError` here,
+        # which says so, as the definition's constructor does for it.
+        return _booleans(alias_value(inner), seen | {inner})
     if inner is bool:
         return frozenset({True, False})
     if get_origin(inner) is Literal:

@@ -1304,6 +1304,13 @@ _PQ = TypeAliasType("_PQ", Literal["p", "q"])
             (3, "p", "q"),
         ),
         (_PQ | Literal[3], None, 'expected one of ["p", "q"] or 3, got null', "invalid_type", None),
+        (
+            Literal[0, 1, 2] | Literal[False, True],  # noqa: PYI030 - two branches on purpose
+            5,
+            "expected one of [0, 1, 2] or one of [false, true], got 5",
+            "invalid_value",
+            (0, 1, 2, False, True),
+        ),
     ],
     ids=[
         "string-outside-the-literal",
@@ -1313,6 +1320,7 @@ _PQ = TypeAliasType("_PQ", Literal["p", "q"])
         "literals-of-two-types",
         "literals-in-the-order-the-message-names-them",
         "a-shape-no-literal-has",
+        "numbers-and-booleans",
     ],
 )
 def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
