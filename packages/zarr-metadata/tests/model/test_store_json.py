@@ -168,7 +168,7 @@ _CASES: dict[str, _Case] = {
     "v2-consolidated": (
         _v2_consolidated,
         ZarrV2ConsolidatedMetadata.from_key_value,
-        lambda store: ZarrV2ConsolidatedMetadata.from_key_value(store).metadata[".zattrs"],
+        lambda store: ZarrV2ConsolidatedMetadata.from_key_value(store).metadata[""].attributes,
         None,
     ),
 }

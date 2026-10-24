@@ -482,12 +482,7 @@ class ZarrV2ConsolidatedMetadataReading:
         """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no fields."""
         if self.metadata is None:
             return
-        by_path, _ = _entries_by_path(self.metadata.metadata)
-        for path, node in self.metadata.nodes.items():
-            if isinstance(node, ZarrV2ArrayMetadata):
-                key = by_path[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
-                for loc, field in node.reading.fields():
-                    yield ("metadata", key, *loc), field
+        yield from self.metadata._located_fields()  # pyright: ignore[reportPrivateUsage]
 
     def __reduce__(self) -> str | tuple[object, ...]:
         # Same as the other readings: pickle through the model, when there is one.
@@ -501,68 +496,74 @@ def read_consolidated_metadata_v2(
 ) -> ZarrV2ConsolidatedMetadataReading:
     """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
     context = scoped(context, CORE_V2)
-    document, nodes, problems = _read_consolidated_v2(value, context)
+    document, nodes, files, problems = _read_consolidated_v2(value, context)
     if len(problems) != 0:
         return ZarrV2ConsolidatedMetadataReading(problems=problems)
-    model = ZarrV2ConsolidatedMetadata._of(document, context, nodes)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV2ConsolidatedMetadata._of(document, context, nodes, files)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
 class ZarrV2ConsolidatedMetadata(Keyed):
     """A v2 `.zmetadata` document, and the scope its nodes were read in.
 
-    `metadata` holds the flat entries keyed by file (`"path/.zarray"`,
-    `"path/.zattrs"`, ...) as written, refined. This keeps the
-    information about which nodes had a `.zattrs` at all. `nodes` holds
-    each `.zarray` or `.zgroup` entry, merged with its sibling `.zattrs`,
-    as a model in this scope, keyed by the node's path (`""` for the
-    root). A `.zattrs` with no sibling is kept but does not form a node.
-    Any other entry must be JSON, and is kept. A model is only built by
-    reading: the constructor raises `MetadataValidationError` with every
-    problem, each located under its entry. Two documents are equal when
-    each node means the same thing and the other entries are written the
-    same way, as the model key defines. `refines`, `with_context` and
-    `refined_in` work through the nodes.
+    `metadata` maps the path of each node to its model in this scope, as
+    `ZarrV3ConsolidatedMetadata.metadata` does. A path is written without
+    the leading `/`, and the root's path is `""`: the node at `/a/b` is at
+    `a/b`. Each node is a `.zarray` or `.zgroup` entry, merged with its
+    sibling `.zattrs`. A `.zattrs` with no sibling is kept but does not
+    form a node. Any other entry must be JSON, and is kept. `to_json`
+    returns the entries keyed by file (`"a/.zarray"`, `"a/.zattrs"`, ...)
+    as written, refined, so the document still tells which nodes have a
+    `.zattrs` at all. A model is only built by reading: the constructor
+    raises `MetadataValidationError` with every problem, each located
+    under its entry. Two documents are equal when each node means the same
+    thing and the other entries are written the same way, as the model
+    key defines. `refines`, `with_context` and `refined_in` work through
+    the nodes.
     """
 
-    __slots__ = ("_context", "_document", "_nodes", "_shown")
+    __slots__ = ("_context", "_document", "_files", "_metadata")
 
     _context: ZarrV2Context
     _document: dict[str, JSONValue]
-    _nodes: dict[str, ZarrV2NodeMetadata]
-    _shown: Mapping[str, JSONValue]
+    _files: dict[str, dict[str, str]]
+    _metadata: dict[str, ZarrV2NodeMetadata]
 
     zarr_consolidated_format: Final = 1
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2)
-        read, nodes, problems = _read_consolidated_v2(document, context)
+        read, nodes, files, problems = _read_consolidated_v2(document, context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        self._adopt(read, context, nodes)
+        self._adopt(read, context, nodes, files)
 
     @classmethod
     def _of(
         cls,
         document: dict[str, JSONValue],
         context: ZarrV2Context,
-        nodes: dict[str, ZarrV2NodeMetadata],
+        metadata: dict[str, ZarrV2NodeMetadata],
+        files: dict[str, dict[str, str]],
     ) -> ZarrV2ConsolidatedMetadata:
-        """Build a model of a document that a read found no problems with, holding the nodes that read built. The readers in this package build models through this method; pyright reports these calls as private use."""
+        """Build a model of a document that a read found no problems with, holding the nodes that read built and the entry key of each node's files. The readers in this package build models through this method; pyright reports these calls as private use."""
         model = object.__new__(cls)
-        model._adopt(document, context, nodes)
+        model._adopt(document, context, metadata, files)
         return model
 
     def _adopt(
         self,
         document: dict[str, JSONValue],
         context: ZarrV2Context,
-        nodes: dict[str, ZarrV2NodeMetadata],
+        metadata: dict[str, ZarrV2NodeMetadata],
+        files: dict[str, dict[str, str]],
     ) -> None:
         self._document = document
         self._context = context
-        self._nodes = nodes
-        self._shown = frozen(object_at(document, "metadata"))
+        self._metadata = metadata
+        # The entry key of each file of each node, by node path and then by
+        # file name, as the document writes it.
+        self._files = files
 
     @property
     def reading(self) -> ZarrV2ConsolidatedMetadataReading:
@@ -575,14 +576,9 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return self._context
 
     @property
-    def metadata(self) -> Mapping[str, JSONValue]:
-        """The entries as written, refined, keyed by store key. Read-only at every level."""
-        return self._shown
-
-    @property
-    def nodes(self) -> Mapping[str, ZarrV2NodeMetadata]:
-        """A read-only view of the model of each node, keyed by its path below the root (`""` for the root)."""
-        return MappingProxyType(self._nodes)
+    def metadata(self) -> Mapping[str, ZarrV2NodeMetadata]:
+        """A read-only view of the model of each node, keyed by its path without the leading `/` (`""` for the root)."""
+        return MappingProxyType(self._metadata)
 
     def to_json(self) -> dict[str, JSONValue]:
         """The `.zmetadata` document as written, refined. The result shares no objects with the model."""
@@ -601,20 +597,24 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def _key_of(self) -> tuple[object, ...]:
         """The key `==` and `hash` compare for v2 consolidated metadata: each node's path and key, and every other entry as JSON text."""
-        nodes = self._nodes
         return (
-            tuple(sorted((path, node._model_key) for path, node in nodes.items())),
+            tuple(sorted((path, node._model_key) for path, node in self._metadata.items())),
             self._other_entries_text(),
         )
 
     def _other_entries_text(self) -> str:
         """The entries that no node is read from (an orphan `.zattrs`, or any other key) as JSON text, which `==` compares."""
         entries = object_at(self._document, "metadata")
-        consumed: set[str] = set()
-        for path, names in _entries_by_path(entries)[0].items():
-            if path in self._nodes:
-                consumed.update(names.values())
+        consumed = {key for names in self._files.values() for key in names.values()}
         return json_text({key: value for key, value in entries.items() if key not in consumed})
+
+    def _located_fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
+        """Each field of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
+        for path, node in self._metadata.items():
+            if isinstance(node, ZarrV2ArrayMetadata):
+                key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
+                for loc, field in node.reading.fields():
+                    yield ("metadata", key, *loc), field
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
@@ -633,13 +633,11 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         """
         context = scoped(context, CORE_V2)
         conflicts: list[Conflict] = []
-        entries = object_at(self._document, "metadata")
-        by_path, _ = _entries_by_path(entries)
-        for path, node in self._nodes.items():
+        for path, node in self._metadata.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
             found = context.disagreements(node.claims)
-            key = by_path[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
+            key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(
                     conflict,
@@ -655,11 +653,13 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         """Whether every node this holds refines the node `other` holds at the same path, both hold the same paths, and the other entries are written the same way. False when `other` is not v2 consolidated metadata."""
         if type(other) is not type(self):
             return False
-        if self._nodes.keys() != other._nodes.keys():
+        if self._metadata.keys() != other._metadata.keys():
             return False
         if self._other_entries_text() != other._other_entries_text():
             return False
-        return all(_v2_node_refines(self._nodes[path], other._nodes[path]) for path in self._nodes)
+        return all(
+            _v2_node_refines(self._metadata[path], other._metadata[path]) for path in self._metadata
+        )
 
     @classmethod
     def from_json(
@@ -736,18 +736,23 @@ def _entries_by_path(
 
 def _read_consolidated_v2(
     data: object, context: ZarrV2Context
-) -> tuple[dict[str, JSONValue], dict[str, ZarrV2NodeMetadata], tuple[ValidationProblem, ...]]:
-    """Read `data`, a `.zmetadata` document. Return the document as read, with its keys in the order it writes them and each entry as read; the model of each node read in `context`; and every problem, located in the document.
+) -> tuple[
+    dict[str, JSONValue],
+    dict[str, ZarrV2NodeMetadata],
+    dict[str, dict[str, str]],
+    tuple[ValidationProblem, ...],
+]:
+    """Read `data`, a `.zmetadata` document. Return the document as read, with its keys in the order it writes them and each entry as read; the model of each node read in `context`, by path; the entry key of each node's files, by path and then by file name; and every problem, located in the document.
 
     Each entry is read as the kind of document its key names. A `.zattrs`
     entry is user data. Any other entry must be JSON by RFC 8259. A
     `.zarray` or `.zgroup` entry is read as that document, merged with
     its sibling `.zattrs`. Its problems are located under its own entry,
     and problems with the attributes under the `.zattrs` entry. The
-    nodes are empty when there is any problem.
+    nodes and their files are empty when there is any problem.
     """
     if not is_object(data):
-        return {}, {}, not_an_object(data)
+        return {}, {}, {}, not_an_object(data)
     doc = data
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
@@ -793,10 +798,11 @@ def _read_consolidated_v2(
         problems.extend(_hierarchy_problems_v2(by_path))
     if len(problems) != 0:
         nodes = {}
+    files = {path: by_path[path] for path in nodes}
     members: dict[str, JSONValue] = {"zarr_consolidated_format": 1, "metadata": refined}
     # The keys in the order the document writes them, as the v3 models keep them.
     document = {key: members[key] for key in doc if isinstance(key, str) and key in members}
-    return document, nodes, with_input(problems, doc)
+    return document, nodes, files, with_input(problems, doc)
 
 
 def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[ValidationProblem]:

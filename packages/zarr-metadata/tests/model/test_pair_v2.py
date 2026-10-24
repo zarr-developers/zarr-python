@@ -339,17 +339,18 @@ def _consolidated(**entries: object) -> dict[str, Any]:
     return {**CONSOLIDATED, "metadata": {**CONSOLIDATED["metadata"], **entries}}
 
 
-def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_model() -> None:
-    """`metadata` is the flat map keyed by file, as written and refined, and it is read-only. `nodes` holds each `.zarray` or `.zgroup` entry merged with its sibling `.zattrs`, as a model in the consolidated scope, keyed by node path (`""` for the root). A `.zattrs` with no sibling is kept but makes no node. The whole model round-trips through its document, store keys, pickle and copy."""
+def test_consolidated_metadata_maps_each_node_path_to_its_model() -> None:
+    """`metadata` maps the path of each node, without the leading `/` (`""` for the root), to the model of its `.zarray` or `.zgroup` entry merged with its sibling `.zattrs`, read in the consolidated scope, as `ZarrV3ConsolidatedMetadata.metadata` maps each path to its model. It is read-only. The entries stay in `to_json()["metadata"]`, keyed by file, as written and refined. A `.zattrs` with no sibling is kept there but makes no node. The whole model round-trips through its document, store keys, pickle and copy."""
     model = ZarrV2ConsolidatedMetadata(CONSOLIDATED, PRIVATE)
     assert model.context is PRIVATE
-    assert model.metadata["a/.zattrs"] == {"a": (1, 2)}
-    assert set(model.nodes) == {"", "a", "b"}
-    assert model.nodes["a"] == ZarrV2ArrayMetadata(ARRAY, PRIVATE)
+    assert set(model.metadata) == {"", "a", "b"}
+    assert model.metadata["a"] == ZarrV2ArrayMetadata(ARRAY, PRIVATE)
     root = ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {"root": True}}, PRIVATE)
-    assert model.nodes[""] == root
-    assert model.nodes["b"].attributes == {}
+    assert model.metadata[""] == root
+    assert model.metadata["b"].attributes == {}
+    assert not hasattr(model, "nodes")
     entries = cast("dict[str, Any]", model.to_json()["metadata"])
+    assert entries["a/.zattrs"] == {"a": (1, 2)}
     assert entries["orphan/.zattrs"] == {"o": 1}
     assert ZarrV2ConsolidatedMetadata.from_key_value(model.to_key_value(), context=PRIVATE) == model
     assert pickle.loads(pickle.dumps(model)) == model
@@ -383,11 +384,11 @@ def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them()
     other = _consolidated(**{"orphan/.zattrs": {"o": 2}})
     assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) != ZarrV2ConsolidatedMetadata(other)
     small = ZarrV2ConsolidatedMetadata(CONSOLIDATED, SMALL)
-    assert isinstance(small.nodes["a"], ZarrV2ArrayMetadata)
-    assert isinstance(small.nodes["a"].compressor, UnclaimedField)
+    assert isinstance(small.metadata["a"], ZarrV2ArrayMetadata)
+    assert isinstance(small.metadata["a"].compressor, UnclaimedField)
     gained = small.refined_in(PRIVATE)
-    assert isinstance(gained.nodes["a"], ZarrV2ArrayMetadata)
-    assert isinstance(gained.nodes["a"].compressor, AcceptedField)
+    assert isinstance(gained.metadata["a"], ZarrV2ArrayMetadata)
+    assert isinstance(gained.metadata["a"].compressor, AcceptedField)
     assert gained.refines(small)
     assert not small.refines(gained)
     with pytest.raises(ScopeConflictError) as conflict:
@@ -434,7 +435,7 @@ def test_error_two_entries_for_one_node_file_are_refused() -> None:
 
 
 def test_the_node_type_is_exported() -> None:
-    """`ZarrV2NodeMetadata`, the type of each node in `nodes`, is exported alongside the models, as `ZarrV3NodeMetadata` is."""
+    """`ZarrV2NodeMetadata`, the type of each node in a `.zmetadata`'s `metadata`, is exported alongside the models, as `ZarrV3NodeMetadata` is."""
     from zarr_metadata import model
 
     assert "ZarrV2NodeMetadata" in model.__all__
@@ -475,9 +476,9 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
                 "zarr_consolidated_format": 1,
                 "metadata": {"x/.zgroup": {"zarr_format": 2}, "x//y/.zarray": ZARRAY},
             }
-        ).nodes
+        ).metadata
     ) == {"x", "x/y"}
-    assert set(one.nodes) == {"a"}
+    assert set(one.metadata) == {"a"}
     assert one == ZarrV2ConsolidatedMetadata(
         {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
     )
@@ -492,7 +493,7 @@ def test_a_v2_node_may_have_a_name_that_only_v3_reserves(name: str) -> None:
             "metadata": {".zgroup": {"zarr_format": 2}, f"{name}/.zarray": ZARRAY},
         }
     )
-    assert set(model.nodes) == {"", name}
+    assert set(model.metadata) == {"", name}
 
 
 def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:

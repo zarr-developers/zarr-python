@@ -172,12 +172,12 @@ def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
 def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
     model: object, member: str
 ) -> None:
-    """A v2 model holds copies of the containers it is built from."""
+    """A v2 model holds copies of the containers it is built from: changing them afterwards changes nothing in the document the model writes."""
     held: dict[str, object] = {"acme.x": {"must_understand": False}}
     built = _rebuilt(model, {member: held})
     held["acme.y"] = math.nan
     cast("dict[str, object]", held["acme.x"])["z"] = math.nan
-    assert getattr(built, member) == {"acme.x": {"must_understand": False}}
+    assert built.to_json()[member] == {"acme.x": {"must_understand": False}}
     assert type(built).from_key_value(built.to_key_value()) == built
 
 

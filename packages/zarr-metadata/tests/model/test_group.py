@@ -1046,7 +1046,7 @@ def test_error_a_node_built_from_a_document_with_a_problem() -> None:
 
 
 def test_consolidated_v2_verbatim_roundtrip() -> None:
-    """The v2 .zmetadata model holds the flat file-keyed map verbatim,
+    """The v2 .zmetadata model writes the flat file-keyed map verbatim,
     including nodes that have no .zattrs entry."""
     doc = {
         "zarr_consolidated_format": 1,
@@ -1093,7 +1093,7 @@ def test_consolidated_v2_lists_become_tuples() -> None:
         "metadata": {"a/.zattrs": {"shape": [2, 3]}},
     }
     model = ZarrV2ConsolidatedMetadata.from_json(doc)
-    assert model.metadata == {"a/.zattrs": {"shape": (2, 3)}}
+    assert model.to_json()["metadata"] == {"a/.zattrs": {"shape": (2, 3)}}
 
 
 def test_consolidated_v2_envelope_validation() -> None:

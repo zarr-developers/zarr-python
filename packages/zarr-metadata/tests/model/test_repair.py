@@ -408,7 +408,7 @@ def test_read_repaired_consolidated_v2_writes_a_bare_non_finite_fill_value_by_na
     repaired = read_repaired_consolidated_metadata_v2(value)
     assert repaired.problems == ()
     assert repaired.metadata is not None
-    assert repaired.metadata.nodes["b/a"] == ZarrV2ArrayMetadata(NAMED_ZARRAY)
+    assert repaired.metadata.metadata["b/a"] == ZarrV2ArrayMetadata(NAMED_ZARRAY)
     assert [(r.loc, r.kind) for r in repaired.repairs] == [
         (("metadata", "b/a/.zarray", "fill_value"), "non_finite_fill_value")
     ]
