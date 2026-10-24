@@ -67,7 +67,7 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
-from zarr.storage._common import make_store_path
+from zarr.storage._common import make_store_path, resolve_zarr_format
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
 
 if TYPE_CHECKING:
@@ -532,6 +532,7 @@ class AsyncGroup:
         overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(store)
         attributes = attributes or {}
         group = cls(
@@ -574,6 +575,7 @@ class AsyncGroup:
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
         """
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
             # Fail if consolidated metadata was requested but the Store doesn't support it
