@@ -41,10 +41,8 @@ class ZarrV2StructConfiguration(TypedDict, closed=True):
 
 
 def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """Check that there is at least one record and that the names are distinct. The name `""` may repeat: NumPy uses it for the padding of an aligned struct, and zarr-python 2.x writes it."""
+    """Check that the names are distinct. The name `""` may repeat: NumPy uses it for the padding of an aligned struct, and zarr-python 2.x writes it. A struct with no records is allowed: NumPy's `np.dtype([])` takes no bytes, and zarr-python 2.x writes it as `[]` and reads it back."""
     fields = configuration["fields"]
-    if len(fields) == 0:
-        yield ValidationProblem(("fields",), "expected at least one field record", "invalid_value")
     seen: dict[str, int] = {}
     for index, record in enumerate(fields):
         name = record[0]

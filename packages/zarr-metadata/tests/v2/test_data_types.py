@@ -68,10 +68,12 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
             "struct",
             (("a", "|i1"), ("", "|V3"), ("b", "<i4"), ("", "|V3")),
         ),
+        # `np.dtype([])`, which zarr 2.x writes and reads back.
+        ([], "struct", ()),
     ],
 )
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
-    """Each typestr of a family is read by the family's definition. Its canonical spelling is the typestr NumPy writes: `|` for a type of one byte or with no byte order, and `us` for a microsecond unit. A records array is read as `struct`, and the type of each record is read too."""
+    """Each typestr of a family is read by the family's definition. Its canonical spelling is the typestr NumPy writes: `|` for a type of one byte or with no byte order, and `us` for a microsecond unit. A records array is read as `struct`, and the type of each record is read too. A records array may be empty."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == family
@@ -106,7 +108,6 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         ("<M8[ns][s]", ("dtype",)),
         ("<M8[x]", ("dtype",)),
         ("|O4", ("dtype",)),
-        ([], ("dtype", "fields")),
         ([["x", "<f4"], ["x", "<i4"]], ("dtype", "fields", 1, 0)),
         ([["x", "float32"]], ("dtype", "fields", 0, 1)),
         ([["x", "<f4", [-1]]], ("dtype", "fields", 0, 2, 0)),
@@ -130,7 +131,6 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         "two-units",
         "bad-unit",
         "object-size",
-        "no-records",
         "duplicate-name",
         "record-type",
         "record-shape",
@@ -288,6 +288,8 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         ([["a", [["s", "<U2"]]], ["b", "|u1"]], "AAAAAAAAAAAA", True),
         ([["a", [["s", "<U2"]]], ["b", "|u1"]], "AAAA", False),
         ([["s", "<U1", [3]]], "AAAAAAAAAAAAAAAA", True),
+        ([], "", True),
+        ([], "AA==", False),
     ],
     ids=[
         "void",
@@ -306,12 +308,14 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         "nested-str-field",
         "nested-str-field-counted-in-code-points",
         "str-subarray",
+        "empty-struct",
+        "empty-struct-long",
     ],
 )
 def test_a_base64_fill_value_is_as_long_as_its_item(
     dtype: JSONValue, fill_value: str, accepted: bool
 ) -> None:
-    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
+    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each, and a struct with no fields takes no bytes. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
 
     document = {
