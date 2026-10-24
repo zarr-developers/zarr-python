@@ -34,8 +34,14 @@ ZARRAY: dict[str, Any] = {
 }
 
 
+def _files(**files: object) -> dict[str, object]:
+    """A node's files as decoded JSON, keyed by file name: `_zarray=...` is `.zarray`."""
+    return {key.replace("_", "."): value for key, value in files.items()}
+
+
 def _store(**files: object) -> dict[str, bytes]:
-    return {key.replace("_", "."): json.dumps(value).encode() for key, value in files.items()}
+    """The same files as a store holds them: keys and bytes."""
+    return {key: json.dumps(value).encode() for key, value in _files(**files).items()}
 
 
 def test_read_group_metadata_v2_reads_a_group() -> None:
@@ -74,51 +80,61 @@ def test_error_read_group_metadata_v2_reports_the_problems_of_a_bad_group() -> N
     ],
     ids=["array", "array-with-attributes", "group", "group-with-attributes"],
 )
-def test_a_v2_node_is_read_as_the_file_its_store_holds(
+def test_a_v2_node_is_read_as_the_file_it_has(
     files: dict[str, object], kind: type, model: object
 ) -> None:
-    """A v2 node is an array when the store holds `.zarray` and a group when it holds `.zgroup`, with the attributes at `.zattrs`. The reader gives the reading of that node type, whose model is what the model's `from_key_value` builds; `node_metadata_from_key_value_v2` returns that model, and `validate_node_metadata_v2` finds no problems."""
-    store = _store(**files)
-    reading = read_node_metadata_v2(store)
+    """A v2 node is an array when its files include `.zarray` and a group when they include `.zgroup`, with the attributes at `.zattrs`. `read_node_metadata_v2` reads the decoded files and gives the reading of that node type, whose model is what the model's `from_key_value` builds from the same files in a store; `node_metadata_from_key_value_v2` returns that model from the store, and `validate_node_metadata_v2` finds no problems."""
+    reading = read_node_metadata_v2(_files(**files))
     assert type(reading) is kind
     assert reading.problems == ()
-    assert reading.metadata == cast("Any", model).from_key_value(store)
-    assert node_metadata_from_key_value_v2(store) == reading.metadata
-    assert validate_node_metadata_v2(store) == ()
+    assert reading.metadata == cast("Any", model).from_key_value(_store(**files))
+    assert node_metadata_from_key_value_v2(_store(**files)) == reading.metadata
+    assert validate_node_metadata_v2(_files(**files)) == ()
 
 
-def test_error_a_v2_store_with_no_node_file_is_no_node() -> None:
-    """A store with neither `.zarray` nor `.zgroup` holds no node: the reading is a `ZarrV2UnknownNodeMetadataReading` with one `missing_key` problem, and building a model raises."""
-    store = _store(_zattrs={"a": 1})
-    reading = read_node_metadata_v2(store)
+def test_a_v2_node_reads_the_same_from_zmetadata_entries_as_from_a_store() -> None:
+    """The entries of a `.zmetadata` hold the same JSON as the node's own files, so the slice of entries for one path is a node's files: `read_node_metadata_v2` reads it as it reads the decoded store files, and builds the same model."""
+    entries = {"a/.zarray": ZARRAY, "a/.zattrs": {"x": 1}, "b/.zgroup": {"zarr_format": 2}}
+    node_files = {
+        key.removeprefix("a/"): value for key, value in entries.items() if key.startswith("a/")
+    }
+    reading = read_node_metadata_v2(node_files)
+    assert reading.metadata == node_metadata_from_key_value_v2(
+        _store(_zarray=ZARRAY, _zattrs={"x": 1})
+    )
+
+
+def test_error_files_with_no_node_file_are_no_node() -> None:
+    """Files with neither `.zarray` nor `.zgroup` describe no node: the reading is a `ZarrV2UnknownNodeMetadataReading` with one `missing_key` problem, and building a model from such a store raises."""
+    reading = read_node_metadata_v2(_files(_zattrs={"a": 1}))
     assert type(reading) is ZarrV2UnknownNodeMetadataReading
     assert [(p.loc, p.kind) for p in reading.problems] == [((), "missing_key")]
     assert reading.metadata is None
     with pytest.raises(MetadataValidationError):
-        node_metadata_from_key_value_v2(store)
+        node_metadata_from_key_value_v2(_store(_zattrs={"a": 1}))
 
 
-def test_error_a_v2_store_with_both_node_files_is_no_node() -> None:
-    """A node is an array or a group, not both: a store with `.zarray` and `.zgroup` gives a `ZarrV2UnknownNodeMetadataReading` with an `invalid_value` problem at `.zgroup`."""
-    reading = read_node_metadata_v2(_store(_zarray=ZARRAY, _zgroup={"zarr_format": 2}))
+def test_error_files_with_both_node_files_are_no_node() -> None:
+    """A node is an array or a group, not both: files with `.zarray` and `.zgroup` give a `ZarrV2UnknownNodeMetadataReading` with an `invalid_value` problem at `.zgroup`."""
+    reading = read_node_metadata_v2(_files(_zarray=ZARRAY, _zgroup={"zarr_format": 2}))
     assert type(reading) is ZarrV2UnknownNodeMetadataReading
     assert [(p.loc, p.kind) for p in reading.problems] == [((".zgroup",), "invalid_value")]
 
 
-def test_error_a_v2_node_file_that_is_not_json_is_a_problem_of_its_node() -> None:
-    """A node file whose bytes are not JSON gives the reading of its node type, with an `invalid_json` problem at the file and no model."""
-    reading = read_node_metadata_v2({".zarray": b"{not json"})
-    assert type(reading) is ZarrV2ArrayMetadataReading
-    assert [(p.loc, p.kind) for p in reading.problems] == [((".zarray",), "invalid_json")]
-    assert reading.metadata is None
+def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> None:
+    """Decoding is the store's step: a store file whose bytes are not JSON makes `node_metadata_from_key_value_v2` raise with an `invalid_json` problem at the file."""
+    with pytest.raises(MetadataValidationError) as raised:
+        node_metadata_from_key_value_v2({".zarray": b"{not json"})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [((".zarray",), "invalid_json")]
 
 
 def test_error_a_v2_node_with_a_bad_document_reports_its_problems() -> None:
     """A node whose document has a problem gives the reading of its node type with the problems, as the model's reader reports them, and no model."""
-    reading = read_node_metadata_v2(_store(_zarray={**ZARRAY, "shape": [-1]}))
+    files = _files(_zarray={**ZARRAY, "shape": [-1]})
+    reading = read_node_metadata_v2(files)
     assert type(reading) is ZarrV2ArrayMetadataReading
     assert [(p.loc, p.kind) for p in reading.problems] == [(("shape",), "invalid_value")]
-    assert validate_node_metadata_v2(_store(_zarray={**ZARRAY, "shape": [-1]})) == reading.problems
+    assert validate_node_metadata_v2(files) == reading.problems
 
 
 CONSOLIDATED: dict[str, Any] = {

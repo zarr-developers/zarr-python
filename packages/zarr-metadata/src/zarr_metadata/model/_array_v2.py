@@ -71,6 +71,7 @@ from zarr_metadata.v2.definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
 )
+from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -372,32 +373,52 @@ def parse_array_metadata_v2(
     return cast("ZarrV2ArrayMetadataJSON", arrays_to_tuples(value))
 
 
-def node_document_v2(
-    mapping: Mapping[StoreKey, bytes], key: str, beside_attributes: ValidationProblem
-) -> tuple[object, tuple[ValidationProblem, ...]]:
-    """The merged v2 document of the node whose file is `key` in `mapping`: the file's JSON, with the attributes at `.zattrs` when that key exists.
+NODE_FILES_V2: Final = (
+    ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZARR_V2_GROUP_METADATA_STORE_KEY,
+    ZARR_V2_ATTRIBUTES_STORE_KEY,
+)
+"""The files that describe a v2 node: `.zarray` or `.zgroup`, and `.zattrs`."""
 
-    Returns the document and no problems, or None and the problems of
-    reading the files: a missing `key`, bytes that are not JSON, or a file
-    that holds `attributes` itself (reported as `beside_attributes`, since
-    attributes belong in `.zattrs`). A file that is not an object is
-    returned as it is, for the document's reader to report.
+
+def decoded_node_files_v2(
+    mapping: Mapping[StoreKey, bytes], keys: tuple[str, ...] = NODE_FILES_V2
+) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+    """The JSON of each of `keys` that `mapping` holds, decoded from its bytes, and the problem of each one that is not bytes of JSON. A key that `mapping` does not hold is left out."""
+    stored = cast("Mapping[str, bytes]", mapping)
+    files: dict[str, object] = {}
+    problems: list[ValidationProblem] = []
+    for key in keys:
+        if key not in stored:
+            continue
+        try:
+            files[key] = load_store_json(mapping, key)
+        except MetadataValidationError as error:
+            problems.extend(error.problems)
+    return files, tuple(problems)
+
+
+def node_document_v2(
+    files: Mapping[str, object], key: str, beside_attributes: ValidationProblem
+) -> tuple[object, tuple[ValidationProblem, ...]]:
+    """The merged v2 document of the node whose file is `key` in `files` (each file's decoded JSON, keyed by its name): the file's JSON, with the attributes at `.zattrs` when `files` holds it.
+
+    Returns the document and no problems, or None and the problem: a
+    missing `key`, or a file that holds `attributes` itself (reported as
+    `beside_attributes`, since attributes belong in `.zattrs`). A file
+    that is not an object is returned as it is, for the document's reader
+    to report.
     """
-    try:
-        document = load_store_json(mapping, key)
-    except MetadataValidationError as error:
-        return None, error.problems
+    if key not in files:
+        return None, (ValidationProblem((key,), "missing store key", "missing_key"),)
+    document = files[key]
     if not is_object(document):
         return document, ()
     if "attributes" in document:
         return None, with_input((beside_attributes,), document)
-    if ZARR_V2_ATTRIBUTES_STORE_KEY not in cast("Mapping[str, bytes]", mapping):
+    if ZARR_V2_ATTRIBUTES_STORE_KEY not in files:
         return document, ()
-    try:
-        attributes = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
-    except MetadataValidationError as error:
-        return None, error.problems
-    return {**document, "attributes": attributes}, ()
+    return {**document, "attributes": files[ZARR_V2_ATTRIBUTES_STORE_KEY]}, ()
 
 
 ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
@@ -790,8 +811,13 @@ class ZarrV2ArrayMetadata(Keyed):
         are not JSON, `.zarray` holds `attributes`, or the document is not
         valid.
         """
+        files, problems = decoded_node_files_v2(
+            mapping, (ZARR_V2_ARRAY_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
+        )
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
         document, problems = node_document_v2(
-            mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
+            files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)

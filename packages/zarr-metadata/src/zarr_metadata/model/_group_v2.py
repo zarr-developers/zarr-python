@@ -37,6 +37,7 @@ from zarr_metadata.model._array_v2 import (
     ARRAY_FILE_ATTRIBUTES,
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataReading,
+    decoded_node_files_v2,
     node_document_v2,
     read_array_metadata_v2,
     read_array_v2,
@@ -187,23 +188,25 @@ ZarrV2NodeMetadataReading = TypeAliasType(
 
 
 def read_node_metadata_v2(
-    mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+    files: Mapping[str, object], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadataReading:
-    """Read the v2 node whose files are in `mapping`, in `context` (`CORE_V2` when none is given), as the node type its files declare.
+    """Read the v2 node described by `files`, in `context` (`CORE_V2` when none is given), as the node type its files declare.
 
-    A v2 document does not name its node type; the file does. A
-    `.zarray` makes the node an array, read as `read_array_metadata_v2`
-    reads it, and a `.zgroup` makes it a group, read as
-    `read_group_metadata_v2` reads it, with the attributes at `.zattrs`
-    in either case. A store with neither file, or with both, gives a
-    `ZarrV2UnknownNodeMetadataReading` with the problem. A file that
-    cannot be read (bytes that are not JSON, or `attributes` written in
-    the node file) gives the reading of its node type with the problem
-    and no model. This is the v2 counterpart of `read_node_metadata_v3`,
-    which reads one `zarr.json` and its `node_type`.
+    `files` maps each of the node's files to its decoded JSON: `.zarray`
+    or `.zgroup`, and `.zattrs` when there is one. They can come from a
+    store, decoded (as `node_metadata_from_key_value_v2` does), or from the
+    entries of a `.zmetadata`, which hold the same JSON. A v2 document
+    does not name its node type; the file does. A `.zarray` makes the node
+    an array, read as `read_array_metadata_v2` reads it, and a `.zgroup`
+    makes it a group, read as `read_group_metadata_v2` reads it, with the
+    attributes at `.zattrs` in either case. `files` with neither, or with
+    both, give a `ZarrV2UnknownNodeMetadataReading` with the problem. A
+    `.zarray` or `.zgroup` that writes `attributes` itself gives the
+    reading of its node type with the problem and no model. This is the
+    v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
+    and its `node_type`.
     """
     context = scoped(context, CORE_V2)
-    files = cast("Mapping[str, bytes]", mapping)
     is_array = ZARR_V2_ARRAY_METADATA_STORE_KEY in files
     is_group = ZARR_V2_GROUP_METADATA_STORE_KEY in files
     if is_array and is_group:
@@ -215,14 +218,14 @@ def read_node_metadata_v2(
         return ZarrV2UnknownNodeMetadataReading((both,))
     if is_array:
         document, problems = node_document_v2(
-            mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
+            files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
             return ZarrV2ArrayMetadataReading(problems=problems)
         return read_array_metadata_v2(document, context=context)
     if is_group:
         document, problems = node_document_v2(
-            mapping, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
             return ZarrV2GroupMetadataReading(problems=problems)
@@ -238,18 +241,21 @@ def read_node_metadata_v2(
 def node_metadata_from_key_value_v2(
     mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadata:
-    """Return the model of the v2 node whose files are in `mapping`, read in `context` as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem the read finds."""
-    reading = read_node_metadata_v2(mapping, context=context)
+    """Return the model of the v2 node whose files are in `mapping`, a store's keys and bytes: each file is decoded, then read as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem, including a file whose bytes are not JSON."""
+    files, problems = decoded_node_files_v2(mapping)
+    if len(problems) != 0:
+        raise MetadataValidationError(problems)
+    reading = read_node_metadata_v2(files, context=context)
     if reading.metadata is None:
         raise MetadataValidationError(reading.problems)
     return reading.metadata
 
 
 def validate_node_metadata_v2(
-    mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+    files: Mapping[str, object], *, context: ZarrV2Context | None = None
 ) -> tuple[ValidationProblem, ...]:
-    """Return every reason the files in `mapping` are not a valid v2 node, as `read_node_metadata_v2` reads them."""
-    return read_node_metadata_v2(mapping, context=context).problems
+    """Return every reason `files` (each of a node's files, decoded) are not a valid v2 node, as `read_node_metadata_v2` reads them."""
+    return read_node_metadata_v2(files, context=context).problems
 
 
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
@@ -419,8 +425,13 @@ class ZarrV2GroupMetadata(Keyed):
         are not JSON, `.zgroup` holds `attributes`, or the document is not
         valid.
         """
+        files, problems = decoded_node_files_v2(
+            mapping, (ZARR_V2_GROUP_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
+        )
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
         document, problems = node_document_v2(
-            mapping, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)

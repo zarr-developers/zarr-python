@@ -19,7 +19,8 @@ one read and returns what it read, the problems, and the model when there
 are no problems. It is the form of the model's constructor that returns
 problems as values instead of raising them. A node of either type is read by `read_node_metadata_v3`, from
 a `zarr.json` and its `node_type`, or by `read_node_metadata_v2`, from
-the `.zarray` or `.zgroup` file a store holds. To read
+the node's decoded `.zarray` or `.zgroup` and `.zattrs`, which can come
+from a store or from a `.zmetadata`. To read
 a store that another writer made with a known writer bug, use
 `read_repaired_node_metadata_v3`. It undoes each bug with
 `repair_node_metadata_v3` before the strict read, and reports what it
