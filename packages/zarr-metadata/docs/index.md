@@ -37,7 +37,9 @@ closely model the content of the Zarr specifications, such as:
   with each format's kinds in `zarr_metadata.v3.definition` and
   `zarr_metadata.v2.definition`): each extension's configuration as a
   `TypedDict` with its rules, and the scope that decides which definitions
-  read a document.
+  read a document. `zarr_metadata.v3` and `zarr_metadata.v2` export every
+  definition and scope of their format, such as `BYTES_CODEC` and
+  `CORE_AND_EXTENSIONS`.
 - **JSON type checking** ([`zarr_metadata.typed_json`](api/typed_json.md)):
   `check` checks a JSON value against any `TypedDict` and reports every
   problem with its location.

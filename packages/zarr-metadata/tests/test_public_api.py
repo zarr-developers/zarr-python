@@ -5,7 +5,10 @@ import pkgutil
 import re
 from typing import Literal, get_args, get_origin
 
+import pytest
+
 import zarr_metadata as zm
+from zarr_metadata.definition import Context, Definition
 
 
 def _group_rank(s: str) -> int:
@@ -546,12 +549,26 @@ def test_value_tied_constants_are_a_known_set() -> None:
     )
 
 
-def test_every_name_has_one_public_home() -> None:
-    """Each public name is exported by exactly one public submodule. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object."""
+_FRONT_DOORS = ("zarr_metadata.v2", "zarr_metadata.v3")
+"""The module of each format that also exports every definition and scope of that format."""
+
+
+def _homes() -> dict[str, list[str]]:
+    """Each public name, and every public submodule that exports it, with a format's front door left out for a definition or scope it aliases."""
     homes: dict[str, list[str]] = {}
     for module_name in sorted(_iter_module_names() - {"zarr_metadata"}):
         for name in getattr(importlib.import_module(module_name), "__all__", ()):
             homes.setdefault(name, []).append(module_name)
+    for name, modules in homes.items():
+        others = [module for module in modules if module not in _FRONT_DOORS]
+        if len(others) == 1 and len(modules) == 2:
+            homes[name] = others
+    return homes
+
+
+def test_every_name_has_one_public_home() -> None:
+    """Each public name is exported by exactly one public submodule, its home. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object, and so may the front door of its format (`zarr_metadata.v2` or `zarr_metadata.v3`) when the name is a definition or a scope of that format."""
+    homes = _homes()
     duplicated = {name: modules for name, modules in homes.items() if len(modules) > 1}
     assert duplicated == {}
     homeless = [name for name in zm.__all__ if name not in homes and name != "__version__"]
@@ -563,3 +580,28 @@ def test_every_name_has_one_public_home() -> None:
         and getattr(zm, name) is not getattr(importlib.import_module(homes[name][0]), name)
     ]
     assert aliases == [], "a top-level name must be the same object as the name in its home module"
+    for door in _FRONT_DOORS:
+        module = importlib.import_module(door)
+        for name in module.__all__:
+            (home,) = homes[name]
+            if home == door:
+                continue
+            value = getattr(importlib.import_module(home), name)
+            assert home.startswith(f"{door}."), f"{door} aliases {name} of another format"
+            assert isinstance(value, (Definition, Context)), f"{door} aliases {name}"
+            assert getattr(module, name) is value, f"{door}.{name} is another object"
+
+
+@pytest.mark.parametrize("door", _FRONT_DOORS)
+def test_a_front_door_exports_every_definition_and_scope_of_its_format(door: str) -> None:
+    """`zarr_metadata.v2` and `zarr_metadata.v3` each export every definition and scope that a submodule of theirs exports, so one import builds or extends a scope of that format."""
+    exported = set(importlib.import_module(door).__all__)
+    missing = sorted(
+        name
+        for module_name in _iter_module_names()
+        if module_name.startswith(f"{door}.")
+        for name in getattr(importlib.import_module(module_name), "__all__", ())
+        if isinstance(getattr(importlib.import_module(module_name), name), (Definition, Context))
+        and name not in exported
+    )
+    assert missing == []
