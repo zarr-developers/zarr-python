@@ -30,9 +30,10 @@ from zarr_metadata.definition import (
     RefusedField,
     UnclaimedField,
     canonical_of,
+    configuration_of,
     resolve,
 )
-from zarr_metadata.definition._definition import configuration_of, resolve_refined
+from zarr_metadata.definition._definition import resolve_refined
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,

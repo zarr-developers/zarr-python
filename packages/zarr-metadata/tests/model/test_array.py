@@ -26,9 +26,10 @@ from zarr_metadata.definition import (
     AcceptedField,
     UnclaimedField,
     canonical_of,
+    configuration_of,
     with_problems,
 )
-from zarr_metadata.definition._definition import configuration_of, fields_of
+from zarr_metadata.definition._definition import fields_of
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,

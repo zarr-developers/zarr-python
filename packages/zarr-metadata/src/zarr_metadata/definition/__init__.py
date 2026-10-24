@@ -57,8 +57,12 @@ can be used on its own by a caller that has only JSON:
    `UnclaimedField`, have a `configuration` and `to_json()`, which
    returns the field as a document writes it. Two of them are equal when
    they read the same, however each was spelled. `ResolvedField` is the
-   union of the three, for use with `match`. A field is read as one of
-   the five kinds, with or without type arguments.
+   union of the three, for use with `match`.
+   `configuration_of(field, GZIP_CODEC)` returns the configuration of a
+   field that `GZIP_CODEC` read, typed as its TypedDict
+   (`GzipCodecConfiguration`), and None for a field that another
+   definition read or that nothing claims. A field is read as one of
+   the kinds of its format, with or without type arguments.
    `resolve(field, Definition, context)` raises `TypeError`, because
    nothing is filed under `Definition`. A whole v3 array document is
    read by `read_array_metadata_v3`, in `zarr_metadata.model`. Its
@@ -263,6 +267,7 @@ from zarr_metadata.definition._definition import (
     WithFillValue,
     canonical_fill_value,
     canonical_of,
+    configuration_of,
     fill_value_problems,
     resolve,
     with_problems,
@@ -292,6 +297,7 @@ __all__ = [
     "WithFillValue",
     "canonical_fill_value",
     "canonical_of",
+    "configuration_of",
     "fill_value_problems",
     "resolve",
     "with_problems",

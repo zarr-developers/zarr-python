@@ -20,10 +20,11 @@ from zarr_metadata.definition import (
     Definition,
     RefusedField,
     canonical_of,
+    configuration_of,
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.definition._definition import canonicalize, configuration_of
+from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (

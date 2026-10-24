@@ -226,9 +226,14 @@ other field. Any other member is kept as written, as an `UnclaimedField`.
 The scope is what a reader recognizes, so the model's
 `must_understand_fields` lists each unclaimed member that does not say
 `"must_understand": false`: the spec requires a reader to fail to open a
-node with any such member. `CORE` holds `CONSOLIDATED_METADATA_EXTRA_FIELD`,
-which reads a group's `consolidated_metadata` as the envelope the spec
-fixes.
+node with any such member. It covers members only. A data type, chunk
+grid, chunk key encoding, codec or storage transformer that nothing in
+scope claims is an `UnclaimedField` too, also when it sits inside another
+field, such as a codec inside a shard. `model.reading.fields()` yields
+every field with its location, nested ones included, so a reader finds
+each one it does not understand there. `CORE` holds
+`CONSOLIDATED_METADATA_EXTRA_FIELD`, which reads a group's
+`consolidated_metadata` as the envelope the spec fixes.
 
 A v3 model consists of its document and the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
@@ -259,9 +264,13 @@ document with `read_node_metadata_v3` when that node is opened, or read
 all of them with `ZarrV3ConsolidatedMetadata`, or with
 `read_consolidated_metadata_v3`, which returns problems instead of
 raising them. A document with a problem then fails only when it is read.
+Pass `context=group.context` to read the documents in the group's own
+scope; with no `context`, they are read in `CORE_AND_EXTENSIONS`.
 
 To write consolidated metadata, build a `ZarrV3ConsolidatedMetadata` and
-pass it to the group's `update`, which writes its document. The model
+pass it to the group's `update`. The group reads the listed models in its
+own scope, refuses one that its scope reads differently, and writes the
+document. The model
 reads every document strictly, and also accepts node models as entries.
 Such an entry is accepted when its claims refine into the model's scope,
 and refused at its path otherwise. `ZarrV3Context.joined` returns a scope in
