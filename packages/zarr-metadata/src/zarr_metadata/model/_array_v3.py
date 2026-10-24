@@ -39,6 +39,7 @@ from zarr_metadata.definition._definition import (
     fields_of,
     fill_value_problems,
     held,
+    hooks_of,
     resolve_refined,
     spelled_canonically,
 )
@@ -405,7 +406,7 @@ def read_extra_fields_v3(
             continue
         member = {key: value}
         definition = context.claimant(kind, key)
-        refined, found = kind.refined(member, (*at, key), definition)
+        refined, found = hooks_of(kind).refined(member, (*at, key), definition)
         if isinstance(refined, dict):
             values[key] = refined[key]
             if definition is None:

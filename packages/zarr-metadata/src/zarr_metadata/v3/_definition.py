@@ -191,7 +191,7 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3DataTypeField,)
 
     @classmethod
-    def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+    def _filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
         if name == RAW_BYTES_NAME:
             return None, None
         written = RAW_BYTES_NAME_PATTERN.fullmatch(name)
@@ -199,13 +199,13 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
             return RAW_BYTES_NAME, {"bits": int(written.group(1))}
         return name, None
 
-    def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
+    def _carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
         if self.name != RAW_BYTES_NAME:
             return None
         return f"r{configuration['bits']}"
 
     @classmethod
-    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+    def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
         # A data type with nothing to configure is written as its bare name,
         # which is how core data types have been written since Zarr v3.0.
         if len(configuration) != 0:
@@ -345,7 +345,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
         return None
 
     @classmethod
-    def alias_problems(
+    def _alias_problems(
         cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
     ) -> Problems:
         """A codec of dynamic size in a member annotated with `ZarrV3StaticCodecField`, which admits only codecs of static size, is a problem at the field."""
@@ -429,7 +429,7 @@ class ExtraFieldDefinition(Definition[C]):
         return None
 
     @classmethod
-    def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+    def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
         # No registry names extra fields, so any key the spec does not
         # define may name one.
         if name in cls.spec_members:
@@ -439,11 +439,11 @@ class ExtraFieldDefinition(Definition[C]):
         return None
 
     @classmethod
-    def named_configuration(
+    def _named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
         # A member whose value is not an object has no configuration. Only
-        # a definition that claims the member reads it, and `refined`
+        # a definition that claims the member reads it, and `_refined`
         # refuses such a value then.
         if not is_object(value) or len(value) != 1:
             return None, None, ()
@@ -455,26 +455,26 @@ class ExtraFieldDefinition(Definition[C]):
         return name, {key: item for key, item in member.items() if isinstance(key, str)}, ()
 
     @classmethod
-    def envelope_problems(cls, value: object) -> Problems:
-        name = cls.named_configuration(value)[0]
+    def _envelope_problems(cls, value: object) -> Problems:
+        name = cls._named_configuration(value)[0]
         if name is None:
             return (
                 ValidationProblem(
                     (), "expected a member, as an object with one string key", "invalid_type"
                 ),
             )
-        bad = cls.name_problem(name, ())
+        bad = cls._name_problem(name, ())
         return () if bad is None else (bad,)
 
     @classmethod
-    def refined(
+    def _refined(
         cls, data: object, loc: Loc, definition: Definition[Any] | None
     ) -> tuple[JSONValue | None, Problems]:
         # The member's value is at the member's location, `loc`. A member
         # nothing claims is not read, so like attributes it is user data.
         # A claimed member is user data when its definition says so, and
         # its value must be an object.
-        name = cls.named_configuration(data)[0]
+        name = cls._named_configuration(data)[0]
         if name is None or not is_object(data):
             return refine_json(data, loc)
         if definition is not None and not is_object(data[name]):
@@ -488,11 +488,11 @@ class ExtraFieldDefinition(Definition[C]):
         return (None if len(problems) != 0 else {name: value}), problems
 
     @classmethod
-    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+    def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
         return {name: configuration}
 
     @classmethod
-    def unclaimed_json(
+    def _unclaimed_json(
         cls, json: JSONValue, name: str, configuration: Mapping[str, JSONValue]
     ) -> JSONValue:
         # A member no definition claims is written as it is, whatever its
@@ -500,11 +500,11 @@ class ExtraFieldDefinition(Definition[C]):
         return json
 
     @classmethod
-    def configuration_loc(cls, loc: Loc) -> Loc:
+    def _configuration_loc(cls, loc: Loc) -> Loc:
         return loc
 
     @classmethod
-    def name_loc(cls, loc: Loc) -> Loc:
+    def _name_loc(cls, loc: Loc) -> Loc:
         return loc
 
 

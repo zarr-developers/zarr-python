@@ -152,11 +152,11 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         return super(ZarrV2DataTypeDefinition, self)._refusal()
 
     @classmethod
-    def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+    def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
         return typestr_problem(name, at)
 
     @classmethod
-    def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+    def _filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
         if name == STRUCT_NAME:
             return name, None
         if name in FAMILIES.values():
@@ -170,7 +170,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
             return name, None
         return family, carried
 
-    def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
+    def _carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
         if self.name == STRUCT_NAME:
             return None
         code = next(code for code, family in FAMILIES.items() if family == self.name)
@@ -181,7 +181,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         return name
 
     @classmethod
-    def named_configuration(
+    def _named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
         if isinstance(value, str):
@@ -191,7 +191,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         return None, None, ()
 
     @classmethod
-    def envelope_problems(cls, value: object) -> Problems:
+    def _envelope_problems(cls, value: object) -> Problems:
         if isinstance(value, str):
             bad = typestr_problem(value, ())
             return () if bad is None else (bad,)
@@ -207,17 +207,17 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         )
 
     @classmethod
-    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+    def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
         if name == STRUCT_NAME and "fields" in configuration:
             return configuration["fields"]
         return name
 
     @classmethod
-    def configuration_loc(cls, loc: Loc) -> Loc:
+    def _configuration_loc(cls, loc: Loc) -> Loc:
         return loc
 
     @classmethod
-    def name_loc(cls, loc: Loc) -> Loc:
+    def _name_loc(cls, loc: Loc) -> Loc:
         return loc
 
 
@@ -233,13 +233,13 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
     label: ClassVar[str] = "v2 codec"
 
     @classmethod
-    def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+    def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
         if len(name) != 0:
             return None
         return ValidationProblem(at, "expected a codec id, got ''", "invalid_value")
 
     @classmethod
-    def named_configuration(
+    def _named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
         if not is_object(value):
@@ -254,7 +254,7 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
         )
 
     @classmethod
-    def envelope_problems(cls, value: object) -> Problems:
+    def _envelope_problems(cls, value: object) -> Problems:
         if not is_object(value):
             return (
                 ValidationProblem(
@@ -272,19 +272,19 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
                     "invalid_type",
                 ),
             )
-        bad = cls.name_problem(entry["id"], ("id",))
+        bad = cls._name_problem(entry["id"], ("id",))
         return () if bad is None else (bad,)
 
     @classmethod
-    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+    def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
         return {"id": name, **configuration}
 
     @classmethod
-    def configuration_loc(cls, loc: Loc) -> Loc:
+    def _configuration_loc(cls, loc: Loc) -> Loc:
         return loc
 
     @classmethod
-    def name_loc(cls, loc: Loc) -> Loc:
+    def _name_loc(cls, loc: Loc) -> Loc:
         return (*loc, "id")
 
 
