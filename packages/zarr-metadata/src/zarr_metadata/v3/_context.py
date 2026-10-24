@@ -3,7 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, TypeAlias, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Final,
+    Literal,
+    TypeAlias,
+    final,
+    get_args,
+    get_origin,
+)
 
 from typing_extensions import TypedDict, TypeIs, TypeVar, Unpack
 
@@ -15,6 +25,7 @@ from zarr_metadata.definition._context import (
     extended,
     filed,
     joined_tables,
+    refuse_others,
     slot_contents,
     slot_kinds,
     tables_key,
@@ -85,6 +96,7 @@ class ZarrV3ContextSlots(TypedDict, total=False, closed=True):
     """Members of a group document that the spec does not define, by key."""
 
 
+@final
 class ZarrV3Context:
     """A scope that reads Zarr v3 documents. Every v3 reader takes one.
 
@@ -202,7 +214,8 @@ class ZarrV3Context:
         purpose, use `extended_with`. Raises `TypeError` for a scope of
         another format.
         """
-        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts], 3))
+        refuse_others(contexts, ZarrV3Context, 3)
+        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts]))
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default

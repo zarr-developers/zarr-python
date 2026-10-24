@@ -11,7 +11,7 @@ from annotated_types import Ge
 from jsonschema import Draft202012Validator
 from typing_extensions import TypedDict
 
-from zarr_metadata.definition import AcceptedField, UnclaimedField, resolve
+from zarr_metadata.definition import AcceptedField, UnclaimedField, canonical_of, resolve
 from zarr_metadata.json_schema import field_json_schema_v3
 from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3GroupMetadata
 from zarr_metadata.problems import MetadataValidationError
@@ -151,6 +151,13 @@ def test_an_extra_field_is_a_field_of_the_reading() -> None:
     schema = field_json_schema_v3(ArrayExtraFieldDefinition, context=CONTEXT)
     assert Draft202012Validator(schema).is_valid({"acme.tiling": TILING})
     assert not Draft202012Validator(schema).is_valid({"acme.tiling": {"edge": 0}})
+
+
+def test_the_simplest_spelling_of_an_extra_field_is_plain_json() -> None:
+    """`canonical_of` returns plain JSON for an extra field, with no read-only views inside, so `json.dumps` writes it. `CORE` claims a group's `consolidated_metadata`, whose configuration holds objects with no nested field."""
+    model = ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": INLINE}, context=CORE)
+    simplest = canonical_of(model.extra_fields["consolidated_metadata"], ())
+    assert json.loads(json.dumps(simplest)) == {"consolidated_metadata": INLINE}
 
 
 def test_error_a_claimed_extra_field_that_is_not_an_object() -> None:

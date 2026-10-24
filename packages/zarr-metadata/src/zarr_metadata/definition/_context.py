@@ -118,27 +118,17 @@ def extended(
     )
 
 
-def joined_tables(
-    kinds: Mapping[str, type[Definition[Any]]], many: Iterable[Tables], zarr_format: int
-) -> Tables:
-    """The smallest tables that file everything each of `many` files: their join.
+def joined_tables(kinds: Mapping[str, type[Definition[Any]]], many: Iterable[Tables]) -> Tables:
+    """The smallest tables that file everything each of `many`, tables of the format whose slots hold `kinds`, files: their join.
 
-    Raises `TypeError` for tables of another format's kinds, and
-    `ScopeConflictError` when two of them file different definitions under
-    one name of a kind.
+    Raises `ScopeConflictError` when two of them file different
+    definitions under one name of a kind.
     """
     merged: dict[type[Definition[Any]], dict[str, Definition[Any]]] = {
         kind: {} for kind in kinds.values()
     }
     conflicts: list[Conflict] = []
     for tables in many:
-        if tables.keys() != merged.keys():
-            other = format_of(next(iter(tables)))
-            msg = (
-                f"a scope reads documents of one Zarr format; a v{zarr_format} scope joins "
-                f"v{zarr_format} scopes, got a v{other} scope"
-            )
-            raise TypeError(msg)
         for kind, table in tables.items():
             for name, definition in table.items():
                 held = merged[kind].get(name)
@@ -206,20 +196,39 @@ def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | No
     return f"{slot} holds {kind_name(kind)} definitions, got {value.name!r}, {of}"
 
 
+def refuse_others(contexts: Iterable[object], scope: type, zarr_format: int) -> None:
+    """Raise `TypeError` unless each of `contexts` is a `scope`, the class of the v`zarr_format` scope, so `scope.joined` joins only scopes of its own format."""
+    for context in contexts:
+        if not isinstance(context, scope):
+            msg = (
+                f"a scope reads documents of one Zarr format; a v{zarr_format} scope joins "
+                f"v{zarr_format} scopes, got {described(context)}"
+            )
+            raise TypeError(msg)
+
+
 C = TypeVar("C", bound=Context)
 
 
-def scoped(context: Context | None, default: C) -> C:
-    """The scope for a reader of `default`'s format: `context`, or `default` when `context` is None. Raises `TypeError` for a scope of another class, which reads another format."""
+def scoped(context: object, default: C) -> C:
+    """The scope for a reader of `default`'s format: `context`, or `default` when `context` is None. Raises `TypeError` for anything else, such as a scope of the other format, or a value that is not one of this package's scopes."""
     if context is None:
         return default
     if not isinstance(context, type(default)):
         msg = (
-            f"a v{default.zarr_format} document is read in a scope of that format, "
-            f"got a v{context.zarr_format} scope"
+            f"a v{default.zarr_format} document is read in a scope of that format, a "
+            f"{type(default).__name__}, got {described(context)}"
         )
         raise TypeError(msg)
     return context
+
+
+def described(context: object) -> str:
+    """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none."""
+    zarr_format = getattr(context, "zarr_format", None)
+    if isinstance(zarr_format, int):
+        return f"a {type(context).__name__}, a v{zarr_format} scope"
+    return repr(context)
 
 
 __all__ = [
@@ -230,6 +239,7 @@ __all__ = [
     "extended",
     "filed",
     "joined_tables",
+    "refuse_others",
     "scoped",
     "slot_contents",
     "slot_kinds",

@@ -1333,10 +1333,10 @@ def resolve(
     `UnclaimedField` when nothing in scope claims the name (an extension
     with no model, not checked, which is what keeps the format open); or a
     `RefusedField`, with the problems that explain why. `loc` prefixes
-    every problem. `kind` must be one of the five kinds
-    (`CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
-    `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`), with or
-    without type arguments. Anything else raises `TypeError`.
+    every problem. `kind` must be one of the kinds of a format (for v3,
+    those `ZarrV3Kind` names; for v2, those `ZarrV2Kind` names), with or
+    without type arguments, and `context` a scope of that format. Anything
+    else raises `TypeError`.
     """
     asked = as_kind(kind)
     name = asked.named_configuration(data)[0]
@@ -1572,11 +1572,12 @@ def canonical_of(
     field with a problem would erase what its author wrote (such as a key
     its TypedDict does not declare), or would write something invalid.
     The result is built from what the scope read, without reading the
-    field again.
+    field again, and is plain JSON that shares nothing with the field.
     """
     if len(problems) != 0:
         return None
-    return _simplest(resolved)
+    simplest = _simplest(resolved)
+    return None if simplest is None else copied(simplest)
 
 
 def _simplest(field: ResolvedField[Any]) -> JSONValue | None:

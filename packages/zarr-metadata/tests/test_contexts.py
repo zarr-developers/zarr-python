@@ -13,6 +13,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField, resolve
 from zarr_metadata.definition._context import slot_kinds
+from zarr_metadata.model import ZarrV3ArrayMetadata, read_array_metadata_v3
 from zarr_metadata.v2 import CORE_V2, GZIP_V2, ZarrV2Context
 from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2ContextSlots
 from zarr_metadata.v3 import CORE, GZIP_CODEC, ZarrV3Context
@@ -24,6 +25,8 @@ def _other(definition: Any) -> Any:  # noqa: ANN401 - a definition of either for
     """A second definition under the name of `definition`, with other rules."""
     return dataclasses.replace(definition, rules=lambda configuration, nested: iter(()))
 
+
+ARRAY = ZarrV3ArrayMetadata.create_default().to_json()
 
 FORMATS = [
     pytest.param(ZarrV3Context, CORE, CodecDefinition, GZIP_CODEC, 3, id="v3"),
@@ -103,6 +106,35 @@ def test_error_a_scope_refuses_a_kind_of_the_other_format(
         core.definitions_of(other)
     with pytest.raises(TypeError, match="kinds of its format"):
         core.claimant(other, "gzip")
+
+
+class _LooksLikeAScope:
+    """A value with the `Context` protocol's members that is not one of this package's scope classes."""
+
+    zarr_format = 3
+
+    def claimant(self, kind: object, name: str) -> None:
+        return None
+
+
+@pytest.mark.parametrize(
+    ("given", "named"),
+    [("nope", "got 'nope'"), (_LooksLikeAScope(), "got a _LooksLikeAScope, a v3 scope")],
+    ids=["not-a-scope", "a-look-alike"],
+)
+def test_error_a_reader_refuses_what_is_not_a_scope_of_its_format(
+    given: object, named: str
+) -> None:
+    """A reader takes a scope of its format's class, or None. Anything else raises `TypeError` naming the class the reader takes and what it was given, rather than failing inside the read or contradicting itself."""
+    with pytest.raises(TypeError, match=f"a ZarrV3Context, {named}"):
+        read_array_metadata_v3(ARRAY, context=given)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("given", ["nope", CORE_V2], ids=["not-a-scope", "a-v2-scope"])
+def test_error_joined_refuses_what_is_not_a_scope_of_its_format(given: object) -> None:
+    """`ZarrV3Context.joined` joins v3 scopes only. A v2 scope or a value that is not a scope raises `TypeError` naming what was given."""
+    with pytest.raises(TypeError, match="a v3 scope joins v3 scopes, got"):
+        ZarrV3Context.joined(CORE, given)  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("cls", [ZarrV3Context, ZarrV2Context], ids=["v3", "v2"])

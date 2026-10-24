@@ -3,7 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, TypeAlias, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Final,
+    Literal,
+    TypeAlias,
+    final,
+    get_args,
+    get_origin,
+)
 
 from typing_extensions import TypedDict, TypeIs, TypeVar, Unpack
 
@@ -15,6 +25,7 @@ from zarr_metadata.definition._context import (
     extended,
     filed,
     joined_tables,
+    refuse_others,
     slot_contents,
     slot_kinds,
     tables_key,
@@ -59,6 +70,7 @@ class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
     """Codecs, read from `compressor` and `filters`."""
 
 
+@final
 class ZarrV2Context:
     """A scope that reads Zarr v2 documents. Every v2 reader takes one.
 
@@ -147,7 +159,8 @@ class ZarrV2Context:
         purpose, use `extended_with`. Raises `TypeError` for a scope of
         another format.
         """
-        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts], 2))
+        refuse_others(contexts, ZarrV2Context, 2)
+        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts]))
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default
