@@ -111,6 +111,19 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "read_repaired_node_metadata_v2": lambda context: zm.read_repaired_node_metadata_v2(
         {".zarray": BAD}, context=context
     ),
+    "read_group_metadata_v2": lambda context: zm.read_group_metadata_v2(GROUP, context=context),
+    "read_consolidated_metadata_v2": lambda context: zm.read_consolidated_metadata_v2(
+        CONSOLIDATED, context=context
+    ),
+    "read_node_metadata_v2": lambda context: zm.read_node_metadata_v2(
+        {".zarray": BAD}, context=context
+    ),
+    "validate_node_metadata_v2": lambda context: zm.validate_node_metadata_v2(
+        {".zarray": BAD}, context=context
+    ),
+    "node_metadata_from_key_value_v2": lambda context: zm.node_metadata_from_key_value_v2(
+        STORE_A, context=context
+    ),
 }
 """Each v2 entry point, reading a document that contains the refused compressor wherever that document type allows one."""
 
@@ -134,3 +147,34 @@ def test_error_every_v2_entry_point_refuses_a_scope_of_another_format(name: str)
     """A v2 entry point given a v3 scope raises `TypeError`. A scope reads documents of one format, and a v3 scope claims nothing that a v2 document contains."""
     with pytest.raises(TypeError, match="format"):
         ENTRY_POINTS[name](context=CORE_AND_EXTENSIONS)
+
+
+NOT_JSON = b"{not json"
+STORE_READERS: dict[str, Callable[..., object]] = {
+    "ZarrV2ArrayMetadata.from_key_value": lambda context: zm.ZarrV2ArrayMetadata.from_key_value(
+        {".zarray": NOT_JSON}, context=context
+    ),
+    "ZarrV2GroupMetadata.from_key_value": lambda context: zm.ZarrV2GroupMetadata.from_key_value(
+        {".zgroup": NOT_JSON}, context=context
+    ),
+    "ZarrV2ConsolidatedMetadata.from_key_value": (
+        lambda context: zm.ZarrV2ConsolidatedMetadata.from_key_value(
+            {".zmetadata": NOT_JSON}, context=context
+        )
+    ),
+    "node_metadata_from_key_value_v2": lambda context: zm.node_metadata_from_key_value_v2(
+        {".zarray": NOT_JSON}, context=context
+    ),
+}
+"""Each v2 entry point that decodes a store's bytes, given bytes that are not JSON."""
+
+
+@pytest.mark.parametrize("name", STORE_READERS.keys())
+def test_error_a_v2_store_reader_refuses_a_scope_of_another_format_before_decoding(
+    name: str,
+) -> None:
+    """A v2 entry point that reads a store's bytes raises `TypeError` for a v3 scope before it decodes the bytes, so the wrong scope is reported even when the bytes are not JSON. With a v2 scope, the same bytes raise `MetadataValidationError`."""
+    with pytest.raises(TypeError, match="format"):
+        STORE_READERS[name](context=CORE_AND_EXTENSIONS)
+    with pytest.raises(MetadataValidationError):
+        STORE_READERS[name](context=CORE_V2)

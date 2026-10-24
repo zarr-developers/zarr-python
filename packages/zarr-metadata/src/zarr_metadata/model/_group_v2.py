@@ -248,7 +248,8 @@ def read_node_metadata_v2(
 def node_metadata_from_key_value_v2(
     mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadata:
-    """Return the model of the v2 node whose files are in `mapping`, a store's keys and bytes: each file is decoded, then read as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem, including a file whose bytes are not JSON."""
+    """Return the model of the v2 node whose files are in `mapping`, a store's keys and bytes: each file is decoded, then read as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem, including a file whose bytes are not JSON, and `TypeError` for a scope of another format before any bytes are decoded."""
+    context = scoped(context, CORE_V2)
     files, problems = decoded_node_files_v2(mapping)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
@@ -432,8 +433,10 @@ class ZarrV2GroupMetadata(Keyed):
 
         Raises `MetadataValidationError` when `.zgroup` is missing, bytes
         are not JSON, `.zgroup` holds `attributes`, or the document is not
-        valid.
+        valid. Raises `TypeError` for a scope of another format before
+        any bytes are decoded.
         """
+        context = scoped(context, CORE_V2)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_GROUP_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )
@@ -659,8 +662,10 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         """Return the model of the document at `.zmetadata` in `mapping`, read in `context`.
 
         Raises `MetadataValidationError` when the key is missing, its bytes
-        are not JSON, or the document is not valid.
+        are not JSON, or the document is not valid. Raises `TypeError` for
+        a scope of another format before the bytes are decoded.
         """
+        context = scoped(context, CORE_V2)
         return cls(
             load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY), context=context
         )

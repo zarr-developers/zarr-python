@@ -831,8 +831,10 @@ class ZarrV2ArrayMetadata(Keyed):
 
         Raises `MetadataValidationError` when `.zarray` is missing, bytes
         are not JSON, `.zarray` holds `attributes`, or the document is not
-        valid.
+        valid. Raises `TypeError` for a scope of another format before
+        any bytes are decoded.
         """
+        context = scoped(context, CORE_V2)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_ARRAY_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )
