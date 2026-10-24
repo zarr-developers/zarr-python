@@ -29,7 +29,6 @@ from zarr_metadata._common import (
 )
 from zarr_metadata._json import (
     JSON_DEPTH,
-    ValidationProblem,
     is_json_object,
     is_list_or_tuple,
     is_object,
@@ -39,7 +38,7 @@ from zarr_metadata.definition._context import (
     scoped,
 )
 from zarr_metadata.model._group_v2 import (
-    ZarrV2ConsolidatedMetadata,
+    ZarrV2ConsolidatedMetadataReading,
     ZarrV2NodeMetadataReading,
     read_consolidated_metadata_v2,
     read_node_metadata_v2,
@@ -508,12 +507,10 @@ def read_repaired_node_metadata_v2(
 
 @dataclass(frozen=True, slots=True)
 class ZarrV2RepairedConsolidatedMetadataReading:
-    """A v2 `.zmetadata` read after its known writer bugs were undone: the repaired document's problems, its model when there are no problems, and the repairs."""
+    """A v2 `.zmetadata` read after its known writer bugs were undone: the strict reading of the repaired document, and the repairs."""
 
-    problems: tuple[ValidationProblem, ...]
-    """Every problem of the repaired document."""
-    metadata: ZarrV2ConsolidatedMetadata | None
-    """The repaired document's model, when it has no problem; None otherwise."""
+    reading: ZarrV2ConsolidatedMetadataReading
+    """The repaired document, as `read_consolidated_metadata_v2` reads it. The problems are those of the repaired document. The model is present when there are no problems."""
     repairs: tuple[Repair, ...]
     """The changes that produced the document that was read."""
 
@@ -521,17 +518,19 @@ class ZarrV2RepairedConsolidatedMetadataReading:
 def read_repaired_consolidated_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2RepairedConsolidatedMetadataReading:
-    """Read `value`, a v2 `.zmetadata`, in `context` as `ZarrV2ConsolidatedMetadata` does, after `repair_consolidated_metadata_v2` has undone each known writer bug in it.
+    """Read `value`, a v2 `.zmetadata`, in `context` as `read_consolidated_metadata_v2` does, after `repair_consolidated_metadata_v2` has undone each known writer bug in it.
 
     Use this to read stores that other writers made. A caller requests
-    repairs by calling this function instead of the strict model. Content
-    that no repair applies to is read as it is, and reported the same way
-    the strict read reports it.
+    repairs by calling this function instead of
+    `read_consolidated_metadata_v2`. Content that no repair applies to is
+    read as it is, and reported the same way
+    `read_consolidated_metadata_v2` reports it.
     """
     context = scoped(context, CORE_V2)
     repaired, repairs = repair_consolidated_metadata_v2(value)
-    reading = read_consolidated_metadata_v2(repaired, context=context)
-    return ZarrV2RepairedConsolidatedMetadataReading(reading.problems, reading.metadata, repairs)
+    return ZarrV2RepairedConsolidatedMetadataReading(
+        read_consolidated_metadata_v2(repaired, context=context), repairs
+    )
 
 
 __all__ = [

@@ -15,6 +15,7 @@ from zarr_metadata.model import (
     ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
+    read_consolidated_metadata_v2,
     read_node_metadata_v2,
     read_node_metadata_v3,
     read_repaired_consolidated_metadata_v2,
@@ -375,15 +376,16 @@ def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_
 
 
 def test_read_repaired_consolidated_v2_reads_what_the_strict_read_refuses() -> None:
-    """The strict `ZarrV2ConsolidatedMetadata` refuses the `.zmetadata` that zarr-python 3.x writes, reporting the problem at the entry's member. `read_repaired_consolidated_metadata_v2` reads the repaired document, holds its model, and lists the repairs."""
+    """The strict `ZarrV2ConsolidatedMetadata` refuses the `.zmetadata` that zarr-python 3.x writes, reporting the problem at the entry's member. `read_repaired_consolidated_metadata_v2` returns the strict reading of the repaired document, as `read_consolidated_metadata_v2` reads it, and the repairs, as the node repair readers do. A problem that no repair fixes is in that reading, which then holds no model."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(ZMETADATA_FROM_ZARR3)
     assert [p.loc for p in raised.value.problems] == [
         ("metadata", "b/.zgroup", "consolidated_metadata")
     ]
     repaired = read_repaired_consolidated_metadata_v2(ZMETADATA_FROM_ZARR3)
-    assert repaired.problems == ()
-    assert repaired.metadata == ZarrV2ConsolidatedMetadata(ZMETADATA_CLEAN)
+    assert repaired.reading == read_consolidated_metadata_v2(ZMETADATA_CLEAN)
+    assert repaired.reading.problems == ()
+    assert repaired.reading.metadata == ZarrV2ConsolidatedMetadata(ZMETADATA_CLEAN)
     assert [r.kind for r in repaired.repairs] == ["consolidated_metadata_in_zgroup_entry"]
     broken = read_repaired_consolidated_metadata_v2(
         {
@@ -391,8 +393,8 @@ def test_read_repaired_consolidated_v2_reads_what_the_strict_read_refuses() -> N
             "metadata": {**ZMETADATA_FROM_ZARR3["metadata"], "b/.zattrs": {1: "x"}},
         }
     )
-    assert broken.metadata is None
-    assert [p.loc for p in broken.problems] == [("metadata", "b/.zattrs")]
+    assert broken.reading.metadata is None
+    assert [p.loc for p in broken.reading.problems] == [("metadata", "b/.zattrs")]
     assert [r.kind for r in broken.repairs] == ["consolidated_metadata_in_zgroup_entry"]
 
 
@@ -406,9 +408,9 @@ def test_read_repaired_consolidated_v2_writes_a_bare_non_finite_fill_value_by_na
         ZarrV2ConsolidatedMetadata(value)
     assert [p.loc for p in raised.value.problems] == [("metadata", "b/a/.zarray", "fill_value")]
     repaired = read_repaired_consolidated_metadata_v2(value)
-    assert repaired.problems == ()
-    assert repaired.metadata is not None
-    assert repaired.metadata.metadata["b/a"] == ZarrV2ArrayMetadata(NAMED_ZARRAY)
+    assert repaired.reading.problems == ()
+    assert repaired.reading.metadata is not None
+    assert repaired.reading.metadata.metadata["b/a"] == ZarrV2ArrayMetadata(NAMED_ZARRAY)
     assert [(r.loc, r.kind) for r in repaired.repairs] == [
         (("metadata", "b/a/.zarray", "fill_value"), "non_finite_fill_value")
     ]
