@@ -20,7 +20,8 @@ from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2Context
 CONTEXT = ZarrV2Context(codecs=CODECS_V2)
 Loc = tuple[str | int, ...]
 
-# The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists.
+# The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists, and
+# other configurations that numcodecs 0.15 and 0.16 read and round-trip.
 EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
     # -1 is zlib's default-level constant, which numcodecs writes as given.
     "zlib": ({"id": "zlib", "level": 1}, {"id": "zlib"}, {"id": "zlib", "level": -1}),
@@ -31,22 +32,49 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
         {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": 1, "blocksize": 0},
         {"id": "blosc", "clevel": 5},
         {"id": "blosc", "cname": "zstd", "clevel": 3, "shuffle": 2, "blocksize": 0, "typesize": 4},
+        # numcodecs writes a `shuffle` given as a bool as it was given.
+        {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": True, "blocksize": 0},
+        {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": False, "blocksize": 0},
+        {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": 1, "blocksize": -1},
     ),
-    "zstd": ({"id": "zstd", "level": 0, "checksum": False},),
+    # zstd clamps a level outside its own range.
+    "zstd": (
+        {"id": "zstd", "level": 0, "checksum": False},
+        {"id": "zstd", "level": 23, "checksum": False},
+        {"id": "zstd", "level": -200000, "checksum": False},
+        {"id": "zstd", "level": 2**31 - 1, "checksum": False},
+    ),
     "lz4": ({"id": "lz4", "acceleration": 1},),
-    "shuffle": ({"id": "shuffle", "elementsize": 4},),
-    "delta": ({"id": "delta", "dtype": "<i4", "astype": "<i4"}, {"id": "delta", "dtype": "<f8"}),
+    # An element size of 1 or less leaves the bytes as they are.
+    "shuffle": ({"id": "shuffle", "elementsize": 4}, {"id": "shuffle", "elementsize": 0}),
+    "delta": (
+        {"id": "delta", "dtype": "<i4", "astype": "<i4"},
+        {"id": "delta", "dtype": "<f8"},
+        {"id": "delta", "dtype": "<f4", "astype": None},
+        {"id": "delta", "dtype": "|b1", "astype": "|b1"},
+        {"id": "delta", "dtype": "<M8[ns]", "astype": "<M8[ns]"},
+    ),
     "fixedscaleoffset": (
         {"id": "fixedscaleoffset", "scale": 10, "offset": 0, "dtype": "<f8", "astype": "<f8"},
+        {"id": "fixedscaleoffset", "scale": 10, "offset": 1000, "dtype": "<f8", "astype": "|u1"},
+        {"id": "fixedscaleoffset", "scale": 1, "offset": 0, "dtype": "<f4", "astype": None},
     ),
-    "quantize": ({"id": "quantize", "digits": 3, "dtype": "<f8", "astype": "<f8"},),
+    "quantize": (
+        {"id": "quantize", "digits": 3, "dtype": "<f8", "astype": "<f8"},
+        {"id": "quantize", "digits": -1, "dtype": "<f4", "astype": "<f4"},
+        {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": None},
+    ),
     "bitround": ({"id": "bitround", "keepbits": 5},),
     "astype": ({"id": "astype", "encode_dtype": "<i2", "decode_dtype": "<f4"},),
     "packbits": ({"id": "packbits"},),
     "vlen-utf8": ({"id": "vlen-utf8"},),
     "vlen-bytes": ({"id": "vlen-bytes"},),
     "vlen-array": ({"id": "vlen-array", "dtype": "<i4"},),
-    "crc32": ({"id": "crc32"}, {"id": "crc32", "location": "end"}),
+    "crc32": (
+        {"id": "crc32"},
+        {"id": "crc32", "location": "end"},
+        {"id": "crc32", "location": None},
+    ),
     "crc32c": ({"id": "crc32c"},),
     "adler32": ({"id": "adler32"},),
     "fletcher32": ({"id": "fletcher32"},),
@@ -96,17 +124,28 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
         ({"id": "blosc", "cname": "brotli"}, ("c", "cname"), "invalid_value"),
         ({"id": "blosc", "clevel": -1}, ("c", "clevel"), "invalid_value"),
         ({"id": "blosc", "shuffle": 3}, ("c", "shuffle"), "invalid_value"),
-        ({"id": "blosc", "blocksize": -1}, ("c", "blocksize"), "invalid_value"),
-        ({"id": "zstd", "level": 23}, ("c", "level"), "invalid_value"),
-        ({"id": "shuffle", "elementsize": 0}, ("c", "elementsize"), "invalid_value"),
+        ({"id": "blosc", "blocksize": 2**31}, ("c", "blocksize"), "invalid_value"),
+        ({"id": "blosc", "shuffle": None}, ("c", "shuffle"), "invalid_type"),
+        ({"id": "zstd", "level": 2**31}, ("c", "level"), "invalid_value"),
+        ({"id": "zstd", "level": -(2**31) - 1}, ("c", "level"), "invalid_value"),
+        ({"id": "shuffle", "elementsize": 1.5}, ("c", "elementsize"), "invalid_type"),
         ({"id": "delta"}, ("c", "dtype"), "missing_key"),
         ({"id": "delta", "dtype": "float32"}, ("c", "dtype"), "invalid_value"),
+        ({"id": "delta", "dtype": "<f3"}, ("c", "dtype"), "invalid_value"),
+        ({"id": "delta", "dtype": "<f4", "astype": "|f4"}, ("c", "astype"), "invalid_value"),
+        ({"id": "vlen-array", "dtype": "<i16"}, ("c", "dtype"), "invalid_value"),
+        (
+            {"id": "astype", "encode_dtype": "<M8", "decode_dtype": "<f8"},
+            ("c", "encode_dtype"),
+            "missing_key",
+        ),
         (
             {"id": "astype", "encode_dtype": "<i2", "decode_dtype": "f4"},
             ("c", "decode_dtype"),
             "invalid_value",
         ),
-        ({"id": "quantize", "digits": -1, "dtype": "<f8"}, ("c", "digits"), "invalid_value"),
+        ({"id": "quantize", "digits": -309, "dtype": "<f8"}, ("c", "digits"), "invalid_value"),
+        ({"id": "quantize", "digits": 308, "dtype": "<f8"}, ("c", "digits"), "invalid_value"),
         ({"id": "quantize", "digits": 3, "dtype": "<i8"}, ("c", "dtype"), "invalid_value"),
         ({"id": "bitround", "keepbits": -1}, ("c", "keepbits"), "invalid_value"),
         ({"id": "crc32", "location": "middle"}, ("c", "location"), "invalid_value"),
@@ -118,7 +157,7 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
 def test_error_a_parameter_outside_what_numcodecs_takes_is_a_problem(
     field: dict[str, Any], at: Loc, kind: str
 ) -> None:
-    """Each of these is reported at the parameter's location inside the field: a parameter out of its range, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that is not a typestr, and a key that no codec declares."""
+    """Each of these is reported at the parameter's location inside the field: a parameter out of the range numcodecs reads, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that an array's dtype could not be, and a key that no codec declares."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT, ("c",))
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
     assert isinstance(resolved, AcceptedField if kind == "unknown_key" else RefusedField)

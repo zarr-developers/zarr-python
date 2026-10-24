@@ -19,6 +19,9 @@ from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 ZarrV2CompressionLevel = Annotated[int, Interval(ge=-1, le=9)]
 """A zlib-style compression level: 0 to 9, or -1 for zlib's default. numcodecs writes the level as given."""
 
+_CInt = Annotated[int, Interval(ge=-(2**31), le=2**31 - 1)]
+"""An integer that numcodecs passes to C as an `int`: one that fits in 32 bits, with a sign. numcodecs raises `OverflowError` for any other."""
+
 
 class ZarrV2ZlibParameters(TypedDict, closed=True):
     """`numcodecs.Zlib(level=1)`."""
@@ -52,19 +55,25 @@ ZarrV2BloscCName = Literal["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
 
 
 class ZarrV2BloscParameters(TypedDict, closed=True):
-    """`numcodecs.Blosc(cname='lz4', clevel=5, shuffle=1, blocksize=0, typesize=None)`. For `shuffle`, -1 is automatic, 0 is none, 1 is byte shuffle, and 2 is bit shuffle."""
+    """`numcodecs.Blosc(cname='lz4', clevel=5, shuffle=1, blocksize=0, typesize=None)`.
+
+    For `shuffle`, -1 is automatic, 0 is none, 1 is byte shuffle, and 2 is
+    bit shuffle. numcodecs writes a `shuffle` given as `True` or `False`
+    as it was given, and reads it as 1 or 0. A `blocksize` of 0 or less
+    lets Blosc choose the block size.
+    """
 
     cname: NotRequired[ReadOnly[ZarrV2BloscCName]]
     clevel: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=9)]]]
-    shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2]]]
-    blocksize: NotRequired[ReadOnly[Annotated[int, Ge(0)]]]
+    shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2] | bool]]
+    blocksize: NotRequired[ReadOnly[_CInt]]
     typesize: NotRequired[ReadOnly[Annotated[int, Ge(1)] | None]]
 
 
 class ZarrV2ZstdParameters(TypedDict, closed=True):
-    """`numcodecs.Zstd(level=0, checksum=False)`. Level 0 is zstd's default level, and negative levels give up compression ratio for speed."""
+    """`numcodecs.Zstd(level=0, checksum=False)`. Level 0 is zstd's default level, and negative levels give up compression ratio for speed. zstd clamps a level outside its own range, -131072 to 22, to that range, so numcodecs reads any level that fits in a C `int`."""
 
-    level: NotRequired[ReadOnly[Annotated[int, Interval(ge=-131072, le=22)]]]
+    level: NotRequired[ReadOnly[_CInt]]
     checksum: NotRequired[ReadOnly[bool]]
 
 

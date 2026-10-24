@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Final, NotRequired
 
-from annotated_types import Ge
+from annotated_types import Ge, Interval
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.definition._definition import EmptyConfiguration
@@ -17,33 +17,38 @@ from zarr_metadata.v2.codec._dtype import dtype_parameter
 
 
 class ZarrV2ShuffleParameters(TypedDict, closed=True):
-    """`numcodecs.Shuffle(elementsize=4)`."""
+    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are."""
 
-    elementsize: NotRequired[ReadOnly[Annotated[int, Ge(1)]]]
+    elementsize: NotRequired[ReadOnly[int]]
 
 
 class ZarrV2DeltaParameters(TypedDict, closed=True):
-    """`numcodecs.Delta(dtype, astype=None)`. When `astype` is omitted, it equals `dtype`."""
+    """`numcodecs.Delta(dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
 
     dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str]]
+    astype: NotRequired[ReadOnly[str | None]]
 
 
 class ZarrV2FixedScaleOffsetParameters(TypedDict, closed=True):
-    """`numcodecs.FixedScaleOffset(offset, scale, dtype, astype=None)`."""
+    """`numcodecs.FixedScaleOffset(offset, scale, dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
 
     offset: ReadOnly[float | int]
     scale: ReadOnly[float | int]
     dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str]]
+    astype: NotRequired[ReadOnly[str | None]]
 
 
 class ZarrV2QuantizeParameters(TypedDict, closed=True):
-    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype`, and `astype` when present, name a float."""
+    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype`, and `astype` when present, name a float. When `astype` is omitted or null, it equals `dtype`.
 
-    digits: ReadOnly[Annotated[int, Ge(0)]]
+    `digits` is the number of decimal digits to keep, and may be negative.
+    numcodecs computes `10.0 ** -digits` and a power of two above it, which
+    overflow a float outside -308 to 307.
+    """
+
+    digits: ReadOnly[Annotated[int, Interval(ge=-308, le=307)]]
     dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str]]
+    astype: NotRequired[ReadOnly[str | None]]
 
 
 class ZarrV2BitRoundParameters(TypedDict, closed=True):

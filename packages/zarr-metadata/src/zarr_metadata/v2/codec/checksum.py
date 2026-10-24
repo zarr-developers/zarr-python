@@ -11,9 +11,9 @@ from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 
 
 class ZarrV2Checksum32Parameters(TypedDict, closed=True):
-    """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed; the default is the start."""
+    """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed. When it is omitted or null, it is the start."""
 
-    location: NotRequired[ReadOnly[Literal["start", "end"]]]
+    location: NotRequired[ReadOnly[Literal["start", "end"] | None]]
 
 
 CRC32_V2: Final = ZarrV2CodecDefinition(name="crc32", configuration=ZarrV2Checksum32Parameters)
