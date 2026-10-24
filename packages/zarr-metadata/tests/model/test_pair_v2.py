@@ -6,7 +6,7 @@ import copy
 import dataclasses
 import json
 import pickle
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 import pytest
 
@@ -430,6 +430,15 @@ def test_the_node_type_is_exported() -> None:
     from zarr_metadata import model
 
     assert "ZarrV2NodeMetadata" in model.__all__
+
+
+def test_the_node_type_is_a_type_alias_at_run_time() -> None:
+    """`ZarrV2NodeMetadata` is a type alias at run time, as `ZarrV3NodeMetadata` is, so the two form a union, and its value is the union of the v2 array and group models."""
+    from zarr_metadata.model import ZarrV2NodeMetadata, ZarrV3NodeMetadata
+
+    either = ZarrV2NodeMetadata | ZarrV3NodeMetadata
+    assert get_args(either) == (ZarrV2NodeMetadata, ZarrV3NodeMetadata)
+    assert get_args(ZarrV2NodeMetadata.__value__) == (ZarrV2ArrayMetadata, ZarrV2GroupMetadata)
 
 
 def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:

@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, TypeAlias, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -450,8 +450,8 @@ class ZarrV2GroupMetadata(Keyed):
         return cls(document, context=context)
 
 
-ZarrV2NodeMetadata: TypeAlias = "ZarrV2ArrayMetadata | ZarrV2GroupMetadata"
-"""The model of one node in a v2 `.zmetadata` document: an array or a group."""
+ZarrV2NodeMetadata = TypeAliasType("ZarrV2NodeMetadata", ZarrV2ArrayMetadata | ZarrV2GroupMetadata)
+"""The model of one v2 node, as `node_metadata_from_key_value_v2` returns it and a `.zmetadata` holds it: an array or a group."""
 
 
 @dataclass(frozen=True, slots=True)
