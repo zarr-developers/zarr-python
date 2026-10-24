@@ -2477,14 +2477,11 @@ def test_error_a_field_object_in_a_document_is_not_json() -> None:
     assert not is_array_metadata_v3(document)
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
-    # `update` also refuses one among the members it is given. A model's own
-    # fields are not an exception, since `update` reads JSON.
+    # `update` refuses a field among the members it is given with a
+    # `TypeError`, as `test_error_update_takes_fields_as_json` shows.
     model = ZarrV3ArrayMetadata.create_default(shape=(2,))
-    with pytest.raises(MetadataValidationError) as raised:
+    with pytest.raises(TypeError, match="to_json"):
         model.update(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
-    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 1), "invalid_type")]
-    with pytest.raises(MetadataValidationError):
-        model.update(codecs=(cast("Any", model.codecs[0]),))
 
 
 def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(

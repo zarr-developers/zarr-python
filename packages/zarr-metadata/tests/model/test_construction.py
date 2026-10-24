@@ -297,6 +297,12 @@ def test_error_extra_fields_refuses_a_member_the_spec_defines(kind: Any, member:
         kind.create_default(extra_fields={member: 1})
 
 
+def test_error_update_takes_fields_as_json() -> None:
+    """`update` takes each member as a document writes it. A field the model read, such as each of `model.codecs`, is refused with a `TypeError` that says to write it with `to_json()`, rather than reported as a value that is not JSON."""
+    with pytest.raises(TypeError, match=r"codecs: .*to_json\(\)"):
+        ARRAY.update(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
+
+
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:
     """The consolidated member, read on its own, refuses documents at paths that no node can have. It also reports a missing parent group, as the group's read does."""
     documents = {

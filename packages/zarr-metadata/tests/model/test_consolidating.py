@@ -212,6 +212,23 @@ def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning()
     ]
 
 
+@pytest.mark.parametrize(
+    ("context", "found"),
+    [
+        (ZarrV3Context(), []),
+        (CORE, [("metadata", "g", "consolidated_metadata", "garbage")]),
+    ],
+    ids=["unclaimed", "claimed"],
+)
+def test_a_listed_group_s_listing_is_read_only_where_the_scope_claims_it(
+    context: ZarrV3Context, found: list[tuple[str | int, ...]]
+) -> None:
+    """A listed group's own `consolidated_metadata` is a listing only in a scope that claims the member. In a scope that leaves it unclaimed, the listed group keeps it as written, so the reader does not read it either, whatever it holds."""
+    group = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": {"garbage": 1}}
+    reading = read_consolidated_metadata_v3({**INLINE, "metadata": {"g": group}}, context=context)
+    assert [problem.loc for problem in reading.problems if problem.kind == "unknown_key"] == found
+
+
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
     """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)

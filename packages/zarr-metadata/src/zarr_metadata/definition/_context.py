@@ -1,6 +1,6 @@
 """How a format's scope files its definitions.
 
-This is the only registry the package needs. Reading a field means
+No global registry files definitions. Reading a field means
 deciding which definition its name refers to. That decision depends on
 the *scope* the field is read in, not on the definitions themselves. A
 scope is a value built from definitions. `Context` is the protocol a

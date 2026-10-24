@@ -71,11 +71,12 @@ def test_error_joined_refuses_one_name_filed_two_ways(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Scopes of either format that file different definitions under one name in a slot have no join: `joined` raises `ScopeConflictError` naming the kind and name."""
+    """Scopes of either format that file different definitions under one name in a slot have no join: `joined` raises `ScopeConflictError` naming the kind and name. The two definitions read the same TypedDict, so the message says they differ rather than showing two identical descriptions."""
     with pytest.raises(ScopeConflictError) as raised:
         cls.joined(cls(codecs=[gzip]), cls(codecs=[_other(gzip)]))
     (conflict,) = raised.value.conflicts
     assert conflict.key == (kind, "gzip")
+    assert "'gzip': two different definitions, each " in str(raised.value)
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)

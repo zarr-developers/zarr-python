@@ -25,8 +25,8 @@ A definition is a value, not a class to subclass. It holds the name the
 metadata uses, the TypedDict that is the single declaration of the
 configuration's JSON, and its rules. It checks itself when it is built.
 The kind of metadata it defines is its type (`CodecDefinition`,
-`ChunkGridDefinition`), and a scope files it by that type. Nothing
-happens at class creation.
+`ChunkGridDefinition`), and a scope files it by that type. Building a
+definition files it nowhere: only a scope built from it does.
 """
 
 from __future__ import annotations

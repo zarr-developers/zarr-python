@@ -58,10 +58,12 @@ class Conflict:
         kind, filed = self.key
         name = filed if self.written is None else self.written
         where = "" if self.loc is None else f" at {self.loc!r}"
-        return (
-            f"{kind_name(kind)} {name!r}{where}: claimed {definition_said(self.claimed)}, "
-            f"found {definition_said(self.found)}"
-        )
+        claimed, found = definition_said(self.claimed), definition_said(self.found)
+        if claimed == found:
+            # Nothing a description shows tells them apart, such as their
+            # rules, so say that they differ.
+            return f"{kind_name(kind)} {name!r}{where}: two different definitions, each {claimed}"
+        return f"{kind_name(kind)} {name!r}{where}: claimed {claimed}, found {found}"
 
 
 def definition_said(definition: Definition[Any] | None) -> str:

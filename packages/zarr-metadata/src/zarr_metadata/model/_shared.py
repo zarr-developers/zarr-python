@@ -19,6 +19,7 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._typed_json import typeddict_keys
+from zarr_metadata.definition._definition import is_field
 from zarr_metadata.definition._scope import Conflict, claim_key
 
 if TYPE_CHECKING:
@@ -97,9 +98,9 @@ def member_changes(
 ) -> dict[str, object]:
     """The document members that `members`, given to a model's `update` or `create_default`, set: each member that `update` (the model's update TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
 
-    Raises `TypeError` for a member that `update` does not declare, and for
-    a member of `extra_fields` that the spec defines (one of
-    `spec_members`). So a misspelled member is never written as a member
+    Raises `TypeError` for a member that `update` does not declare, for a
+    member of `extra_fields` that the spec defines (one of
+    `spec_members`), and for a field given where a member's JSON goes. So a misspelled member is never written as a member
     the spec does not define, which a reader that must understand every
     such member would refuse.
     """
@@ -115,6 +116,13 @@ def member_changes(
         )
         raise TypeError(msg)
     changes = {key: value for key, value in members.items() if key != "extra_fields"}
+    for key, value in changes.items():
+        if any(is_field(item) for item in (value if is_array(value) else (value,))):
+            msg = (
+                f"{key}: a member is given as a document writes it, got a field; write a field "
+                "as JSON with its to_json()"
+            )
+            raise TypeError(msg)
     extra = members.get("extra_fields", {})
     if not is_object(extra):
         msg = f"extra_fields maps members to their values, got {extra!r}"

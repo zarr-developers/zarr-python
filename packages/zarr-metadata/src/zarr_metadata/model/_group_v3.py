@@ -390,8 +390,9 @@ class ZarrV3GroupMetadata(Keyed):
 
         Raises `MetadataValidationError` with every problem the read finds.
         A `consolidated_metadata` of `null`, which zarr-python 3.0 and 3.1
-        wrote, is a value the document wrote that is not an object. This is
-        a problem, because the spec requires an object. Use
+        wrote, is a value the document wrote that is not an object. In a
+        scope that claims the member, as `CORE` does, this is a problem,
+        because the spec requires an object. Use
         `read_repaired_node_metadata_v3` to read such a store. A member the
         spec does not define is kept in `extra_fields`.
         """
@@ -1012,6 +1013,9 @@ def _read_consolidated_v3(
     listings: dict[str, _Listing] = {}
     node_types: dict[str, NodeType | None] = {}
     entries = env.get("metadata")
+    claims_listings = (
+        context.claimant(GroupExtraFieldDefinition, ZARR_V3_CONSOLIDATED_METADATA_KEY) is not None
+    )
     past = nested_past_the_levels(entries, (*at, "metadata"))
     if is_object(entries) and past is not None:
         problems.extend(within((past,), at))
@@ -1038,9 +1042,13 @@ def _read_consolidated_v3(
                 isinstance(child, GroupMembersV3)
                 and child.document is not None
                 and child.consolidated is not UNSET
+                and claims_listings
             ):
                 # A listed group with no problem of its own, which lists
-                # documents too: read its listing, located in its document.
+                # documents too, in a scope that reads a listing: read its
+                # listing, located in its document. In a scope that leaves
+                # the member unclaimed, the listed group does not read it,
+                # so neither does this.
                 nested, nested_members, _, inside = _read_consolidated_v3(
                     child.consolidated, context, (*here, ZARR_V3_CONSOLIDATED_METADATA_KEY)
                 )
@@ -1253,9 +1261,9 @@ def validate_group_metadata_v3(
     reader must understand each one that does not declare
     `must_understand: false`; the model reports these as
     `must_understand_fields`. A `consolidated_metadata` member, if
-    present, is checked against the envelope the core spec fixes. The
-    documents it lists are not read; `read_consolidated_metadata_v3`
-    reads them. The result equals the `problems` of
+    present and claimed by the scope, as `CORE` claims it, is checked
+    against the envelope the core spec fixes. The documents it lists are
+    not read; `read_consolidated_metadata_v3` reads them. The result equals the `problems` of
     `read_group_metadata_v3`.
     """
     context = scoped(context, CORE_AND_EXTENSIONS)

@@ -195,11 +195,11 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     definition declares, or a name that no definition claims. When the
     document names a data type in scope, the fill value must have the
     JSON shape that the data type's definition declares (for `int8`, an
-    integer in [-128, 127]). A group's `consolidated_metadata` is the
-    envelope the core spec fixes, with any JSON as the documents it
-    lists, because the validator does not read them. A `null` value,
-    which zarr-python 3.0 and 3.1 wrote, is refused, because the
-    validator refuses it too. Each document is in `$defs` under the name of its
+    integer in [-128, 127]). In a scope that claims it, as `CORE` does,
+    a group's `consolidated_metadata` is the envelope the core spec
+    fixes, with any JSON as the documents it lists, because the validator
+    does not read them, and a `null` value, which zarr-python 3.0 and 3.1
+    wrote, is refused, because the validator refuses it too. Each document is in `$defs` under the name of its
     TypedDict. `ZarrV3ArrayMetadataJSON` describes only an array.
 
     A JSON Schema describes each member on its own. It does not contain

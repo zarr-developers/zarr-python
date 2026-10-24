@@ -252,7 +252,10 @@ data type never does; a codec `kind` that is not one of the three, or a
 called for a codec of its kind (chunk rules or pipelines of a
 bytes -> bytes codec, which receives bytes, or a `transition` of a codec
 that outputs bytes); a data type named the way raw bits of one size are
-written. Nothing else happens at class creation.
+written; an extra field named after a member the spec defines, whose
+`finite` is not a boolean, or whose configuration does not declare
+`must_understand`. Building a definition files it nowhere: only a scope
+built from it does.
 """
 
 from zarr_metadata.definition._definition import (
