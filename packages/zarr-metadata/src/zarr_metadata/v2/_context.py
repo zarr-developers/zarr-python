@@ -44,14 +44,12 @@ class ZarrV2Context(Context):
     @property
     def data_types(self) -> Mapping[str, ZarrV2DataTypeDefinition[Any]]:
         """The data type definitions in scope, by the NumPy family each reads."""
-        return cast(
-            "Mapping[str, ZarrV2DataTypeDefinition[Any]]", self._held(ZarrV2DataTypeDefinition)
-        )
+        return cast("Mapping[str, ZarrV2DataTypeDefinition[Any]]", self._slot("data_types"))
 
     @property
     def codecs(self) -> Mapping[str, ZarrV2CodecDefinition[Any]]:
         """The codec definitions in scope, by numcodecs id."""
-        return cast("Mapping[str, ZarrV2CodecDefinition[Any]]", self._held(ZarrV2CodecDefinition))
+        return cast("Mapping[str, ZarrV2CodecDefinition[Any]]", self._slot("codecs"))
 
     def extended_with(
         self,

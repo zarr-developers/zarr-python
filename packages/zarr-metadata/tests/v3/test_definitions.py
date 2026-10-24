@@ -224,7 +224,9 @@ def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
-    assert set(CORE.definitions) <= set(CORE_AND_EXTENSIONS.definitions)
+    """Each slot of `CORE` files a subset of what the same slot of `CORE_AND_EXTENSIONS` files."""
+    for kind in ZarrV3Context.kinds.values():
+        assert CORE.definitions_of(kind).items() <= CORE_AND_EXTENSIONS.definitions_of(kind).items()
 
 
 def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
@@ -974,13 +976,15 @@ def test_a_scope_takes_a_name_over() -> None:
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
     # Kept short, because `help` shows it as a validator's default argument.
-    assert repr(CORE) == f"ZarrV3Context(<{len(CORE.definitions)} definitions>)"
+    count = sum(len(CORE.definitions_of(kind)) for kind in ZarrV3Context.kinds.values())
+    assert repr(CORE) == f"ZarrV3Context(<{count} definitions>)"
 
 
 def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
     # A model holds the scope it was read in, and takes it along to another process.
     again = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS))
-    assert again.definitions == CORE_AND_EXTENSIONS.definitions
+    assert again == CORE_AND_EXTENSIONS
+    assert again.codecs == CORE_AND_EXTENSIONS.codecs
     assert copy.copy(CORE) is CORE
     assert copy.deepcopy(CORE) is CORE
 

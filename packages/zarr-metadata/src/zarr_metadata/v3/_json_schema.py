@@ -11,7 +11,6 @@ from zarr_metadata.definition._definition import (
     EmptyConfiguration,
     as_kind,
     field_kind,
-    kind_of,
 )
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._context import ZarrV3Context
@@ -102,11 +101,7 @@ def _field_schema(
     kind: type[Definition[Any]], static: bool, context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
     """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims."""
-    table = {
-        definition.name: definition
-        for definition in context.definitions
-        if kind_of(definition) is kind
-    }
+    table = context.definitions_of(kind)
     branches: list[JSONValue] = []
     for definition in table.values():
         if static and cast("CodecDefinition[Any]", definition).size != "static":
@@ -120,7 +115,7 @@ def _extra_field_schema(
     kind: type[Definition[Any]], context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
     """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key and any JSON value."""
-    claimed = [definition for definition in context.definitions if kind_of(definition) is kind]
+    claimed = list(context.definitions_of(kind).values())
     branches: list[JSONValue] = [
         {
             "type": "object",

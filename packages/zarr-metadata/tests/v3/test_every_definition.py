@@ -177,10 +177,19 @@ def test_a_scope_s_definitions_pickle() -> None:
     ]
 
 
+def _every(context: ZarrV3Context) -> set[Definition[Any]]:
+    """Every definition in `context`, from each of its slots."""
+    return {
+        definition
+        for kind in ZarrV3Context.kinds.values()
+        for definition in context.definitions_of(kind).values()
+    }
+
+
 def test_every_definition_in_scope_has_an_example() -> None:
-    names = {definition.name for definition in CORE_AND_EXTENSIONS.definitions}
+    names = {definition.name for definition in _every(CORE_AND_EXTENSIONS)}
     assert names == {key.split(":")[1] for key in EXAMPLES}
-    assert set(CORE.definitions) < set(CORE_AND_EXTENSIONS.definitions)
+    assert _every(CORE) < _every(CORE_AND_EXTENSIONS)
 
 
 @pytest.mark.parametrize(
@@ -672,11 +681,7 @@ def test_every_codec_says_whether_its_size_is_static() -> None:
     # This matches zarr-python's `is_fixed_size`. A compressor, and a shard
     # (whose empty inner chunks take no bytes), output a size that depends
     # on the values.
-    sizes = {
-        definition.name: definition.size
-        for definition in CORE_AND_EXTENSIONS.definitions
-        if isinstance(definition, CodecDefinition)
-    }
+    sizes = {definition.name: definition.size for definition in CORE_AND_EXTENSIONS.codecs.values()}
     assert sizes == dict.fromkeys(STATIC_SIZE, "static") | dict.fromkeys(DYNAMIC_SIZE, "dynamic")
 
 

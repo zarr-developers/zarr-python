@@ -47,22 +47,22 @@ class Context:
     A scope is a value and does no reading itself. `resolve` reads a field
     in a scope. The question a scope answers for a reader is `claimant`:
     which definition a name belongs to. Each format's scope has one slot
-    per kind of field, named like the document member that holds such
-    fields (`codecs`, `data_types`, ...), and files each definition in
-    its slot under its name. Build a scope with the format's class, and
-    add definitions with `extended_with`. Two scopes are equal when they
-    are of one format and file the same definitions, and equal scopes have
-    equal hashes.
+    per kind of field, and files each definition in its slot under its
+    name. Nothing holds definitions of two kinds together: a slot holds
+    one kind, and `definitions_of` returns the slot that holds a kind.
+    Build a scope with the format's class, and add definitions with
+    `extended_with`. Two scopes are equal when they are of one format and
+    file the same definitions in each slot, and equal scopes have equal
+    hashes.
     """
 
-    __slots__ = ("_definitions", "_filed", "_tables")
+    __slots__ = ("_hash", "_slots")
 
     kinds: ClassVar[Mapping[str, type[Definition[Any]]]]
     """The kind of definition each slot of a scope of this format holds, by slot."""
 
-    _definitions: tuple[Definition[Any], ...]
-    _filed: frozenset[tuple[type[Definition[Any]], str, Definition[Any]]]
-    _tables: Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
+    _slots: Mapping[str, Mapping[str, Definition[Any]]]
+    _hash: int
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         # Every slot of a format's scope holds a kind of that format, which
@@ -92,7 +92,7 @@ class Context:
         if len(unknown) != 0:
             msg = f"a v{self.zarr_format} scope has no slot {', '.join(map(repr, unknown))}"
             raise TypeError(msg)
-        tables: dict[type[Definition[Any]], Mapping[str, Definition[Any]]] = {}
+        filed: dict[str, Mapping[str, Definition[Any]]] = {}
         conflicts: list[Conflict] = []
         for slot, kind in self.kinds.items():
             table: dict[str, Definition[Any]] = {}
@@ -105,18 +105,16 @@ class Context:
                     conflicts.append(Conflict((kind, definition.name), held, definition))
                     continue
                 table[definition.name] = definition
-            tables[kind] = MappingProxyType(table)
+            filed[slot] = MappingProxyType(table)
         if len(conflicts) != 0:
             raise ScopeConflictError(conflicts)
-        # A scope is immutable, so what it files is computed once: every
-        # definition, and every definition with the kind and name it is
-        # filed under, which scopes are compared by.
-        self._tables = MappingProxyType(tables)
-        self._definitions = tuple(entry for table in tables.values() for entry in table.values())
-        self._filed = frozenset(
-            (kind, name, definition)
-            for kind, table in tables.items()
-            for name, definition in table.items()
+        # A scope is immutable, so its hash is computed once.
+        self._slots = MappingProxyType(filed)
+        self._hash = hash(
+            (
+                type(self),
+                frozenset((slot, frozenset(table.items())) for slot, table in filed.items()),
+            )
         )
 
     @classmethod
@@ -126,40 +124,43 @@ class Context:
         Context.__init__(context, slots)
         return context
 
-    def _held(self, kind: type[Definition[Any]]) -> Mapping[str, Definition[Any]]:
-        """The definitions of `kind` in scope, keyed by the name each is filed under. Empty for a kind of no slot."""
-        return self._tables.get(kind, _NOTHING)
+    def _slot(self, slot: str) -> Mapping[str, Definition[Any]]:
+        """The definitions in `slot`, by the name each is filed under. A format's class returns this, typed, as each slot's view."""
+        return self._slots[slot]
 
-    @property
-    def definitions(self) -> tuple[Definition[Any], ...]:
-        """Every definition in scope, slot by slot."""
-        return self._definitions
+    def definitions_of(self, kind: type[D]) -> Mapping[str, D]:
+        """The definitions of `kind` in scope, by the name each is filed under (`r*` for raw bits): the slot that holds `kind`. Empty for a kind that no slot of this scope's format holds."""
+        asked = as_kind(kind)
+        for slot, held in self.kinds.items():
+            if held is asked:
+                return cast("Mapping[str, D]", self._slots[slot])
+        return cast("Mapping[str, D]", _NOTHING)
 
     def _extended(self, slots: Mapping[str, Iterable[Definition[Any]]]) -> Self:
         """This scope, with the definitions in `slots` filed in their slots, each replacing any definition already filed there under its name."""
         merged: dict[str, list[Definition[Any]]] = {}
-        for slot, kind in self.kinds.items():
+        for slot, table in self._slots.items():
             given = list(slots.get(slot, ()))
             names = {definition.name for definition in given}
-            kept = [held for name, held in self._held(kind).items() if name not in names]
+            kept = [held for name, held in table.items() if name not in names]
             merged[slot] = [*kept, *given]
         return self._built(merged)
-
-    def _slot_contents(self) -> dict[str, tuple[Definition[Any], ...]]:
-        """The definitions in each slot, by slot name."""
-        return {slot: tuple(self._held(kind).values()) for slot, kind in self.kinds.items()}
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default
         # argument. A full repr would list every definition, and `help` on a
         # validator would run to pages.
-        return f"{type(self).__name__}(<{len(self._definitions)} definitions>)"
+        count = sum(len(table) for table in self._slots.values())
+        return f"{type(self).__name__}(<{count} definitions>)"
 
     def __reduce__(self) -> tuple[object, tuple[dict[str, tuple[Definition[Any], ...]]]]:
-        # A scope is defined by its definitions, so pickle it as them. This
-        # lets a scope go to another process along with the documents it
-        # will read there.
-        return (type(self)._built, (self._slot_contents(),))
+        # A scope is defined by the definitions in its slots, so pickle it as
+        # them. This lets a scope go to another process along with the
+        # documents it will read there.
+        return (
+            type(self)._built,
+            ({slot: tuple(table.values()) for slot, table in self._slots.items()},),
+        )
 
     def __copy__(self) -> Self:
         return self
@@ -171,10 +172,10 @@ class Context:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Context):
             return NotImplemented
-        return type(self) is type(other) and self._filed == other._filed
+        return type(self) is type(other) and self._slots == other._slots
 
     def __hash__(self) -> int:
-        return hash((type(self), self._filed))
+        return self._hash
 
     def disagreements(self, claims: Claims) -> Disagreements:
         """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`.
@@ -183,17 +184,17 @@ class Context:
         bits under `r*`), so it is looked up by the filed name, not by the
         name a document uses.
         """
-        return disagreements_of(lambda kind, name: self._held(kind).get(name), claims)
+        return disagreements_of(lambda kind, name: self.definitions_of(kind).get(name), claims)
 
     @classmethod
     def joined(cls, *contexts: Self) -> Self:
         """The smallest scope that files everything each of `contexts` files (their join), of the format they share.
 
         Raises `ScopeConflictError` when two of them file different
-        definitions under the same kind and name. To replace a definition
-        on purpose, use `extended_with`. Raises `TypeError` for scopes of
-        two formats, and for no scope when called on `Context`, whose
-        format is unknown.
+        definitions under the same name in one slot. To replace a
+        definition on purpose, use `extended_with`. Raises `TypeError` for
+        scopes of two formats, and for no scope when called on `Context`,
+        whose format is unknown.
         """
         classes = {type(context) for context in contexts}
         if len(classes) > 1:
@@ -206,23 +207,19 @@ class Context:
         if target is Context:
             msg = "join scopes of one format, or call joined on ZarrV3Context or ZarrV2Context"
             raise TypeError(msg)
-        filed: dict[tuple[type[Definition[Any]], str], Definition[Any]] = {}
+        merged: dict[str, dict[str, Definition[Any]]] = {slot: {} for slot in target.kinds}
         conflicts: list[Conflict] = []
         for context in contexts:
-            for kind, table in context._tables.items():
+            for slot, table in context._slots.items():
                 for name, definition in table.items():
-                    held = filed.get((kind, name))
+                    held = merged[slot].get(name)
                     if held is not None and held != definition:
-                        conflicts.append(Conflict((kind, name), held, definition))
+                        conflicts.append(Conflict((target.kinds[slot], name), held, definition))
                         continue
-                    filed[kind, name] = definition
+                    merged[slot][name] = definition
         if len(conflicts) != 0:
             raise ScopeConflictError(conflicts)
-        slots = {
-            slot: [definition for (held, _), definition in filed.items() if held is kind]
-            for slot, kind in target.kinds.items()
-        }
-        return target._built(slots)
+        return target._built({slot: list(table.values()) for slot, table in merged.items()})
 
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none.
@@ -235,7 +232,7 @@ class Context:
         filed, _ = filed_under(asked, name)
         if filed is None:
             return None
-        return cast("D | None", self._held(asked).get(filed))
+        return self.definitions_of(kind).get(filed)
 
 
 def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | None:

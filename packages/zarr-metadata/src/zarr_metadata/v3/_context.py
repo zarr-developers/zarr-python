@@ -79,46 +79,46 @@ class ZarrV3Context(Context):
     @property
     def data_types(self) -> Mapping[str, DataTypeDefinition[Any]]:
         """The data type definitions in scope, by the name each is filed under."""
-        return cast("Mapping[str, DataTypeDefinition[Any]]", self._held(DataTypeDefinition))
+        return cast("Mapping[str, DataTypeDefinition[Any]]", self._slot("data_types"))
 
     @property
     def chunk_grids(self) -> Mapping[str, ChunkGridDefinition[Any]]:
         """The chunk grid definitions in scope, by name."""
-        return cast("Mapping[str, ChunkGridDefinition[Any]]", self._held(ChunkGridDefinition))
+        return cast("Mapping[str, ChunkGridDefinition[Any]]", self._slot("chunk_grids"))
 
     @property
     def chunk_key_encodings(self) -> Mapping[str, ChunkKeyEncodingDefinition[Any]]:
         """The chunk key encoding definitions in scope, by name."""
         return cast(
             "Mapping[str, ChunkKeyEncodingDefinition[Any]]",
-            self._held(ChunkKeyEncodingDefinition),
+            self._slot("chunk_key_encodings"),
         )
 
     @property
     def codecs(self) -> Mapping[str, CodecDefinition[Any]]:
         """The codec definitions in scope, by name."""
-        return cast("Mapping[str, CodecDefinition[Any]]", self._held(CodecDefinition))
+        return cast("Mapping[str, CodecDefinition[Any]]", self._slot("codecs"))
 
     @property
     def storage_transformers(self) -> Mapping[str, StorageTransformerDefinition[Any]]:
         """The storage transformer definitions in scope, by name."""
         return cast(
             "Mapping[str, StorageTransformerDefinition[Any]]",
-            self._held(StorageTransformerDefinition),
+            self._slot("storage_transformers"),
         )
 
     @property
     def array_extra_fields(self) -> Mapping[str, ArrayExtraFieldDefinition[Any]]:
         """The definitions of members of an array document that the spec does not define, by key."""
         return cast(
-            "Mapping[str, ArrayExtraFieldDefinition[Any]]", self._held(ArrayExtraFieldDefinition)
+            "Mapping[str, ArrayExtraFieldDefinition[Any]]", self._slot("array_extra_fields")
         )
 
     @property
     def group_extra_fields(self) -> Mapping[str, GroupExtraFieldDefinition[Any]]:
         """The definitions of members of a group document that the spec does not define, by key."""
         return cast(
-            "Mapping[str, GroupExtraFieldDefinition[Any]]", self._held(GroupExtraFieldDefinition)
+            "Mapping[str, GroupExtraFieldDefinition[Any]]", self._slot("group_extra_fields")
         )
 
     def extended_with(
