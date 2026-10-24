@@ -486,12 +486,10 @@ def read_consolidated_metadata_v2(
 ) -> ZarrV2ConsolidatedMetadataReading:
     """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
     context = scoped(context, CORE_V2)
-    entries, nodes, problems = _read_consolidated_v2(value, context)
+    document, nodes, problems = _read_consolidated_v2(value, context)
     if len(problems) != 0:
         return ZarrV2ConsolidatedMetadataReading(problems=problems)
-    model = ZarrV2ConsolidatedMetadata._of(  # pyright: ignore[reportPrivateUsage]
-        {"zarr_consolidated_format": 1, "metadata": entries}, context, nodes
-    )
+    model = ZarrV2ConsolidatedMetadata._of(document, context, nodes)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
@@ -523,10 +521,10 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2)
-        entries, nodes, problems = _read_consolidated_v2(document, context)
+        read, nodes, problems = _read_consolidated_v2(document, context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        self._adopt({"zarr_consolidated_format": 1, "metadata": entries}, context, nodes)
+        self._adopt(read, context, nodes)
 
     @classmethod
     def _of(
@@ -724,7 +722,7 @@ def _entries_by_path(
 def _read_consolidated_v2(
     data: object, context: ZarrV2Context
 ) -> tuple[dict[str, JSONValue], dict[str, ZarrV2NodeMetadata], tuple[ValidationProblem, ...]]:
-    """Read `data`, a `.zmetadata` document. Return each entry as read, the model of each node read in `context`, and every problem, located in the document.
+    """Read `data`, a `.zmetadata` document. Return the document as read, with its keys in the order it writes them and each entry as read; the model of each node read in `context`; and every problem, located in the document.
 
     Each entry is read as the kind of document its key names. A `.zattrs`
     entry is user data. Any other entry must be JSON by RFC 8259. A
@@ -780,7 +778,10 @@ def _read_consolidated_v2(
         problems.extend(_hierarchy_problems_v2(by_path))
     if len(problems) != 0:
         nodes = {}
-    return refined, nodes, with_input(problems, doc)
+    members: dict[str, JSONValue] = {"zarr_consolidated_format": 1, "metadata": refined}
+    # The keys in the order the document writes them, as the v3 models keep them.
+    document = {key: members[key] for key in doc if isinstance(key, str) and key in members}
+    return document, nodes, with_input(problems, doc)
 
 
 def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[ValidationProblem]:

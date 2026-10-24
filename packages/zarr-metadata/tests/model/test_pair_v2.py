@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import json
 import pickle
 from typing import Any, cast
 
@@ -21,6 +22,7 @@ from zarr_metadata.model import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     read_array_metadata_v2,
+    read_consolidated_metadata_v2,
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_V2
@@ -347,6 +349,23 @@ def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_mod
     with pytest.raises(TypeError):
         cast("dict[str, object]", model.metadata)["x"] = 1
     assert not dataclasses.is_dataclass(ZarrV2ConsolidatedMetadata)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [CONSOLIDATED, {"metadata": CONSOLIDATED["metadata"], "zarr_consolidated_format": 1}],
+    ids=["format-first", "metadata-first"],
+)
+def test_consolidated_metadata_is_written_in_the_order_it_was_read(
+    document: dict[str, Any],
+) -> None:
+    """`to_json` and `to_key_value` write the top-level keys of a `.zmetadata` in the order the document writes them, as the v3 models do. zarr-python 3 writes `metadata` first. A model built by `read_consolidated_metadata_v2` keeps the order too."""
+    model = ZarrV2ConsolidatedMetadata(document)
+    assert list(model.to_json()) == list(document)
+    assert list(json.loads(model.to_key_value()[".zmetadata"])) == list(document)
+    reading = read_consolidated_metadata_v2(document)
+    assert reading.metadata is not None
+    assert list(reading.metadata.to_json()) == list(document)
 
 
 def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them() -> None:
