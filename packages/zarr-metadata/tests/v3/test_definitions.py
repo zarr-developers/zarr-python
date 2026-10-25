@@ -334,6 +334,24 @@ class _HoldsAV3Codec(TypedDict, closed=True):
     inner: ZarrV3CodecField
 
 
+class _HoldsV2DataTypes(TypedDict, closed=True):
+    """A v3 configuration with a member that holds an array of v2 data type fields."""
+
+    dts: tuple[ZarrV2DataTypeField, ...]
+
+
+class _HoldsANestedV2DataType(TypedDict, closed=True):
+    """A v3 configuration with a member that holds an object with a v2 data type field."""
+
+    nested: _HoldsAV2DataType
+
+
+class _HoldsV3Codecs(TypedDict, closed=True):
+    """A v2 configuration with a member that holds an array of v3 codec fields."""
+
+    inner: tuple[ZarrV3CodecField, ...]
+
+
 @pytest.mark.parametrize(
     ("build", "named"),
     [
@@ -347,13 +365,38 @@ class _HoldsAV3Codec(TypedDict, closed=True):
             lambda: ZarrV2CodecDefinition(name="acme_mix", configuration=_HoldsAV3Codec),
             "ZarrV3CodecField",
         ),
+        (
+            lambda: CodecDefinition(
+                name="acme.mix", configuration=_HoldsV2DataTypes, kind="array_array", size="static"
+            ),
+            "ZarrV2DataTypeField",
+        ),
+        (
+            lambda: CodecDefinition(
+                name="acme.mix",
+                configuration=_HoldsANestedV2DataType,
+                kind="array_array",
+                size="static",
+            ),
+            "ZarrV2DataTypeField",
+        ),
+        (
+            lambda: ZarrV2CodecDefinition(name="acme_mix", configuration=_HoldsV3Codecs),
+            "ZarrV3CodecField",
+        ),
     ],
-    ids=["v3-holding-v2", "v2-holding-v3"],
+    ids=[
+        "v3-holding-v2",
+        "v2-holding-v3",
+        "v3-holding-an-array-of-v2",
+        "v3-holding-v2-nested",
+        "v2-holding-an-array-of-v3",
+    ],
 )
 def test_error_a_configuration_holding_a_field_of_the_other_format(
     build: Callable[[], object], named: str
 ) -> None:
-    """A definition reads the fields of its own format only: a document of one format never holds a field of the other. A configuration with a member typed by the other format's field alias is refused when the definition is built, so no read of it fails part way."""
+    """A definition reads the fields of its own format only: a document of one format never holds a field of the other. A configuration with a member that holds the other format's field alias, directly, as the items of an array, or inside a nested TypedDict, is refused when the definition is built, with a `TypeError` that names the alias, so no read of it fails part way."""
     with pytest.raises(TypeError, match=named):
         build()
 
@@ -943,10 +986,20 @@ def test_error_check_holds_an_array_document_s_shape_to_its_bound() -> None:
 
 
 def test_configuration_of_types_what_its_definition_read() -> None:
+    """`configuration_of(field, definition)` returns, as a plain `dict`, the configuration of a field that `definition` read and accepted. It returns `None` for a field another definition read, for a field nothing claims, and for a field that `definition` claims but refused, whose configuration it did not read."""
     resolved, _ = resolve({"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CONTEXT)
     assert configuration_of(resolved, GZIP_CODEC) == {"level": 5}
     assert type(configuration_of(resolved, GZIP_CODEC)) is dict
     assert configuration_of(resolved, ACME_LEVEL) is None
+    unclaimed, _ = resolve(
+        {"name": "acme.x", "configuration": {"level": 1}}, CodecDefinition, CONTEXT
+    )
+    assert isinstance(unclaimed, UnclaimedField)
+    assert configuration_of(unclaimed, GZIP_CODEC) is None
+    refused, _ = resolve({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CONTEXT)
+    assert isinstance(refused, RefusedField)
+    assert refused.definition is GZIP_CODEC
+    assert configuration_of(refused, GZIP_CODEC) is None
 
 
 class _ClaimsWithNoFormat:

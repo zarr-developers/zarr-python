@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import pickle
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import pytest
@@ -13,14 +13,21 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField, resolve
 from zarr_metadata.definition._context import slot_kinds
-from zarr_metadata.model import ZarrV3ArrayMetadata, read_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV2ArrayMetadata,
+    ZarrV3ArrayMetadata,
+    read_array_metadata_v2,
+    read_array_metadata_v3,
+)
 from zarr_metadata.v2 import CORE_V2, GZIP_CODEC_V2, ZarrV2Context
+from zarr_metadata.v2._context import _KINDS as V2_KINDS
 from zarr_metadata.v2.definition import (
     ZarrV2CodecDefinition,
     ZarrV2ContextSlots,
     ZarrV2DataTypeDefinition,
 )
 from zarr_metadata.v3 import CORE, GZIP_CODEC, ZarrV3Context
+from zarr_metadata.v3._context import _KINDS as V3_KINDS
 from zarr_metadata.v3._context import is_v3_kind
 from zarr_metadata.v3.definition import CodecDefinition, DataTypeDefinition, ZarrV3ContextSlots
 
@@ -31,6 +38,7 @@ def _other(definition: Any) -> Any:  # noqa: ANN401 - a definition of either for
 
 
 ARRAY = ZarrV3ArrayMetadata.create_default().to_json()
+V2_ARRAY = ZarrV2ArrayMetadata.create_default().to_json()
 
 FORMATS = [
     pytest.param(ZarrV3Context, CORE, CodecDefinition, GZIP_CODEC, 3, id="v3"),
@@ -204,26 +212,50 @@ class _BooleanFormat:
     ],
     ids=["not-a-scope", "a-look-alike", "a-broken-format", "a-boolean-format"],
 )
+@pytest.mark.parametrize(
+    ("read", "document", "cls"),
+    [
+        (read_array_metadata_v3, ARRAY, "ZarrV3Context"),
+        (read_array_metadata_v2, V2_ARRAY, "ZarrV2Context"),
+    ],
+    ids=["v3", "v2"],
+)
 def test_error_a_reader_refuses_what_is_not_a_scope_of_its_format(
-    given: object, named: str
+    read: Callable[..., object],
+    document: object,
+    cls: str,
+    given: object,
+    named: str,
 ) -> None:
-    """A reader takes a scope of its format's class, or None. Anything else raises `TypeError` naming the class the reader takes and what it was given, rather than failing inside the read or contradicting itself."""
-    with pytest.raises(TypeError, match=f"a ZarrV3Context, {named}"):
-        read_array_metadata_v3(ARRAY, context=given)  # pyright: ignore[reportArgumentType]
+    """A reader of either format takes a scope of its format's class, or None. Anything else raises `TypeError` naming the class the reader takes and what it was given, rather than failing inside the read or contradicting itself."""
+    with pytest.raises(TypeError, match=f"a {cls}, {named}"):
+        read(document, context=given)
 
 
-@pytest.mark.parametrize("given", ["nope", CORE_V2], ids=["not-a-scope", "a-v2-scope"])
-def test_error_union_refuses_what_is_not_a_scope_of_its_format(given: object) -> None:
-    """A v3 scope's `union` takes v3 scopes only. A v2 scope or a value that is not a scope raises `TypeError` naming what was given."""
-    with pytest.raises(TypeError, match="a union of v3 scopes takes v3 scopes, got"):
-        CORE.union(given)  # pyright: ignore[reportArgumentType]
+@pytest.mark.parametrize(
+    ("core", "given", "zarr_format"),
+    [(CORE, "nope", 3), (CORE, CORE_V2, 3), (CORE_V2, "nope", 2), (CORE_V2, CORE, 2)],
+    ids=["v3-not-a-scope", "v3-a-v2-scope", "v2-not-a-scope", "v2-a-v3-scope"],
+)
+def test_error_union_refuses_what_is_not_a_scope_of_its_format(
+    core: Any,  # noqa: ANN401 - either core scope
+    given: object,
+    zarr_format: int,
+) -> None:
+    """A scope's `union` takes scopes of its own format only. A scope of the other format, or a value that is not a scope, raises `TypeError` naming what was given, for a v3 and a v2 scope."""
+    with pytest.raises(
+        TypeError,
+        match=f"a union of v{zarr_format} scopes takes v{zarr_format} scopes, got",
+    ):
+        core.union(given)
 
 
 @pytest.mark.parametrize("cls", [ZarrV3Context, ZarrV2Context], ids=["v3", "v2"])
 def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - either scope class
-    """Each scope class reads its slots from its `...Slots` TypedDict, so the slots are declared once. Each slot has a view of the same name, which is the slot that holds its kind: a type checker cannot match a view's name to a declared slot, so this test does."""
+    """Each scope class reads its slots from its `...Slots` TypedDict, so the slots are declared once. The slots hold every kind of the format, as its own check of a kind knows them. Each slot has a view of the same name, which is the slot that holds its kind: a type checker cannot match a view's name to a declared slot, so this test does."""
     slots_type = ZarrV3ContextSlots if cls is ZarrV3Context else ZarrV2ContextSlots
     assert list(cls.kinds) == list(slots_type.__annotations__)
+    assert set(cls.kinds.values()) == (V3_KINDS if cls is ZarrV3Context else V2_KINDS)
     scope: Any = CORE if cls is ZarrV3Context else CORE_V2
     for slot, kind in cls.kinds.items():
         assert getattr(scope, slot) == scope.definitions_of(kind)
@@ -235,8 +267,10 @@ def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - eith
         list[CodecDefinition[Any]],
         Iterable[CodecDefinition[Any]],
         Iterable[CodecDefinition[Any]] | Mapping[str, DataTypeDefinition[Any]],
+        Iterable[CodecDefinition[Any]] | Mapping[int, CodecDefinition[Any]],
+        Iterable[CodecDefinition[Any]] | Mapping[str, CodecDefinition[Any]] | None,
     ],
-    ids=["a-list", "no-mapping", "two-kinds"],
+    ids=["a-list", "no-mapping", "two-kinds", "keyed-by-integers", "or-none"],
 )
 def test_error_a_slot_is_declared_as_definitions_of_a_kind_or_a_mapping_of_them(
     annotation: object,
