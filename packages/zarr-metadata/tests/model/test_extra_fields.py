@@ -11,7 +11,13 @@ from annotated_types import Ge
 from jsonschema import Draft202012Validator
 from typing_extensions import TypeAliasType, TypedDict
 
-from zarr_metadata.definition import AcceptedField, UnclaimedField, canonical_of, resolve
+from zarr_metadata.definition import (
+    AcceptedField,
+    RefusedField,
+    UnclaimedField,
+    canonical_of,
+    resolve,
+)
 from zarr_metadata.json_schema import field_json_schema_v3
 from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3GroupMetadata
 from zarr_metadata.problems import MetadataValidationError
@@ -211,6 +217,25 @@ def test_error_an_extra_field_named_after_a_member_the_spec_defines(kind: Any, n
         kind(name=name, configuration=AcmeTilingConfiguration)
 
 
+@pytest.mark.parametrize(
+    ("kind", "member"),
+    [
+        (ArrayExtraFieldDefinition, {"shape": (4,)}),
+        (GroupExtraFieldDefinition, {"node_type": "group"}),
+    ],
+    ids=["array-shape", "group-node-type"],
+)
+def test_error_resolve_a_member_the_spec_defines_as_an_extra_field(
+    kind: Any,  # noqa: ANN401 - either extra-field kind
+    member: dict[str, Any],
+) -> None:
+    """`resolve` reads a member the spec defines, read as an extra field, as a `RefusedField` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
+    read, problems = resolve(member, kind, CORE)
+    assert isinstance(read, RefusedField)
+    assert [(p.loc, p.kind) for p in problems] == [((), "invalid_value")]
+    assert "the spec defines" in problems[0].message
+
+
 class _Bare(TypedDict, closed=True):
     tool: str
 
@@ -254,6 +279,11 @@ class _NewTypeOfBoolOnly(TypedDict, closed=True):
     must_understand: NotRequired[_Waiver]
 
 
+# A list is not a type, and is not hashable: the checker cannot read it as a waiver.
+class _UnhashableWaiver(TypedDict, closed=True):
+    must_understand: NotRequired[[True]]  # pyright: ignore[reportGeneralTypeIssues]
+
+
 # `_Missing` is not defined on purpose: the alias cannot be resolved.
 _UndefinedWaiver = TypeAliasType("_UndefinedWaiver", "_Missing | bool")  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
 
@@ -262,13 +292,31 @@ class _WaiverOfAnUndefinedAlias(TypedDict, closed=True):
     must_understand: NotRequired[_UndefinedWaiver]
 
 
-def test_error_an_extra_field_waiver_typed_by_an_alias_that_does_not_resolve() -> None:
-    """An alias that names what is not defined is refused when the definition is built, with a `TypeError` that names the definition, the TypedDict and the member, as for any other member the checker cannot read."""
-    with pytest.raises(
-        TypeError,
-        match=r"'acme.x': _WaiverOfAnUndefinedAlias.must_understand: _UndefinedWaiver: name '_Missing'",
-    ):
-        ArrayExtraFieldDefinition(name="acme.x", configuration=_WaiverOfAnUndefinedAlias)
+class _ExtraItemsOfAnUndefinedAlias(TypedDict, extra_items=_UndefinedWaiver):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("configuration", "match"),
+    [
+        (
+            _WaiverOfAnUndefinedAlias,
+            r"'acme.x': _WaiverOfAnUndefinedAlias.must_understand: _UndefinedWaiver: name '_Missing'",
+        ),
+        (
+            _ExtraItemsOfAnUndefinedAlias,
+            r"'acme.x': _ExtraItemsOfAnUndefinedAlias.extra_items: _UndefinedWaiver: name '_Missing'",
+        ),
+    ],
+    ids=["member", "extra-items"],
+)
+def test_error_an_extra_field_waiver_typed_by_an_alias_that_does_not_resolve(
+    configuration: Any,  # noqa: ANN401 - a TypedDict
+    match: str,
+) -> None:
+    """An alias that names what is not defined is refused when the definition is built, with a `TypeError` that names the definition, the TypedDict and where the alias sits, as for any other member the checker cannot read. The waiver may be typed by the `must_understand` member, or, when the TypedDict declares no such member, by its `extra_items`."""
+    with pytest.raises(TypeError, match=match):
+        ArrayExtraFieldDefinition(name="acme.x", configuration=configuration)
 
 
 @pytest.mark.parametrize(
@@ -282,7 +330,16 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
 
 @pytest.mark.parametrize(
     "configuration",
-    [_Bare, _OnlyTrue, _AnyInt, _Open, _FalseOrNo, _BoolOrArray, _NewTypeOfBool],
+    [
+        _Bare,
+        _OnlyTrue,
+        _AnyInt,
+        _Open,
+        _FalseOrNo,
+        _BoolOrArray,
+        _NewTypeOfBool,
+        _UnhashableWaiver,
+    ],
     ids=[
         "undeclared",
         "only-true",
@@ -291,11 +348,14 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
         "false-or-a-string",
         "bool-or-an-array",
         "a-new-type-or-null",
+        "unhashable",
     ],
 )
 def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
-    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, is refused when it is built, rather than misreading the documents that carry it."""
-    with pytest.raises(TypeError, match="must_understand"):
+    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, or types the waiver with an annotation that is not a type, such as an unhashable list, is refused when it is built, rather than misreading the documents that carry it."""
+    with pytest.raises(
+        TypeError, match="expected a configuration that takes must_understand as a boolean"
+    ):
         ArrayExtraFieldDefinition(name="acme.bad", configuration=configuration)
 
 

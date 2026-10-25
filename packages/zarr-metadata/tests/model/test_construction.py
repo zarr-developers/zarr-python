@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from zarr_metadata.definition import RefusedField, resolve
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -30,7 +31,9 @@ from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (
+    CORE,
     CORE_AND_EXTENSIONS,
+    CodecDefinition,
 )
 
 if TYPE_CHECKING:
@@ -319,6 +322,14 @@ def test_error_update_takes_fields_as_json() -> None:
         ARRAY.update(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
 
 
+def test_error_update_takes_no_refused_field() -> None:
+    """A field refused by its definition holds JSON its definition does not read, so it has no JSON for `update` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
+    refused, _ = resolve({"name": "gzip", "configuration": {"level": 99}}, CodecDefinition, CORE)
+    assert isinstance(refused, RefusedField)
+    with pytest.raises(TypeError, match="a refused field has no JSON"):
+        ARRAY.update(codecs=(ARRAY.to_json()["codecs"][0], refused))  # pyright: ignore[reportArgumentType]
+
+
 def test_error_extra_fields_takes_values_as_json() -> None:
     """A field given as the value of a member in `extra_fields`, or an extra field given as a member's value, is refused with a `TypeError` that names `to_json()[key]`, which is the member's value. Writing a whole field there would nest the member inside itself and lose its waiver."""
     source = ZarrV3ArrayMetadata.create_default(extra_fields={"foo": {"must_understand": False}})
@@ -338,6 +349,38 @@ def test_error_extra_fields_refuses_a_member_update_takes_by_name() -> None:
     """A member that `update` takes by name, such as a group's `consolidated_metadata`, is refused in `extra_fields`, so one member is never given twice, and a listing given by name is never replaced unchecked."""
     with pytest.raises(TypeError, match="give it by name"):
         GROUP.update(extra_fields={"consolidated_metadata": UNSET})
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
+    ids=["v3-array", "v3-group", "v2-array"],
+)
+@pytest.mark.parametrize("extra_fields", [UNSET, [("acme", 1)]], ids=["unset", "list"])
+def test_error_extra_fields_that_is_not_a_mapping(
+    kind: Any,  # noqa: ANN401 - a model class
+    extra_fields: object,
+) -> None:
+    """`extra_fields` maps members to their values, so `update` refuses `UNSET` or a list of pairs given in its place with a `TypeError`, rather than removing every member or reading the pairs as members."""
+    with pytest.raises(TypeError, match="extra_fields maps members to their values"):
+        kind.create_default().update(extra_fields=extra_fields)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
+    ids=["v3-array", "v3-group", "v2-array"],
+)
+def test_error_extra_fields_with_a_key_that_is_not_a_string(kind: Any) -> None:  # noqa: ANN401 - a model class
+    """A document's members are keyed by strings, so `update` refuses an `extra_fields` with any other key with a `TypeError` that names the key."""
+    with pytest.raises(TypeError, match="extra_fields maps each member's key, a string"):
+        kind.create_default().update(extra_fields={1: 1})
+
+
+def test_error_a_v2_group_takes_no_extra_fields() -> None:
+    """A v2 group's `.zgroup` holds only `zarr_format`, so its `update` takes no `extra_fields`, and refuses it as an unknown member."""
+    with pytest.raises(TypeError, match="unknown member 'extra_fields'"):
+        V2_GROUP.update(extra_fields={"acme": 1})  # pyright: ignore[reportCallIssue]
 
 
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:

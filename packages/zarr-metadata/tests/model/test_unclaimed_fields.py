@@ -17,7 +17,11 @@ from zarr_metadata.model import (
     ZarrV3NodeMetadata,
 )
 from zarr_metadata.v3 import CORE
-from zarr_metadata.v3.definition import ArrayExtraFieldDefinition, ZarrV3CodecField
+from zarr_metadata.v3.definition import (
+    ArrayExtraFieldDefinition,
+    GroupExtraFieldDefinition,
+    ZarrV3CodecField,
+)
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 GROUP: dict[str, Any] = {"zarr_format": 3, "node_type": "group"}
@@ -39,6 +43,14 @@ MIRRORING = CORE.update(
     ]
 )
 """`CORE`, with a definition of an `acme.mirror` member that holds a codec."""
+
+GROUP_MIRRORING = CORE.update(
+    group_extra_fields=[
+        *CORE.group_extra_fields.values(),
+        GroupExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
+    ]
+)
+"""`CORE`, with a definition of an `acme.mirror` member of a group that holds a codec."""
 
 SHARD = {
     "name": "sharding_indexed",
@@ -77,6 +89,19 @@ SHARD = {
             ),
             set(),
         ),
+        (
+            ZarrV3GroupMetadata(
+                {**GROUP, "acme.mirror": {"codec": {"name": "acme.zip"}}}, context=GROUP_MIRRORING
+            ),
+            {("acme.mirror", "codec")},
+        ),
+        (
+            ZarrV3GroupMetadata(
+                {**GROUP, "acme.mirror": {"codec": {"name": "acme.zip"}, "must_understand": False}},
+                context=GROUP_MIRRORING,
+            ),
+            set(),
+        ),
     ],
     ids=[
         "all-claimed",
@@ -89,6 +114,8 @@ SHARD = {
         "a-v2-group",
         "a-codec-inside-a-claimed-member",
         "a-codec-inside-a-claimed-member-that-waives",
+        "a-codec-inside-a-claimed-group-member",
+        "a-codec-inside-a-claimed-group-member-that-waives",
     ],
 )
 def test_unclaimed_fields_are_what_a_reader_must_understand(
@@ -99,6 +126,38 @@ def test_unclaimed_fields_are_what_a_reader_must_understand(
     found = model.unclaimed_fields
     assert set(found) == unclaimed
     assert all(isinstance(field, UnclaimedField) for field in found.values())
+
+
+@pytest.mark.parametrize(
+    ("kind", "document", "context"),
+    [(ZarrV3ArrayMetadata, ARRAY, MIRRORING), (ZarrV3GroupMetadata, GROUP, GROUP_MIRRORING)],
+    ids=["array", "group"],
+)
+@pytest.mark.parametrize(
+    ("member", "narrower"),
+    [
+        ({"codec": {"name": "gzip", "configuration": {"level": 1}}}, set()),
+        ({"codec": {"name": "acme.zip"}}, {("acme.mirror", "codec")}),
+        ({"codec": {"name": "acme.zip"}, "must_understand": False}, set()),
+    ],
+    ids=["a-claimed-codec", "an-unclaimed-codec", "waived"],
+)
+def test_a_model_that_refines_another_has_no_more_to_understand(
+    kind: Any,  # noqa: ANN401 - a v3 node model class
+    document: dict[str, Any],
+    context: Any,  # noqa: ANN401 - a v3 scope
+    member: dict[str, Any],
+    narrower: set[tuple[str | int, ...]],
+) -> None:
+    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, and a waived member is left out by both."""
+    claimed_less = kind({**document, "acme.mirror": member}, context=CORE)
+    claimed_more = kind({**document, "acme.mirror": member}, context=context)
+    assert claimed_more.refines(claimed_less)
+    assert set(claimed_more.unclaimed_fields) == narrower
+    assert all(
+        any(loc[: len(outer)] == outer for outer in claimed_less.unclaimed_fields)
+        for loc in claimed_more.unclaimed_fields
+    )
 
 
 def test_node_type_tells_a_type_checker_which_model_a_node_is() -> None:
