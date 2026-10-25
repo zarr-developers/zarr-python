@@ -101,7 +101,14 @@ def field_schemas(context: ZarrV3Context) -> SchemaLeaf:
 def _field_schema(
     kind: type[Definition[Any]], static: bool, context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
-    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims. Raises `TypeError` for a kind of the other format, whose fields no v3 schema holds."""
+    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims.
+
+    `kind` is always a v3 kind. The v3 document TypedDicts hold v3 fields
+    only, a v3 definition whose configuration holds a field of the other
+    format is refused when it is built, and `field_json_schema_v3` refuses
+    a kind of the other format before it writes anything. The check below
+    only narrows `kind` for the type checker.
+    """
     if not is_v3_kind(kind):
         msg = f"{kind.__name__} is a kind of another format, which a v3 schema does not hold"
         raise TypeError(msg)
