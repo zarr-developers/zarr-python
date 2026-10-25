@@ -54,12 +54,15 @@ import zarr_metadata.v3
 from zarr_metadata._typed_json import (
     Parsed,
     Parser,
+    Unread,
+    UnreadConstraintError,
     describe,
     no_leaf,
     parser,
     parser_for,
     shape_of,
     typeddict_keys,
+    unread_in,
 )
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -1104,8 +1107,62 @@ class Later(BaseMetadata):
 def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> None:
     # If the checker ignored a constraint, the type would promise something
     # that is not checked, and pydantic and the checker would disagree.
-    with pytest.raises(TypeError, match="is not a constraint the checker reads"):
+    with pytest.raises(UnreadConstraintError, match="is not a constraint the checker reads"):
         parser(Annotated[str, constraint], no_leaf)
+
+
+class _ConstrainedMember(TypedDict, closed=True):
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _HoldsAConstrainedMember(TypedDict, closed=True):
+    inner: _ConstrainedMember
+
+
+class _NotAJSONShape(TypedDict, closed=True):
+    a: set[int]
+
+
+class _Readable(TypedDict, closed=True):
+    a: int
+
+
+@pytest.mark.parametrize(
+    ("typeddict", "unread"),
+    [
+        (
+            _ConstrainedMember,
+            Unread(
+                "_ConstrainedMember.a: MultipleOf(multiple_of=2) is not a constraint the checker "
+                "reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _HoldsAConstrainedMember,
+            Unread(
+                "_HoldsAConstrainedMember.inner: MultipleOf(multiple_of=2) is not a constraint the "
+                "checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _NotAJSONShape,
+            Unread(
+                "_NotAJSONShape: a is not a shape JSON takes; write it as one -- a number, string, "
+                "boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (_Readable, None),
+    ],
+    ids=["a-constraint", "a-constraint-in-a-nested-typeddict", "not-a-json-shape", "readable"],
+)
+def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
+    typeddict: type, unread: Unread | None
+) -> None:
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, and says whether it is a constraint the checker does not read, also inside a nested TypedDict, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A TypedDict the checker reads whole has no unread part."""
+    assert unread_in(typeddict, no_leaf) == unread
 
 
 @pytest.mark.parametrize(

@@ -350,13 +350,26 @@ def test_a_field_bound_to_a_scope_reads_in_that_scope() -> None:
     ("bound", "field_type"),
     [
         (Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE)], zmp.ZarrV3ArrayMetadataField),
-        (Annotated[ZarrV2GroupMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2GroupMetadataField),
+        (Annotated[ZarrV3GroupMetadata, zmp.InScope(CORE)], zmp.ZarrV3GroupMetadataField),
         (
             Annotated[ZarrV3ConsolidatedMetadata, zmp.InScope(CORE)],
             zmp.ZarrV3ConsolidatedMetadataField,
         ),
+        (Annotated[ZarrV2ArrayMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2ArrayMetadataField),
+        (Annotated[ZarrV2GroupMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2GroupMetadataField),
+        (
+            Annotated[ZarrV2ConsolidatedMetadata, zmp.InScope(CORE_V2)],
+            zmp.ZarrV2ConsolidatedMetadataField,
+        ),
     ],
-    ids=["array-v3", "group-v2", "consolidated-v3"],
+    ids=[
+        "array-v3",
+        "group-v3",
+        "consolidated-v3",
+        "array-v2",
+        "group-v2",
+        "consolidated-v2",
+    ],
 )
 def test_a_field_bound_to_a_scope_has_the_schema_of_its_field_type(
     bound: object,
@@ -439,51 +452,81 @@ def test_error_an_instance_a_scope_reads_differently_reports_each_conflict(valid
 _ZLIB_V2 = {"id": "zlib", "level": 1}
 
 
+_V3_LISTING_WITH_ZSTD = ZarrV3ConsolidatedMetadata(
+    {**V3_CONSOLIDATED_DOC, "metadata": {"a": _WITH_ZSTD}}, context=CORE_AND_EXTENSIONS
+)
+_V2_LISTING_WITH_ZLIB = ZarrV2ConsolidatedMetadata(
+    {
+        "zarr_consolidated_format": 1,
+        "metadata": {
+            ".zgroup": {"zarr_format": 2},
+            "a/.zarray": {**V2_ARRAY_DOC, "compressor": _ZLIB_V2},
+        },
+    },
+    context=CORE_V2,
+)
+_V2_WITHOUT_CODECS = ZarrV2Context(data_types=CORE_V2.data_types.values())
+
+
 @pytest.mark.parametrize(
-    ("field_type", "instance", "context", "loc", "found"),
+    ("validate", "instance", "loc", "found", "named"),
     [
-        (
-            zmp.ZarrV3ConsolidatedMetadataField,
-            ZarrV3ConsolidatedMetadata(
-                {**V3_CONSOLIDATED_DOC, "metadata": {"a": _WITH_ZSTD}},
-                context=CORE_AND_EXTENSIONS,
+        pytest.param(
+            lambda value: TypeAdapter(zmp.ZarrV3ConsolidatedMetadataField).validate_python(
+                value, context=CORE
             ),
-            CORE,
+            _V3_LISTING_WITH_ZSTD,
             ("metadata", "a", "codecs", 1),
-            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            _WITH_ZSTD["codecs"][1],
+            "zstd",
+            id="v3-validation-context",
         ),
-        (
-            zmp.ZarrV2ConsolidatedMetadataField,
-            ZarrV2ConsolidatedMetadata(
-                {
-                    "zarr_consolidated_format": 1,
-                    "metadata": {
-                        ".zgroup": {"zarr_format": 2},
-                        "a/.zarray": {**V2_ARRAY_DOC, "compressor": _ZLIB_V2},
-                    },
-                },
-                context=CORE_V2,
+        pytest.param(
+            lambda value: TypeAdapter(
+                Annotated[ZarrV3ConsolidatedMetadata, zmp.InScope(CORE)]
+            ).validate_python(value),
+            _V3_LISTING_WITH_ZSTD,
+            ("metadata", "a", "codecs", 1),
+            _WITH_ZSTD["codecs"][1],
+            "zstd",
+            id="v3-in-scope",
+        ),
+        pytest.param(
+            lambda value: TypeAdapter(zmp.ZarrV2ConsolidatedMetadataField).validate_python(
+                value, context={zmp.CONTEXT_KEY_V2: _V2_WITHOUT_CODECS}
             ),
-            {zmp.CONTEXT_KEY_V2: ZarrV2Context(data_types=CORE_V2.data_types.values())},
+            _V2_LISTING_WITH_ZLIB,
             ("metadata", "a/.zarray", "compressor"),
             _ZLIB_V2,
+            "zlib",
+            id="v2-validation-context",
+        ),
+        pytest.param(
+            lambda value: TypeAdapter(
+                Annotated[ZarrV2ConsolidatedMetadata, zmp.InScope(_V2_WITHOUT_CODECS)]
+            ).validate_python(value),
+            _V2_LISTING_WITH_ZLIB,
+            ("metadata", "a/.zarray", "compressor"),
+            _ZLIB_V2,
+            "zlib",
+            id="v2-in-scope",
         ),
     ],
-    ids=["v3", "v2"],
 )
 def test_error_a_consolidated_instance_a_scope_reads_differently_reports_each_conflict(
-    field_type: object,
+    validate: Any,  # noqa: ANN401 - a validating function
     instance: object,
-    context: object,
     loc: tuple[str | int, ...],
     found: object,
+    named: str,
 ) -> None:
-    """A consolidated instance read again in a scope that claims less would lose the meaning of a listed node's field. pydantic gets one `scope_conflict` line error, located at the field inside the listed node, a node's path for v3 and its file for v2, with that field as written as its input."""
+    """A consolidated instance read again in a scope that claims less would lose the meaning of a listed node's field, through a validation context or a field bound with `InScope`. pydantic gets one `scope_conflict` line error, located at the field inside the listed node, a node's path for v3 and its file for v2, with that field as written as its input, and a message that names the codec."""
     with pytest.raises(ValidationError) as raised:
-        TypeAdapter(field_type).validate_python(instance, context=context)
+        validate(instance)
     (line,) = raised.value.errors()
     assert (line["type"], line["loc"]) == ("scope_conflict", loc)
     assert line["input"] == found
+    assert named in line["msg"]
 
 
 @pytest.mark.parametrize(

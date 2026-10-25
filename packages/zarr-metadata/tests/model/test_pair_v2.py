@@ -456,19 +456,12 @@ def test_the_node_type_is_exported() -> None:
     assert "ZarrV2NodeMetadata" in model.__all__
 
 
-def test_the_node_type_is_a_type_alias_at_run_time() -> None:
-    """`ZarrV2NodeMetadata` is a type alias at run time, as `ZarrV3NodeMetadata` is, so the two form a union, and its value is the union of the v2 array and group models."""
-    from zarr_metadata.model import ZarrV2NodeMetadata, ZarrV3NodeMetadata
-
-    either = ZarrV2NodeMetadata | ZarrV3NodeMetadata
-    assert get_args(either) == (ZarrV2NodeMetadata, ZarrV3NodeMetadata)
-    assert get_args(ZarrV2NodeMetadata.__value__) == (ZarrV2ArrayMetadata, ZarrV2GroupMetadata)
-
-
 def test_each_node_alias_holds_its_union_at_run_time() -> None:
-    """Each alias for a node of either format holds the union of its classes at run time, not the union written as a string, so `get_args` of its value names the classes that a type checker sees."""
+    """Each alias for a node of either format, v2 and v3, is a type alias at run time, so the aliases of the two formats form a union. Each holds the union of its classes, not the union written as a string, so `get_args` of its value names the classes that a type checker sees."""
     from zarr_metadata import model
 
+    either = model.ZarrV2NodeMetadata | model.ZarrV3NodeMetadata
+    assert get_args(either) == (model.ZarrV2NodeMetadata, model.ZarrV3NodeMetadata)
     assert get_args(model.ZarrV2NodeMetadata.__value__) == (
         model.ZarrV2ArrayMetadata,
         model.ZarrV2GroupMetadata,

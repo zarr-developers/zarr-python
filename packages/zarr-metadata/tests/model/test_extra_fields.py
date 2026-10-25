@@ -279,8 +279,8 @@ class _NewTypeOfBoolOnly(TypedDict, closed=True):
     must_understand: NotRequired[_Waiver]
 
 
-# A list is not a type, and is not hashable: the checker cannot read it as a waiver.
-class _UnhashableWaiver(TypedDict, closed=True):
+# A list is not a type: the checker cannot read it as a waiver.
+class _NotATypeWaiver(TypedDict, closed=True):
     must_understand: NotRequired[[True]]  # pyright: ignore[reportGeneralTypeIssues]
 
 
@@ -338,7 +338,7 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
         _FalseOrNo,
         _BoolOrArray,
         _NewTypeOfBool,
-        _UnhashableWaiver,
+        _NotATypeWaiver,
     ],
     ids=[
         "undeclared",
@@ -348,11 +348,11 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
         "false-or-a-string",
         "bool-or-an-array",
         "a-new-type-or-null",
-        "unhashable",
+        "not-a-type",
     ],
 )
 def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
-    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, or types the waiver with an annotation that is not a type, such as an unhashable list, is refused when it is built, rather than misreading the documents that carry it."""
+    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, or types the waiver with an annotation that is not a type, such as a list, is refused when it is built, rather than misreading the documents that carry it."""
     with pytest.raises(
         TypeError, match="expected a configuration that takes must_understand as a boolean"
     ):

@@ -134,11 +134,15 @@ def test_unclaimed_fields_are_what_a_reader_must_understand(
     ids=["array", "group"],
 )
 @pytest.mark.parametrize(
-    ("member", "narrower"),
+    ("member", "wider", "narrower"),
     [
-        ({"codec": {"name": "gzip", "configuration": {"level": 1}}}, set()),
-        ({"codec": {"name": "acme.zip"}}, {("acme.mirror", "codec")}),
-        ({"codec": {"name": "acme.zip"}, "must_understand": False}, set()),
+        (
+            {"codec": {"name": "gzip", "configuration": {"level": 1}}},
+            {("acme.mirror",)},
+            set(),
+        ),
+        ({"codec": {"name": "acme.zip"}}, {("acme.mirror",)}, {("acme.mirror", "codec")}),
+        ({"codec": {"name": "acme.zip"}, "must_understand": False}, set(), set()),
     ],
     ids=["a-claimed-codec", "an-unclaimed-codec", "waived"],
 )
@@ -147,12 +151,14 @@ def test_a_model_that_refines_another_has_no_more_to_understand(
     document: dict[str, Any],
     context: Any,  # noqa: ANN401 - a v3 scope
     member: dict[str, Any],
+    wider: set[tuple[str | int, ...]],
     narrower: set[tuple[str | int, ...]],
 ) -> None:
     """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, and a waived member is left out by both."""
     claimed_less = kind({**document, "acme.mirror": member}, context=CORE)
     claimed_more = kind({**document, "acme.mirror": member}, context=context)
     assert claimed_more.refines(claimed_less)
+    assert set(claimed_less.unclaimed_fields) == wider
     assert set(claimed_more.unclaimed_fields) == narrower
     assert all(
         any(loc[: len(outer)] == outer for outer in claimed_less.unclaimed_fields)
