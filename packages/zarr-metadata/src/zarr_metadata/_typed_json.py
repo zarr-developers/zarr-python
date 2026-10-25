@@ -1238,7 +1238,7 @@ def _unread_in(
                     fallback = named
                 leads_back = True
         if len(held) != 0:
-            own = _metadata_problem(metadata, leaf)
+            own = _metadata_problem(inner, metadata)
             if own is not None:
                 return _unread_member(typeddict, key, own), True
         if leads_back:
@@ -1273,16 +1273,10 @@ def _typeddicts_in(annotation: object, seen: frozenset[object]) -> tuple[type, .
     return tuple(found)
 
 
-class _AnyObject(typing_extensions.TypedDict, closed=True):
-    """A TypedDict the checker reads, which stands in for the one a member holds when its own metadata is read."""
-
-
-def _metadata_problem(metadata: tuple[object, ...], leaf: Leaf) -> TypeError | None:
-    """The error the checker raises for `metadata` on a member that holds a TypedDict, whichever TypedDict that is; None when it reads the metadata, as it does a note."""
-    if len(metadata) == 0:
-        return None
+def _metadata_problem(inner: object, metadata: tuple[object, ...]) -> TypeError | None:
+    """The error the checker raises for `metadata` on a member of type `inner`: a constraint it does not read, or a bound on a type that is not a number; None when it reads the metadata, as it does a note."""
     try:
-        parser_for(Annotated[(_AnyObject, *metadata)], leaf)
+        _constrainable(inner, constraints_of(metadata))
     except TypeError as error:
         return error
     return None

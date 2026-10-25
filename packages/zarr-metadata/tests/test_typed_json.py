@@ -1240,6 +1240,28 @@ class _SelfReferentialThroughAnAlias(TypedDict, closed=True):
     a: set[int]
 
 
+class _BoundOnATupleThatLeadsBack(TypedDict, closed=True):
+    children: NotRequired[Annotated[tuple[_BoundOnATupleThatLeadsBack, ...], Ge(0)]]
+    a: int
+
+
+class _SelfReferentialThroughANewType(TypedDict, closed=True):
+    parent: NotRequired[_ParentOfANode]
+    a: set[int]
+
+
+# A type checker refuses a NewType of a TypedDict, but the checker reads
+# one at run time, so `unread_in` must follow it too.
+_ParentOfANode = NewType("_ParentOfANode", _SelfReferentialThroughANewType)  # pyright: ignore[reportGeneralTypeIssues]
+
+# `_MissingType` is not defined on purpose: the alias cannot be resolved.
+_UndefinedAlias = TypeAliasType("_UndefinedAlias", "_MissingType")  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
+class _HoldsAnUndefinedAlias(TypedDict, closed=True):
+    a: _UndefinedAlias
+
+
 class _SelfReferentialReadable(TypedDict, closed=True):
     parent: NotRequired[_SelfReferentialReadable]
     a: int
@@ -1422,6 +1444,30 @@ class _SelfReferentialReadable(TypedDict, closed=True):
                 constraint=False,
             ),
         ),
+        (
+            _BoundOnATupleThatLeadsBack,
+            Unread(
+                "_BoundOnATupleThatLeadsBack.children: ge: a bound is on a number, and an array of "
+                "objects is not one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialThroughANewType,
+            Unread(
+                "_SelfReferentialThroughANewType: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _HoldsAnUndefinedAlias,
+            Unread(
+                "_HoldsAnUndefinedAlias.a: _UndefinedAlias: name '_MissingType' is not defined; "
+                "its value must resolve in its module",
+                constraint=False,
+            ),
+        ),
         (_SelfReferentialReadable, None),
         (_Readable, None),
     ],
@@ -1447,6 +1493,9 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         "a-typeddict-in-a-tuple",
         "a-constraint-on-a-member-whose-typeddict-is-not-a-json-shape",
         "self-referential-through-an-alias",
+        "a-bound-on-a-tuple-that-leads-back",
+        "self-referential-through-a-newtype",
+        "an-alias-that-does-not-resolve",
         "self-referential-and-readable",
         "readable",
     ],
