@@ -808,8 +808,10 @@ class ZarrV3ArrayMetadata(Keyed):
         """Return the model of the array document at `zarr.json` in `mapping`, read in `context`.
 
         Raises `MetadataValidationError` when the key is missing, its bytes
-        are not JSON, or the document is not valid.
+        are not JSON, or the document is not valid. Raises `TypeError` for
+        a scope of another format before any bytes are decoded.
         """
+        context = scoped(context, CORE_AND_EXTENSIONS)
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
