@@ -103,6 +103,7 @@ config = Config(
                 "rectilinear_chunks": False,
                 "sharding_coalesce_max_gap_bytes": 1 << 20,  # 1 MiB
                 "sharding_coalesce_max_bytes": 16 << 20,  # 16 MiB
+                "iter_block_max_bytes": 128 << 20,  # 128 MiB
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
