@@ -1186,10 +1186,21 @@ class Unread:
 
 def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
     """The part of `typeddict` that has no parser, named down to the TypedDict that contains it; None if every part has one."""
+    return _unread_in(typeddict, leaf, frozenset({typeddict}))
+
+
+def _unread_in(typeddict: type, leaf: Leaf, visiting: frozenset[type]) -> Unread | None:
+    """`unread_in` for `typeddict`, looked inside from each TypedDict in `visiting`, itself included.
+
+    A member that holds one of `visiting` again is named only when nothing
+    else in `typeddict` is unread: what is unread in that TypedDict is
+    found at its own members, so looking inside it again would not end.
+    """
     keys = typeddict_keys(typeddict)
     others: list[tuple[str, object]] = []
     if not (keys.closed or keys.open):
         others.append(("extra_items", keys.extra_items))
+    held_again: Unread | None = None
     for key, annotation in [*((key, member[0]) for key, member in keys.members.items()), *others]:
         failed: TypeError | None = None
         try:
@@ -1200,27 +1211,34 @@ def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
             continue
         inner = strip_annotation(annotation)[0]
         if isinstance(inner, type) and is_typeddict(inner):
+            if inner in visiting:
+                if held_again is None:
+                    held_again = _unread_member(typeddict, key, failed)
+                continue
             # Name the part inside a nested TypedDict, whether its parser
             # failed or there is none.
             try:
-                deeper = unread_in(inner, leaf)
-            except TypeError:
-                if failed is None:
-                    raise
-                # The nested TypedDict cannot be read at all, which the
-                # error from its parser says.
-                deeper = None
+                deeper = _unread_in(inner, leaf, visiting | {inner})
+            except TypeError as error:
+                # The nested TypedDict cannot be read at all, which this
+                # error says.
+                failed, deeper = error, None
             if deeper is not None:
                 return Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
-        if failed is not None:
-            constraint = isinstance(failed, UnreadConstraintError)
-            return Unread(f"{typeddict.__name__}.{key}: {failed}", constraint)
-        message = (
-            f"{typeddict.__name__}: {key} is not a shape JSON takes; write it as one -- a "
-            "number, string, boolean, null, array, object, or an alias of one"
-        )
-        return Unread(message, constraint=False)
-    return None
+        return _unread_member(typeddict, key, failed)
+    return held_again
+
+
+def _unread_member(typeddict: type, key: str, failed: TypeError | None) -> Unread:
+    """The member `key` of `typeddict` as unread: the error its parser raised, or, when it has no parser, that it is not a shape JSON takes."""
+    if failed is not None:
+        constraint = isinstance(failed, UnreadConstraintError)
+        return Unread(f"{typeddict.__name__}.{key}: {failed}", constraint)
+    message = (
+        f"{typeddict.__name__}: {key} is not a shape JSON takes; write it as one -- a "
+        "number, string, boolean, null, array, object, or an alias of one"
+    )
+    return Unread(message, constraint=False)
 
 
 @functools.cache

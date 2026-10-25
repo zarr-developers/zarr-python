@@ -1148,6 +1148,35 @@ class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
     inner: Annotated[_ConstrainedMember, MultipleOf(2)]
 
 
+class _SelfReferentialWithAConstraint(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialWithAConstraint]
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _SelfReferentialNotAJSONShape(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialNotAJSONShape]
+    a: set[int]
+
+
+class _SelfReferentialConstraintOnItself(TypedDict, closed=True):
+    parent: NotRequired[Annotated[_SelfReferentialConstraintOnItself, MultipleOf(2)]]
+    a: int
+
+
+class _CycleOut(TypedDict, closed=True):
+    b: _CycleBack
+
+
+class _CycleBack(TypedDict, closed=True):
+    a: NotRequired[_CycleOut]
+    x: set[int]
+
+
+class _SelfReferentialReadable(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialReadable]
+    a: int
+
+
 @pytest.mark.parametrize(
     ("typeddict", "unread"),
     [
@@ -1209,6 +1238,39 @@ class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
                 constraint=True,
             ),
         ),
+        (
+            _SelfReferentialWithAConstraint,
+            Unread(
+                "_SelfReferentialWithAConstraint.a: MultipleOf(multiple_of=2) is not a constraint "
+                "the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _SelfReferentialNotAJSONShape,
+            Unread(
+                "_SelfReferentialNotAJSONShape: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialConstraintOnItself,
+            Unread(
+                "_SelfReferentialConstraintOnItself.parent: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _CycleOut,
+            Unread(
+                "_CycleOut.b: _CycleBack: x is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (_SelfReferentialReadable, None),
         (_Readable, None),
     ],
     ids=[
@@ -1219,13 +1281,18 @@ class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
         "a-nested-typeddict-that-cannot-be-read",
         "a-constraint-on-a-member-that-is-a-typeddict",
         "a-constraint-on-the-member-and-inside-its-typeddict",
+        "self-referential-with-a-constraint",
+        "self-referential-not-a-json-shape",
+        "self-referential-with-a-constraint-on-the-reference",
+        "a-cycle-of-two-typeddicts",
+        "self-referential-and-readable",
         "readable",
     ],
 )
 def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
     typeddict: type, unread: Unread | None
 ) -> None:
-    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first. A TypedDict the checker reads whole has no unread part."""
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first. A TypedDict that holds itself, directly or through another, is named where its own members are unread, and a member that leads back is named only when nothing else is. A TypedDict the checker reads whole has no unread part."""
     assert unread_in(typeddict, no_leaf) == unread
 
 
