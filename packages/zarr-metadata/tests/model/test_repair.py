@@ -105,8 +105,37 @@ NAN_FLOAT64: dict[str, Any] = {**FLOAT64, "fill_value": math.nan}
                 )
             ],
         ),
+        (
+            _consolidated(a={**COMPLEX128, "fill_value": (math.nan, -math.inf)}),
+            _consolidated(a={**COMPLEX128, "fill_value": ("NaN", "-Infinity")}),
+            [
+                (
+                    ("consolidated_metadata", "metadata", "a", "fill_value", 0),
+                    "non_finite_fill_value",
+                ),
+                (
+                    ("consolidated_metadata", "metadata", "a", "fill_value", 1),
+                    "non_finite_fill_value",
+                ),
+            ],
+        ),
+        (
+            _consolidated(a={**COMPLEX128, "fill_value": [math.nan, 0.0]}),
+            _consolidated(a={**COMPLEX128, "fill_value": ("NaN", 0.0)}),
+            [
+                (
+                    ("consolidated_metadata", "metadata", "a", "fill_value", 0),
+                    "non_finite_fill_value",
+                )
+            ],
+        ),
         # Not a known writer bug: left for the strict read to check.
         (ARRAY, ARRAY, []),
+        (
+            _consolidated(a={**FLOAT64, "fill_value": "NaN"}),
+            _consolidated(a={**FLOAT64, "fill_value": "NaN"}),
+            [],
+        ),
         (NAN_INT, NAN_INT, []),
         (NAN_FLOAT64, NAN_FLOAT64, []),
         ({**ARRAY, "chunk_grid": _grid(3, 0)}, {**ARRAY, "chunk_grid": _grid(3, 0)}, []),
@@ -128,7 +157,10 @@ NAN_FLOAT64: dict[str, Any] = {**FLOAT64, "fill_value": math.nan}
         "non-finite-float-fill",
         "non-finite-complex-fill",
         "non-finite-fill-inside-consolidated",
+        "non-finite-complex-fill-in-both-parts",
+        "non-finite-complex-fill-as-a-list",
         "valid",
+        "named-non-finite-fill",
         "non-finite-fill-of-an-integer-type",
         "non-finite-fill-outside-a-listing",
         "zero-chunk-on-a-full-dimension",
@@ -141,7 +173,7 @@ NAN_FLOAT64: dict[str, Any] = {**FLOAT64, "fill_value": math.nan}
 def test_repair_undoes_each_known_writer_bug(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """Each known writer bug in a document, including in its consolidated documents, is undone, and each repair reports its location: a zero chunk length along an empty dimension, a null `consolidated_metadata`, and a float or complex fill value that zarr-python 3.0.0 to 3.0.6 wrote as a bare `NaN` or infinity in a listing. Those versions wrote a node's own `zarr.json` correctly, so such a fill value there is no known writer bug. Anything else is left unchanged for the strict read to report. The input document is not modified."""
+    """Each known writer bug in a document, including in its consolidated documents, is undone, and each repair reports its location: a zero chunk length along an empty dimension, a null `consolidated_metadata`, and a float or complex fill value that zarr-python 3.0.0 to 3.0.6 wrote as a bare `NaN` or infinity in a listing. Each non-finite part of a complex fill value is its own repair, and the repaired fill value is a tuple, as a JSON array is. Those versions wrote a node's own `zarr.json` correctly, so such a fill value there is no known writer bug, nor is a fill value already written by name, such as `"NaN"`. Anything else is left unchanged for the strict read to report. The input document is not modified."""
     before = copy.deepcopy(value)
     document, made = repair_node_metadata_v3(value)
     assert document == repaired
@@ -271,17 +303,35 @@ def test_repair_v2_node_writes_a_bare_non_finite_fill_value_by_name(
         assert document is files
 
 
-def test_read_repaired_v2_node_reads_what_the_strict_read_refuses() -> None:
-    """The strict `read_node_metadata_v2` refuses the `.zarray` that zarr-python 3.0.0 to 3.0.6 wrote for a NaN fill value. `read_repaired_node_metadata_v2` reads the repaired files, with the same result as a strict read of them, and lists the repairs. A valid node reads the same either way."""
-    files = {".zarray": json.loads(NAN_ZARRAY_BYTES)}
-    assert [p.loc for p in read_node_metadata_v2(files).problems] == [("fill_value",)]
+@pytest.mark.parametrize(
+    ("files", "model", "repaired_at"),
+    [
+        ({".zarray": NAN_ZARRAY}, ZarrV2ArrayMetadata(NAMED_ZARRAY), [("fill_value",)]),
+        (
+            {".zarray": {**COMPLEX_ZARRAY, "fill_value": [math.nan, math.inf]}},
+            ZarrV2ArrayMetadata({**COMPLEX_ZARRAY, "fill_value": ("NaN", "Infinity")}),
+            [("fill_value", 0), ("fill_value", 1)],
+        ),
+        (
+            {".zarray": {**COMPLEX_ZARRAY, "fill_value": [1.5, -math.inf]}},
+            ZarrV2ArrayMetadata({**COMPLEX_ZARRAY, "fill_value": (1.5, "-Infinity")}),
+            [("fill_value", 1)],
+        ),
+        ({".zgroup": {"zarr_format": 2}}, ZarrV2GroupMetadata({"zarr_format": 2}), []),
+    ],
+    ids=["float", "complex", "complex-one-component", "valid-group"],
+)
+def test_read_repaired_v2_node_reads_what_the_strict_read_refuses(
+    files: dict[str, object], model: object, repaired_at: list[tuple[str | int, ...]]
+) -> None:
+    """The strict `read_node_metadata_v2` refuses the `.zarray` that zarr-python 3.0.0 to 3.0.6 wrote for a non-finite float or complex fill value, at each non-finite number. `read_repaired_node_metadata_v2` reads the repaired files, with the same result as a strict read of them, and lists a repair at each place the strict read refused. A valid node reads the same either way."""
+    assert [p.loc for p in read_node_metadata_v2(files).problems] == repaired_at
     repaired = read_repaired_node_metadata_v2(files)
     assert repaired.reading.problems == ()
-    assert repaired.reading.metadata == ZarrV2ArrayMetadata(NAMED_ZARRAY)
-    assert [r.kind for r in repaired.repairs] == ["non_finite_fill_value"]
-    group = read_repaired_node_metadata_v2({".zgroup": {"zarr_format": 2}})
-    assert group.reading.metadata == ZarrV2GroupMetadata({"zarr_format": 2})
-    assert group.repairs == ()
+    assert repaired.reading.metadata == model
+    assert [(r.loc, r.kind) for r in repaired.repairs] == [
+        ((".zarray", *loc), "non_finite_fill_value") for loc in repaired_at
+    ]
 
 
 def test_read_repaired_v2_node_reports_what_no_repair_applies_to() -> None:

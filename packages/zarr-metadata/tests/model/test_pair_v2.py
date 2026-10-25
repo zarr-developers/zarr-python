@@ -140,9 +140,11 @@ def test_properties_are_what_the_reading_holds() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: dict[str, Any], right: dict[str, Any], same: bool
 ) -> None:
-    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, a fill value written as an integer or a float, or a codec parameter written or left to its numcodecs default, gives equal models. No `.zattrs` and an empty one give equal models, since both mean no attributes, as in v3. A different byte order or a codec parameter away from its default gives different models. Equal models have equal hashes."""
+    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, a fill value written as an integer or a float, or a codec parameter written or left to its numcodecs default, gives equal models. No `.zattrs` and an empty one give equal models, since both mean no attributes, as in v3. A different byte order or a codec parameter away from its default gives different models. Equal models have equal hashes, and refine each other: read in one scope, `refines` is that equality."""
     one, other = ZarrV2ArrayMetadata(_document(left)), ZarrV2ArrayMetadata(_document(right))
     assert (one == other) is same
+    assert one.refines(other) is same
+    assert other.refines(one) is same
     if same:
         assert hash(one) == hash(other)
 
@@ -293,7 +295,7 @@ def test_a_group_is_its_document_read_in_its_scope(
 
 
 def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
-    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no field. Two groups are equal when their attributes are written the same way, and `refines` is that equality."""
+    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no field. Two groups are equal when their attributes are written the same way, and `refines` is that equality. No `.zattrs` counts as empty attributes, so a group with none and a group with an empty one are equal and refine each other."""
     model = ZarrV2GroupMetadata(GROUP)
     assert model.update(attributes={"h": 2}).attributes == {"h": 2}
     removed = model.update(attributes=UNSET)
@@ -305,6 +307,11 @@ def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
     assert model != ZarrV2GroupMetadata({"zarr_format": 2})
     assert model.refines(model)
     assert not model.refines(ZarrV2GroupMetadata({"zarr_format": 2}))
+    absent = ZarrV2GroupMetadata({"zarr_format": 2})
+    empty = ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {}})
+    assert absent == empty
+    assert absent.refines(empty)
+    assert empty.refines(absent)
     assert not dataclasses.is_dataclass(ZarrV2GroupMetadata)
 
 
@@ -365,21 +372,32 @@ def test_consolidated_metadata_maps_each_node_path_to_its_model() -> None:
 def test_consolidated_metadata_is_written_in_the_order_it_was_read(
     document: dict[str, Any],
 ) -> None:
-    """`to_json` and `to_key_value` write the top-level keys of a `.zmetadata` in the order the document writes them, as the v3 models do. zarr-python 3 writes `metadata` first. A model built by `read_consolidated_metadata_v2` keeps the order too."""
+    """`to_json` and `to_key_value` write the top-level keys of a `.zmetadata` in the order the document writes them, as the v3 models do. zarr-python 3 writes `metadata` first. A model built by `read_consolidated_metadata_v2`, unpickled, or moved to another scope by `with_context` keeps the order too. The order means nothing, so the models of a document and of its keys in the other order are equal, with equal hashes."""
     model = ZarrV2ConsolidatedMetadata(document)
     assert list(model.to_json()) == list(document)
     assert list(json.loads(model.to_key_value()[".zmetadata"])) == list(document)
     reading = read_consolidated_metadata_v2(document)
     assert reading.metadata is not None
     assert list(reading.metadata.to_json()) == list(document)
+    assert list(pickle.loads(pickle.dumps(model)).to_json()) == list(document)
+    assert list(model.with_context(PRIVATE).to_json()) == list(document)
+    reordered = ZarrV2ConsolidatedMetadata(dict(reversed(document.items())))
+    assert list(reordered.to_json()) != list(document)
+    assert model == reordered
+    assert hash(model) == hash(reordered)
 
 
 def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them() -> None:
-    """Two consolidated documents are equal when each node means the same and the other entries are written the same way. `with_context` and `refined_in` read every node in the new scope, and a conflict is located at the node's entry. `refines` is true when each node refines its counterpart."""
+    """Two consolidated documents are equal when each node means the same and the other entries are written the same way. A node with no `.zattrs` means the same as one with an empty `.zattrs`, as a node read on its own does, so the documents are equal, with equal hashes, and refine each other. `with_context` and `refined_in` read every node in the new scope, and a conflict is located at the node's entry. `refines` is true when each node refines its counterpart."""
     spelled = _consolidated(**{"a/.zarray": {**ZARRAY, "fill_value": 0.0}})
     assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) == ZarrV2ConsolidatedMetadata(spelled)
     other = _consolidated(**{"orphan/.zattrs": {"o": 2}})
     assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) != ZarrV2ConsolidatedMetadata(other)
+    empty = ZarrV2ConsolidatedMetadata(_consolidated(**{"b/.zattrs": {}}))
+    assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) == empty
+    assert hash(ZarrV2ConsolidatedMetadata(CONSOLIDATED)) == hash(empty)
+    assert ZarrV2ConsolidatedMetadata(CONSOLIDATED).refines(empty)
+    assert empty.refines(ZarrV2ConsolidatedMetadata(CONSOLIDATED))
     small = ZarrV2ConsolidatedMetadata(CONSOLIDATED, SMALL)
     assert isinstance(small.metadata["a"], ZarrV2ArrayMetadata)
     assert isinstance(small.metadata["a"].compressor, UnclaimedField)

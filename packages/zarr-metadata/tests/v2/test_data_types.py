@@ -309,6 +309,9 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         ([["s", "<U1", [3]]], "AAAAAAAAAAAAAAAA", True),
         ([], "", True),
         ([], "AA==", False),
+        ([], None, True),
+        ([["a", []], ["b", "<i4"]], "AAAAAA==", True),
+        ([["a", []], ["b", "<i4"]], "AAAAAAA=", False),
     ],
     ids=[
         "void",
@@ -329,12 +332,15 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         "str-subarray",
         "empty-struct",
         "empty-struct-long",
+        "empty-struct-null",
+        "empty-struct-field",
+        "empty-struct-field-long",
     ],
 )
 def test_a_base64_fill_value_is_as_long_as_its_item(
-    dtype: JSONValue, fill_value: str, accepted: bool
+    dtype: JSONValue, fill_value: str | None, accepted: bool
 ) -> None:
-    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each, and a struct with no fields takes no bytes. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
+    """A void or struct fill value must decode to exactly the item size, or be null. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each, and a struct with no fields takes no bytes, also as the field of another struct. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
 
     document = {

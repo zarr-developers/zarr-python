@@ -185,6 +185,28 @@ def test_error_a_node_file_that_holds_attributes_still_reports_its_other_problem
     assert [(p.loc, p.kind) for p in raised.value.problems] == found
 
 
+def test_error_a_node_file_that_holds_attributes_next_to_a_bad_zattrs_reports_both() -> None:
+    """A `.zarray` that holds `attributes`, next to a `.zattrs` that is not an object, has two problems, one in each file, and neither hides the other. `read_node_metadata_v2` and the model's `from_key_value` merge the files, so both are at `attributes`. `read_consolidated_metadata_v2` reads the entries apart, so it reports each at its own entry."""
+    held = {**ZARRAY, "attributes": {}}
+    found = [(("attributes",), "invalid_value"), (("attributes",), "invalid_type")]
+    assert [
+        (p.loc, p.kind) for p in read_node_metadata_v2(_files(_zarray=held, _zattrs=5)).problems
+    ] == found
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ArrayMetadata.from_key_value(_store(_zarray=held, _zattrs=5))
+    assert [(p.loc, p.kind) for p in raised.value.problems] == found
+    from_entries = read_consolidated_metadata_v2(
+        {
+            "zarr_consolidated_format": 1,
+            "metadata": {".zgroup": {"zarr_format": 2}, "a/.zarray": held, "a/.zattrs": 5},
+        }
+    ).problems
+    assert [(p.loc, p.kind) for p in from_entries] == [
+        (("metadata", "a/.zarray", "attributes"), "invalid_value"),
+        (("metadata", "a/.zattrs"), "invalid_type"),
+    ]
+
+
 def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> None:
     """Decoding is the store's step: a store file whose bytes are not JSON makes `node_metadata_from_key_value_v2` raise with an `invalid_json` problem at the file."""
     with pytest.raises(MetadataValidationError) as raised:
