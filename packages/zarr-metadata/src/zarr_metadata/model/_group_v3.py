@@ -308,9 +308,11 @@ class ZarrV3GroupMetadata(Keyed):
 
         This answers whether a reader can open the group: the spec requires
         a reader to refuse a node with a field it does not understand, and
-        the scope is what the reader understands. A codec inside a shard is
-        located inside the shard's configuration. The model only reports
-        these fields; refusing to open is up to the reader.
+        the scope is what the reader understands. The fields of the
+        documents that the group's `consolidated_metadata` lists are not
+        included, because the group does not read those documents; read
+        them with `consolidated()`. The model only reports these fields;
+        refusing to open is up to the reader.
         """
         return unclaimed_fields_of(self._reading.fields(), waived_members(self._shown[1]))
 
@@ -321,7 +323,9 @@ class ZarrV3GroupMetadata(Keyed):
         fails only here. Raises `MetadataValidationError` with every problem
         in them, located in this group's document, under
         `consolidated_metadata`. A member that is not an object, which only a
-        scope that leaves it unclaimed opens, is such a problem too.
+        scope that leaves it unclaimed opens, is such a problem too. That
+        includes a member that is `null`, which zarr-python 3.0 and 3.1
+        wrote; `read_repaired_node_metadata_v3` removes it.
         """
         if ZARR_V3_CONSOLIDATED_METADATA_KEY not in self._document:
             return None

@@ -200,8 +200,8 @@ def _zero_chunk_length(
         Repair(
             (*at, "chunk_grid", "configuration", "chunk_shape", axis),
             "zero_chunk_length",
-            "a chunk length of 0 along a dimension of length 0, as zarr-python 3.0 and 3.1 "
-            "wrote it, written as 1",
+            "a regular grid's chunk length of 0 along a dimension of length 0, as zarr-python "
+            "3.0 and 3.1 wrote it, written as 1",
         )
         for axis in zeros
     )

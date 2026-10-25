@@ -20,7 +20,7 @@ from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
 
 
 class ZarrV2ShuffleParameters(TypedDict, closed=True):
-    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger one to C as a `Py_ssize_t`, so it is at most 2**63 - 1, and raises `OverflowError` for any other."""
+    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger one to C as a `Py_ssize_t`, so it is at most 2**63 - 1 on a 64-bit platform, and raises `OverflowError` for any other."""
 
     elementsize: NotRequired[ReadOnly[Annotated[int, Le(2**63 - 1)]]]
 

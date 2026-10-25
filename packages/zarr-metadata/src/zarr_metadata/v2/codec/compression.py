@@ -63,7 +63,10 @@ class ZarrV2BloscParameters(TypedDict, closed=True):
     bit shuffle. numcodecs writes a `shuffle` given as `True` or `False`
     as it was given, and reads it as 1 or 0. A `blocksize` of 0 lets Blosc
     choose the block size. numcodecs reads any `blocksize` that fits in a
-    C `int`, negative ones included.
+    C `int`, negative ones included. Blosc reads any `blocksize` other
+    than 0 as a size in bytes, and raises one below its minimum of 128
+    bytes to that minimum, so a negative `blocksize` does not mean
+    automatic.
     """
 
     cname: NotRequired[ReadOnly[ZarrV2BloscCName]]

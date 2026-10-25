@@ -211,8 +211,9 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     a group's `consolidated_metadata` is the envelope the core spec
     fixes, with any JSON as the documents it lists, because the reader
     does not read them, and a `null` value, which zarr-python 3.0 and 3.1
-    wrote, is refused, because the reader refuses it too. Each document is in `$defs` under the name of its
-    TypedDict. `ZarrV3ArrayMetadataJSON` describes only an array.
+    wrote, is refused, because the reader refuses it too. Each document
+    is in `$defs` under the name of its TypedDict.
+    `ZarrV3ArrayMetadataJSON` describes only an array.
 
     A JSON Schema describes each member on its own. It does not contain
     the rules that relate members to each other: one dimension name per

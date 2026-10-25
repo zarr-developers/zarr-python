@@ -99,12 +99,12 @@ def member_changes(
 ) -> dict[str, object]:
     """The document members that `members`, given to a model's `update` or `create_default`, set: each member that `update` (the model's update TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
 
-    Raises `TypeError` for a member that `update` does not declare, for a
-    member of `extra_fields` that the spec defines (one of
-    `spec_members`) or that `update` takes by name, and for a field given
-    where a member's JSON goes. So a misspelled member is never written as a member
-    the spec does not define, which a reader that must understand every
-    such member would refuse.
+    Raises `TypeError` for a member that `update` does not declare, and
+    for a member of `extra_fields` that the spec defines (one of
+    `spec_members`) or that `update` takes by name. So a misspelled
+    member is never written as a member the spec does not define, which a
+    reader that must understand every such member would refuse. Also
+    raises `TypeError` for a field given where a member's JSON goes.
     """
     declared = typeddict_keys(update).members
     unknown = [key for key in members if key not in declared]
