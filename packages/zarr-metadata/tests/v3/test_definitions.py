@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import math
 import pickle
+import re
 from collections.abc import (
     Mapping,
 )
@@ -1665,3 +1666,29 @@ def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> No
 def test_error_a_refined_field_is_not_read_in_a_scope_of_the_other_format() -> None:
     with pytest.raises(TypeError, match="got a v2 scope"):
         resolve_refined("gzip", "gzip", (), CodecDefinition, CORE_V2)
+
+
+V2_IN_A_V3_SCOPE = (
+    "a v2 codec is a field of a Zarr v2 document, read in a scope of that format, got a v3 scope"
+)
+V3_IN_A_V2_SCOPE = (
+    "a codec is a field of a Zarr v3 document, read in a scope of that format, got a v2 scope"
+)
+
+
+@pytest.mark.parametrize(
+    ("field", "kind", "context", "message"),
+    [
+        ({"id": "gzip"}, ZarrV2CodecDefinition, CORE, V2_IN_A_V3_SCOPE),
+        (5, ZarrV2CodecDefinition, CORE, V2_IN_A_V3_SCOPE),
+        ({"name": "gzip"}, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
+        (5, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
+    ],
+    ids=["v2-named", "v2-nameless", "v3-named", "v3-nameless"],
+)
+def test_error_resolve_refuses_a_kind_of_the_other_format_whatever_the_field(
+    field: object, kind: type[Definition[Any]], context: Context, message: str
+) -> None:
+    """`resolve` with a kind of one format and a scope of the other raises one `TypeError`, before it reads the field. So the message is the same for a field with a name that a scope could look up and for a value with no name."""
+    with pytest.raises(TypeError, match=f"^{re.escape(message)}$"):
+        resolve(field, kind, context)

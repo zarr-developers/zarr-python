@@ -1367,12 +1367,24 @@ def resolve(
         msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {described(context)}"
         raise TypeError(msg)
     asked = as_kind(kind)
+    _check_format(asked, context)
     name = asked._named_configuration(data)[0]
     definition = (
         None if name is None or not asked._well_named(name) else context.claimant(asked, name)
     )
     refined, problems = asked._refined(data, loc, definition)
     return resolve_refined(data, refined, problems, kind, context, loc)
+
+
+def _check_format(kind: type[Definition[Any]], context: Context) -> None:
+    """Raise `TypeError` when `context` is a scope of a format other than `kind`'s."""
+    scope_format = context.zarr_format
+    if scope_format != format_of(kind):
+        msg = (
+            f"a {kind.label} is a field of a Zarr v{format_of(kind)} document, read in a scope "
+            f"of that format, got a v{scope_format} scope"
+        )
+        raise TypeError(msg)
 
 
 def _is_scope(value: object) -> bool:
@@ -1419,13 +1431,7 @@ def resolve_refined(
     JSON. If it contains any problems, `refined` is not used.
     """
     asked = as_kind(kind)
-    scope_format = context.zarr_format
-    if scope_format != format_of(asked):
-        msg = (
-            f"a {asked.label} is a field of a Zarr v{format_of(asked)} document, read in a scope "
-            f"of that format, got a v{scope_format} scope"
-        )
-        raise TypeError(msg)
+    _check_format(asked, context)
     if len(problems) != 0:
         # The value is not JSON, so it is not read. If it has a name, the
         # name still determines which definition claims it. A name that is
