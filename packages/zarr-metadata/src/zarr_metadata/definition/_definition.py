@@ -76,7 +76,6 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
-    UNREAD_CONSTRAINT,
     Loc,
     Parsed,
     Parser,
@@ -634,8 +633,8 @@ def _vet(configuration: type, zarr_format: int | None) -> None:
     unread = unread_in(configuration, vetting)
     if unread is not None:
         # A constraint the checker does not read is one a rule checks.
-        advice = "; check it in the definition's `rules`" if UNREAD_CONSTRAINT in unread else ""
-        msg = f"{unread}{advice}"
+        advice = "; check it in the definition's `rules`" if unread.constraint else ""
+        msg = f"{unread.message}{advice}"
         raise TypeError(msg)
 
 

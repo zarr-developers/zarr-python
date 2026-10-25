@@ -97,8 +97,10 @@ Loc: TypeAlias = tuple[str | int, ...]
 Parsed: TypeAlias = tuple[object, tuple[ValidationProblem, ...]]
 """The result of a parser: the typed value, and every problem found with it."""
 
-UNREAD_CONSTRAINT: Final = "is not a constraint the checker reads"
-"""What the checker says of `Annotated` metadata it does not read, such as `MultipleOf`."""
+
+class UnreadConstraintError(TypeError):
+    """Raised for `Annotated` metadata the checker does not read, such as `MultipleOf`."""
+
 
 Parser: TypeAlias = Callable[[object, Loc], Parsed]
 """Checks one value at `loc` against one annotation. Compiled once, run many times."""
@@ -849,8 +851,8 @@ def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
             continue
         name = next((name for kind, name in _BOUNDS if isinstance(item, kind)), None)
         if name is None:
-            msg = f"{item!r} {UNREAD_CONSTRAINT}, which are Gt, Ge, Lt and Le"
-            raise TypeError(msg)
+            msg = f"{item!r} is not a constraint the checker reads, which are Gt, Ge, Lt and Le"
+            raise UnreadConstraintError(msg)
         side = _FROM_BELOW if name in _FROM_BELOW else _FROM_ABOVE
         if not side.isdisjoint(said):
             where = "below" if side is _FROM_BELOW else "above"
@@ -1163,12 +1165,26 @@ def parser(annotation: object, leaf: Leaf) -> Parser:
     if found is None:
         inner = strip_annotation(annotation)[0]
         unread = unread_in(inner, leaf) if isinstance(inner, type) and is_typeddict(inner) else None
-        msg = unread or f"{annotation!r} is not a shape JSON takes"
-        raise TypeError(msg)
+        if unread is None:
+            msg = f"{annotation!r} is not a shape JSON takes"
+            raise TypeError(msg)
+        if unread.constraint:
+            raise UnreadConstraintError(unread.message)
+        raise TypeError(unread.message)
     return found
 
 
-def unread_in(typeddict: type, leaf: Leaf) -> str | None:
+@dataclass(frozen=True, slots=True)
+class Unread:
+    """The part of a TypedDict that has no parser, as `unread_in` finds it."""
+
+    message: str
+    """The part, named down to the TypedDict that contains it, and why it has no parser."""
+    constraint: bool
+    """Whether the part is a constraint the checker does not read, which a rule can check instead."""
+
+
+def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
     """The part of `typeddict` that has no parser, named down to the TypedDict that contains it; None if every part has one."""
     keys = typeddict_keys(typeddict)
     others: list[tuple[str, object]] = []
@@ -1178,18 +1194,20 @@ def unread_in(typeddict: type, leaf: Leaf) -> str | None:
         try:
             member = parser_for(annotation, leaf)
         except TypeError as error:
-            return f"{typeddict.__name__}.{key}: {error}"
+            constraint = isinstance(error, UnreadConstraintError)
+            return Unread(f"{typeddict.__name__}.{key}: {error}", constraint)
         if member is not None:
             continue
         inner = strip_annotation(annotation)[0]
         if isinstance(inner, type) and is_typeddict(inner):
             deeper = unread_in(inner, leaf)
             if deeper is not None:
-                return f"{typeddict.__name__}.{key}: {deeper}"
-        return (
+                return Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
+        message = (
             f"{typeddict.__name__}: {key} is not a shape JSON takes; write it as one -- a "
             "number, string, boolean, null, array, object, or an alias of one"
         )
+        return Unread(message, constraint=False)
     return None
 
 
@@ -1489,6 +1507,8 @@ __all__ = [
     "Schemas",
     "Tag",
     "TypedDictKeys",
+    "Unread",
+    "UnreadConstraintError",
     "alias_value",
     "any_of",
     "check",
