@@ -1189,29 +1189,23 @@ def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
     return _unread_in(typeddict, leaf, frozenset({typeddict}))[0]
 
 
-# How sure `_unread_in` is that the part it names is what is unread: the
-# part itself, or a member that leads back into a TypedDict being looked
-# inside, with metadata of its own or without.
-_DEFINITIVE: Final = 2
-_LEADS_BACK_WITH_METADATA: Final = 1
-_LEADS_BACK: Final = 0
+def _unread_in(
+    typeddict: type, leaf: Leaf, visiting: frozenset[type]
+) -> tuple[Unread | None, bool]:
+    """The unread part of `typeddict`, looked inside from each TypedDict in `visiting`, itself included, and whether it is surely the part that is unread.
 
-
-def _unread_in(typeddict: type, leaf: Leaf, visiting: frozenset[type]) -> tuple[Unread | None, int]:
-    """The unread part of `typeddict`, looked inside from each TypedDict in `visiting`, itself included, and how sure it is.
-
-    A member that leads back to one of `visiting`, directly or through
-    what it holds, may be unread only because of what is unread there,
-    which is found at that TypedDict's own members. Looking inside it again
-    would not end, so such a member is named only when nothing else is
-    unread. Metadata of its own, such as a constraint, can make it unread
-    by itself, so a member with metadata is named before one without.
+    Each TypedDict a member holds, directly or in a union or a container,
+    is looked inside. A member that leads back to one of `visiting` may be
+    unread only because of what is unread there, which is found at that
+    TypedDict's own members. Looking inside it again would not end, so
+    such a member is named only when nothing else is unread, unless the
+    checker does not read metadata of its own, such as a constraint.
     """
     keys = typeddict_keys(typeddict)
     others: list[tuple[str, object]] = []
     if not (keys.closed or keys.open):
         others.append(("extra_items", keys.extra_items))
-    fallbacks: dict[int, Unread] = {}
+    fallback: Unread | None = None
     for key, annotation in [*((key, member[0]) for key, member in keys.members.items()), *others]:
         failed: TypeError | None = None
         try:
@@ -1221,39 +1215,61 @@ def _unread_in(typeddict: type, leaf: Leaf, visiting: frozenset[type]) -> tuple[
         if member is not None:
             continue
         inner, metadata = strip_annotation(annotation)
-        own = _LEADS_BACK_WITH_METADATA if len(metadata) != 0 else _LEADS_BACK
-        if isinstance(inner, type) and is_typeddict(inner):
-            if inner in visiting:
-                fallbacks.setdefault(own, _unread_member(typeddict, key, failed))
+        held = _typeddicts_in(inner)
+        if len(held) != 0:
+            own = _metadata_problem(metadata, leaf)
+            if own is not None:
+                return _unread_member(typeddict, key, own), True
+        leads_back = not visiting.isdisjoint(held)
+        for nested in held:
+            if nested in visiting:
                 continue
-            # Name the part inside a nested TypedDict, whether its parser
-            # failed or there is none.
+            # Name the part inside a TypedDict the member holds, whether
+            # the member's parser failed or there is none.
             try:
-                deeper, sure = _unread_in(inner, leaf, visiting | {inner})
+                deeper, sure = _unread_in(nested, leaf, visiting | {nested})
             except TypeError as error:
                 # The nested TypedDict cannot be read at all, which this
                 # error says.
-                failed = error
-            else:
-                if deeper is not None:
-                    named = Unread(
-                        f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint
-                    )
-                    if sure == _DEFINITIVE:
-                        return named, _DEFINITIVE
-                    # What is unread inside leads back: this member's own
-                    # metadata, if any, is a likelier cause than a member
-                    # inside that leads back.
-                    if own == _LEADS_BACK_WITH_METADATA:
-                        fallbacks.setdefault(own, _unread_member(typeddict, key, failed))
-                    else:
-                        fallbacks.setdefault(sure, named)
-                    continue
-        return _unread_member(typeddict, key, failed), _DEFINITIVE
-    for sure in (_LEADS_BACK_WITH_METADATA, _LEADS_BACK):
-        if sure in fallbacks:
-            return fallbacks[sure], sure
-    return None, _LEADS_BACK
+                return _unread_member(typeddict, key, error), True
+            if deeper is not None:
+                named = Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
+                if sure:
+                    return named, True
+                if fallback is None:
+                    fallback = named
+                leads_back = True
+        if leads_back:
+            if fallback is None:
+                fallback = _unread_member(typeddict, key, failed)
+            continue
+        return _unread_member(typeddict, key, failed), True
+    return fallback, False
+
+
+def _typeddicts_in(annotation: object) -> tuple[type, ...]:
+    """Each TypedDict `annotation` is or holds in its type arguments, such as `Node | None` or `tuple[Node, ...]`, once each, in the order they are written."""
+    if isinstance(annotation, type) and is_typeddict(annotation):
+        return (annotation,)
+    found: dict[type, None] = {}
+    for argument in get_args(annotation):
+        found.update(dict.fromkeys(_typeddicts_in(strip_annotation(argument)[0])))
+    return tuple(found)
+
+
+class _AnyObject(typing_extensions.TypedDict, closed=True):
+    """A TypedDict the checker reads, which stands in for the one a member holds when its own metadata is read."""
+
+
+def _metadata_problem(metadata: tuple[object, ...], leaf: Leaf) -> TypeError | None:
+    """The error the checker raises for `metadata` on a member that holds a TypedDict, whichever TypedDict that is; None when it reads the metadata, as it does a note."""
+    if len(metadata) == 0:
+        return None
+    try:
+        parser_for(Annotated[(_AnyObject, *metadata)], leaf)
+    except TypeError as error:
+        return error
+    return None
 
 
 def _unread_member(typeddict: type, key: str, failed: TypeError | None) -> Unread:
