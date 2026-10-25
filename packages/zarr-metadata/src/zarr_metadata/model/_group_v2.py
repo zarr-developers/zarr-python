@@ -159,7 +159,7 @@ class ZarrV2UnknownNodeMetadataReading:
 
 ZarrV2NodeMetadataReading = TypeAliasType(
     "ZarrV2NodeMetadataReading",
-    "ZarrV2ArrayMetadataReading | ZarrV2GroupMetadataReading | ZarrV2UnknownNodeMetadataReading",
+    ZarrV2ArrayMetadataReading | ZarrV2GroupMetadataReading | ZarrV2UnknownNodeMetadataReading,
 )
 """A v2 node as `read_node_metadata_v2` reads it from a store: as the array or group its files declare, or as neither."""
 

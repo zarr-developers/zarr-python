@@ -447,6 +447,30 @@ def test_the_node_type_is_a_type_alias_at_run_time() -> None:
     assert get_args(ZarrV2NodeMetadata.__value__) == (ZarrV2ArrayMetadata, ZarrV2GroupMetadata)
 
 
+def test_each_node_alias_holds_its_union_at_run_time() -> None:
+    """Each alias for a node of either format holds the union of its classes at run time, not the union written as a string, so `get_args` of its value names the classes that a type checker sees."""
+    from zarr_metadata import model
+
+    assert get_args(model.ZarrV2NodeMetadata.__value__) == (
+        model.ZarrV2ArrayMetadata,
+        model.ZarrV2GroupMetadata,
+    )
+    assert get_args(model.ZarrV2NodeMetadataReading.__value__) == (
+        model.ZarrV2ArrayMetadataReading,
+        model.ZarrV2GroupMetadataReading,
+        model.ZarrV2UnknownNodeMetadataReading,
+    )
+    assert get_args(model.ZarrV3NodeMetadata.__value__) == (
+        model.ZarrV3ArrayMetadata,
+        model.ZarrV3GroupMetadata,
+    )
+    assert get_args(model.ZarrV3NodeMetadataReading.__value__) == (
+        model.ZarrV3ArrayMetadataReading,
+        model.ZarrV3GroupMetadataReading,
+        model.ZarrV3UnknownNodeMetadataReading,
+    )
+
+
 def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
     """A second key that names the same file of the same node is one problem among the document's problems. Every node is still read and each node's problems are reported, so a user sees everything at once. A leading or repeated `/` does not make a second node."""
     with pytest.raises(MetadataValidationError) as raised:

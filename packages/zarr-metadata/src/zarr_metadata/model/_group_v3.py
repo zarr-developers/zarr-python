@@ -709,7 +709,7 @@ class ZarrV3UnknownNodeMetadataReading:
 
 ZarrV3NodeMetadataReading = TypeAliasType(
     "ZarrV3NodeMetadataReading",
-    "ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading | ZarrV3UnknownNodeMetadataReading",
+    ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading | ZarrV3UnknownNodeMetadataReading,
 )
 """A v3 `zarr.json` as `read_node_metadata_v3` reads it: as the array or group its `node_type` declares, or as neither."""
 
@@ -737,9 +737,7 @@ def read_node_metadata_v3(
     return ZarrV3UnknownNodeMetadataReading(problems)
 
 
-ZarrV3NodeMetadata = TypeAliasType(
-    "ZarrV3NodeMetadata", "ZarrV3ArrayMetadata | ZarrV3GroupMetadata"
-)
+ZarrV3NodeMetadata = TypeAliasType("ZarrV3NodeMetadata", ZarrV3ArrayMetadata | ZarrV3GroupMetadata)
 """The model of a v3 `zarr.json`: an array model or a group model, as its `node_type` declares."""
 
 
