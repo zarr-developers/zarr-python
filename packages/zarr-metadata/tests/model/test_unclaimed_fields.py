@@ -32,9 +32,10 @@ class _MirrorConfiguration(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-MIRRORING = CORE.extended_with(
+MIRRORING = CORE.update(
     array_extra_fields=[
-        ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration)
+        *CORE.array_extra_fields.values(),
+        ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
     ]
 )
 """`CORE`, with a definition of an `acme.mirror` member that holds a codec."""

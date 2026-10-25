@@ -8,7 +8,7 @@ reader needs from one. `ZarrV3Context` and `ZarrV2Context`, in each
 format's `definition` module, are the scopes of each format. They are
 separate classes. Each holds its definitions as tables: one table per
 kind, keyed by the name each definition is filed under. The functions
-here file, look up, extend and join such tables.
+here file, look up, update and join such tables.
 """
 
 from __future__ import annotations
@@ -43,24 +43,27 @@ if TYPE_CHECKING:
 Tables: TypeAlias = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
 """A scope's definitions: one table for each kind its format has, keyed by the name each definition is filed under. A table holds definitions of one kind only."""
 
+Given: TypeAlias = Iterable[Definition[Any]] | Mapping[str, Definition[Any]]
+"""The definitions given for one slot of a scope: an iterable of them, or a mapping from the name each is filed under to it, as a scope's slot is."""
+
 K = TypeVar("K", bound=Definition[Any])
 
 
 def slot_kinds(
     slots: type, accepts: Callable[[type[Definition[Any]]], TypeIs[type[K]]]
 ) -> Mapping[str, type[K]]:
-    """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K]` for a kind `K` that `accepts`, the check for a kind of the scope's format. A scope class derives its slots from it, so they are declared once.
+    """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K] | Mapping[str, K]` for a kind `K` that `accepts`, the check for a kind of the scope's format. A scope class derives its slots from it, so they are declared once.
 
-    Raises `TypeError` for a member that is not an iterable of a kind of
-    the format, when the scope class is defined.
+    Raises `TypeError`, when the scope class is defined, for a member
+    annotated any other way, or with a kind that is not of the format.
     """
     kinds: dict[str, type[K]] = {}
     for slot, annotation in get_type_hints(slots).items():
-        arguments = get_args(annotation)
-        if get_origin(annotation) is not Iterable or len(arguments) != 1:
-            msg = f"{slots.__name__}.{slot}: a slot is annotated Iterable[K] for a kind K, got {annotation!r}"
+        held = _held(annotation)
+        if held is None:
+            msg = f"{slots.__name__}.{slot}: a slot is annotated Iterable[K] | Mapping[str, K] for a kind K, got {annotation!r}"
             raise TypeError(msg)
-        kind = as_kind(arguments[0])
+        kind = as_kind(held)
         if not accepts(kind):
             msg = f"{slots.__name__}.{slot}: {kind.__name__} is not a kind of the scope's format"
             raise TypeError(msg)
@@ -68,15 +71,25 @@ def slot_kinds(
     return MappingProxyType(kinds)
 
 
+def _held(annotation: object) -> object:
+    """The kind `K` that a slot annotated `Iterable[K] | Mapping[str, K]` holds, or None for any other annotation."""
+    arms = get_args(annotation)
+    if len(arms) != 2 or get_origin(arms[0]) is not Iterable or len(get_args(arms[0])) != 1:
+        return None
+    (held,) = get_args(arms[0])
+    return held if arms[1] == Mapping[str, held] else None
+
+
 def filed(
     kinds: Mapping[str, type[Definition[Any]]],
-    given: Mapping[str, Iterable[Definition[Any]]],
+    given: Mapping[str, Given],
     zarr_format: int,
 ) -> Tables:
     """The tables of the definitions `given` for each slot of a scope whose slots hold `kinds`: one table per kind, each kind of the format present.
 
-    Raises `TypeError` for a slot the scope does not have, and for a
-    definition of another kind than its slot holds, and
+    Raises `TypeError` for a slot the scope does not have, for a
+    definition of another kind than its slot holds, and for a slot given
+    as a mapping with a key that is not the name of its definition, and
     `ScopeConflictError` for two different definitions given under one
     name in a slot.
     """
@@ -88,7 +101,11 @@ def filed(
     conflicts: list[Conflict] = []
     for slot, kind in kinds.items():
         table: dict[str, Definition[Any]] = {}
-        for definition in given.get(slot, ()):
+        definitions = given.get(slot, ())
+        if _is_keyed(definitions):
+            _refuse_misnamed(slot, definitions)
+            definitions = definitions.values()
+        for definition in definitions:
             misfiled = _misfiled(slot, kind, definition)
             if misfiled is not None:
                 raise TypeError(misfiled)
@@ -103,16 +120,17 @@ def filed(
     return MappingProxyType(tables)
 
 
-def extended(
+def updated(
     tables: Tables,
     kinds: Mapping[str, type[Definition[Any]]],
-    given: Mapping[str, Iterable[Definition[Any]]],
+    given: Mapping[str, Given],
     zarr_format: int,
 ) -> Tables:
-    """`tables`, with the definitions `given` for each slot filed in the table of its kind, each replacing any definition already filed there under its name."""
-    added = filed(kinds, given, zarr_format)
+    """`tables`, with the table of each slot `given` replaced by the definitions given for it. The tables of the other slots are kept. Raises as `filed` does."""
+    replacing = filed(kinds, given, zarr_format)
+    replaced = {kinds[slot] for slot in given}
     return MappingProxyType(
-        {kind: MappingProxyType({**table, **added[kind]}) for kind, table in tables.items()}
+        {kind: replacing[kind] if kind in replaced else table for kind, table in tables.items()}
     )
 
 
@@ -182,6 +200,19 @@ def tables_key(
     return frozenset((kind, frozenset(table.items())) for kind, table in tables.items())
 
 
+def _is_keyed(given: Given) -> TypeIs[Mapping[str, Definition[Any]]]:
+    """Whether the definitions `given` for a slot are a mapping by name rather than an iterable of definitions. A mapping keyed some other way is caught by `_refuse_misnamed`."""
+    return isinstance(given, Mapping)
+
+
+def _refuse_misnamed(slot: str, definitions: Mapping[str, object]) -> None:
+    """Raise `TypeError` for a key of `definitions`, a slot given as a mapping, that is not the name of the definition it holds. A value that is not a definition is left for `_misfiled` to refuse."""
+    for key, value in definitions.items():
+        if isinstance(value, Definition) and key != value.name:
+            msg = f"{slot} files each definition under its name, got {value.name!r} under {key!r}"
+            raise TypeError(msg)
+
+
 def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | None:
     """Why `value` does not belong in `slot`, which holds definitions of `kind`; None when it does. `value` is checked as a value of any type, for a caller without a type checker."""
     found = kind_of(value)
@@ -221,11 +252,11 @@ def scoped(context: object, default: C) -> C:
 
 
 __all__ = [
+    "Given",
     "Tables",
     "claimant_in",
     "definitions_in",
     "disagreements_in",
-    "extended",
     "filed",
     "joined_tables",
     "refuse_others",
@@ -233,4 +264,5 @@ __all__ = [
     "slot_contents",
     "slot_kinds",
     "tables_key",
+    "updated",
 ]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import pickle
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import pytest
@@ -46,7 +46,7 @@ def test_the_scope_of_each_format_behaves_alike(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `extended_with` replacing a definition by name, `joined`, equality and hashing by what each slot files, a short repr, and pickling and copying. A field is read in either one with `resolve`."""
+    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `joined`, equality and hashing by what each slot files, a short repr, and pickling and copying. A field is read in either one with `resolve`."""
     built = cls(codecs=[gzip])
     assert built.zarr_format == zarr_format
     assert built.claimant(kind, "gzip") is gzip
@@ -56,7 +56,7 @@ def test_the_scope_of_each_format_behaves_alike(
     assert hash(built) == hash(cls(codecs=[gzip]))
     assert built != cls()
     assert repr(built) == f"{cls.__name__}(<1 definitions>)"
-    replaced = built.extended_with(codecs=[_other(gzip)])
+    replaced = built.update(codecs=[_other(gzip)])
     assert replaced.claimant(kind, "gzip") is not gzip
     assert cls.joined(built, cls()) == built
     assert cls.joined() == cls()
@@ -65,6 +65,61 @@ def test_the_scope_of_each_format_behaves_alike(
     assert copy.deepcopy(core) is core
     field, _ = resolve({"id": "acme"} if zarr_format == 2 else "acme", kind, cls())
     assert isinstance(field, UnclaimedField)
+
+
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_update_replaces_each_slot_it_is_given_and_keeps_the_rest(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """`update` returns the scope with each slot it is given replaced whole, and every other slot kept. A slot is given as definitions, or as a mapping from each definition's name to it, so a slot of a scope passes back in as it is, or changed by name. The scope it is called on is unchanged."""
+    only = core.update(codecs=[gzip])
+    assert dict(only.codecs) == {"gzip": gzip}
+    assert only.data_types == core.data_types
+    assert core.update() == core
+    assert core.update(codecs=core.codecs) == core
+    assert cls(codecs={"gzip": gzip}) == cls(codecs=[gzip])
+    other = _other(gzip)
+    replaced = core.update(codecs={**core.codecs, "gzip": other})
+    assert replaced.codecs["gzip"] is other
+    assert {**replaced.codecs, "gzip": gzip} == dict(core.codecs)
+    assert dict(cls().update(codecs=[*cls().codecs.values(), gzip]).codecs) == {"gzip": gzip}
+    assert core.codecs["gzip"] is gzip
+
+
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_error_a_slot_given_as_a_mapping_files_each_definition_under_its_name(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """A slot given as a mapping keys each definition by its own name, the name the scope files it under. Another key raises `TypeError` naming both, in the constructor and in `update`, rather than filing the definition under a name it does not read, or ignoring a misspelled key."""
+    with pytest.raises(
+        TypeError, match="codecs files each definition under its name, got 'gzip' under 'zstd'"
+    ):
+        cls(codecs={"zstd": gzip})
+    with pytest.raises(TypeError, match="got 'gzip' under 'gzipp'"):
+        core.update(codecs={**core.codecs, "gzipp": _other(gzip)})
+
+
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_error_a_scope_has_only_the_slots_it_declares(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """A slot the scope does not declare raises `TypeError` naming it, in the constructor and in `update`, as a type checker reports it."""
+    with pytest.raises(TypeError, match=f"a v{zarr_format} scope has no slot 'codec'"):
+        cls(codec=[gzip])
+    with pytest.raises(TypeError, match=f"a v{zarr_format} scope has no slot 'codec'"):
+        core.update(codec=[gzip])
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
@@ -189,21 +244,32 @@ def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - eith
         assert getattr(scope, slot) == scope.definitions_of(kind)
 
 
-def test_error_a_slot_is_declared_as_an_iterable_of_a_kind() -> None:
-    """`slot_kinds` reads a slot's kind from its annotation, `Iterable[K]`. Any other annotation raises `TypeError` when the scope class is defined, so a wrong declaration cannot pass unnoticed."""
-
-    class Wrong(TypedDict, total=False):
-        codecs: list[CodecDefinition[Any]]
-
-    with pytest.raises(TypeError, match=r"Wrong\.codecs: a slot is annotated Iterable\[K\]"):
-        slot_kinds(Wrong, is_v3_kind)
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        list[CodecDefinition[Any]],
+        Iterable[CodecDefinition[Any]],
+        Iterable[CodecDefinition[Any]] | Mapping[str, DataTypeDefinition[Any]],
+    ],
+    ids=["a-list", "no-mapping", "two-kinds"],
+)
+def test_error_a_slot_is_declared_as_definitions_of_a_kind_or_a_mapping_of_them(
+    annotation: object,
+) -> None:
+    """`slot_kinds` reads a slot's kind from its annotation, `Iterable[K] | Mapping[str, K]`, with one kind `K` in both. Any other annotation raises `TypeError` when the scope class is defined, so a wrong declaration cannot pass unnoticed."""
+    wrong = type("Wrong", (), {"__annotations__": {"codecs": annotation}})
+    with pytest.raises(
+        TypeError,
+        match=r"Wrong\.codecs: a slot is annotated Iterable\[K\] \| Mapping\[str, K\]",
+    ):
+        slot_kinds(wrong, is_v3_kind)
 
 
 def test_error_a_slot_holds_a_kind_of_its_format() -> None:
     """`slot_kinds` checks each slot's kind with the format's own check, so a v3 scope that declared a slot of v2 codecs raises `TypeError` when the scope class is defined."""
 
     class Mixed(TypedDict, total=False):
-        codecs: Iterable[ZarrV2CodecDefinition[Any]]
+        codecs: Iterable[ZarrV2CodecDefinition[Any]] | Mapping[str, ZarrV2CodecDefinition[Any]]
 
     with pytest.raises(TypeError, match=r"Mixed\.codecs: ZarrV2CodecDefinition is not a kind"):
         slot_kinds(Mixed, is_v3_kind)

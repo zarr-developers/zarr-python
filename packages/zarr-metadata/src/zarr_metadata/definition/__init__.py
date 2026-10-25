@@ -149,7 +149,7 @@ but does not compare equal to its loaded copy.
         size="dynamic",
         rules=acme_lz4_rules,
     )
-    CONTEXT = CORE_AND_EXTENSIONS.extended_with(codecs=[ACME_LZ4])
+    CONTEXT = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_LZ4])
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,
@@ -231,8 +231,11 @@ run time, with `TypeError`. Two scopes are equal when they are of one
 format and file the same definitions, and equal scopes have equal
 hashes. `ZarrV3Context.joined(*scopes)` returns the smallest scope that
 contains each of them, or raises a `ScopeConflictError` naming each name
-filed with two different definitions. To replace a definition on
-purpose, use `extended_with`. A model's `refined_in` moves it to a scope
+filed with two different definitions. `update` replaces the
+definitions in the slots it is given and keeps the others, and takes a
+slot as definitions or as a mapping by name, so
+`context.update(codecs={**context.codecs, "gzip": MY_GZIP})` replaces
+one definition on purpose. A model's `refined_in` moves it to a scope
 that claims more names and contradicts nothing. `refines` orders two
 models by how much they know. A name that was unclaimed and is now read
 by a definition is a gain. The reverse is a loss. One name read by two

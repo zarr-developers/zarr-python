@@ -7,7 +7,7 @@ and `data_type`, and the v2 kinds and scope are in `definition`.
 
 This module also exports every v2 definition (`GZIP_CODEC_V2`,
 `FLOAT_DATA_TYPE_V2`, ...), the scope `CORE_V2`, and the scope class
-`ZarrV2Context`, so that one import builds or extends a scope. Each is
+`ZarrV2Context`, so that one import builds or updates a scope. Each is
 the same object as in its own submodule, where a definition's
 configuration types and constants are.
 """

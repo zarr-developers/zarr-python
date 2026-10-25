@@ -75,7 +75,7 @@ BAD_GZIP_ARRAY = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"le
         (_document(codecs=[BYTES, {"name": "zstd", "configuration": {"level": 99}}]), CORE),
         (
             _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}]),
-            CORE.extended_with(codecs=[LENIENT_GZIP]),
+            CORE.update(codecs={**CORE.codecs, "gzip": LENIENT_GZIP}),
         ),
         (dict(ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json()), CORE_AND_EXTENSIONS),
     ],
@@ -173,7 +173,7 @@ def test_error_an_array_in_consolidated_metadata() -> None:
 def test_an_array_in_consolidated_metadata_reads_in_the_scope_it_is_read_in() -> None:
     """An array listed in consolidated metadata is read in the scope the member is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
     member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
-    lenient = CORE.extended_with(codecs=[LENIENT_GZIP])
+    lenient = CORE.update(codecs={**CORE.codecs, "gzip": LENIENT_GZIP})
     reading = read_consolidated_metadata_v3(member, context=lenient)
     assert reading.problems == ()
     assert reading.metadata is not None

@@ -10,7 +10,7 @@ with the field's kind, as for a v3 field:
 `resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2)` returns an
 `AcceptedField`, `UnclaimedField` or `RefusedField`, and every problem.
 `ZarrV2Context` is the class of a v2 scope. It has a slot for each kind
-of v2 field, `data_types` and `codecs`, and shares `extended_with`,
+of v2 field, `data_types` and `codecs`, and shares `update`,
 `joined` and `claimant` with the v3 scope. A v2 reader rejects a v3
 scope with `TypeError`.
 

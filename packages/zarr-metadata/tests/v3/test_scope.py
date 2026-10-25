@@ -474,7 +474,9 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
     model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS)
     other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=EmptyConfiguration)
     with pytest.raises(ScopeConflictError) as raised:
-        model.refined_in(CORE_AND_EXTENSIONS.extended_with(data_types=[other]))
+        model.refined_in(
+            CORE_AND_EXTENSIONS.update(data_types={**CORE_AND_EXTENSIONS.data_types, "r*": other})
+        )
     message = str(raised.value)
     assert message.startswith("data type 'r16'")
     assert "RawBytesConfiguration" in message
@@ -512,7 +514,7 @@ def test_error_a_slot_refuses_a_definition_of_another_kind() -> None:
 
 
 def test_error_a_slot_refuses_two_definitions_under_one_name() -> None:
-    """Two different definitions under one name in a slot raise `ScopeConflictError` naming both, because the scope could not tell which one reads the name. `extended_with` is the way to replace a definition."""
+    """Two different definitions under one name in a slot raise `ScopeConflictError` naming both, because the scope could not tell which one reads the name. `update` is the way to replace a definition."""
     with pytest.raises(ScopeConflictError) as raised:
         ZarrV3Context(codecs=[GZIP_CODEC, OTHER_GZIP])
     (conflict,) = raised.value.conflicts

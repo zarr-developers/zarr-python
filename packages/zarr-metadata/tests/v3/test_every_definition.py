@@ -367,18 +367,20 @@ def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
 
 
 def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
-    # This definition accepts any size. Filed last, it reads every raw-bits
-    # name. If the package's own definition is filed again after it, the
-    # package's definition reads them again.
+    # This definition accepts any size. Filed under `r*` in place of the
+    # package's own, it reads every raw-bits name. Filed back, the package's
+    # definition reads them again.
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
-    context = CORE_AND_EXTENSIONS.extended_with(data_types=[mine])
+    context = CORE_AND_EXTENSIONS.update(data_types={**CORE_AND_EXTENSIONS.data_types, "r*": mine})
     resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition is mine
     # The package's own definition does not accept 12 bits, and refuses them.
     again, _ = resolve(
-        "r12", DataTypeDefinition, context.extended_with(data_types=[RAW_BYTES_DATA_TYPE])
+        "r12",
+        DataTypeDefinition,
+        context.update(data_types={**context.data_types, "r*": RAW_BYTES_DATA_TYPE}),
     )
     assert isinstance(again, RefusedField)
     assert again.definition is RAW_BYTES_DATA_TYPE
@@ -506,7 +508,7 @@ def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None
         canonicalize(
             {"name": "acme.lying", "configuration": {"level": 1}},
             CodecDefinition,
-            CORE_AND_EXTENSIONS.extended_with(codecs=[lying]),
+            CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), lying]),
         )
 
 

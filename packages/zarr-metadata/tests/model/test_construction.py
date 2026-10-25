@@ -192,7 +192,9 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
         yield from ()
 
     counting = dataclasses.replace(INT8_DATA_TYPE, fill_value_rules=counted)
-    context = CORE_AND_EXTENSIONS.extended_with(data_types=[counting])
+    context = CORE_AND_EXTENSIONS.update(
+        data_types={**CORE_AND_EXTENSIONS.data_types, "int8": counting}
+    )
     model = ZarrV3ArrayMetadata.create_default(context=context, data_type="int8", fill_value=3)
     assert values == [3]
     model.to_key_value()
@@ -411,8 +413,11 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
         asked.append(1)
         return configuration
 
-    context = CORE_AND_EXTENSIONS.extended_with(
-        codecs=[dataclasses.replace(GZIP_CODEC, canonical=counting)]
+    context = CORE_AND_EXTENSIONS.update(
+        codecs={
+            **CORE_AND_EXTENSIONS.codecs,
+            "gzip": dataclasses.replace(GZIP_CODEC, canonical=counting),
+        }
     )
     document = {
         "zarr_format": 3,
@@ -441,8 +446,11 @@ def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compare
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS.extended_with(
-        codecs=[dataclasses.replace(GZIP_CODEC, canonical=refuses)]
+    context = CORE_AND_EXTENSIONS.update(
+        codecs={
+            **CORE_AND_EXTENSIONS.codecs,
+            "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses),
+        }
     )
     document = {
         "zarr_format": 3,

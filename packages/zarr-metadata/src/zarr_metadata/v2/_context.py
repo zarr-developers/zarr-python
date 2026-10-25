@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,19 +22,17 @@ from zarr_metadata.definition._context import (
     claimant_in,
     definitions_in,
     disagreements_in,
-    extended,
     filed,
     joined_tables,
     refuse_others,
     slot_contents,
     slot_kinds,
     tables_key,
+    updated,
 )
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr_metadata.definition._definition import D, Definition
     from zarr_metadata.definition._scope import Claims, Disagreements
 
@@ -55,18 +53,21 @@ def is_v2_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV2Kind]]:
 
 
 class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
-    """The definitions in each slot of a v2 scope, as `ZarrV2Context` and its `extended_with` take them.
+    """The definitions in each slot of a v2 scope, as `ZarrV2Context` and its `update` take them.
 
     This is where a v2 scope's slots are declared: each key is a slot,
-    and its value the definitions of the kind that slot holds.
+    and its value the definitions of the kind that slot holds, as an
+    iterable of them or as a mapping from each one's name to it.
     `ZarrV2Context.kinds` is read from these annotations, so a type
     checker checks every slot a caller names, and every definition given
     in it.
     """
 
-    data_types: Iterable[ZarrV2DataTypeDefinition[Any]]
+    data_types: (
+        Iterable[ZarrV2DataTypeDefinition[Any]] | Mapping[str, ZarrV2DataTypeDefinition[Any]]
+    )
     """Data types, read from `dtype`."""
-    codecs: Iterable[ZarrV2CodecDefinition[Any]]
+    codecs: Iterable[ZarrV2CodecDefinition[Any]] | Mapping[str, ZarrV2CodecDefinition[Any]]
     """Codecs, read from `compressor` and `filters`."""
 
 
@@ -77,11 +78,14 @@ class ZarrV2Context:
     It implements `Context`, and has one slot for each kind of field a v2
     document holds, as `ZarrV2ContextSlots` declares them: `data_types`,
     read from `dtype`, and `codecs`, read from `compressor` and `filters`.
-    The constructor takes an iterable of definitions for each slot, and
-    each slot is a read-only mapping from name to definition. A definition
-    of another kind than its slot holds raises `TypeError`, and two
+    Each slot is a read-only mapping from name to definition. The
+    constructor and `update` take, for each slot, an iterable of
+    definitions or such a mapping, so one scope's slot can be given to
+    another. A definition of another kind than its slot holds, and a key
+    that is not its definition's name, raise `TypeError`, and two
     different definitions under one name in a slot raise
-    `ScopeConflictError`. To replace a definition, use `extended_with`.
+    `ScopeConflictError`. To replace a definition, or a whole slot, use
+    `update`.
     `ZarrV2Context()` is the scope that claims nothing. Two scopes are
     equal when they file the same definitions in each slot, and equal
     scopes have equal hashes.
@@ -141,14 +145,18 @@ class ZarrV2Context:
         """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`. A claim is keyed by the name its definition is filed under, so it is looked up by that name."""
         return disagreements_in(self._tables, claims)
 
-    def extended_with(self, **slots: Unpack[ZarrV2ContextSlots]) -> ZarrV2Context:
-        """This scope, plus definitions of your own, each in its slot.
+    def update(self, **slots: Unpack[ZarrV2ContextSlots]) -> ZarrV2Context:
+        """This scope, with each slot given here holding only the definitions given for it. The other slots are kept.
 
-        A definition given here replaces any definition already filed in
-        its slot under the same name. This is how a reader substitutes its
-        own reading of a definition the package already defines.
+        A slot can be given as a mapping from each definition's name to
+        it, so a slot of this scope passes back in changed:
+        `context.update(codecs={**context.codecs, "gzip": MY_GZIP})`
+        replaces the gzip definition and keeps the other codecs, and
+        `context.update(codecs=[*context.codecs.values(), MY_CODEC])` adds
+        one, raising `ScopeConflictError` if the scope already files
+        another definition under its name.
         """
-        return self._of(extended(self._tables, self.kinds, slots, 2))
+        return self._of(updated(self._tables, self.kinds, slots, 2))
 
     @classmethod
     def joined(cls, *contexts: ZarrV2Context) -> ZarrV2Context:
@@ -156,7 +164,7 @@ class ZarrV2Context:
 
         Raises `ScopeConflictError` when two of them file different
         definitions under one name in a slot. To replace a definition on
-        purpose, use `extended_with`. Raises `TypeError` for a scope of
+        purpose, use `update`. Raises `TypeError` for a scope of
         another format.
         """
         refuse_others(contexts, ZarrV2Context, 2)

@@ -80,16 +80,17 @@ CORE: Final = ZarrV3Context(
 )
 """A scope with only what the Zarr v3 specification defines, including the envelope of a group's `consolidated_metadata`, which the spec fixes."""
 
-CORE_AND_EXTENSIONS: Final = CORE.extended_with(
-    data_types=(
+CORE_AND_EXTENSIONS: Final = CORE.update(
+    data_types=[
+        *CORE.data_types.values(),
         BYTES_DATA_TYPE,
         STRING_DATA_TYPE,
         NUMPY_DATETIME64_DATA_TYPE,
         NUMPY_TIMEDELTA64_DATA_TYPE,
         STRUCT_DATA_TYPE,
-    ),
-    chunk_grids=(RECTILINEAR_CHUNK_GRID,),
-    codecs=(CAST_VALUE_CODEC, SCALE_OFFSET_CODEC, ZSTD_CODEC),
+    ],
+    chunk_grids=[*CORE.chunk_grids.values(), RECTILINEAR_CHUNK_GRID],
+    codecs=[*CORE.codecs.values(), CAST_VALUE_CODEC, SCALE_OFFSET_CODEC, ZSTD_CODEC],
 )
 """A scope with what the specification defines, plus the extensions that `zarr-extensions` registers and this package defines."""
 

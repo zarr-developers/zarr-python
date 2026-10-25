@@ -200,8 +200,9 @@ ACME_PAIRED = CodecDefinition(
     rules=acme_paired_rules,
 )
 
-CONTEXT = CORE_AND_EXTENSIONS.extended_with(
+CONTEXT = CORE_AND_EXTENSIONS.update(
     codecs=[
+        *CORE_AND_EXTENSIONS.codecs.values(),
         ACME_STACK,
         ACME_LEVEL,
         ACME_TOTAL,
@@ -729,7 +730,7 @@ def _ruled_by(
     rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
-    return CORE.extended_with(codecs=[lying])
+    return CORE.update(codecs=[*CORE.codecs.values(), lying])
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
@@ -1071,7 +1072,7 @@ def test_a_scope_takes_a_name_over() -> None:
             else []
         ),
     )
-    context = CORE_AND_EXTENSIONS.extended_with(codecs=[strict])
+    context = CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": strict})
     _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, context)
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
     assert context.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
@@ -1512,7 +1513,9 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
         cast("dict[str, object]", configuration)["level"] = -1
         yield from ()
 
-    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, rules=writes)])
+    context = CORE.update(
+        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, rules=writes)}
+    )
     with pytest.raises(TypeError, match="does not support item assignment") as raised:
         resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     assert raised.value.__notes__ == ["raised by the rules of 'gzip', reading ('configuration',)"]
@@ -1535,7 +1538,9 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         cast("dict[str, object]", configuration)["level"] = 0
         return configuration
 
-    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, canonical=folds_in_place)])
+    context = CORE.update(
+        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=folds_in_place)}
+    )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(TypeError, match="does not support item assignment"):
         hash(read)
@@ -1545,7 +1550,9 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE.extended_with(codecs=[dataclasses.replace(GZIP_CODEC, canonical=refuses)])
+    context = CORE.update(
+        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses)}
+    )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
         canonical_of(read, ())

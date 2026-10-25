@@ -210,13 +210,16 @@ unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_fie
 can_open = unclaimed is not None and len(unclaimed) == 0
 ```
 
-To make an unknown data type or codec known, extend the scope with its definition and read the document again:
+To make an unknown data type or codec known, add its definition to the scope's slot and read the document again:
 
 ```python
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
-reading = read_array_metadata_v3(raw, context=CORE_AND_EXTENSIONS.extended_with(codecs=[MY_CODEC]))
+context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), MY_CODEC])
+reading = read_array_metadata_v3(raw, context=context)
 ```
+
+`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
 
 Here `MY_CODEC` is the definition of the codec that was unknown.
 

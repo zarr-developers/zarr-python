@@ -83,7 +83,9 @@ def test_every_data_type_says_how_its_values_are_stored(
 def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> None:
     quiet = DataTypeDefinition(name="acme.quiet", configuration=EmptyConfiguration)
     resolved, _ = resolve(
-        "acme.quiet", DataTypeDefinition, CORE_AND_EXTENSIONS.extended_with(data_types=[quiet])
+        "acme.quiet",
+        DataTypeDefinition,
+        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), quiet]),
     )
     assert storage_of(resolved) is None
 
@@ -95,7 +97,9 @@ def test_error_a_storage_that_gives_something_else() -> None:
         storage=lambda configuration, nested: "two bytes",  # pyright: ignore[reportArgumentType]
     )
     resolved, _ = resolve(
-        "acme.lying", DataTypeDefinition, CORE_AND_EXTENSIONS.extended_with(data_types=[lying])
+        "acme.lying",
+        DataTypeDefinition,
+        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), lying]),
     )
     with pytest.raises(TypeError, match="'acme.lying': its storage gives one of"):
         storage_of(resolved)
@@ -109,7 +113,9 @@ def test_error_a_storage_that_raises_says_whose_it_is() -> None:
         name="acme.raising", configuration=EmptyConfiguration, storage=storage
     )
     resolved, _ = resolve(
-        "acme.raising", DataTypeDefinition, CORE_AND_EXTENSIONS.extended_with(data_types=[raising])
+        "acme.raising",
+        DataTypeDefinition,
+        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), raising]),
     )
     with pytest.raises(KeyError) as raised:
         storage_of(resolved)

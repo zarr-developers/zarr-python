@@ -45,7 +45,9 @@ class AcmeNoteConfiguration(TypedDict, closed=True):
 ACME_NOTE = ArrayExtraFieldDefinition(name="acme.note", configuration=AcmeNoteConfiguration)
 """A reader's own definition of the `acme.note` member of an array, whose numbers must be finite."""
 
-CONTEXT = CORE.extended_with(array_extra_fields=[ACME_TILING, ACME_NOTE])
+CONTEXT = CORE.update(
+    array_extra_fields=[*CORE.array_extra_fields.values(), ACME_TILING, ACME_NOTE]
+)
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 GROUP: dict[str, Any] = {"zarr_format": 3, "node_type": "group"}
