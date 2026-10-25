@@ -11,15 +11,27 @@ from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 
 
 class ZarrV2Checksum32Parameters(TypedDict, closed=True):
-    """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed. When it is omitted or null, it is the start."""
+    """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed. When it is omitted or null, numcodecs places it at the start for crc32 and adler32, and at the end for crc32c."""
 
     location: NotRequired[ReadOnly[Literal["start", "end"] | None]]
 
 
-def _checksum_canonical(configuration: ZarrV2Checksum32Parameters) -> ZarrV2Checksum32Parameters:
-    """Fill in a `location` that is omitted or null with the default, `"start"`."""
+def _fill_location(
+    configuration: ZarrV2Checksum32Parameters, default: Literal["start", "end"]
+) -> ZarrV2Checksum32Parameters:
+    """Fill in a `location` that is omitted or null with `default`."""
     location = configuration.get("location")
-    return {"location": "start" if location is None else location}
+    return {"location": default if location is None else location}
+
+
+def _checksum_canonical(configuration: ZarrV2Checksum32Parameters) -> ZarrV2Checksum32Parameters:
+    """Fill in a `location` that is omitted or null with `"start"`, the default of `numcodecs.CRC32` and `numcodecs.Adler32`."""
+    return _fill_location(configuration, "start")
+
+
+def _crc32c_canonical(configuration: ZarrV2Checksum32Parameters) -> ZarrV2Checksum32Parameters:
+    """Fill in a `location` that is omitted or null with `"end"`, the default of `numcodecs.CRC32C`."""
+    return _fill_location(configuration, "end")
 
 
 CRC32_CODEC_V2: Final = ZarrV2CodecDefinition(
@@ -27,9 +39,9 @@ CRC32_CODEC_V2: Final = ZarrV2CodecDefinition(
 )
 """`numcodecs.CRC32`."""
 CRC32C_CODEC_V2: Final = ZarrV2CodecDefinition(
-    name="crc32c", configuration=ZarrV2Checksum32Parameters, canonical=_checksum_canonical
+    name="crc32c", configuration=ZarrV2Checksum32Parameters, canonical=_crc32c_canonical
 )
-"""`numcodecs.CRC32C`."""
+"""`numcodecs.CRC32C`. Its `location` defaults to the end."""
 ADLER32_CODEC_V2: Final = ZarrV2CodecDefinition(
     name="adler32", configuration=ZarrV2Checksum32Parameters, canonical=_checksum_canonical
 )

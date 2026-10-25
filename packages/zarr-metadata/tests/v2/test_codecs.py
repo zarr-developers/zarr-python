@@ -195,7 +195,8 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
         ),
         ({"id": "crc32"}, {"id": "crc32", **CHECKSUM_DEFAULTS}),
         ({"id": "crc32", "location": None}, {"id": "crc32", **CHECKSUM_DEFAULTS}),
-        ({"id": "crc32c"}, {"id": "crc32c", **CHECKSUM_DEFAULTS}),
+        ({"id": "crc32c"}, {"id": "crc32c", "location": "end"}),
+        ({"id": "crc32c", "location": None}, {"id": "crc32c", "location": "end"}),
         ({"id": "adler32"}, {"id": "adler32", **CHECKSUM_DEFAULTS}),
         ({"id": "bitround", "keepbits": 5}, {"id": "bitround", "keepbits": 5}),
         ({"id": "fletcher32"}, {"id": "fletcher32"}),
@@ -240,18 +241,20 @@ def test_the_canonical_form_fills_in_defaults_and_writes_each_value_one_way(
                 "astype": "<i4",
             },
         ),
+        ({"id": "crc32c"}, {"id": "crc32c", "location": "start"}),
     ],
     ids=[
         "away-from-a-default",
         "blosc-typesize-unshuffled",
         "large-integer-offset",
         "int-or-float-scale",
+        "crc32c-default-is-end",
     ],
 )
 def test_codecs_numcodecs_encodes_differently_are_different_codecs(
     first: dict[str, Any], second: dict[str, Any]
 ) -> None:
-    """Two configurations that numcodecs encodes the same data with differently are two codecs: a parameter away from its default; a blosc `typesize` under `shuffle` 0, which still sets Blosc's block split and header; and a fixedscaleoffset `offset` or `scale` written as an integer or as a float, which NumPy computes with differently for integer and half-precision dtypes."""
+    """Two configurations that numcodecs encodes the same data with differently are two codecs: a parameter away from its default; a blosc `typesize` under `shuffle` 0, which still sets Blosc's block split and header; a fixedscaleoffset `offset` or `scale` written as an integer or as a float, which NumPy computes with differently for integer and half-precision dtypes; and a crc32c with no `location` and one at the start, since `numcodecs.CRC32C` places its checksum at the end by default, unlike crc32 and adler32."""
     one, _ = resolve(first, ZarrV2CodecDefinition, CONTEXT)
     other, _ = resolve(second, ZarrV2CodecDefinition, CONTEXT)
     assert one != other
