@@ -143,10 +143,12 @@ def test_unclaimed_extra_fields_compare_as_written(first: object, second: object
 
 
 def test_an_extra_field_is_a_field_of_the_reading() -> None:
-    """A claimed extra field takes part in what the model's reading holds: it is a field at its key, a claim of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
+    """A claimed extra field takes part in what the model's reading holds: it is a field at its key, read by the definition of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
     model = ZarrV3ArrayMetadata({**ARRAY, "acme.tiling": TILING}, context=CONTEXT)
     assert dict(model.reading.fields())[("acme.tiling",)] == model.extra_fields["acme.tiling"]
-    assert model.claims[ArrayExtraFieldDefinition, "acme.tiling"] is ACME_TILING
+    tiling = model.extra_fields["acme.tiling"]
+    assert isinstance(tiling, AcceptedField)
+    assert tiling.definition is ACME_TILING
     read, problems = resolve({"acme.tiling": TILING}, ArrayExtraFieldDefinition, CONTEXT)
     assert isinstance(read, AcceptedField)
     assert problems == ()

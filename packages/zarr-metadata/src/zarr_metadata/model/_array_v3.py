@@ -28,7 +28,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
-from zarr_metadata.definition._context import scoped
+from zarr_metadata.definition._context import disagreements, scoped
 from zarr_metadata.definition._definition import (
     AcceptedField,
     Definition,
@@ -42,7 +42,7 @@ from zarr_metadata.definition._definition import (
     resolve_refined,
     spelled_canonically,
 )
-from zarr_metadata.definition._scope import Claims, ScopeConflictError, claims_of
+from zarr_metadata.definition._scope import ScopeConflictError, claims_of
 from zarr_metadata.definition._scope import refines as refines_field
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
@@ -493,19 +493,10 @@ class ZarrV3ArrayMetadata(Keyed):
     the top level of a module.
     """
 
-    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
+    __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
-
-    @property
-    def claims(self) -> Claims:
-        """The claims the reading recorded for each name the document writes, keyed by kind and the name the scope files it under. Computed on first access."""
-        try:
-            return self._claims
-        except AttributeError:
-            self._claims = MappingProxyType(claims_of(self._reading.fields()))
-            return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS)
@@ -706,7 +697,7 @@ class ZarrV3ArrayMetadata(Keyed):
         every claim identically.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
-        if context.disagreements(self.claims).agrees:
+        if disagreements(context, claims_of(self._reading.fields())).agrees:
             return self._of(self._document, context, self._reading, self._members)
         return type(self)(self._document, context=context)
 
@@ -723,7 +714,7 @@ class ZarrV3ArrayMetadata(Keyed):
         any scope.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
-        found = context.disagreements(self.claims)
+        found = disagreements(context, claims_of(self._reading.fields()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(context)

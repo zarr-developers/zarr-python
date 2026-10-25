@@ -229,7 +229,7 @@ definition in the wrong slot, and a scope of one format given to a
 reader of the other. The constructor and the reader also reject them at
 run time, with `TypeError`. Two scopes are equal when they are of one
 format and file the same definitions, and equal scopes have equal
-hashes. `ZarrV3Context.joined(*scopes)` returns the smallest scope that
+hashes. `context.union(*others)` returns the smallest scope that
 contains each of them, or raises a `ScopeConflictError` naming each name
 filed with two different definitions. `update` replaces the
 definitions in the slots it is given and keeps the others, and takes a
@@ -280,20 +280,16 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.definition._scope import (
     ClaimKey,
-    Claims,
     Conflict,
-    Disagreements,
     ScopeConflictError,
 )
 
 __all__ = [
     "AcceptedField",
     "ClaimKey",
-    "Claims",
     "Conflict",
     "Context",
     "Definition",
-    "Disagreements",
     "EmptyConfiguration",
     "Nested",
     "RefusedField",

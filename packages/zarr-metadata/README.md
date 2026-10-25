@@ -323,8 +323,8 @@ own scope, refuses one that its scope reads differently, and writes the
 document. The model
 reads every document strictly, and also accepts node models as entries.
 Such an entry is accepted when its claims refine into the model's scope,
-and refused at its path otherwise. `ZarrV3Context.joined` returns a scope in
-which to consolidate children that were read in several scopes. Every
+and refused at its path otherwise. To consolidate children that were read
+in several scopes, consolidate them in the `union` of those scopes. Every
 reader takes `context=None` for the default scope, `CORE_AND_EXTENSIONS`.
 
 Two models are equal when they represent the same document, even if each

@@ -11,7 +11,7 @@ with the field's kind, as for a v3 field:
 `AcceptedField`, `UnclaimedField` or `RefusedField`, and every problem.
 `ZarrV2Context` is the class of a v2 scope. It has a slot for each kind
 of v2 field, `data_types` and `codecs`, and shares `update`,
-`joined` and `claimant` with the v3 scope. A v2 reader rejects a v3
+`union` and `claimant` with the v3 scope. A v2 reader rejects a v3
 scope with `TypeError`.
 
 A dtype reads as its family, and the byte order, size and unit of the

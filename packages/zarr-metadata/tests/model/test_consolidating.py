@@ -262,11 +262,11 @@ def test_error_a_group_s_listing_that_is_not_an_object() -> None:
     assert [problem.loc for problem in raised.value.problems] == [("consolidated_metadata",)]
 
 
-def test_children_of_different_scopes_consolidate_in_their_join() -> None:
-    """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
+def test_children_of_different_scopes_consolidate_in_their_union() -> None:
+    """Children read in different scopes are consolidated in the union of their scopes. Each child refines into that scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)
     b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
-    context = ZarrV3Context.joined(a.context, b.context)
+    context = a.context.union(b.context)
     held = _consolidated(context, a=a, b=b)
     assert held.context == CORE_AND_EXTENSIONS
     assert held.metadata["a"] == a

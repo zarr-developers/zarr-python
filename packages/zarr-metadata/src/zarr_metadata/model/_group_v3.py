@@ -37,10 +37,9 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import scoped
+from zarr_metadata.definition._context import disagreements, scoped
 from zarr_metadata.definition._definition import UnclaimedField, fields_of, held
 from zarr_metadata.definition._scope import (
-    Claims,
     Conflict,
     ScopeConflictError,
     claims_of,
@@ -177,19 +176,10 @@ class ZarrV3GroupMetadata(Keyed):
     `MetadataValidationError` with every problem.
     """
 
-    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
+    __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
-
-    @property
-    def claims(self) -> Claims:
-        """The claims the reading recorded for each name the document writes (its extra fields), keyed by kind and the name the scope files it under. Computed on first access."""
-        try:
-            return self._claims
-        except AttributeError:
-            self._claims = MappingProxyType(claims_of(self._reading.fields()))
-            return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS)
@@ -367,7 +357,7 @@ class ZarrV3GroupMetadata(Keyed):
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
         context = scoped(context, CORE_AND_EXTENSIONS)
-        if context.disagreements(self.claims).agrees:
+        if disagreements(context, claims_of(self._reading.fields())).agrees:
             return self._of(self._document, context, self._reading, self._members)
         return type(self)(self._document, context=context)
 
@@ -384,7 +374,7 @@ class ZarrV3GroupMetadata(Keyed):
         that they read the same there.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
-        found = context.disagreements(self.claims)
+        found = disagreements(context, claims_of(self._reading.fields()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(context)
@@ -561,7 +551,10 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ConsolidatedMetadata:
         """Return this member with every document read in `context`, whatever that changes. Raises `MetadataValidationError` when a document has a problem in `context`. The existing readings are reused when `context` reads every claim of every document identically."""
         context = scoped(context, CORE_AND_EXTENSIONS)
-        if all(context.disagreements(node.claims).agrees for node in self._metadata.values()):
+        if all(
+            disagreements(context, claims_of(node.reading.fields())).agrees
+            for node in self._metadata.values()
+        ):
             moved = {path: node.with_context(context) for path, node in self._metadata.items()}
             return self._of(self._document, context, moved)
         return type(self)(self._document, context=context)
@@ -580,7 +573,8 @@ class ZarrV3ConsolidatedMetadata(Keyed):
             )
             for path, node in self._metadata.items()
             for conflict in located_conflicts(
-                node.reading.fields(), context.disagreements(node.claims).conflicts
+                node.reading.fields(),
+                disagreements(context, claims_of(node.reading.fields())).conflicts,
             )
         ]
         if len(conflicts) != 0:
@@ -947,7 +941,7 @@ def _read_node_model(
     location.
     """
     document = entry.to_json()
-    found = context.disagreements(entry.claims)
+    found = disagreements(context, claims_of(entry.reading.fields()))
     if len(found.conflicts) != 0:
         # Read the document again in this scope, so the reading belongs to
         # it, like every other reading the consolidated metadata holds.

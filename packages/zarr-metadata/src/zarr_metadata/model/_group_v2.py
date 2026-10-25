@@ -29,8 +29,8 @@ from zarr_metadata._json import (
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import scoped
-from zarr_metadata.definition._scope import Claims, Conflict, ScopeConflictError
+from zarr_metadata.definition._context import disagreements, scoped
+from zarr_metadata.definition._scope import Conflict, ScopeConflictError, claims_of
 from zarr_metadata.model._array_v2 import (
     ARRAY_FILE_ATTRIBUTES,
     ZarrV2ArrayMetadata,
@@ -266,11 +266,6 @@ class ZarrV2GroupMetadata(Keyed):
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
-
-    @property
-    def claims(self) -> Claims:
-        """The claims the reading recorded: none, since a group has no fields."""
-        return MappingProxyType({})
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2)
@@ -599,7 +594,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         for path, node in self._metadata.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
-            found = context.disagreements(node.claims)
+            found = disagreements(context, claims_of(node.reading.fields()))
             key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(

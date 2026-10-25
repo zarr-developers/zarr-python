@@ -21,7 +21,6 @@ from zarr_metadata.definition._context import (
     Tables,
     claimant_in,
     definitions_in,
-    disagreements_in,
     filed,
     joined_tables,
     refuse_others,
@@ -42,7 +41,6 @@ from zarr_metadata.v3._definition import (
 
 if TYPE_CHECKING:
     from zarr_metadata.definition._definition import D, Definition
-    from zarr_metadata.definition._scope import Claims, Disagreements
 
 ZarrV3Kind: TypeAlias = (
     DataTypeDefinition[Any]
@@ -203,10 +201,6 @@ class ZarrV3Context:
         """
         return claimant_in(self._tables, kind, name)
 
-    def disagreements(self, claims: Claims) -> Disagreements:
-        """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`. A claim is keyed by the name its definition is filed under, so it is looked up by that name."""
-        return disagreements_in(self._tables, claims)
-
     def update(self, **slots: Unpack[ZarrV3ContextSlots]) -> ZarrV3Context:
         """This scope, with each slot given here holding only the definitions given for it. The other slots are kept.
 
@@ -220,17 +214,18 @@ class ZarrV3Context:
         """
         return self._of(updated(self._tables, self.kinds, slots, 3))
 
-    @classmethod
-    def joined(cls, *contexts: ZarrV3Context) -> ZarrV3Context:
-        """The smallest scope that files everything each of `contexts` files (their join).
+    def union(self, *others: ZarrV3Context) -> ZarrV3Context:
+        """The smallest scope that files everything this scope and each of `others` file.
 
         Raises `ScopeConflictError` when two of them file different
         definitions under one name in a slot. To replace a definition on
-        purpose, use `update`. Raises `TypeError` for a scope of
-        another format.
+        purpose, use `update`. Raises `TypeError` for a scope of another
+        format.
         """
-        refuse_others(contexts, ZarrV3Context, 3)
-        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts]))
+        refuse_others(others, ZarrV3Context, 3)
+        return self._of(
+            joined_tables(self.kinds, [self._tables, *(other._tables for other in others)])
+        )
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default

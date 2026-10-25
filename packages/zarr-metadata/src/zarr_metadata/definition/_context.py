@@ -38,6 +38,8 @@ from zarr_metadata.definition._scope import (
 if TYPE_CHECKING:
     from zarr_metadata.definition._definition import D
     from zarr_metadata.definition._scope import Claims, Disagreements
+    from zarr_metadata.v2._context import ZarrV2Context
+    from zarr_metadata.v3._context import ZarrV3Context
 
 
 Tables: TypeAlias = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
@@ -181,8 +183,15 @@ def claimant_in(tables: Tables, kind: type[D], name: str) -> D | None:
     return None if filed_name is None else table.get(filed_name)
 
 
-def disagreements_in(tables: Tables, claims: Claims) -> Disagreements:
-    """Where `tables` read `claims` differently, looking each claim up by its kind and the name its definition is filed under. Raises `TypeError` for a claim of the other format's kind, as `definitions_in` does."""
+def disagreements(context: ZarrV3Context | ZarrV2Context, claims: Claims) -> Disagreements:
+    """Where `context` reads `claims`, a reading's claims, differently: the names it would gain and the names it conflicts with, as `Disagreements` describes them. A claim is keyed by the name its definition is filed under, so it is looked up by that name. Raises `TypeError` for a claim of the other format's kind, as `definitions_in` does.
+
+    A model calls this to check a scope it is moved to. It is not a method
+    of the scope classes, whose public API is the definitions they hold.
+    """
+    # This module files, looks up and compares the tables a scope holds,
+    # so it reads them here.
+    tables = context._tables  # pyright: ignore[reportPrivateUsage]
     return disagreements_of(lambda kind, name: definitions_in(tables, kind).get(name), claims)
 
 
@@ -225,12 +234,12 @@ def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | No
 
 
 def refuse_others(contexts: Iterable[object], scope: type, zarr_format: int) -> None:
-    """Raise `TypeError` unless each of `contexts` is a `scope`, the class of the v`zarr_format` scope, so `scope.joined` joins only scopes of its own format."""
+    """Raise `TypeError` unless each of `contexts` is a `scope`, the class of the v`zarr_format` scope, so a scope's `union` takes only scopes of its own format."""
     for context in contexts:
         if not isinstance(context, scope):
             msg = (
-                f"a scope reads documents of one Zarr format; a v{zarr_format} scope joins "
-                f"v{zarr_format} scopes, got {described(context)}"
+                f"a scope reads documents of one Zarr format; a union of v{zarr_format} scopes "
+                f"takes v{zarr_format} scopes, got {described(context)}"
             )
             raise TypeError(msg)
 
@@ -256,7 +265,7 @@ __all__ = [
     "Tables",
     "claimant_in",
     "definitions_in",
-    "disagreements_in",
+    "disagreements",
     "filed",
     "joined_tables",
     "refuse_others",

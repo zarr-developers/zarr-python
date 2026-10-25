@@ -32,7 +32,6 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
     ZarrV2Context,
-    ZarrV2DataTypeDefinition,
 )
 
 Loc = tuple[str | int, ...]
@@ -73,7 +72,7 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`. `claims` is keyed the same way the scope files its definitions."""
+    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
     assert isinstance(model.dtype, AcceptedField)
     assert model.dtype.definition is FLOAT_DATA_TYPE_V2
@@ -86,7 +85,6 @@ def test_properties_are_what_the_reading_holds() -> None:
     assert model.attributes == {"a": (1, 2)}
     assert model.extra_fields == {"extra": (1,)}
     assert (model.zarr_format, model.node_type) == (2, "array")
-    assert (ZarrV2DataTypeDefinition, "float") in model.claims
     with pytest.raises(TypeError):
         cast("dict[str, object]", model.attributes)["b"] = 1
     assert ZarrV2ArrayMetadata({**ARRAY, "compressor": None}).compressor is None
@@ -292,7 +290,6 @@ def test_a_group_is_its_document_read_in_its_scope(
     assert ZarrV2GroupMetadata.from_key_value(model.to_key_value(), context=SMALL) == model
     assert pickle.loads(pickle.dumps(model)) == model
     assert copy.deepcopy(model) == model
-    assert dict(model.claims) == {}
 
 
 def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:

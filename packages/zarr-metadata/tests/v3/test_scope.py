@@ -1,27 +1,26 @@
-"""The algebra of scopes: value semantics for `Context`, claims, refinement, disagreements and joins."""
+"""The algebra of scopes: value semantics for `Context`, claims, refinement, disagreements and unions."""
 
 from __future__ import annotations
 
 import pickle
-from typing import Any, get_type_hints
+from typing import Any
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from zarr_metadata.definition import (
-    Claims,
     Conflict,
     Definition,
-    Disagreements,
     EmptyConfiguration,
     RefusedField,
     ResolvedField,
     ScopeConflictError,
     resolve,
 )
+from zarr_metadata.definition._context import disagreements
 from zarr_metadata.definition._definition import fields_of
-from zarr_metadata.definition._scope import claims_of, kind_name, refines
+from zarr_metadata.definition._scope import Disagreements, claims_of, kind_name, refines
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -332,56 +331,48 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
     gains: tuple[Any, ...],
     conflicts: tuple[Conflict, ...],
 ) -> None:
-    """A scope agrees with claims that it reads the same way. It gains where it claims a name the claims left unclaimed. It conflicts where it reads a name with another definition or with none."""
-    found = context.disagreements(claims)
+    """A scope agrees with claims that it reads the same way. It gains where it claims a name the claims left unclaimed. It conflicts where it reads a name with another definition or with none. Models compare a scope they are moved to with their claims this way."""
+    found = disagreements(context, claims)
     assert isinstance(found, Disagreements)
     assert (found.gains, found.conflicts) == (gains, conflicts)
     assert found.agrees is (len(gains) == 0 and len(conflicts) == 0)
 
 
 @pytest.mark.parametrize(
-    ("contexts", "joined"),
+    ("contexts", "united"),
     [
         ((CORE, CORE_AND_EXTENSIONS), CORE_AND_EXTENSIONS),
         (
             (ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[ZSTD_CODEC])),
             ZarrV3Context(codecs=[GZIP_CODEC, ZSTD_CODEC]),
         ),
-        ((), ZarrV3Context()),
+        ((CORE,), CORE),
         ((CORE, CORE), CORE),
         (
             (ZarrV3Context(codecs=[BYTES_CODEC]), ZarrV3Context(data_types=[BYTES_DATA_TYPE])),
             ZarrV3Context(data_types=[BYTES_DATA_TYPE], codecs=[BYTES_CODEC]),
         ),
     ],
-    ids=["subset", "disjoint", "none", "same", "same-name-two-kinds"],
+    ids=["subset", "disjoint", "alone", "same", "same-name-two-kinds"],
 )
-def test_joined_is_the_least_scope_above_each(
-    contexts: tuple[ZarrV3Context, ...], joined: ZarrV3Context
+def test_union_is_the_least_scope_above_each(
+    contexts: tuple[ZarrV3Context, ...], united: ZarrV3Context
 ) -> None:
-    """The join of scopes files every definition that any of them files, once. The same name in two kinds counts as two names."""
-    assert ZarrV3Context.joined(*contexts) == joined
+    """The union of scopes, their join in the order `refines` defines, files every definition that any of them files, once. The same name in two kinds counts as two names."""
+    first, *others = contexts
+    assert first.union(*others) == united
 
 
-def test_error_joined_refuses_one_name_filed_two_ways() -> None:
-    """Scopes that file different definitions under one name have no join. `ZarrV3Context.joined` raises a `ScopeConflictError` that names the key and both definitions."""
+def test_error_union_refuses_one_name_filed_two_ways() -> None:
+    """Scopes that file different definitions under one name have no union. `union` raises a `ScopeConflictError` that names the key and both definitions."""
     with pytest.raises(ScopeConflictError) as raised:
-        ZarrV3Context.joined(CORE, ZarrV3Context(codecs=[MY_GZIP]))
+        CORE.union(ZarrV3Context(codecs=[MY_GZIP]))
     (conflict,) = raised.value.conflicts
     assert (conflict.key, conflict.claimed, conflict.found) == (
         (CodecDefinition, "gzip"),
         GZIP_CODEC,
         MY_GZIP,
     )
-
-
-def test_claims_is_a_type_a_signature_can_hold() -> None:
-    """`Claims` resolves as an annotation at run time, when a caller's `get_type_hints` reads it: it is a type, not a string."""
-
-    def read(claims: Claims) -> None:
-        pass
-
-    assert "claims" in get_type_hints(read)
 
 
 @pytest.mark.parametrize(
@@ -441,7 +432,7 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
 OTHER_GZIP = CodecDefinition(
     name="gzip", configuration=EmptyConfiguration, kind="bytes_bytes", size="static"
 )
-"""A second definition under the core gzip's name, which makes a join conflict."""
+"""A second definition under the core gzip's name, which makes a union conflict."""
 
 
 def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
@@ -449,14 +440,14 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
     import copy
 
     with pytest.raises(ScopeConflictError) as raised:
-        ZarrV3Context.joined(CORE, ZarrV3Context(codecs=[OTHER_GZIP]))
+        CORE.union(ZarrV3Context(codecs=[OTHER_GZIP]))
     error = raised.value
-    error.add_note("seen in a join")
+    error.add_note("seen in a union")
     for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
         assert again.conflicts == error.conflicts
         assert str(again) == str(error)
         assert str(again).startswith("codec 'gzip'")
-        assert again.__notes__ == ["seen in a join"]
+        assert again.__notes__ == ["seen in a union"]
 
 
 def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_definitions_apart() -> (
@@ -481,10 +472,10 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
     assert message.startswith("data type 'r16'")
     assert "RawBytesConfiguration" in message
     assert "EmptyConfiguration" in message
-    with pytest.raises(ScopeConflictError) as joined:
-        ZarrV3Context.joined(ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[OTHER_GZIP]))
-    assert str(joined.value).count("gzip") >= 2
-    assert "EmptyConfiguration" in str(joined.value)
+    with pytest.raises(ScopeConflictError) as united:
+        ZarrV3Context(codecs=[GZIP_CODEC]).union(ZarrV3Context(codecs=[OTHER_GZIP]))
+    assert str(united.value).count("gzip") >= 2
+    assert "EmptyConfiguration" in str(united.value)
 
 
 def test_each_slot_is_a_read_only_view_by_name() -> None:

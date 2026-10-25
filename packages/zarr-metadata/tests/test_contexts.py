@@ -46,7 +46,7 @@ def test_the_scope_of_each_format_behaves_alike(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `joined`, equality and hashing by what each slot files, a short repr, and pickling and copying. A field is read in either one with `resolve`."""
+    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `union`, equality and hashing by what each slot files, a short repr, and pickling and copying. A field is read in either one with `resolve`."""
     built = cls(codecs=[gzip])
     assert built.zarr_format == zarr_format
     assert built.claimant(kind, "gzip") is gzip
@@ -58,8 +58,8 @@ def test_the_scope_of_each_format_behaves_alike(
     assert repr(built) == f"{cls.__name__}(<1 definitions>)"
     replaced = built.update(codecs=[_other(gzip)])
     assert replaced.claimant(kind, "gzip") is not gzip
-    assert cls.joined(built, cls()) == built
-    assert cls.joined() == cls()
+    assert built.union(cls()) == built
+    assert built.union() == built
     assert pickle.loads(pickle.dumps(core)) == core
     assert copy.copy(core) is core
     assert copy.deepcopy(core) is core
@@ -123,16 +123,16 @@ def test_error_a_scope_has_only_the_slots_it_declares(
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
-def test_error_joined_refuses_one_name_filed_two_ways(
+def test_error_union_refuses_one_name_filed_two_ways(
     cls: Any,  # noqa: ANN401 - either scope class
     core: Context,
     kind: Any,  # noqa: ANN401 - either codec kind
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Scopes of either format that file different definitions under one name in a slot have no join: `joined` raises `ScopeConflictError` naming the kind and name. The two definitions read the same TypedDict, so the message says they differ rather than showing two identical descriptions."""
+    """Scopes of either format that file different definitions under one name in a slot have no union: `union` raises `ScopeConflictError` naming the kind and name. The two definitions read the same TypedDict, so the message says they differ rather than showing two identical descriptions."""
     with pytest.raises(ScopeConflictError) as raised:
-        cls.joined(cls(codecs=[gzip]), cls(codecs=[_other(gzip)]))
+        cls(codecs=[gzip]).union(cls(codecs=[_other(gzip)]))
     (conflict,) = raised.value.conflicts
     assert conflict.key == (kind, "gzip")
     assert "'gzip': two different definitions, each " in str(raised.value)
@@ -169,21 +169,6 @@ def test_error_a_scope_refuses_a_kind_of_the_other_format(
     other_data_type = ZarrV2DataTypeDefinition if zarr_format == 3 else DataTypeDefinition
     with pytest.raises(TypeError, match="kinds of its format"):
         core.claimant(other_data_type, "r*")
-
-
-@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
-def test_error_disagreements_refuses_claims_of_the_other_format(
-    cls: Any,  # noqa: ANN401 - either scope class
-    core: Any,  # noqa: ANN401 - either core scope
-    kind: Any,  # noqa: ANN401 - either codec kind
-    gzip: Any,  # noqa: ANN401 - either gzip definition
-    zarr_format: int,
-) -> None:
-    """The claims of a model of one format are never read in a scope of the other: `disagreements` raises `TypeError`, rather than reporting every claim as lost."""
-    other = CORE_V2 if zarr_format == 3 else CORE
-    claims = {(type(gzip), "gzip"): gzip}
-    with pytest.raises(TypeError, match="kinds of its format"):
-        other.disagreements(claims)
 
 
 class _LooksLikeAScope:
@@ -228,10 +213,10 @@ def test_error_a_reader_refuses_what_is_not_a_scope_of_its_format(
 
 
 @pytest.mark.parametrize("given", ["nope", CORE_V2], ids=["not-a-scope", "a-v2-scope"])
-def test_error_joined_refuses_what_is_not_a_scope_of_its_format(given: object) -> None:
-    """`ZarrV3Context.joined` joins v3 scopes only. A v2 scope or a value that is not a scope raises `TypeError` naming what was given."""
-    with pytest.raises(TypeError, match="a v3 scope joins v3 scopes, got"):
-        ZarrV3Context.joined(CORE, given)  # pyright: ignore[reportArgumentType]
+def test_error_union_refuses_what_is_not_a_scope_of_its_format(given: object) -> None:
+    """A v3 scope's `union` takes v3 scopes only. A v2 scope or a value that is not a scope raises `TypeError` naming what was given."""
+    with pytest.raises(TypeError, match="a union of v3 scopes takes v3 scopes, got"):
+        CORE.union(given)  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("cls", [ZarrV3Context, ZarrV2Context], ids=["v3", "v2"])

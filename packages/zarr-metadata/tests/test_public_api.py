@@ -290,12 +290,10 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Chunk",
-        # The algebra of scopes: the claims a reading makes, and the places
-        # where two scopes disagree.
+        # The algebra of scopes: the key of a claim, and a conflict between
+        # two definitions of one name.
         "ClaimKey",
-        "Claims",
         "Conflict",
-        "Disagreements",
         "ScopeConflictError",
         # A reader's problems, as the signatures of every reader name them.
         "Problems",
