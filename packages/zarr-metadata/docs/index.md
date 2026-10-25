@@ -163,12 +163,13 @@ Some choices that the spec text leaves open, or answers in two ways:
   example to read `<f16`, does not widen what a codec's dtype parameter
   may be.
 
-A regular grid's chunk lengths must be at least 1, even along a dimension
-of length 0. The regular grid spec says "Chunk sizes must be greater than
-zero". The core spec's wording, "non-zero when the corresponding dimensions
-of the arrays have non-zero length", requires less, but does not explicitly
-allow anything more. So a document with a chunk length of 0, which
-zarr-python 3.0 and 3.1 wrote for an empty dimension, is rejected.
+A v3 `regular` chunk grid's chunk lengths must be at least 1, even along a
+dimension of length 0. The regular grid spec says "Chunk sizes must be
+greater than zero". The core spec's wording, "non-zero when the
+corresponding dimensions of the arrays have non-zero length", requires
+less, but does not explicitly allow anything more. So a document with a
+chunk length of 0, which zarr-python 3.0 and 3.1 wrote for an empty
+dimension, is rejected.
 
 The readers are strict, so a document that a known writer bug made
 invalid has problems. The repair readers in `zarr_metadata.model`
@@ -176,8 +177,8 @@ invalid has problems. The repair readers in `zarr_metadata.model`
 `read_repaired_consolidated_metadata_v2`) undo these bugs first, then
 read the result strictly, and return each change they made as a `Repair`:
 
-- A chunk length of 0 along an empty dimension, which zarr-python 3.0
-  and 3.1 wrote, is written as 1.
+- A chunk length of 0 in a v3 `regular` chunk grid, along an empty
+  dimension, which zarr-python 3.0 and 3.1 wrote, is written as 1.
 - `consolidated_metadata: null` on a v3 group, which zarr-python 3.0 and
   3.1 wrote, is removed.
 - The `consolidated_metadata` member that zarr-python 3 writes into each
@@ -198,6 +199,12 @@ with one of them is refused:
   reads.
 - zarr-python 3.0.7 and 3.0.8 wrote the fill value of a v2 datetime
   array as an ISO 8601 string, not as a count of ticks.
+- zarr-python 3.0 and 3.1 wrote a chunk length of 0 in a v3 `regular`
+  chunk grid along a dimension that is not empty, for an explicit chunk
+  length of 0.
+- Some releases of zarr-python from 3.0 to 3.2 wrote a chunk length of
+  `true` in a v3 `regular` chunk grid for `chunks=True`, and some
+  releases of 3.0 and 3.1 wrote `false` for `chunks=False`.
 
 `read_array_metadata_v3` reads a document once and returns everything the
 read found:
@@ -318,12 +325,12 @@ scope; with no `context`, they are read in `CORE_AND_EXTENSIONS`.
 To write consolidated metadata, build a `ZarrV3ConsolidatedMetadata` and
 pass it to the group's `update`. The group reads the listed models in its
 own scope, refuses one that its scope reads differently, and writes the
-document. The model
-reads every document strictly, and also accepts node models as entries.
-Such an entry is accepted when its claims refine into the model's scope,
-and refused at its path otherwise. To consolidate children that were read
-in several scopes, consolidate them in the `union` of those scopes. Every
-reader takes `context=None` for the default scope, `CORE_AND_EXTENSIONS`.
+document. The model reads every document strictly, and also accepts node
+models as entries. Such an entry is accepted when its claims refine into
+the model's scope, and refused at its path otherwise. To consolidate
+children that were read in several scopes, consolidate them in the
+`union` of those scopes. Every reader takes `context=None` for the
+default scope, `CORE_AND_EXTENSIONS`.
 
 Two models are equal when they represent the same document, even if each
 is spelled differently. Values the package interprets (each field, and the
