@@ -1,4 +1,4 @@
-"""Operations on scopes: which definition a reading records for each name, how one reading refines another, and where two scopes disagree.
+"""Operations on scopes: which definition a reading records for each name, how one reading refines another, and where a scope disagrees with a reading.
 
 A model is a document read in a scope. The meaning of the document
 depends only on what the scope returned for the names the document uses
@@ -6,8 +6,11 @@ depends only on what the scope returned for the names the document uses
 document are ordered by how much they know. If a name was unclaimed and a
 definition later reads it, the name gains meaning and loses none. If one
 definition reads a name and then a different definition reads it, that is
-a conflict. A scope's `disagreements` and `joined` are built on
-these operations.
+a conflict. The internal `disagreements` function in
+`zarr_metadata.definition._context`, which a model uses to compare a
+scope with its claims, is built on these operations. A scope's `union`
+raises the `ScopeConflictError` defined here when two scopes file
+different definitions under one name.
 """
 
 from __future__ import annotations

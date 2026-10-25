@@ -201,7 +201,7 @@ class Definition(Generic[C]):
 
     @classmethod
     def _well_named(cls, name: str) -> bool:
-        """Whether a document of the format may use `name` for a field of this kind, as decided by `name_problem`."""
+        """Whether a document of the format may use `name` for a field of this kind, as decided by `_name_problem`."""
         return cls._name_problem(name, ()) is None
 
     @classmethod
@@ -958,10 +958,10 @@ class AcceptedField(Generic[D]):
 class UnclaimedField:
     """A field that nothing in scope claims: an extension that the scope does not check. Accepting such fields is what keeps the format open.
 
-    It is equal to another unclaimed field when both are written with the
-    same name and configuration, however each was spelled. Nothing in
-    scope interprets the configuration, so it is compared as JSON text, as
-    `field_key` defines.
+    It is equal to another unclaimed field when both have the same name
+    and a document writes the same JSON for both. Nothing in scope
+    interprets the field, so it is compared as JSON text, as `field_key`
+    defines.
     """
 
     json: JSONValue
@@ -1120,8 +1120,8 @@ def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
     An accepted field is compared by the definition that read it, by its
     configuration in the definition's canonical spelling (as
     `canonical_of` writes it) as JSON text, and by the key of each nested
-    field. An unclaimed field is compared by its name and its
-    configuration as written, as JSON text, because nothing interprets it.
+    field. An unclaimed field is compared by its name and by the JSON a
+    document writes for it, as JSON text, because nothing interprets it.
     A refused field is compared by what was written and by the definition
     that rejected it. So two fields are equal when the parts a reader
     understands read the same, and the parts no reader interprets are
@@ -1250,13 +1250,14 @@ def with_problems(
 
 
 def configuration_of(resolved: ResolvedField[Any], definition: Definition[C]) -> C | None:
-    """The configuration of `resolved`, typed as `definition` declares it, if `definition` read it.
+    """The configuration of `resolved`, typed as `definition` declares it, if `definition` accepted it.
 
     `AcceptedField` stores its configuration as a read-only mapping. When
     called with the definition that read the field, or one equal to it
     (as with a pickled field), this returns a copy of it, a plain `dict`
     typed as the TypedDict, which shares nothing with the field. Returns
-    None when another definition read the field, or no definition did.
+    None for any other field: one that another definition read, one that
+    no definition claims, and one that `definition` claimed and refused.
     """
     if not isinstance(resolved, AcceptedField) or resolved.definition != definition:
         return None

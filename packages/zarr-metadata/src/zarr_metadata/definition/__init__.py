@@ -59,9 +59,9 @@ can be used on its own by a caller that has only JSON:
    they read the same, however each was spelled. `ResolvedField` is the
    union of the three, for use with `match`.
    `configuration_of(field, GZIP_CODEC)` returns the configuration of a
-   field that `GZIP_CODEC` read, typed as its TypedDict
-   (`GzipCodecConfiguration`), and None for a field that another
-   definition read or that nothing claims. A field is read as one of
+   field that `GZIP_CODEC` accepted, typed as its TypedDict
+   (`GzipCodecConfiguration`), and None for any other field, including
+   one that `GZIP_CODEC` claimed and refused. A field is read as one of
    the kinds of its format, with or without type arguments.
    `resolve(field, Definition, context)` raises `TypeError`, because
    nothing is filed under `Definition`. A whole v3 array document is
