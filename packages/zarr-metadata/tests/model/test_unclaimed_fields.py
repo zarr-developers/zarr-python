@@ -154,7 +154,7 @@ def test_a_model_that_refines_another_has_no_more_to_understand(
     wider: set[tuple[str | int, ...]],
     narrower: set[tuple[str | int, ...]],
 ) -> None:
-    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, and a waived member is left out by both."""
+    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, which lies inside the member, and a waived member is left out by both."""
     claimed_less = kind({**document, "acme.mirror": member}, context=CORE)
     claimed_more = kind({**document, "acme.mirror": member}, context=context)
     assert claimed_more.refines(claimed_less)

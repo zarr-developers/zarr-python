@@ -8,7 +8,7 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 import json
 import math
 import warnings
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -514,7 +514,7 @@ _V2_WITHOUT_CODECS = ZarrV2Context(data_types=CORE_V2.data_types.values())
     ],
 )
 def test_error_a_consolidated_instance_a_scope_reads_differently_reports_each_conflict(
-    validate: Any,  # noqa: ANN401 - a validating function
+    validate: Callable[[object], object],
     instance: object,
     loc: tuple[str | int, ...],
     found: object,

@@ -960,9 +960,8 @@ class UnclaimedField:
 
     It is equal to another unclaimed field when both are of the same kind,
     have the same name, and a document writes the same JSON for both.
-    Nothing in scope
-    interprets the field, so it is compared as JSON text, as `field_key`
-    defines.
+    Nothing in scope interprets the field, so it is compared as JSON text,
+    as `field_key` defines.
     """
 
     json: JSONValue
