@@ -159,8 +159,8 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
     path needs its divergences documented again."""
     from zarr_metadata.model import UNSET
     from zarr_metadata.typed_json import JSONValue
-    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
-    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
+    from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 
     def build_and_use() -> None:
         adapter = TypeAdapter(ZarrV3ArrayMetadata)

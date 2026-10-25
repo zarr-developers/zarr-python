@@ -1398,15 +1398,21 @@ def test_error_a_fill_value_with_a_constraint_its_type_cannot_take() -> None:
 def test_error_a_definition_name_is_a_string() -> None:
     with pytest.raises(TypeError, match="a definition's name is a string"):
         CodecDefinition(
-            name=5, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
-        )  # pyright: ignore[reportArgumentType]
+            name=5,  # pyright: ignore[reportArgumentType]
+            configuration=EmptyConfiguration,
+            kind="bytes_bytes",
+            size="dynamic",
+        )
 
 
 def test_error_a_codec_kind_is_one_of_three() -> None:
     with pytest.raises(TypeError, match="kind is one of"):
         CodecDefinition(
-            name="acme.k", configuration=EmptyConfiguration, kind="bytes_to_array", size="dynamic"
-        )  # pyright: ignore[reportArgumentType]
+            name="acme.k",
+            configuration=EmptyConfiguration,
+            kind="bytes_to_array",  # pyright: ignore[reportArgumentType]
+            size="dynamic",
+        )
 
 
 def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> None:

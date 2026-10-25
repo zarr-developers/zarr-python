@@ -736,7 +736,7 @@ def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataO
 def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
     """A v2 scope cannot read a v3 field, so `field_json_schema_v3` raises `TypeError` for one, as every v3 reader does."""
     with pytest.raises(TypeError, match="v3 document is read in a scope of that format"):
-        field_json_schema_v3(CodecDefinition, context=CORE_V2)
+        field_json_schema_v3(CodecDefinition, context=CORE_V2)  # pyright: ignore[reportArgumentType]
 
 
 def test_field_json_schema_refuses_what_is_not_a_kind() -> None:

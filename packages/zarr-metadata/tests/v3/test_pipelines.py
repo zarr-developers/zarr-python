@@ -433,8 +433,12 @@ def test_error_a_codec_hook_nothing_would_ask(kind: str, member: str) -> None:
     hook = {member: lambda configuration, nested, chunk: ()}
     with pytest.raises(TypeError, match=f"'acme.x': {member}, "):
         CodecDefinition(
-            name="acme.x", configuration=EmptyConfiguration, kind=kind, size="static", **hook
-        )  # pyright: ignore[reportArgumentType]
+            name="acme.x",
+            configuration=EmptyConfiguration,
+            kind=kind,  # pyright: ignore[reportArgumentType]
+            size="static",
+            **hook,  # pyright: ignore[reportArgumentType]
+        )
 
 
 def test_an_array_document_s_codecs_are_each_judged_against_the_chunk_they_are_handed() -> None:
