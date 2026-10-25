@@ -1228,6 +1228,18 @@ class _HoldsATupleOfAConstrainedMember(TypedDict, closed=True):
     inner: tuple[_ConstrainedMember, ...]
 
 
+class _ConstraintOnANotAJSONShapeMember(TypedDict, closed=True):
+    inner: Annotated[_NotAJSONShape, MultipleOf(2)]
+
+
+_Children = TypeAliasType("_Children", "tuple[_SelfReferentialThroughAnAlias, ...]")
+
+
+class _SelfReferentialThroughAnAlias(TypedDict, closed=True):
+    children: NotRequired[_Children]
+    a: set[int]
+
+
 class _SelfReferentialReadable(TypedDict, closed=True):
     parent: NotRequired[_SelfReferentialReadable]
     a: int
@@ -1288,8 +1300,9 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         (
             _ConstraintOnAConstrainedMember,
             Unread(
-                "_ConstraintOnAConstrainedMember.inner: MultipleOf(multiple_of=2) is not a "
-                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                "_ConstraintOnAConstrainedMember.inner: _ConstrainedMember.a: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
                 constraint=True,
             ),
         ),
@@ -1392,6 +1405,23 @@ class _SelfReferentialReadable(TypedDict, closed=True):
                 constraint=True,
             ),
         ),
+        (
+            _ConstraintOnANotAJSONShapeMember,
+            Unread(
+                "_ConstraintOnANotAJSONShapeMember.inner: _NotAJSONShape: a is not a shape JSON "
+                "takes; write it as one -- a number, string, boolean, null, array, object, or an "
+                "alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialThroughAnAlias,
+            Unread(
+                "_SelfReferentialThroughAnAlias: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
         (_SelfReferentialReadable, None),
         (_Readable, None),
     ],
@@ -1415,6 +1445,8 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         "a-constraint-after-a-member-that-leads-back-optionally",
         "a-typeddict-in-a-union",
         "a-typeddict-in-a-tuple",
+        "a-constraint-on-a-member-whose-typeddict-is-not-a-json-shape",
+        "self-referential-through-an-alias",
         "self-referential-and-readable",
         "readable",
     ],
@@ -1422,7 +1454,7 @@ class _SelfReferentialReadable(TypedDict, closed=True):
 def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
     typeddict: type, unread: Unread | None
 ) -> None:
-    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, also through a union or a container, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the member's own is named first. A TypedDict that holds itself, directly or through another, is named where its own members are unread, and a member that leads back, also through a union, is named only when nothing else is, unless metadata of its own, such as a constraint but not a `Doc`, is unread. A TypedDict the checker reads whole has no unread part."""
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, also through a union or a container, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first, as the checker meets it first. A TypedDict that holds itself, directly or through another, is named where its own members are unread, and a member that leads back, also through a union, is named only when nothing else is, unless metadata of its own, such as a constraint but not a `Doc`, is unread. A TypedDict the checker reads whole has no unread part."""
     assert unread_in(typeddict, no_leaf) == unread
 
 

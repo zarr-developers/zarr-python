@@ -1194,12 +1194,14 @@ def _unread_in(
 ) -> tuple[Unread | None, bool]:
     """The unread part of `typeddict`, looked inside from each TypedDict in `visiting`, itself included, and whether it is surely the part that is unread.
 
-    Each TypedDict a member holds, directly or in a union or a container,
-    is looked inside. A member that leads back to one of `visiting` may be
-    unread only because of what is unread there, which is found at that
-    TypedDict's own members. Looking inside it again would not end, so
-    such a member is named only when nothing else is unread, unless the
-    checker does not read metadata of its own, such as a constraint.
+    Each TypedDict a member holds, directly, in a union or a container, or
+    through an alias or a `NewType`, is looked inside first, as the
+    checker meets it first. Then a member that holds a TypedDict is named
+    when the checker does not read its own metadata, such as a constraint.
+    A member that leads back to one of `visiting` may be unread only
+    because of what is unread there, which is found at that TypedDict's
+    own members. Looking inside it again would not end, so such a member
+    is named only when nothing else is unread.
     """
     keys = typeddict_keys(typeddict)
     others: list[tuple[str, object]] = []
@@ -1215,11 +1217,7 @@ def _unread_in(
         if member is not None:
             continue
         inner, metadata = strip_annotation(annotation)
-        held = _typeddicts_in(inner)
-        if len(held) != 0:
-            own = _metadata_problem(metadata, leaf)
-            if own is not None:
-                return _unread_member(typeddict, key, own), True
+        held = _typeddicts_in(inner, frozenset())
         leads_back = not visiting.isdisjoint(held)
         for nested in held:
             if nested in visiting:
@@ -1239,6 +1237,10 @@ def _unread_in(
                 if fallback is None:
                     fallback = named
                 leads_back = True
+        if len(held) != 0:
+            own = _metadata_problem(metadata, leaf)
+            if own is not None:
+                return _unread_member(typeddict, key, own), True
         if leads_back:
             if fallback is None:
                 fallback = _unread_member(typeddict, key, failed)
@@ -1247,13 +1249,27 @@ def _unread_in(
     return fallback, False
 
 
-def _typeddicts_in(annotation: object) -> tuple[type, ...]:
-    """Each TypedDict `annotation` is or holds in its type arguments, such as `Node | None` or `tuple[Node, ...]`, once each, in the order they are written."""
+def _typeddicts_in(annotation: object, seen: frozenset[object]) -> tuple[type, ...]:
+    """Each TypedDict `annotation` is or holds in its type arguments, such as `Node | None` or `tuple[Node, ...]`, through aliases and `NewType`s, once each, in the order they are written. `seen` holds the aliases and `NewType`s being followed, so one that refers to itself ends."""
     if isinstance(annotation, type) and is_typeddict(annotation):
         return (annotation,)
+    if isinstance(annotation, NewType) or is_alias(annotation):
+        if annotation in seen:
+            return ()
+        try:
+            value = (
+                annotation.__supertype__
+                if isinstance(annotation, NewType)
+                else alias_value(annotation)
+            )
+        except TypeError:
+            # An alias that names what is not defined holds no TypedDict
+            # this can look inside; the parser's error names it.
+            return ()
+        return _typeddicts_in(strip_annotation(value)[0], seen | {annotation})
     found: dict[type, None] = {}
     for argument in get_args(annotation):
-        found.update(dict.fromkeys(_typeddicts_in(strip_annotation(argument)[0])))
+        found.update(dict.fromkeys(_typeddicts_in(strip_annotation(argument)[0], seen)))
     return tuple(found)
 
 
