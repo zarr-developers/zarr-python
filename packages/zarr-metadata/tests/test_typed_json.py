@@ -1123,6 +1123,10 @@ class _NotAJSONShape(TypedDict, closed=True):
     a: set[int]
 
 
+class _HoldsAMemberNotAJSONShape(TypedDict, closed=True):
+    inner: _NotAJSONShape
+
+
 class _Readable(TypedDict, closed=True):
     a: int
 
@@ -1141,8 +1145,8 @@ class _Readable(TypedDict, closed=True):
         (
             _HoldsAConstrainedMember,
             Unread(
-                "_HoldsAConstrainedMember.inner: MultipleOf(multiple_of=2) is not a constraint the "
-                "checker reads, which are Gt, Ge, Lt and Le",
+                "_HoldsAConstrainedMember.inner: _ConstrainedMember.a: MultipleOf(multiple_of=2) is "
+                "not a constraint the checker reads, which are Gt, Ge, Lt and Le",
                 constraint=True,
             ),
         ),
@@ -1154,14 +1158,29 @@ class _Readable(TypedDict, closed=True):
                 constraint=False,
             ),
         ),
+        (
+            _HoldsAMemberNotAJSONShape,
+            Unread(
+                "_HoldsAMemberNotAJSONShape.inner: _NotAJSONShape: a is not a shape JSON takes; "
+                "write it as one -- a number, string, boolean, null, array, object, or an alias of "
+                "one",
+                constraint=False,
+            ),
+        ),
         (_Readable, None),
     ],
-    ids=["a-constraint", "a-constraint-in-a-nested-typeddict", "not-a-json-shape", "readable"],
+    ids=[
+        "a-constraint",
+        "a-constraint-in-a-nested-typeddict",
+        "not-a-json-shape",
+        "not-a-json-shape-in-a-nested-typeddict",
+        "readable",
+    ],
 )
 def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
     typeddict: type, unread: Unread | None
 ) -> None:
-    """`unread_in` names the first part of a TypedDict that the checker has no parser for, and says whether it is a constraint the checker does not read, also inside a nested TypedDict, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A TypedDict the checker reads whole has no unread part."""
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A TypedDict the checker reads whole has no unread part."""
     assert unread_in(typeddict, no_leaf) == unread
 
 

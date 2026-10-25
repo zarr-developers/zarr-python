@@ -1191,18 +1191,23 @@ def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
     if not (keys.closed or keys.open):
         others.append(("extra_items", keys.extra_items))
     for key, annotation in [*((key, member[0]) for key, member in keys.members.items()), *others]:
+        failed: TypeError | None = None
         try:
             member = parser_for(annotation, leaf)
         except TypeError as error:
-            constraint = isinstance(error, UnreadConstraintError)
-            return Unread(f"{typeddict.__name__}.{key}: {error}", constraint)
+            failed, member = error, None
         if member is not None:
             continue
         inner = strip_annotation(annotation)[0]
         if isinstance(inner, type) and is_typeddict(inner):
+            # Name the part inside a nested TypedDict, whether its parser
+            # failed or there is none.
             deeper = unread_in(inner, leaf)
             if deeper is not None:
                 return Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
+        if failed is not None:
+            constraint = isinstance(failed, UnreadConstraintError)
+            return Unread(f"{typeddict.__name__}.{key}: {failed}", constraint)
         message = (
             f"{typeddict.__name__}: {key} is not a shape JSON takes; write it as one -- a "
             "number, string, boolean, null, array, object, or an alias of one"
