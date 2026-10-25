@@ -1245,6 +1245,13 @@ class _BoundOnATupleThatLeadsBack(TypedDict, closed=True):
     a: int
 
 
+class _BoundOnATupleThatLeadsBackBeforeANotAJSONShape(TypedDict, closed=True):
+    children: NotRequired[
+        Annotated[tuple[_BoundOnATupleThatLeadsBackBeforeANotAJSONShape, ...], Ge(0)]
+    ]
+    a: set[int]
+
+
 class _SelfReferentialThroughANewType(TypedDict, closed=True):
     parent: NotRequired[_ParentOfANode]
     a: set[int]
@@ -1453,6 +1460,14 @@ class _SelfReferentialReadable(TypedDict, closed=True):
             ),
         ),
         (
+            _BoundOnATupleThatLeadsBackBeforeANotAJSONShape,
+            Unread(
+                "_BoundOnATupleThatLeadsBackBeforeANotAJSONShape.children: ge: a bound is on a "
+                "number, and an array of objects is not one",
+                constraint=False,
+            ),
+        ),
+        (
             _SelfReferentialThroughANewType,
             Unread(
                 "_SelfReferentialThroughANewType: a is not a shape JSON takes; write it as one -- a "
@@ -1494,6 +1509,7 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         "a-constraint-on-a-member-whose-typeddict-is-not-a-json-shape",
         "self-referential-through-an-alias",
         "a-bound-on-a-tuple-that-leads-back",
+        "a-bound-on-a-tuple-that-leads-back-before-a-member-not-a-json-shape",
         "self-referential-through-a-newtype",
         "an-alias-that-does-not-resolve",
         "self-referential-and-readable",
