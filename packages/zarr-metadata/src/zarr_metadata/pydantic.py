@@ -155,8 +155,15 @@ def _as_pydantic_raises(cls: type[_M], value: object, read: Callable[[], _M]) ->
     try:
         return read()
     except MetadataValidationError as error:
-        line_errors = [_line_error(problem, value) for problem in error.problems]
-        raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
+        raise _validation_error(cls, error, value) from error
+
+
+def _validation_error(
+    cls: type[object], error: MetadataValidationError, value: object
+) -> ValidationError:
+    """The `pydantic_core.ValidationError` for `error`, raised while reading `value` as `cls`: one line error per problem, located in `value`."""
+    line_errors = [_line_error(problem, value) for problem in error.problems]
+    return ValidationError.from_exception_data(cls.__name__, line_errors)
 
 
 def _line_error(problem: ValidationProblem, value: object) -> InitErrorDetails:
@@ -245,9 +252,7 @@ def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: 
         return refine(value, context)
     except MetadataValidationError as error:
         # `to_json` copies the document, so it is built only to report an error.
-        document = value.to_json()
-        line_errors = [_line_error(problem, document) for problem in error.problems]
-        raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
+        raise _validation_error(cls, error, value.to_json()) from error
     except ScopeConflictError as error:
         document = value.to_json()
         line_errors = [

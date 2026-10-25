@@ -105,6 +105,9 @@ _GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
 )
 
 
+# Unlike the node aliases below, this one holds its union as a string: the
+# JSON TypedDicts are imported only for type checking, and the models are
+# defined later in this module.
 ZarrV3NodeMetadataInput = TypeAliasType(
     "ZarrV3NodeMetadataInput",
     "ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON | ZarrV3ArrayMetadata | ZarrV3GroupMetadata",
@@ -322,10 +325,11 @@ class ZarrV3GroupMetadata(Keyed):
         A group opens without reading them, so a document with a problem
         fails only here. Raises `MetadataValidationError` with every problem
         in them, located in this group's document, under
-        `consolidated_metadata`. A member that is not an object, which only a
-        scope that leaves it unclaimed opens, is such a problem too. That
-        includes a member that is `null`, which zarr-python 3.0 and 3.1
-        wrote; `read_repaired_node_metadata_v3` removes it.
+        `consolidated_metadata`. A `consolidated_metadata` that is not an
+        object, which only a scope that leaves it unclaimed opens, is such a
+        problem too. That includes `"consolidated_metadata": null`, which
+        zarr-python 3.0 and 3.1 wrote; `read_repaired_node_metadata_v3`
+        removes it.
         """
         if ZARR_V3_CONSOLIDATED_METADATA_KEY not in self._document:
             return None
