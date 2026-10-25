@@ -1131,6 +1131,23 @@ class _Readable(TypedDict, closed=True):
     a: int
 
 
+# `_Missing` is not defined on purpose: the TypedDict cannot be read at all.
+class _Unresolvable(TypedDict, closed=True):
+    a: "_Missing"  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
+class _HoldsAnUnresolvableTypedDict(TypedDict, closed=True):
+    inner: _Unresolvable
+
+
+class _ConstraintOnAReadableMember(TypedDict, closed=True):
+    inner: Annotated[_Readable, MultipleOf(2)]
+
+
+class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
+    inner: Annotated[_ConstrainedMember, MultipleOf(2)]
+
+
 @pytest.mark.parametrize(
     ("typeddict", "unread"),
     [
@@ -1167,6 +1184,31 @@ class _Readable(TypedDict, closed=True):
                 constraint=False,
             ),
         ),
+        (
+            _HoldsAnUnresolvableTypedDict,
+            Unread(
+                "_HoldsAnUnresolvableTypedDict.inner: _Unresolvable: name '_Missing' is not "
+                "defined; its annotations must resolve in its module",
+                constraint=False,
+            ),
+        ),
+        (
+            _ConstraintOnAReadableMember,
+            Unread(
+                "_ConstraintOnAReadableMember.inner: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _ConstraintOnAConstrainedMember,
+            Unread(
+                "_ConstraintOnAConstrainedMember.inner: _ConstrainedMember.a: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
         (_Readable, None),
     ],
     ids=[
@@ -1174,13 +1216,16 @@ class _Readable(TypedDict, closed=True):
         "a-constraint-in-a-nested-typeddict",
         "not-a-json-shape",
         "not-a-json-shape-in-a-nested-typeddict",
+        "a-nested-typeddict-that-cannot-be-read",
+        "a-constraint-on-a-member-that-is-a-typeddict",
+        "a-constraint-on-the-member-and-inside-its-typeddict",
         "readable",
     ],
 )
 def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
     typeddict: type, unread: Unread | None
 ) -> None:
-    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A TypedDict the checker reads whole has no unread part."""
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first. A TypedDict the checker reads whole has no unread part."""
     assert unread_in(typeddict, no_leaf) == unread
 
 

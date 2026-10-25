@@ -1202,7 +1202,14 @@ def unread_in(typeddict: type, leaf: Leaf) -> Unread | None:
         if isinstance(inner, type) and is_typeddict(inner):
             # Name the part inside a nested TypedDict, whether its parser
             # failed or there is none.
-            deeper = unread_in(inner, leaf)
+            try:
+                deeper = unread_in(inner, leaf)
+            except TypeError:
+                if failed is None:
+                    raise
+                # The nested TypedDict cannot be read at all, which the
+                # error from its parser says.
+                deeper = None
             if deeper is not None:
                 return Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
         if failed is not None:
