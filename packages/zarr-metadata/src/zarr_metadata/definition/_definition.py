@@ -958,8 +958,9 @@ class AcceptedField(Generic[D]):
 class UnclaimedField:
     """A field that nothing in scope claims: an extension that the scope does not check. Accepting such fields is what keeps the format open.
 
-    It is equal to another unclaimed field when both have the same name
-    and a document writes the same JSON for both. Nothing in scope
+    It is equal to another unclaimed field when both are of the same kind,
+    have the same name, and a document writes the same JSON for both.
+    Nothing in scope
     interprets the field, so it is compared as JSON text, as `field_key`
     defines.
     """
@@ -1120,8 +1121,9 @@ def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
     An accepted field is compared by the definition that read it, by its
     configuration in the definition's canonical spelling (as
     `canonical_of` writes it) as JSON text, and by the key of each nested
-    field. An unclaimed field is compared by its name and by the JSON a
-    document writes for it, as JSON text, because nothing interprets it.
+    field. An unclaimed field is compared by its kind, its name and the
+    JSON a document writes for it, as JSON text, because nothing
+    interprets it.
     A refused field is compared by what was written and by the definition
     that rejected it. So two fields are equal when the parts a reader
     understands read the same, and the parts no reader interprets are
