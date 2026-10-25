@@ -233,10 +233,11 @@ def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | No
     return f"{slot} holds {kind_name(kind)} definitions, got {value.name!r}, {of}"
 
 
-def refuse_others(contexts: Iterable[object], scope: type, zarr_format: int) -> None:
-    """Raise `TypeError` unless each of `contexts` is a `scope`, the class of the v`zarr_format` scope, so a scope's `union` takes only scopes of its own format."""
+def refuse_others(contexts: Iterable[object], scope: type[ZarrV2Context | ZarrV3Context]) -> None:
+    """Raise `TypeError` unless each of `contexts` is a `scope`, the class of one format's scopes, so a scope's `union` takes only scopes of its own format."""
     for context in contexts:
         if not isinstance(context, scope):
+            zarr_format = format_of(next(iter(scope.kinds.values())))
             msg = (
                 f"a scope reads documents of one Zarr format; a union of v{zarr_format} scopes "
                 f"takes v{zarr_format} scopes, got {described(context)}"

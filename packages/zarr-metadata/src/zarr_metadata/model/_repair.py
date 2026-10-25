@@ -173,30 +173,7 @@ def _non_finite_fill_value_v3(
     )
     if array is None or len(problems) != 0 or "fill_value" not in document:
         return document
-    fill_value = document["fill_value"]
-    if array["data_type"].startswith("float"):
-        name = _non_finite_name(fill_value)
-        if name is None:
-            return document
-        repairs.append(_non_finite_repair((*at, "fill_value"), name, "a fill value"))
-        return {**document, "fill_value": name}
-    if not is_list_or_tuple(fill_value) or len(fill_value) != 2:
-        return document
-    names = [_non_finite_name(component) for component in fill_value]
-    repairs.extend(
-        _non_finite_repair((*at, "fill_value", index), name, "a fill value component")
-        for index, name in enumerate(names)
-        if name is not None
-    )
-    if all(name is None for name in names):
-        return document
-    return {
-        **document,
-        "fill_value": tuple(
-            component if name is None else name
-            for component, name in zip(fill_value, names, strict=True)
-        ),
-    }
+    return _non_finite_named(document, array["data_type"].startswith("float"), at, repairs)
 
 
 def _members(document: Mapping[str, object], keys: tuple[str, ...]) -> dict[str, object]:
@@ -437,8 +414,15 @@ def _non_finite_fill_value(
     )
     if array is None or len(problems) != 0 or "fill_value" not in document:
         return document
+    return _non_finite_named(document, array["dtype"][1] == "f", at, repairs)
+
+
+def _non_finite_named(
+    document: Mapping[str, object], is_float: bool, at: Loc, repairs: list[Repair]
+) -> Mapping[str, object]:
+    """`document`, an array of either format with a `fill_value` of a float data type when `is_float` and of a complex one otherwise, with a non-finite fill value, or complex fill value component, written by its name. Each name written is added to `repairs`, located under `at`."""
     fill_value = document["fill_value"]
-    if array["dtype"][1] == "f":
+    if is_float:
         name = _non_finite_name(fill_value)
         if name is None:
             return document

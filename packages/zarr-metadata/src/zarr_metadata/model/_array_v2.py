@@ -26,7 +26,6 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._context import disagreements, scoped
 from zarr_metadata.definition._definition import (
     AcceptedField,
@@ -97,6 +96,7 @@ _ARRAY_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
 _ARRAY_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
     _ARRAY_METADATA_REQUIRED_KEYS_V2 | _ARRAY_METADATA_OPTIONAL_KEYS_V2
 )
+"""The members the spec defines in a v2 array document, as the model merges it, with `attributes` from `.zattrs`: these are never given in `extra_fields`."""
 
 
 def _is_canonical_dtype_v2(value: object) -> bool:
@@ -431,12 +431,6 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, JSONValue | UNSET]
 
 
-_ARRAY_SPEC_MEMBERS_V2: Final[frozenset[str]] = frozenset(
-    {"zarr_format", *typeddict_keys(ZarrV2ArrayMetadataUpdate).members} - {"extra_fields"}
-)
-"""The members the spec defines in a v2 array document, as the model merges it: these are never given in `extra_fields`."""
-
-
 class ZarrV2ArrayMetadata(Keyed):
     """A v2 array document, and the scope it was read in.
 
@@ -674,7 +668,9 @@ class ZarrV2ArrayMetadata(Keyed):
         problem. So members that depend on each other must be passed
         together, for example a `dtype` with a fill value of that dtype.
         """
-        changes = member_changes(members, ZarrV2ArrayMetadataUpdate, _ARRAY_SPEC_MEMBERS_V2)
+        changes = member_changes(
+            members, ZarrV2ArrayMetadataUpdate, _ARRAY_METADATA_STANDARD_KEYS_V2
+        )
         document: dict[str, object] = {**self._document, **changes}
         for key, value in changes.items():
             if value is UNSET:
@@ -756,7 +752,9 @@ class ZarrV2ArrayMetadata(Keyed):
             "filters": None,
             "dimension_separator": ".",
         }
-        given = member_changes(overrides, ZarrV2ArrayMetadataUpdate, _ARRAY_SPEC_MEMBERS_V2)
+        given = member_changes(
+            overrides, ZarrV2ArrayMetadataUpdate, _ARRAY_METADATA_STANDARD_KEYS_V2
+        )
         if "shape" in given and "chunks" not in given:
             lengths, _ = dimension_lengths(given, "shape")
             if lengths is not None:

@@ -160,7 +160,7 @@ class ZarrV2Context:
         purpose, use `update`. Raises `TypeError` for a scope of another
         format.
         """
-        refuse_others(others, ZarrV2Context, 2)
+        refuse_others(others, ZarrV2Context)
         return self._of(
             joined_tables(self.kinds, [self._tables, *(other._tables for other in others)])
         )

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata.definition._definition import Nested
 
-_DATA_TYPES: Final = ZarrV2Context(
+_DTYPE_CONTEXT: Final = ZarrV2Context(
     data_types=[
         *(
             definition
@@ -47,7 +47,7 @@ class _DtypeParameter:
             if not isinstance(written, str):
                 # Omitted, or null for an `astype` that numcodecs takes from `dtype`.
                 continue
-            _, problems = resolve(written, ZarrV2DataTypeDefinition, _DATA_TYPES, (key,))
+            _, problems = resolve(written, ZarrV2DataTypeDefinition, _DTYPE_CONTEXT, (key,))
             if len(problems) != 0:
                 yield from problems
                 continue
@@ -73,7 +73,7 @@ def dtype_parameter(*keys: str, float_only: bool = False) -> _DtypeParameter:
 
 def canonical_typestr(written: str) -> str:
     """Return `written`, a dtype parameter that `dtype_parameter` accepts, in the canonical spelling of its data type, which is how an array's dtype compares. This is how NumPy writes it: `<i1` is `|i1`, and `<M8[μs]` is `<M8[us]`."""
-    canonical, _ = canonicalize(written, ZarrV2DataTypeDefinition, _DATA_TYPES)
+    canonical, _ = canonicalize(written, ZarrV2DataTypeDefinition, _DTYPE_CONTEXT)
     return canonical if isinstance(canonical, str) else written
 
 
