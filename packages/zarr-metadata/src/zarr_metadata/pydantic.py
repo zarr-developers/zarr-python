@@ -241,10 +241,15 @@ def _read_in(
 
 def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
     """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
-    document = value.to_json()
     try:
-        return _as_pydantic_raises(cls, document, lambda: refine(value, context))
+        return refine(value, context)
+    except MetadataValidationError as error:
+        # `to_json` copies the document, so it is built only to report an error.
+        document = value.to_json()
+        line_errors = [_line_error(problem, document) for problem in error.problems]
+        raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
     except ScopeConflictError as error:
+        document = value.to_json()
         line_errors = [
             InitErrorDetails(
                 type=PydanticCustomError("scope_conflict", "{message}", {"message": str(conflict)}),
