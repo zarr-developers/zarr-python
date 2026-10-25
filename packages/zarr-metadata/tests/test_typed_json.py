@@ -1172,6 +1172,40 @@ class _CycleBack(TypedDict, closed=True):
     x: set[int]
 
 
+class _OuterWithAConstraintAfterACycle(TypedDict, closed=True):
+    inner: _InnerLeadingBackToAConstraint
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _InnerLeadingBackToAConstraint(TypedDict, closed=True):
+    back: NotRequired[_OuterWithAConstraintAfterACycle]
+
+
+class _OuterNotAJSONShapeAfterACycle(TypedDict, closed=True):
+    inner: _InnerLeadingBackToAShape
+    a: set[int]
+
+
+class _InnerLeadingBackToAShape(TypedDict, closed=True):
+    back: NotRequired[_OuterNotAJSONShapeAfterACycle]
+
+
+class _OuterWithAConstraintOnTheCycle(TypedDict, closed=True):
+    inner: Annotated[_InnerLeadingBackToTheConstraint, MultipleOf(2)]
+    a: int
+
+
+class _InnerLeadingBackToTheConstraint(TypedDict, closed=True):
+    back: NotRequired[_OuterWithAConstraintOnTheCycle]
+
+
+class _SelfReferentialTwiceWithAConstraintOnTheSecond(TypedDict, closed=True):
+    plain: NotRequired[_SelfReferentialTwiceWithAConstraintOnTheSecond]
+    constrained: NotRequired[
+        Annotated[_SelfReferentialTwiceWithAConstraintOnTheSecond, MultipleOf(2)]
+    ]
+
+
 class _SelfReferentialReadable(TypedDict, closed=True):
     parent: NotRequired[_SelfReferentialReadable]
     a: int
@@ -1270,6 +1304,39 @@ class _SelfReferentialReadable(TypedDict, closed=True):
                 constraint=False,
             ),
         ),
+        (
+            _OuterWithAConstraintAfterACycle,
+            Unread(
+                "_OuterWithAConstraintAfterACycle.a: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _OuterNotAJSONShapeAfterACycle,
+            Unread(
+                "_OuterNotAJSONShapeAfterACycle: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _OuterWithAConstraintOnTheCycle,
+            Unread(
+                "_OuterWithAConstraintOnTheCycle.inner: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _SelfReferentialTwiceWithAConstraintOnTheSecond,
+            Unread(
+                "_SelfReferentialTwiceWithAConstraintOnTheSecond.constrained: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
         (_SelfReferentialReadable, None),
         (_Readable, None),
     ],
@@ -1285,6 +1352,10 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         "self-referential-not-a-json-shape",
         "self-referential-with-a-constraint-on-the-reference",
         "a-cycle-of-two-typeddicts",
+        "a-constraint-after-a-member-that-leads-back",
+        "not-a-json-shape-after-a-member-that-leads-back",
+        "a-constraint-on-a-member-that-leads-back",
+        "a-constraint-on-a-second-member-that-leads-back",
         "self-referential-and-readable",
         "readable",
     ],
