@@ -251,15 +251,18 @@ def test_error_a_group_s_listing_with_a_problem_is_located_in_the_group() -> Non
     ]
 
 
-def test_error_a_group_s_listing_that_is_not_an_object() -> None:
-    """In a scope that leaves `consolidated_metadata` unclaimed, a group holding one that is not an object opens. The group still writes a listing, so `consolidated()` refuses it, located at the member, rather than answering that the group lists none."""
+@pytest.mark.parametrize("listing", [5, None], ids=["a-number", "null"])
+def test_error_a_group_s_listing_that_is_not_an_object(listing: object) -> None:
+    """In a scope that leaves `consolidated_metadata` unclaimed, a group holding one that is not an object, a number or null, opens. The group still writes a listing, so `consolidated()` refuses it with an `invalid_type` problem located at the member, rather than answering that the group lists none."""
     group = ZarrV3GroupMetadata(
-        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": 5},
+        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": listing},
         context=ZarrV3Context(),
     )
     with pytest.raises(MetadataValidationError) as raised:
         group.consolidated()
-    assert [problem.loc for problem in raised.value.problems] == [("consolidated_metadata",)]
+    assert [(problem.loc, problem.kind, problem.message) for problem in raised.value.problems] == [
+        (("consolidated_metadata",), "invalid_type", "expected an object")
+    ]
 
 
 def test_children_of_different_scopes_consolidate_in_their_union() -> None:

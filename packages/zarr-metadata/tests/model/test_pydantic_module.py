@@ -15,6 +15,7 @@ from typing import Annotated, Any
 import pytest
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic.json_schema import JsonSchemaMode
 
 import zarr_metadata.pydantic as zmp
 from zarr_metadata.definition import AcceptedField, UnclaimedField
@@ -30,7 +31,7 @@ from zarr_metadata.model import (
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, ZarrV3Context
@@ -344,6 +345,30 @@ def test_a_field_bound_to_a_scope_reads_in_that_scope() -> None:
     assert _Bound(metadata=held).model_dump()["metadata"] == held.to_json()
 
 
+@pytest.mark.parametrize("mode", ["validation", "serialization"])
+@pytest.mark.parametrize(
+    ("bound", "field_type"),
+    [
+        (Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE)], zmp.ZarrV3ArrayMetadataField),
+        (Annotated[ZarrV2GroupMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2GroupMetadataField),
+        (
+            Annotated[ZarrV3ConsolidatedMetadata, zmp.InScope(CORE)],
+            zmp.ZarrV3ConsolidatedMetadataField,
+        ),
+    ],
+    ids=["array-v3", "group-v2", "consolidated-v3"],
+)
+def test_a_field_bound_to_a_scope_has_the_schema_of_its_field_type(
+    bound: object,
+    field_type: object,
+    mode: JsonSchemaMode,
+) -> None:
+    """A field bound to a scope reads and writes the same documents as the field type of its model class, so its JSON Schema is the field type's, for validation and for serialization."""
+    assert TypeAdapter(bound).json_schema(mode=mode) == TypeAdapter(field_type).json_schema(
+        mode=mode
+    )
+
+
 def test_error_a_field_bound_to_a_scope_refuses_an_instance_it_reads_differently() -> None:
     """An instance read where `zstd` is claimed would lose that meaning in `CORE`, so a field bound to `CORE` refuses it with a `ValidationError`, rather than passing it through in its own scope."""
     with pytest.raises(ValidationError):
@@ -409,6 +434,70 @@ def test_error_an_instance_a_scope_reads_differently_reports_each_conflict(valid
     assert (line["type"], line["loc"]) == ("scope_conflict", ("codecs", 1))
     assert line["input"] == instance.to_json()["codecs"][1]
     assert "zstd" in line["msg"]
+
+
+_ZLIB_V2 = {"id": "zlib", "level": 1}
+
+
+@pytest.mark.parametrize(
+    ("field_type", "instance", "context", "loc", "found"),
+    [
+        (
+            zmp.ZarrV3ConsolidatedMetadataField,
+            ZarrV3ConsolidatedMetadata(
+                {**V3_CONSOLIDATED_DOC, "metadata": {"a": _WITH_ZSTD}},
+                context=CORE_AND_EXTENSIONS,
+            ),
+            CORE,
+            ("metadata", "a", "codecs", 1),
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+        ),
+        (
+            zmp.ZarrV2ConsolidatedMetadataField,
+            ZarrV2ConsolidatedMetadata(
+                {
+                    "zarr_consolidated_format": 1,
+                    "metadata": {
+                        ".zgroup": {"zarr_format": 2},
+                        "a/.zarray": {**V2_ARRAY_DOC, "compressor": _ZLIB_V2},
+                    },
+                },
+                context=CORE_V2,
+            ),
+            {zmp.CONTEXT_KEY_V2: ZarrV2Context(data_types=CORE_V2.data_types.values())},
+            ("metadata", "a/.zarray", "compressor"),
+            _ZLIB_V2,
+        ),
+    ],
+    ids=["v3", "v2"],
+)
+def test_error_a_consolidated_instance_a_scope_reads_differently_reports_each_conflict(
+    field_type: object,
+    instance: object,
+    context: object,
+    loc: tuple[str | int, ...],
+    found: object,
+) -> None:
+    """A consolidated instance read again in a scope that claims less would lose the meaning of a listed node's field. pydantic gets one `scope_conflict` line error, located at the field inside the listed node, a node's path for v3 and its file for v2, with that field as written as its input."""
+    with pytest.raises(ValidationError) as raised:
+        TypeAdapter(field_type).validate_python(instance, context=context)
+    (line,) = raised.value.errors()
+    assert (line["type"], line["loc"]) == ("scope_conflict", loc)
+    assert line["input"] == found
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Annotated[ZarrV3ArrayMetadata | None, zmp.InScope(CORE)],
+        Annotated[dict[str, Any], zmp.InScope(CORE)],
+    ],
+    ids=["an-optional-model", "a-dict"],
+)
+def test_error_in_scope_annotates_a_model_class(annotation: object) -> None:
+    """`InScope` reads a document as one model class of this package, so annotating anything else, such as an optional model or a `dict`, is a `TypeError` when pydantic builds the schema."""
+    with pytest.raises(TypeError, match="InScope annotates a model class of zarr_metadata.model"):
+        TypeAdapter(annotation)
 
 
 def test_error_in_scope_takes_a_scope() -> None:
