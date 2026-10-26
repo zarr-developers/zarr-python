@@ -165,7 +165,7 @@ The **registry** from the resolve-and-validate stage is called a **scope** in th
 
 `read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is a tuple of the problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
-```python
+```python test="true" session="parsing-validation"
 from zarr_metadata.model import read_array_metadata_v3
 
 raw = {
@@ -191,7 +191,7 @@ If you only want the model, `ZarrV3ArrayMetadata.from_json(raw)` returns it, or 
 
 To read one field on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the field, the kind of field, and the scope, and returns the field as read and its problems:
 
-```python
+```python test="true" session="parsing-validation"
 from zarr_metadata.definition import resolve
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
 
@@ -205,22 +205,26 @@ for problem in problems:
 
 A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed. A model's `unclaimed_fields` lists each one, at any depth, by its location, and leaves out an extra member that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
 
-```python
+```python test="true" session="parsing-validation"
 unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_fields
 can_open = unclaimed is not None and len(unclaimed) == 0
 ```
 
 To make an unknown data type or codec known, add its definition to the scope's slot and read the document again:
 
-```python
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+```python test="true" session="parsing-validation"
+from zarr_metadata.definition import EmptyConfiguration
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
 
+# The definition of the codec that was unknown: here, a codec named
+# `acme.codec` that takes no configuration.
+MY_CODEC = CodecDefinition(
+    name="acme.codec", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+)
 context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), MY_CODEC])
 reading = read_array_metadata_v3(raw, context=context)
 ```
 
 `update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
-
-Here `MY_CODEC` is the definition of the codec that was unknown.
 
 [^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the field `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

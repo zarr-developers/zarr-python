@@ -59,7 +59,7 @@ closely model the content of the Zarr specifications, such as:
 - **Dynamic JSON validation** For strict, loc-aware validation of JSON loaded from disk, use the
   model parser:
 
-  ```python
+  ```python test="true" session="index"
   import json
   from zarr_metadata.model import ZarrV3ArrayMetadata
 
@@ -72,7 +72,7 @@ closely model the content of the Zarr specifications, such as:
   The optional Pydantic integration delegates raw input to the same strict
   parser and returns the same normalized model class:
 
-  ```python
+  ```python test="true" session="index"
   from pydantic import TypeAdapter
   import zarr_metadata.pydantic as zmp
 
@@ -227,7 +227,7 @@ example, the code below finds the fields that go beyond the core spec (a
 field with no name is already a problem), and the simplest spelling of
 each field:
 
-```python
+```python test="true" session="index"
 from zarr_metadata.model import read_array_metadata_v3
 from zarr_metadata.definition import canonical_of, with_problems
 from zarr_metadata.v3.definition import CORE
@@ -376,7 +376,7 @@ accepts. A schema validator reads JSON as a parser produces it, with
 arrays as lists. A model's `to_json` returns tuples, which a Python
 validator does not accept as arrays.
 
-```python
+```python test="true" session="index"
 import json
 from zarr_metadata.json_schema import node_metadata_json_schema_v3
 

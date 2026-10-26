@@ -10,6 +10,13 @@ edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr
 site_description: Spec-defined metadata types, models, and validators for Zarr v2 and v3.
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io/']
 
+# The docs tests run each python fence marked `test="true"`, and superfences
+# refuses a fence with options it does not know. zarr-python's hook, shared
+# through a symlink as mkdocs-base.yml is, renders such a fence as a plain
+# code block.
+hooks:
+  - mkdocs_hooks.py
+
 nav:
   - index.md
   - Parsing / Validation: parsing-validation.md
