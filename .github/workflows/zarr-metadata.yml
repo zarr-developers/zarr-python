@@ -9,16 +9,20 @@ on:
     paths:
       - 'packages/zarr-metadata/**'
       - '.github/workflows/zarr-metadata.yml'
-      # The docs config and header script shared by all package sites.
+      # The docs config and header script shared by all package sites, and
+      # zarr-python's docs hook, which this site uses.
       - 'packages/mkdocs-base.yml'
       - 'packages/source-version.js'
+      - 'mkdocs_hooks.py'
   pull_request:
     paths:
       - 'packages/zarr-metadata/**'
       - '.github/workflows/zarr-metadata.yml'
-      # The docs config and header script shared by all package sites.
+      # The docs config and header script shared by all package sites, and
+      # zarr-python's docs hook, which this site uses.
       - 'packages/mkdocs-base.yml'
       - 'packages/source-version.js'
+      - 'mkdocs_hooks.py'
   workflow_dispatch:
 
 permissions:
@@ -102,7 +106,7 @@ jobs:
           repo: casey/just
           version: 1.58.0
       - name: Run pyright
-        # The pyright version and interpreter pins live in the justfile.
+        # Pyright runs unpinned; the interpreter pin lives in the justfile.
         run: just typecheck
 
   docs:
