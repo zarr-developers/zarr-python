@@ -20,6 +20,7 @@ hooks:
 nav:
   - index.md
   - Parsing / Validation: parsing-validation.md
+  - Context: context.md
   - API Reference:
       - api/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.definition</code>': api/definition.md
