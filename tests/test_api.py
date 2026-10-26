@@ -762,8 +762,14 @@ def test_overwrite_invalid_keyword_keeps_existing_node(call: str) -> None:
     store = MemoryStore()
     _seed_array(store, 3)
     before = _store_contents(store)
-    kwargs = {"config": {"order": "F"}} if call == "open-group" else {"bogus": 1}
-    with pytest.raises(TypeError, match="unexpected keyword argument"):
+    if call == "open-group":
+        # zarr.open refuses an array config for a group before open_group runs
+        kwargs: dict[str, object] = {"config": {"order": "F"}}
+        match = "resolves to a group"
+    else:
+        kwargs = {"bogus": 1}
+        match = "unexpected keyword argument"
+    with pytest.raises(TypeError, match=match):
         _OVERWRITE_CALLS[call](store, **kwargs)
     assert _store_contents(store) == before
 
