@@ -46,6 +46,7 @@ from zarr.core.chunk_utils import (
 )
 from zarr.core.common import (
     ShapeLike,
+    parse_chunk_shape,
     parse_named_configuration,
     parse_shapelike,
     product,
@@ -437,6 +438,12 @@ def _check_index_codecs_fixed_size(index_codecs: tuple[Codec, ...]) -> None:
         )
 
 
+def _parse_inner_chunk_shape(data: ShapeLike) -> tuple[int, ...]:
+    """Parse the inner chunk shape of a sharding codec: a shape (see `parse_shapelike`)
+    whose every size is a chunk edge length, so at least 1 (see `parse_chunk_shape`)."""
+    return parse_chunk_shape(parse_shapelike(data))
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -468,7 +475,7 @@ class ShardingCodec(
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
+        chunk_shape_parsed = _parse_inner_chunk_shape(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
         _check_index_codecs_fixed_size(index_codecs_parsed)
@@ -507,7 +514,7 @@ class ShardingCodec(
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
-        object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
+        object.__setattr__(self, "chunk_shape", _parse_inner_chunk_shape(config["chunk_shape"]))
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", _parse_index_location(config["index_location"]))
@@ -635,6 +642,28 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
+        self._validate_inner_codecs(dtype)
+
+    def _validate_inner_codecs(self, dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
+        """Validate the codecs that encode each inner chunk, as array metadata validates
+        its codecs: each against the chunk the codecs before it leave it, a regular
+        grid of one inner chunk. A sharding codec among them is thereby checked against
+        the chunk it splits, which `validate` of the outer codec alone does not see.
+        """
+        spec = ArraySpec(
+            shape=self.chunk_shape,
+            dtype=dtype,
+            fill_value=dtype.default_scalar(),
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        for codec in self.codecs:
+            codec.validate(
+                shape=spec.shape,
+                dtype=spec.dtype,
+                chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
+            )
+            spec = codec.resolve_metadata(spec)
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.
