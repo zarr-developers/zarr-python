@@ -32,6 +32,10 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
+    # The bounds a TypedDict's members carry -- `Gt`, `Ge`, `Lt`, `Le`,
+    # `Interval` -- which the checker enforces, in the vocabulary pydantic
+    # and Hypothesis read as well.
+    "annotated-types>=0.6",
     # >=4.16: first release where `Sentinel` pickles by reference
     # (`__reduce__` returns the sentinel's name), so `UNSET` — and any model
     # holding it — can cross process boundaries and be deep-copied with its
@@ -47,7 +51,13 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2.13", "jsonschema", "hypothesis"]
+test = [
+    "pytest",
+    "pydantic>=2.13",
+    "jsonschema",
+    "hypothesis",
+    "pytest-examples>=0.0.18",
+]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so every site renders with the same toolchain, and the
@@ -96,18 +106,22 @@ include = [
     "/justfile",
     "/CHANGELOG.md",
 ]
-# The shared docs config and header script are symlinks into packages/ in the
-# repository; ship the files they point at, since a link out of the sdist
-# dangles and pip refuses to unpack it.
-exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+# The shared docs config, header script and docs hook are symlinks out of the
+# package directory in the repository; ship the files they point at, since a
+# link out of the sdist dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js", "/mkdocs_hooks.py"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "../mkdocs-base.yml" = "mkdocs-base.yml"
+"../../mkdocs_hooks.py" = "mkdocs_hooks.py"
 "../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py311"
+# zarr-python's docs hook, symlinked here for this package's site; the
+# repository root's settings lint it, without this package's stricter rules.
+extend-exclude = ["mkdocs_hooks.py"]
 
 [tool.ruff.lint]
 # `Any` defeats the point of a package whose product is precise types, so it
@@ -139,8 +153,7 @@ checks = [
     "PR06",
 ]
 
-# The pyright version lives in the justfile, which is what CI runs; pinning it
-# keeps a pyright release from turning CI red on its own schedule.
+# Pyright runs unpinned, from the justfile, which is what CI runs.
 [tool.pyright]
 include = ["src", "tests"]
 # Pyright is the only checker that runs on this package (the root mypy
@@ -216,3 +229,14 @@ showcontent = true
 directory = "misc"
 name = "Misc"
 showcontent = true
+
+[tool.ruff.lint.flake8-type-checking]
+# A TypedDict's annotations are evaluated at run time: the checker reads them.
+# A definition's annotations are too: `Definition` finds its function members
+# with `get_type_hints`.
+runtime-evaluated-base-classes = [
+    "typing_extensions.TypedDict",
+    "typing.TypedDict",
+    "zarr_metadata.definition._definition.Definition",
+    "zarr_metadata.definition._definition.WithFillValue",
+]
