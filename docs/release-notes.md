@@ -4,6 +4,29 @@
 
 <!-- towncrier release notes start -->
 
+## 3.4.2 (2026-10-26)
+
+### Bugfixes
+
+- Resizing an array with `delete_outside_chunks=True` now generates only the out-of-bounds chunk coordinates and deletes them with a bounded pool of workers, instead of materializing the entire old and new grids and all deletion tasks. This bounds auxiliary memory during shrinking and mixed growing/shrinking resizes while preserving retained chunks. Growing, or shrinking within the last chunk of each axis, no longer schedules any deletion work. When a deletion fails, the remaining deletions are now canceled before the error is raised; previously they ran to completion. ([#4344](https://github.com/zarr-developers/zarr-python/pull/4344))
+- `zarr.open_array` and `zarr.open` (sync and async) now apply the `config` argument when opening an existing array. Previously `config` was only used when a new array was created, so `zarr.open_array(store, config={"read_missing_chunks": False})` silently ran an existing array with the global defaults. `config` is now a named parameter of both functions and of `Array.open`/`AsyncArray.open`. `zarr.open` raises a `TypeError` naming the problem when `config` is given for a group. ([#4408](https://github.com/zarr-developers/zarr-python/pull/4408))
+- Fixed several ways `ZipStore` could lose data or fail. A store created with `mode="w"` or `mode="x"` now keeps its entries when it is used again after `close()`, `move()`, or unpickling, instead of truncating the archive. Every method now opens the archive on first use, under a lock, so `get`, `get_partial_values`, `set_if_not_exists`, and `clear` no longer raise `AttributeError` on a store that was never opened, and threads sharing a store no longer open the archive twice. An unpickled store now opens its archive on first use rather than when it is unpickled, so writing a dask array to a `ZipStore` no longer produces an unreadable file. Where reopening an archive would silently drop its entries, the store now raises instead: `RuntimeError` after a failed `close()`, `zipfile.BadZipFile` if the file is not a complete zip archive, and `io.UnsupportedOperation` for a file object that is not readable and seekable. The type of the `mode` parameter now includes `"x"`. Builds on [#3593](https://github.com/zarr-developers/zarr-python/pull/3593) by [@oelhammouchi](https://github.com/oelhammouchi). ([#4450](https://github.com/zarr-developers/zarr-python/pull/4450))
+- Reads through `FusedCodecPipeline` no longer hang in a process forked after an earlier read had started the codec thread pool. The pool is now reset in the child process after a fork. Previously the child inherited an executor whose threads did not exist, so small reads were queued on a pool nothing would run. ([#4483](https://github.com/zarr-developers/zarr-python/pull/4483))
+- Structured data types now default string (`S`, `U`) and raw-bytes (`V`) fields to zero bytes. Before, an array with a raw-bytes field failed to create without an explicit fill value, and string fields defaulted to `"0"`. ([#4495](https://github.com/zarr-developers/zarr-python/pull/4495))
+- The `zarr.storage` module can now be serialized with `pickle` and `cloudpickle`. Previously, code that referenced the module (for example a Dask task that used `zarr.storage.ObjectStore`) failed with `TypeError: cannot pickle 'VerboseModule' object`. ([#4557](https://github.com/zarr-developers/zarr-python/pull/4557))
+
+### Improved Documentation
+
+- Document the removal of `LRUStoreCache` in the v3 migration guide, and point to the experimental `zarr.experimental.cache_store.CacheStore` as its replacement. ([#3850](https://github.com/zarr-developers/zarr-python/pull/3850))
+- Added a deprecation policy to the contributing guide. It defines when a deprecation cycle is required for public API changes, a shared framework for deciding whether a removal is worthwhile, the mechanics a deprecation must follow (warning class, message contents, documentation, and changelog entry), and a minimum deprecation period of at least 6 months and at least one minor release before removal. ([#4051](https://github.com/zarr-developers/zarr-python/pull/4051))
+- Clarify how Zarr format 3 codec pipeline roles map to `filters`, `serializer`, and `compressors` when creating arrays. ([#4166](https://github.com/zarr-developers/zarr-python/pull/4166))
+- Correct the docstrings of `zarr.save`, `zarr.save_array` and `zarr.save_group` to say the functions write to any store. Previously the docstrings stated the functions wrote to only the local file system, which was inaccurate. ([#4520](https://github.com/zarr-developers/zarr-python/pull/4520))
+
+### Misc
+
+- [#4543](https://github.com/zarr-developers/zarr-python/pull/4543), [#4547](https://github.com/zarr-developers/zarr-python/pull/4547)
+
+
 ## 3.4.1 (2026-10-08)
 
 ### Bugfixes
