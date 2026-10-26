@@ -63,7 +63,7 @@ class ChunkKeyEncoding(ABC, Metadata):
 
 
 type ChunkKeyEncodingLike = (
-    dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding | NamedConfig[str, Any]
+    str | dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding | NamedConfig[str, Any]
 )
 
 

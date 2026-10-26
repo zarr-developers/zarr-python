@@ -715,7 +715,7 @@ class ArrayV3Metadata(Metadata):
         metadata = cls(
             shape=_data_typed["shape"],
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
-            chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
+            chunk_key_encoding=_data_typed["chunk_key_encoding"],
             codecs=_data_typed["codecs"],
             # Attribute values are arbitrary JSON, so they have no field-specific
             # schema to validate. `__init__` checks the outer dict via `parse_attributes`.
