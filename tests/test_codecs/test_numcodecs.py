@@ -11,6 +11,7 @@ from numcodecs import GZip
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
+from zarr.codecs.transpose import TransposeCodec
 from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class, get_numcodec
 
@@ -186,6 +187,45 @@ def test_generic_filter_f_contiguous(
         dtype=data.dtype,
         fill_value=0,
         filters=[codec_class(**codec_config)],
+    )
+
+    a[:, :] = data
+    np.testing.assert_array_equal(data, a[:, :])
+
+
+def test_generic_filter_flattened_output_reshaped() -> None:
+    # gh-4553: numcodecs filters return a flattened array; `_encode_sync` must
+    # reshape it back to the chunk shape, so downstream codecs receive chunks
+    # with the shape the pipeline promised them
+    data = np.arange(256, dtype="int64").reshape(16, 16)
+
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[_numcodecs.Delta(dtype="int64"), TransposeCodec(order=(1, 0))],
+    )
+
+    a[:, :] = data
+    with codec_conf():
+        b = open_array(a.store, mode="r")
+    np.testing.assert_array_equal(data, b[:, :])
+
+
+def test_generic_filter_packedbits_output_not_reshaped() -> None:
+    # PackBits drives the size of the chunk, so `_encode_sync` must not reshape
+    # its output
+    data = np.tril(np.ones((16, 16), dtype=bool))
+
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[_numcodecs.PackBits()],
     )
 
     a[:, :] = data
