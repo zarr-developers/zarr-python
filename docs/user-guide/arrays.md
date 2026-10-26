@@ -194,13 +194,61 @@ arr_f = arr.with_config({"order": "F"})
 print(arr_f.config)
 ```
 
+## Zarr format 3 codec pipeline
+
+Zarr format 3 stores a single ordered list of codecs in the
+[`codecs`](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata-codecs)
+field of array metadata. The
+[Zarr format 3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-encoding)
+classifies each codec by the input and output of its encode transform, as
+"array -> array", "array -> bytes", or "bytes -> bytes", and requires the list to
+contain zero or more array -> array codecs, followed by exactly one
+array -> bytes codec, followed by zero or more bytes -> bytes codecs.
+
+Zarr-Python's array creation functions expose that list through three
+parameters: `filters`, `serializer`, and `compressors`. These names are not
+defined in the Zarr format 3 specification. They are Zarr-Python aliases for
+the specification's codec kinds:
+
+- `filters`: the array -> array codecs, given as
+  [`zarr.abc.codec.ArrayArrayCodec`][] instances. These transform chunk arrays
+  into chunk arrays before serialization.
+- `serializer`: the array -> bytes codec, given as one
+  [`zarr.abc.codec.ArrayBytesCodec`][] instance. This transforms a chunk array
+  into bytes. Every Zarr format 3 array needs exactly one array -> bytes codec,
+  either supplied explicitly or chosen by default.
+- `compressors`: the bytes -> bytes codecs, given as
+  [`zarr.abc.codec.BytesBytesCodec`][] instances. These transform bytes into
+  bytes after serialization.
+
+The `compressors` parameter is only for bytes-to-bytes codecs. If a codec is an
+`ArrayBytesCodec`, pass it with `serializer`, not `compressors`. For example, the
+built-in [`zarr.codecs.BytesCodec`][] can be supplied explicitly as the serializer:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+serializer = zarr.codecs.BytesCodec(endian="little")
+z_explicit_serializer = zarr.create_array(
+    store="data/example-explicit-serializer.zarr",
+    shape=(100,),
+    chunks=(10,),
+    dtype="int32",
+    serializer=serializer,
+    compressors=None,
+)
+print(z_explicit_serializer.serializer)
+print(f"Compressors: {z_explicit_serializer.compressors}")
+```
+
+The same rule applies to third-party Zarr format 3 codecs: if the codec is
+documented as an `ArrayBytesCodec`, provide an instance as `serializer=...`.
+
 ## Compressors
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
 Zstandard and Gzip compressors. Additional compressors are available through
 a separate package called [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) which provides various
 compressor libraries including LZ4, Zlib, BZ2 and LZMA.
-Different compressors can be provided via the `compressors` keyword
+Different bytes-to-bytes compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
