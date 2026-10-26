@@ -60,6 +60,7 @@ def test_config_defaults_set() -> None:
                     "sharding_coalesce_max_gap_bytes": 1 << 20,
                     "sharding_coalesce_max_bytes": 16 << 20,
                     "iter_block_max_bytes": 128 << 20,
+                    "allow_unsafe_pickle_decode": False,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},

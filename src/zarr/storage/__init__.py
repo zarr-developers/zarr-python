@@ -1,5 +1,7 @@
+import importlib
 import sys
 import warnings
+from collections.abc import Callable
 from types import ModuleType
 from typing import Any
 
@@ -40,6 +42,11 @@ class VerboseModule(ModuleType):
             )
         else:
             super().__setattr__(attr, value)
+
+    def __reduce__(self) -> tuple[Callable[[str], ModuleType], tuple[str]]:
+        # Serializers such as cloudpickle dispatch on the exact type, so they have no
+        # reduce for this subclass. Pickle the module by name instead.
+        return importlib.import_module, (self.__name__,)
 
 
 sys.modules[__name__].__class__ = VerboseModule
