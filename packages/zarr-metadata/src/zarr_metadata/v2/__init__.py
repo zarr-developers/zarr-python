@@ -1,26 +1,100 @@
-"""Zarr v2 metadata types."""
+"""Zarr v2 metadata types, and the front door to the v2 definitions.
 
-from zarr_metadata.v2.array import (
-    ZarrV2ArrayDimensionSeparator,
-    ZarrV2ArrayMetadataJSON,
-    ZarrV2ArrayOrder,
-    ZarrV2DataTypeMetadata,
-    ZarrV2ZArrayJSON,
+Each document type is in the submodule for its node or file: `array`
+(`.zarray`), `group` (`.zgroup`), `attributes` (`.zattrs`) and
+`consolidated` (`.zmetadata`). The codecs and data types are in `codec`
+and `data_type`, and the v2 kinds and scope are in `definition`.
+
+This module also exports every v2 definition (`GZIP_CODEC_V2`,
+`FLOAT_DATA_TYPE_V2`, ...), the scope `CORE_V2`, and the scope class
+`ZarrV2Context`, so that one import builds or updates a scope. Each is
+the same object as in its own submodule, where a definition's
+configuration types and constants are.
+"""
+
+from zarr_metadata.v2.codec.checksum import (
+    ADLER32_CODEC_V2,
+    CRC32_CODEC_V2,
+    CRC32C_CODEC_V2,
+    FLETCHER32_CODEC_V2,
 )
-from zarr_metadata.v2.attributes import ZarrV2ZAttrsJSON
-from zarr_metadata.v2.codec import ZarrV2CodecMetadata
-from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
-from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2ZGroupJSON
+from zarr_metadata.v2.codec.compression import (
+    BLOSC_CODEC_V2,
+    BZ2_CODEC_V2,
+    GZIP_CODEC_V2,
+    LZ4_CODEC_V2,
+    LZMA_CODEC_V2,
+    ZLIB_CODEC_V2,
+    ZSTD_CODEC_V2,
+)
+from zarr_metadata.v2.codec.filters import (
+    ASTYPE_CODEC_V2,
+    BITROUND_CODEC_V2,
+    DELTA_CODEC_V2,
+    FIXEDSCALEOFFSET_CODEC_V2,
+    PACKBITS_CODEC_V2,
+    QUANTIZE_CODEC_V2,
+    SHUFFLE_CODEC_V2,
+)
+from zarr_metadata.v2.codec.vlen import (
+    VLEN_ARRAY_CODEC_V2,
+    VLEN_BYTES_CODEC_V2,
+    VLEN_UTF8_CODEC_V2,
+)
+from zarr_metadata.v2.data_type.fixed_width import (
+    BYTES_DATA_TYPE_V2,
+    STR_DATA_TYPE_V2,
+    VOID_DATA_TYPE_V2,
+)
+from zarr_metadata.v2.data_type.object import OBJECT_DATA_TYPE_V2
+from zarr_metadata.v2.data_type.scalar import (
+    BOOL_DATA_TYPE_V2,
+    COMPLEX_DATA_TYPE_V2,
+    FLOAT_DATA_TYPE_V2,
+    INT_DATA_TYPE_V2,
+    UINT_DATA_TYPE_V2,
+)
+from zarr_metadata.v2.data_type.struct import STRUCT_DATA_TYPE_V2
+from zarr_metadata.v2.data_type.time import (
+    DATETIME64_DATA_TYPE_V2,
+    TIMEDELTA64_DATA_TYPE_V2,
+)
+from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 
 __all__ = [
-    "ZarrV2ArrayDimensionSeparator",
-    "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayOrder",
-    "ZarrV2CodecMetadata",
-    "ZarrV2ConsolidatedMetadataJSON",
-    "ZarrV2DataTypeMetadata",
-    "ZarrV2GroupMetadataJSON",
-    "ZarrV2ZArrayJSON",
-    "ZarrV2ZAttrsJSON",
-    "ZarrV2ZGroupJSON",
+    "ADLER32_CODEC_V2",
+    "ASTYPE_CODEC_V2",
+    "BITROUND_CODEC_V2",
+    "BLOSC_CODEC_V2",
+    "BOOL_DATA_TYPE_V2",
+    "BYTES_DATA_TYPE_V2",
+    "BZ2_CODEC_V2",
+    "COMPLEX_DATA_TYPE_V2",
+    "CORE_V2",
+    "CRC32C_CODEC_V2",
+    "CRC32_CODEC_V2",
+    "DATETIME64_DATA_TYPE_V2",
+    "DELTA_CODEC_V2",
+    "FIXEDSCALEOFFSET_CODEC_V2",
+    "FLETCHER32_CODEC_V2",
+    "FLOAT_DATA_TYPE_V2",
+    "GZIP_CODEC_V2",
+    "INT_DATA_TYPE_V2",
+    "LZ4_CODEC_V2",
+    "LZMA_CODEC_V2",
+    "OBJECT_DATA_TYPE_V2",
+    "PACKBITS_CODEC_V2",
+    "QUANTIZE_CODEC_V2",
+    "SHUFFLE_CODEC_V2",
+    "STRUCT_DATA_TYPE_V2",
+    "STR_DATA_TYPE_V2",
+    "TIMEDELTA64_DATA_TYPE_V2",
+    "UINT_DATA_TYPE_V2",
+    "VLEN_ARRAY_CODEC_V2",
+    "VLEN_BYTES_CODEC_V2",
+    "VLEN_UTF8_CODEC_V2",
+    "VOID_DATA_TYPE_V2",
+    "ZLIB_CODEC_V2",
+    "ZSTD_CODEC_V2",
+    "ZarrV2Context",
 ]

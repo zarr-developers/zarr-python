@@ -57,7 +57,7 @@ coverage-serve *args:
 
 # Run slow Hypothesis tests and write coverage.xml
 hypothesis *args:
-    hatch run {{ quote(hatch_env) }}:coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* "$@"
+    hatch run {{ quote(hatch_env) }}:coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* tests/test_array_stateful.py "$@"
     hatch run {{ quote(hatch_env) }}:coverage xml
 
 # Validate executable documentation code blocks

@@ -1,3 +1,4 @@
+import pickle
 import tempfile
 from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
@@ -230,6 +231,17 @@ async def test_store_path_invalid_mode_raises(
         await StorePath.open(LocalStore(str(tmp_path), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
+async def test_store_path_open_w_keeps_keys(tmp_path: Path) -> None:
+    """
+    Opening a store path with mode 'w' leaves the keys under it in place: the node created
+    at the path replaces them once it is valid, not the act of opening the path.
+    """
+    store = LocalStore(str(tmp_path))
+    await (StorePath(store, "root") / "key").set(cpu.Buffer.from_bytes(b"data"))
+    store_path = await StorePath.open(store, path="root", mode="w")
+    assert not await store_path.is_empty()
+
+
 async def test_make_store_invalid_mode_raises() -> None:
     """
     Test that make_store raises ValueError for a mode outside the access-mode literals.
@@ -423,3 +435,11 @@ def test_different_open_mode(tmp_path: Path) -> None:
         match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
     ):
         zarr.open_array(store=zip_store, path="a", zarr_format=2, mode="r")
+
+
+def test_storage_module_pickles_by_name() -> None:
+    """
+    Pickling `zarr.storage` re-imports the module, so objects that refer to it can be
+    serialized, for example by Dask. See issue #4029.
+    """
+    assert pickle.loads(pickle.dumps(zarr.storage)) is zarr.storage
