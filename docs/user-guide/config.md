@@ -1,7 +1,8 @@
 # Runtime configuration
 
-[`zarr.config`][] is responsible for managing the configuration of zarr and
-is based on the [donfig](https://github.com/pytroll/donfig) Python library.
+[`zarr.config`][] is a `ZarrConfigManager` instance that manages all runtime
+settings for zarr.  It provides both typed attribute access and a dotted-string
+key API.
 
 Configuration values can be set using code like the following:
 
@@ -26,12 +27,42 @@ with zarr.config.set({'array.order': 'F'}):
 print(zarr.config.get('array.order'))
 ```
 
-Alternatively, configuration values can be set using environment variables, e.g.
+Alternatively, configuration values can be set using environment variables.
+The variable name uses a `ZARR_` prefix, with `__` to denote nesting, e.g.
 `ZARR_ARRAY__ORDER=F`.
 
-The configuration can also be read from a YAML file in standard locations.
-For more information, see the
-[donfig documentation](https://donfig.readthedocs.io/en/latest/).
+External configuration is processed in two stages. Collection recognizes names
+from the configuration schema and a separate set of environment controls:
+`ZARR_CONFIG` and `ZARR_ROOT_CONFIG` control file discovery, and
+`ZARR_BENCHMARK_CLEAR_CACHE` controls benchmark cache clearing. These controls
+are left to their consumers and never become configuration fields. Unrecognized
+`ZARR_*` names produce a warning and are ignored. The `codecs` namespace is open,
+so environment variables can also select implementations for custom codec names.
+
+Config creation then validates the collected values against the schema and
+applies them to the defaults. Invalid values raise an error identifying the
+field, for example `ZARR_ARRAY__ORDER=Q`. Programmatic `config.set()` validates
+keys but continues to defer value validation to the setting's use site.
+
+The configuration can also be read from YAML files. Environment variables and
+YAML files are read by [`donfig`](https://donfig.readthedocs.io/), so zarr uses
+donfig's [standard search
+locations](https://donfig.readthedocs.io/en/latest/configuration.html#yaml-files),
+in increasing order of precedence:
+
+- `/etc/zarr/` (override this directory with the `ZARR_ROOT_CONFIG`
+  environment variable),
+- `<sys.prefix>/etc/zarr/` and each entry in Python's `site.PREFIXES` (e.g.
+  inside a virtual environment),
+- `~/.config/zarr/`,
+- the path in the `ZARR_CONFIG` environment variable, which may point at a
+  single file or a directory and takes precedence over all of the above.
+
+Place a `zarr.yaml` in any of these directories, or point `ZARR_CONFIG` at a
+specific file. YAML files contain configuration fields only: environment
+controls such as `benchmark_clear_cache` are not valid YAML config keys.
+Unrecognized keys are ignored with a warning during collection; recognized
+values are checked when the typed configuration is created.
 
 Configuration options include the following:
 
@@ -54,8 +85,5 @@ This is the current default configuration:
 
 ```python exec="true" session="config" source="above" result="ansi"
 from pprint import pprint
-import io
-output = io.StringIO()
-zarr.config.pprint(stream=output, width=60)
-print(output.getvalue())
+pprint(zarr.config.to_dict())
 ```
