@@ -56,7 +56,7 @@ closely model the content of the Zarr specifications, such as:
 - **Static Type Checking** The public `TypedDict` definitions describe the static JSON shape of Zarr
   metadata.
 
-- **Dynamic JSON validation** For strict, loc-aware validation of JSON loaded from disk, use the
+- **Dynamic JSON validation** For strict, location-aware validation of JSON loaded from disk, use the
   model parser:
 
   ```python test="true" session="index"
@@ -108,6 +108,10 @@ and a configuration key the definition does not declare is reported as
 `unknown_key`. If no definition in the scope claims a name, the reader
 does not check that extension point, and the consumer decides whether to
 support it.
+
+Making the context and explicit part of metadata parsing allows different libraries, which might support different
+sets of Zarr features, to formally represent exactly the codecs, data types, etc they support when
+parsing metadata.
 
 Some checks relate one part of a v3 document to another:
 
@@ -396,8 +400,9 @@ Runtime array behavior is out of scope: nothing here encodes or decodes
 chunks, resolves codec or data type names to implementations, or performs
 store I/O. The models begin and end at the metadata documents themselves —
 `from_key_value` / `to_key_value` map documents to store keys and bytes,
-and everything past that belongs to consumer libraries.
-
+and everything past that belongs to consumer libraries. The "no encoding / decoding" rule does constrain
+how extensively we can validate certain codec combinations. For example, we cannot check that the `cast_value`
+codec bijectively maps scalars.
 ## Reference
 
 - [API reference](api/index.md)
