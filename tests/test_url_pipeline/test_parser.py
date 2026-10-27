@@ -5,6 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from zarr.errors import URLPipelineError
+from zarr.storage import URLPipeline
 from zarr.storage._url_pipeline import _parse_pipeline
 
 
@@ -77,7 +78,7 @@ def test_empty_query() -> None:
 def test_single_letter_root_scheme_rejected(url: str) -> None:
     """A one-letter root scheme reads as a drive path on Windows, so it is rejected everywhere."""
     with pytest.raises(URLPipelineError, match="Windows drive path"):
-        _parse_pipeline(url)
+        URLPipeline.from_url(url)
 
 
 @pytest.mark.parametrize("scheme", ["\u212aelvin", "s\u0131", "zi\u0440"])

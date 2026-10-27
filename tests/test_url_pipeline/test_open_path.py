@@ -278,11 +278,30 @@ class TestSegmentValidation:
             (("S3", "b", None), URLPipelineError),
             (("", "b", None), URLPipelineError),
             (("a b", "b", None), URLPipelineError),
+            # a hand-built segment obeys the parser's rules, so its url parses back to it
+            (("file", "/tmp/a|evil:", None), URLPipelineError),
+            (("s3", "//b|zarr3:", None), URLPipelineError),
+            (("s3", "//b", "x|evil:"), URLPipelineError),
+            (("s3", "//b?q", None), URLPipelineError),
+            (("s3", "//b#f", None), URLPipelineError),
+            (("s3", "//b", "q#f"), URLPipelineError),
+            (("s3", "//b\n", None), URLPipelineError),
+            (("s3", "//b ", None), URLPipelineError),
+            (("s3", "//b", " "), URLPipelineError),
         ],
     )
     def test_invalid_fields(self, fields: tuple[object, ...], error: type[Exception]) -> None:
+        scheme, body, query = fields
         with pytest.raises(error):
-            PipelineSegment(*fields)  # type: ignore[arg-type]
+            PipelineSegment(scheme=scheme, body=body, query=query)  # type: ignore[arg-type]
+
+    def test_fields_are_keyword_only(self) -> None:
+        with pytest.raises(TypeError):
+            PipelineSegment("s3", "//b", None)  # type: ignore[call-arg]
+
+    def test_hand_built_pipe_in_body_cannot_reach_an_adapter(self) -> None:
+        with pytest.raises(URLPipelineError, match="cannot contain '|'"):
+            URLPipeline((PipelineSegment(scheme="file", body="/tmp/a|evil:", query=None),))
 
 
 class TestMessages:
@@ -374,8 +393,8 @@ class TestEntryPointNames:
 
 class TestLimits:
     def test_hand_built_pipeline_segment_limit(self) -> None:
-        segment = PipelineSegment("w", "", None)
-        root = PipelineSegment("memory", "", None)
+        segment = PipelineSegment(scheme="w", body="", query=None)
+        root = PipelineSegment(scheme="memory", body="", query=None)
         URLPipeline((root, *[segment] * 31))
         with pytest.raises(URLPipelineError, match="1 to 32 segments"):
             URLPipeline((root, *[segment] * 32))

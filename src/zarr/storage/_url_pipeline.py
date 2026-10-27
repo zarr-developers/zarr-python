@@ -50,10 +50,28 @@ def _check_scheme(scheme: str, sub_url: str) -> None:
         raise URLPipelineError(f"invalid URL scheme {scheme!r} in the sub-URL {_redact(sub_url)!r}")
 
 
-@dataclasses.dataclass(frozen=True)
+def _check_sub_url(sub_url: str) -> None:
+    """The character rules every sub-URL obeys, whether parsed or built by hand."""
+    if (match := _CONTROL_CHAR_RE.search(sub_url)) is not None:
+        raise URLPipelineError(
+            f"sub-URL {_redact(sub_url)!r} contains the control character {match.group()!r}"
+        )
+    if sub_url != sub_url.strip():
+        raise URLPipelineError(f"sub-URL {_redact(sub_url)!r} has leading or trailing whitespace")
+    if "#" in sub_url:
+        raise URLPipelineError(
+            f"URL pipeline sub-URLs do not support fragments ('#'): {_redact(sub_url)!r}"
+        )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class PipelineSegment:
     """
     One `|`-delimited sub-URL of a URL pipeline.
+
+    A segment built by hand obeys the same rules as one parsed by
+    [`URLPipeline.from_url`][zarr.storage.URLPipeline.from_url], so its `url`
+    always parses back to the same segment.
 
     Attributes
     ----------
@@ -85,6 +103,11 @@ class PipelineSegment:
             raise URLPipelineError(f"invalid URL scheme {self.scheme!r}")
         if self.scheme != self.scheme.lower():
             raise URLPipelineError(f"PipelineSegment.scheme must be lowercase: {self.scheme!r}")
+        if "?" in self.body:
+            raise URLPipelineError(f"PipelineSegment.body must not contain '?': {self!r}")
+        if "|" in self.url:
+            raise URLPipelineError(f"a sub-URL cannot contain '|': {self!r}")
+        _check_sub_url(self.url)
 
     @property
     def url(self) -> str:
@@ -161,15 +184,6 @@ class PipelineContext:
         return await _resolve(self.preceding, mode=self.mode, storage_options=self.storage_options)
 
 
-def _split_query(sub_url: str) -> tuple[str, str | None]:
-    if "#" in sub_url:
-        raise URLPipelineError(
-            f"URL pipeline sub-URLs do not support fragments ('#'): {_redact(sub_url)!r}"
-        )
-    body, sep, query = sub_url.partition("?")
-    return body, query if sep else None
-
-
 def _parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
     """
     Split a URL pipeline into segments. Adapter segments are `scheme:body`,
@@ -177,8 +191,6 @@ def _parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
     """
     if not isinstance(url, str):
         raise TypeError(f"a URL pipeline must be a str, not {type(url).__name__}")
-    if (match := _CONTROL_CHAR_RE.search(url)) is not None:
-        raise URLPipelineError(f"URL pipeline contains the control character {match.group()!r}")
     parts = url.split("|")
     if len(parts) > _MAX_SEGMENTS:
         raise URLPipelineError(f"URL pipeline has more than {_MAX_SEGMENTS} segments")
@@ -187,25 +199,18 @@ def _parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
 
     segments = []
     for index, part in enumerate(parts):
-        if part != part.strip():
-            raise URLPipelineError(f"sub-URL {_redact(part)!r} has leading or trailing whitespace")
-        scheme_and_body, query = _split_query(part)
+        _check_sub_url(part)
+        scheme_and_body, has_query, query = part.partition("?")
         scheme, sep, body = scheme_and_body.partition(":")
-        if index == 0:
-            if not sep or not scheme or "/" in scheme or "\\" in scheme:
-                raise URLPipelineError(
-                    f"the root sub-URL {_redact(part)!r} has no URL scheme; spell a local path "
-                    "as an absolute 'file:' URL, or pass a path containing '|' as a plain string"
-                )
-            _check_scheme(scheme, part)
-            if len(scheme) == 1:
-                raise URLPipelineError(
-                    f"the root sub-URL {_redact(part)!r} looks like a Windows drive path; "
-                    "spell it as a 'file:' URL (e.g. 'file:/C:/data')"
-                )
-        else:
-            _check_scheme(scheme, part)
-        segments.append(PipelineSegment(scheme=scheme.lower(), body=body, query=query))
+        if index == 0 and (not sep or not scheme or "/" in scheme or "\\" in scheme):
+            raise URLPipelineError(
+                f"the root sub-URL {_redact(part)!r} has no URL scheme; spell a local path "
+                "as an absolute 'file:' URL, or pass a path containing '|' as a plain string"
+            )
+        _check_scheme(scheme, part)
+        segments.append(
+            PipelineSegment(scheme=scheme.lower(), body=body, query=query if has_query else None)
+        )
     return tuple(segments)
 
 
@@ -232,7 +237,8 @@ class URLPipeline:
     TypeError
         If `segments` is not a tuple of `PipelineSegment`.
     URLPipelineError
-        If there are no segments or more than 32, if a format segment is
+        If there are no segments or more than 32, if the root scheme is a
+        single letter (it reads as a Windows drive), if a format segment is
         anywhere but last (including the root), or if a format segment carries
         a query or a node path with `.` or `..` components.
     """
@@ -250,7 +256,13 @@ class URLPipeline:
             )
         if not 1 <= len(self.segments) <= _MAX_SEGMENTS:
             raise URLPipelineError(f"a URL pipeline needs 1 to {_MAX_SEGMENTS} segments")
-        if self.segments[0].scheme in _FORMAT_SCHEMES:
+        root = self.segments[0]
+        if len(root.scheme) == 1:
+            raise URLPipelineError(
+                f"the root sub-URL {_redact(root.url)!r} looks like a Windows drive path; "
+                "spell it as a 'file:' URL (e.g. 'file:/C:/data')"
+            )
+        if root.scheme in _FORMAT_SCHEMES:
             raise URLPipelineError(f"a format segment cannot be the root of {self!r}")
         if any(segment.scheme in _FORMAT_SCHEMES for segment in self.segments[1:-1]):
             raise URLPipelineError(f"a format segment must be the last segment of {self!r}")

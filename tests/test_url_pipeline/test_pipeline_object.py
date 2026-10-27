@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from zarr.errors import URLPipelineError
 from zarr.storage import PipelineSegment, URLPipeline
@@ -51,7 +53,12 @@ def test_empty_pipeline_rejected() -> None:
 
 @pytest.mark.parametrize(
     "segments",
-    ["s3://b|zip:", ["s3://b"], ("s3://b",), [PipelineSegment("s3", "//b", None)]],
+    [
+        "s3://b|zip:",
+        ["s3://b"],
+        ("s3://b",),
+        [PipelineSegment(scheme="s3", body="//b", query=None)],
+    ],
 )
 def test_direct_construction_rejects_non_segments(segments: object) -> None:
     """Only a tuple of `PipelineSegment` is accepted; `from_url` parses strings."""
@@ -72,3 +79,49 @@ def test_hashable() -> None:
     assert a == b
     assert hash(a) == hash(b)
     assert {a: 1}[b] == 1
+
+
+# --- round-trip properties ---------------------------------------------
+#
+# Every pipeline, hand-built or parsed, must satisfy
+# `URLPipeline.from_url(str(p)) == p`: otherwise `str()` could name a different
+# pipeline, e.g. a hand-built body "/tmp/a|evil:" re-parsing as an 'evil'
+# adapter. Parts are drawn with the characters the parser treats specially.
+
+_NASTY = st.characters(min_codepoint=0, max_codepoint=0x7F) | st.sampled_from(
+    ["|", "#", "?", ":", "/", "\\", " ", "\t", "\n", "\u212a", "\u0131"]
+)
+_SCHEME = st.from_regex(r"[a-z][a-z0-9+.\-]{0,7}", fullmatch=True) | st.text(_NASTY, max_size=4)
+_PART = st.text(_NASTY, max_size=12)
+
+
+@st.composite
+def _hand_built(draw: st.DrawFn) -> URLPipeline:
+    segments = []
+    for _ in range(draw(st.integers(1, 4))):
+        try:
+            segments.append(
+                PipelineSegment(
+                    scheme=draw(_SCHEME), body=draw(_PART), query=draw(st.none() | _PART)
+                )
+            )
+        except URLPipelineError:
+            continue
+    try:
+        return URLPipeline(tuple(segments))
+    except URLPipelineError:
+        return draw(st.nothing())
+
+
+@given(_hand_built())
+def test_property_hand_built_pipeline_round_trips(pipeline: URLPipeline) -> None:
+    assert URLPipeline.from_url(str(pipeline)) == pipeline
+
+
+@given(st.text(_NASTY, max_size=40))
+def test_property_parsed_pipeline_round_trips(url: str) -> None:
+    try:
+        pipeline = URLPipeline.from_url(url)
+    except URLPipelineError:
+        return
+    assert URLPipeline.from_url(str(pipeline)) == pipeline
