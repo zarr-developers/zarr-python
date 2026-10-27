@@ -234,6 +234,7 @@ z_explicit_serializer = zarr.create_array(
     dtype="int32",
     serializer=serializer,
     compressors=None,
+    overwrite=True,
 )
 print(z_explicit_serializer.serializer)
 print(f"Compressors: {z_explicit_serializer.compressors}")
