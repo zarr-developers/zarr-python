@@ -290,7 +290,7 @@ def spelled(
     return name, None
 
 
-def _carrying_name(
+def carrying_name(
     definition: Definition[Any], configuration: Mapping[str, JSONValue]
 ) -> str | None:
     """The name that carries `configuration` for `definition`: `r16` for `r*` with `{"bits": 16}`; None when its name carries nothing."""
@@ -1148,7 +1148,7 @@ def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JS
             f"{list(refused)!r}"
         )
         raise ValueError(msg)
-    carrying = _carrying_name(definition, simplified)
+    carrying = carrying_name(definition, simplified)
     if carrying is not None:
         return carrying
     if len(simplified) == 0:
