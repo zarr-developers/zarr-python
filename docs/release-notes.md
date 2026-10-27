@@ -4,7 +4,7 @@
 
 <!-- towncrier release notes start -->
 
-## 3.4.2 (2026-10-26)
+## 3.4.2 (2026-10-27)
 
 ### Features
 
