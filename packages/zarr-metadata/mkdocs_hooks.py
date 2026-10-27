@@ -1,0 +1,1 @@
+../../mkdocs_hooks.py
