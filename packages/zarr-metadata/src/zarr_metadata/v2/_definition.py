@@ -46,6 +46,9 @@ ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadat
 STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""
 
+_RECORDS: Final = "fields"
+"""The one member of a struct's configuration: the records, which the document writes as the dtype itself."""
+
 FAMILIES: Final[Mapping[str, str]] = {
     "b": "bool",
     "i": "int",
@@ -202,7 +205,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
             # The string `struct` is not a typestr; only records read as a struct.
             return (None, None, ()) if value == STRUCT_NAME else (value, None, ())
         if isinstance(value, (list, tuple)):
-            return STRUCT_NAME, {"fields": cast("JSONValue", value)}, ()
+            return STRUCT_NAME, {_RECORDS: cast("JSONValue", value)}, ()
         return None, None, ()
 
     @classmethod
@@ -223,8 +226,8 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
 
     @classmethod
     def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
-        if name == STRUCT_NAME and "fields" in configuration:
-            return configuration["fields"]
+        if name == STRUCT_NAME and _RECORDS in configuration:
+            return configuration[_RECORDS]
         return name
 
     @classmethod
@@ -236,9 +239,12 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
 
     @classmethod
     def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
-        # A v2 dtype has a configuration only as a struct's
-        # `{"fields": records}`, and the document writes the records as the
-        # dtype itself.
+        # `_named_configuration` gives a v2 dtype a configuration only as a
+        # struct's `{_RECORDS: records}`, and every other dtype's
+        # configuration is encoded in its name, which is located at the
+        # field. So a place is the configuration itself, `()`, or starts
+        # with `_RECORDS`, which the document does not write: it writes the
+        # records as the dtype itself.
         return (*loc, *place[1:])
 
     @classmethod
