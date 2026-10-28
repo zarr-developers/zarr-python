@@ -281,24 +281,20 @@ def test_error_a_bytes_codec_without_endian_handed_values_of_several_bytes(
 
 
 @pytest.mark.parametrize(
-    ("codec", "no_endian", "varying_size"),
+    ("codec", "no_endian"),
     [
-        ("bytes", (0, "configuration"), (0,)),
-        ({"name": "bytes"}, (0, "configuration"), (0,)),
-        (
-            {"name": "bytes", "configuration": {}},
-            (0, "configuration", "endian"),
-            (0, "configuration"),
-        ),
+        ("bytes", (0, "configuration")),
+        ({"name": "bytes"}, (0, "configuration")),
+        ({"name": "bytes", "configuration": {}}, (0, "configuration", "endian")),
     ],
     ids=["name", "object", "empty-configuration"],
 )
 def test_error_a_bytes_codec_s_problems_are_located_where_its_document_writes(
-    codec: JSONValue, no_endian: tuple[str | int, ...], varying_size: tuple[str | int, ...]
+    codec: JSONValue, no_endian: tuple[str | int, ...]
 ) -> None:
-    """A codec's chunk rules are located in its document. A missing `endian` is a member of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A problem with the configuration as a whole is the codec's when it writes none."""
+    """A codec's chunk rules are located in its document. A missing `endian` is a member of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A codec handed values it cannot encode is the codec's problem, however it is spelled."""
     assert _problems([codec], _of("int16")) == [(no_endian, "missing_key")]
-    assert _problems([codec], _of("string")) == [(varying_size, "invalid_value")]
+    assert _problems([codec], _of("string")) == [((0,), "invalid_value")]
 
 
 def test_error_a_bytes_codec_without_endian_after_a_cast_past_a_codec_nothing_claims() -> None:
@@ -308,7 +304,7 @@ def test_error_a_bytes_codec_without_endian_after_a_cast_past_a_codec_nothing_cl
 
 @pytest.mark.parametrize("data_type", ["string", "bytes"])
 def test_error_a_bytes_codec_handed_values_that_vary_in_size(data_type: JSONValue) -> None:
-    assert _problems([LITTLE], _of(data_type)) == [((0, "configuration"), "invalid_value")]
+    assert _problems([LITTLE], _of(data_type)) == [((0,), "invalid_value")]
 
 
 @pytest.mark.parametrize(
@@ -334,24 +330,20 @@ def test_error_an_arithmetic_codec_handed_values_that_are_no_numbers(
 ) -> None:
     # The codec comes before an array -> bytes codec that nothing in scope
     # claims, which is not checked.
-    assert _problems([codec, "vlen-utf8"], _of(data_type)) == [
-        ((0, "configuration"), "invalid_value")
-    ]
+    assert _problems([codec, "vlen-utf8"], _of(data_type)) == [((0,), "invalid_value")]
 
 
 def test_error_a_codec_handed_on_what_another_could_not_take_is_judged_too() -> None:
     # scale_offset outputs the chunk it receives, which the bytes codec
     # after it cannot accept either.
     assert _problems([_scale(), LITTLE], _of("string")) == [
-        ((0, "configuration"), "invalid_value"),
-        ((1, "configuration"), "invalid_value"),
+        ((0,), "invalid_value"),
+        ((1,), "invalid_value"),
     ]
 
 
 def test_error_a_cast_handed_complex_numbers() -> None:
-    assert _problems([_cast("float32"), "vlen-utf8"], _of("complex64")) == [
-        ((0, "configuration"), "invalid_value")
-    ]
+    assert _problems([_cast("float32"), "vlen-utf8"], _of("complex64")) == [((0,), "invalid_value")]
 
 
 @pytest.mark.parametrize(
