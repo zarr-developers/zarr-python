@@ -1,65 +1,90 @@
-"""A codec pipeline, read: each codec with the chunk it is handed.
+"""Reading a codec pipeline: each codec paired with the chunk it receives.
 
 A pipeline is array -> array codecs, then one array -> bytes codec, then
-bytes -> bytes codecs. The array hands its first codec a `Chunk` -- "the
-same data type as the Zarr array, and shape equal to the chunk shape"
+bytes -> bytes codecs. The array passes a `Chunk` to its first codec. The
+chunk has "the same data type as the Zarr array, and shape equal to the
+chunk shape"
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1048-L1050),
-the lengths its grid's chunks take along each axis -- and each array ->
-array codec hands the next the chunk its `transition` says.
-Each codec handed an array is judged by its chunk rules against the chunk
-it is handed: a `bytes` codec handed a multi-byte data type without an
-`endian`, a `transpose` whose `order` has another number of axes. A codec
-that holds pipelines of its own has each read the same way, handed the
-chunk its `pipelines` says: a shard's inner codecs its inner chunks, its
-index codecs the shard index.
+where the shape is the lengths of the grid's chunks along each axis. Each
+array -> array codec passes the next codec the chunk that its `transition`
+returns.
+Each codec that receives an array is checked by its chunk rules against
+that chunk. For example, a `bytes` codec that receives a multi-byte data
+type without an `endian` is a problem, and so is a `transpose` whose
+`order` has the wrong number of axes. If a codec contains its own
+pipelines, each one is read the same way, starting from the chunk that the
+codec's `pipelines` returns. For a shard, the inner codecs receive the
+inner chunks, and the index codecs receive the shard index.
 
-Nothing is guessed. A codec the scope did not read -- nothing in scope
-claims it, or it has a problem of its own -- might do anything, so the
-codec after it is handed a chunk nothing is known of, as is the codec
-after one that says nothing of what it hands on; a codec after that
-hands on only what it says of its own accord, as `cast_value` names its
-data type. One nothing in scope claims might be of any of the three
-kinds, so the order is judged without it. A chunk rule judges what is
-known of its chunk and leaves the rest.
+The reader does not guess. If a codec was not read (no definition in the
+scope claims its name, or its configuration has problems), its output is
+unknown, so the next codec receives a chunk with unknown shape and data
+type. The same applies after a codec that does not declare its output. A
+later codec can still declare its output itself, as `cast_value` declares
+its data type. An unclaimed codec could be any of the three kinds, so the
+order check skips it. A chunk rule checks only the properties of the
+chunk that are known.
 """
 
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
-from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import Chunk, CodecDefinition, CodecKind, Resolved, asked, ruled
+from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
+from zarr_metadata.definition._definition import (
+    AcceptedField,
+    ResolvedField,
+    asked,
+    read_only,
+    ruled,
+)
+from zarr_metadata.v3._definition import (
+    Chunk,
+    CodecDefinition,
+    CodecKind,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import Nested, Problems
+    from zarr_metadata.definition._definition import (
+        Nested,
+        Problems,
+    )
 
 
 def _no_stages() -> Mapping[str, tuple[Stage, ...]]:
-    """The pipelines of a codec that holds none, or was not read: none."""
+    """The pipelines of a codec that contains none, or that was not read: an empty mapping."""
     return {}
 
 
 @dataclass(frozen=True, slots=True)
 class Stage:
-    """One codec of a pipeline, and the chunk it is handed."""
+    """One codec of a pipeline, and the chunk it receives."""
 
-    codec: Resolved[CodecDefinition[Any]]
+    codec: ResolvedField[CodecDefinition[Any]]
     """The codec, as the scope read it."""
     incoming: Chunk | None
-    """The chunk it is handed.
+    """The chunk the codec receives.
 
-    None for a codec handed bytes -- a bytes -> bytes codec, or any codec
-    after the array -> bytes codec -- and for a codec nothing in scope
-    claims when what it is handed is not known to be an array.
+    None for a codec that receives bytes (a bytes -> bytes codec, or any
+    codec after the array -> bytes codec). Also None for an unclaimed codec
+    when its input is not known to be an array.
     """
     inner: Mapping[str, tuple[Stage, ...]] = dataclasses.field(default_factory=_no_stages)
-    """The pipelines it holds, by the member of its configuration that holds each: each codec with the chunk it is handed."""
+    """The pipelines the codec contains, keyed by the configuration member that holds each one. Each pipeline pairs each codec with the chunk it receives."""
+
+    def __post_init__(self) -> None:
+        # Make this read-only, like everything else a reading returns.
+        object.__setattr__(self, "inner", MappingProxyType(dict(self.inner)))
+
+    def __reduce__(self) -> tuple[type[Stage], tuple[object, ...]]:
+        # A read-only view cannot be pickled, so pickle the stage from its constructor arguments.
+        return Stage, (self.codec, self.incoming, dict(self.inner))
 
 
 _POSITIONS: Final[Mapping[CodecKind, int]] = {
@@ -67,7 +92,7 @@ _POSITIONS: Final[Mapping[CodecKind, int]] = {
     "array_bytes": 1,
     "bytes_bytes": 2,
 }
-"""Where each kind of codec comes in a pipeline."""
+"""The position of each kind of codec in a pipeline."""
 
 _SPOKEN: Final[Mapping[CodecKind, str]] = {
     "array_array": "array -> array",
@@ -77,25 +102,27 @@ _SPOKEN: Final[Mapping[CodecKind, str]] = {
 
 
 def read_pipeline(
-    codecs: Sequence[Resolved[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
+    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
 ) -> tuple[tuple[Stage, ...], Problems]:
-    """Each of `codecs`, codec fields a scope read, as a pipeline handed `chunk`, with the chunk it is handed, and what is wrong with them.
+    """Read `codecs` (codec fields read by a context) as a pipeline that receives `chunk`. Return each codec with the chunk it receives, and the problems found.
 
-    The order first: array -> array codecs, then one array -> bytes codec,
-    then bytes -> bytes codecs. Then each codec in turn, handed the chunk
-    the one before it handed on: judged by its chunk rules, which locate
-    their problems in its configuration; each pipeline it holds read the
-    same way, where it sits in the configuration; and, an array -> array
-    codec, asked what it hands on. Problems are located under `loc`, where
-    the codecs sit, each codec at its index.
+    First the order is checked: array -> array codecs, then one
+    array -> bytes codec, then bytes -> bytes codecs. Then each codec is
+    processed in turn, with the chunk the previous codec passed on. Its
+    chunk rules check it and locate their problems in its configuration.
+    Each pipeline it contains is read the same way, at its location in the
+    configuration. An array -> array codec is also asked what chunk it
+    passes on. Problems are located under `loc`, the location of the
+    codecs, with each codec at its index.
     """
     problems = list(_order_problems(codecs, loc))
     stages: list[Stage] = []
-    # What the next codec is handed: None once that is not known to be an
-    # array -- past the array -> bytes codec, or a codec of unknown kind.
+    # The chunk the next codec receives. None once the input is not known
+    # to be an array: after the array -> bytes codec, or after a codec of
+    # unknown kind.
     handed: Chunk | None = chunk
     for index, codec in enumerate(codecs):
-        definition, configuration = codec.definition, codec.configuration
+        definition = codec.definition
         if definition is None:
             stages.append(Stage(codec, handed))
             handed = None
@@ -107,22 +134,25 @@ def read_pipeline(
         incoming = Chunk() if handed is None else handed
         at = (*loc, index, "configuration")
         inner = _no_stages()
-        if configuration is not None:
-            problems.extend(_chunk_problems(definition, configuration, codec.nested, incoming, at))
-            inner, found = _inner_pipelines(definition, configuration, codec.nested, incoming, at)
+        if isinstance(codec, AcceptedField):
+            configuration, nested = codec.configuration, codec.nested
+            problems.extend(_chunk_problems(definition, configuration, nested, incoming, at))
+            inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
         if definition.kind == "array_bytes":
             handed = None
-        elif configuration is None:
+        elif not isinstance(codec, AcceptedField):
             handed = Chunk()
         else:
-            handed = _handed_on(definition, configuration, codec.nested, incoming, at)
-    return tuple(stages), tuple(problems)
+            handed = _handed_on(definition, codec.configuration, codec.nested, incoming, at)
+    if len(problems) == 0:
+        return tuple(stages), ()
+    return tuple(stages), with_input(problems, tuple(codec.json for codec in codecs), loc)
 
 
 def _order_problems(
-    codecs: Sequence[Resolved[CodecDefinition[Any]]], loc: Loc
+    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], loc: Loc
 ) -> Iterator[ValidationProblem]:
     """Array -> array codecs, then one array -> bytes codec, then bytes -> bytes codecs.
 
@@ -130,10 +160,10 @@ def _order_problems(
     array -> array codecs; followed by exactly one array -> bytes codec;
     followed by zero or more bytes -> bytes codecs"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L974-L983).
-    A codec nothing in scope claims is left out: it might be any of the
-    three, so a pipeline that holds one is not refused for holding no
-    array -> bytes codec. A codec out of place is reported where it sits,
-    and so is an array -> bytes codec after the first.
+    An unclaimed codec is skipped. It could be any of the three kinds, so a
+    pipeline that contains one is not rejected for lacking an
+    array -> bytes codec. A codec in the wrong position is reported at its
+    location, and so is any array -> bytes codec after the first.
     """
     furthest: CodecDefinition[Any] | None = None
     encoder: CodecDefinition[Any] | None = None
@@ -168,33 +198,36 @@ def _order_problems(
 
 def _chunk_problems(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,
 ) -> Problems:
-    """What `definition`'s chunk rules find in a codec handed `chunk`, located under `at`."""
-    return ruled(definition, lambda: definition.chunk_rules(configuration, nested, chunk), at)
+    """The problems `definition`'s chunk rules find in a codec that receives `chunk`, located under `at`."""
+    return ruled(
+        definition, lambda: definition.chunk_rules(read_only(configuration), nested, chunk), at
+    )
 
 
 def _inner_pipelines(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,
 ) -> tuple[Mapping[str, tuple[Stage, ...]], Problems]:
-    """Each pipeline a codec handed `chunk` holds, read handed the chunk its `pipelines` says.
+    """Read each pipeline contained in a codec that receives `chunk`, starting from the chunk that the codec's `pipelines` returns.
 
-    Its codecs are the fields the member holding it holds, as the scope
-    read them, and its problems are located there, under `at`. What
-    `pipelines` gives is the extension author's code: it is checked to map
-    members of the configuration to chunks, each member a list of codecs.
+    A pipeline's codecs are the fields in the configuration member that
+    holds it, as the scope read them. Its problems are located at that
+    member, under `at`. `pipelines` is the extension author's code, so its
+    result is checked: it must map configuration members to chunks, and
+    each member must be a list of codecs.
     """
     given = asked(
         definition,
         "pipelines",
-        lambda: cast("object", definition.pipelines(configuration, nested, chunk)),
+        lambda: cast("object", definition.pipelines(read_only(configuration), nested, chunk)),
         at,
     )
     if not _is_pipelines(given):
@@ -213,35 +246,27 @@ def _inner_pipelines(
 
 def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
     """Whether `value` maps members of a configuration to chunks."""
-    return isinstance(value, Mapping) and all(
-        isinstance(member, str) and isinstance(chunk, Chunk)
-        for member, chunk in cast("Mapping[object, object]", value).items()
+    return is_object(value) and all(
+        isinstance(member, str) and isinstance(chunk, Chunk) for member, chunk in value.items()
     )
 
 
 def _held(
-    definition: CodecDefinition[Any], configuration: Mapping[str, Any], nested: Nested, member: str
-) -> tuple[Resolved[CodecDefinition[Any]], ...]:
-    """The codecs `member` of the configuration holds, as the scope read them.
+    definition: CodecDefinition[Any],
+    configuration: Mapping[str, object],
+    nested: Nested,
+    member: str,
+) -> tuple[ResolvedField[CodecDefinition[Any]], ...]:
+    """The codecs in configuration member `member`, as the scope read them.
 
-    A member holding anything but a list of fields, or fields a definition
-    of another kind read, is a `TypeError`: a fault in the definition that
-    names it. Fields nothing in scope claims tell nothing of their kind,
-    and are read as codecs nothing claims.
+    If the member holds anything other than a list of fields read as
+    codecs, this raises `TypeError`, because the definition that names the
+    member has a bug.
     """
     entries: object = configuration.get(member)
-    places = (
-        [(member, index) for index in range(len(cast("tuple[object, ...]", entries)))]
-        if isinstance(entries, tuple)
-        else None
-    )
+    places = [(member, index) for index in range(len(entries))] if is_tuple(entries) else None
     if places is None or not all(
-        place in nested
-        and (
-            nested[place].definition is None
-            or isinstance(nested[place].definition, CodecDefinition)
-        )
-        for place in places
+        place in nested and nested[place].read_as is CodecDefinition for place in places
     ):
         msg = f"{definition.name!r}: its pipelines name {member!r}, which holds no list of codecs"
         raise TypeError(msg)
@@ -250,21 +275,21 @@ def _held(
 
 def _handed_on(
     definition: CodecDefinition[Any],
-    configuration: Mapping[str, Any],
+    configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
     at: Loc,
 ) -> Chunk:
-    """The chunk an array -> array codec hands on, handed `chunk`.
+    """The chunk an array -> array codec passes on when it receives `chunk`.
 
-    Its `transition` is the extension author's code: what it gives is
-    checked to be a chunk, and an error it raises says which codec's
-    transition raised it, and where it was reading.
+    The codec's `transition` is the extension author's code. Its result is
+    checked to be a chunk. If it raises an error, the error says which
+    codec's transition raised it and where the reader was reading.
     """
     given = asked(
         definition,
         "transition",
-        lambda: cast("object", definition.transition(configuration, nested, chunk)),
+        lambda: cast("object", definition.transition(read_only(configuration), nested, chunk)),
         at,
     )
     if not isinstance(given, Chunk):
