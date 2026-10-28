@@ -105,6 +105,15 @@ def item_bytes(name: str) -> int | None:
     return size * CODE_POINT_BYTES if code == "U" else size
 
 
+_TYPESTR_PARTS: Final[Mapping[str, str]] = {
+    "byteorder": "a byte order",
+    "itemsize": "a size",
+    "unit": "a unit",
+    "scale_factor": "a unit",
+}
+"""How a message names the part of a typestr that each member of its configuration comes from."""
+
+
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
     """Return the problem at `at` if `name` is not a typestr. Return None if it is a typestr."""
     if TYPESTR_PATTERN.fullmatch(name) is not None:
@@ -217,6 +226,11 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         if name == STRUCT_NAME and "fields" in configuration:
             return configuration["fields"]
         return name
+
+    @classmethod
+    def _name_part(cls, key: str) -> str:
+        # A unit carries its scale factor: `[10ms]` is one part of a typestr.
+        return _TYPESTR_PARTS[key]
 
     @classmethod
     def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:

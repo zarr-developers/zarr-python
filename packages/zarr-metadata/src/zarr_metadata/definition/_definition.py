@@ -61,6 +61,7 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
+from zarr_metadata._hierarchy import said
 from zarr_metadata._json import (
     Problems,
     ValidationProblem,
@@ -252,6 +253,11 @@ class Definition(Generic[C]):
     ) -> tuple[JSONValue | None, Problems]:
         """`data`, a field of this kind at `loc`, refined to JSON before it is read, with every reason it is not JSON. `definition` is the definition that claims the field, if any. By default every number must be finite, as RFC 8259 requires."""
         return refine_json(data, loc)
+
+    @classmethod
+    def _name_part(cls, key: str) -> str:
+        """How a message names the part of a name that encodes the configuration member `key`, for a kind whose names encode configuration: `key` itself by default."""
+        return key
 
     @classmethod
     def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
@@ -1572,14 +1578,31 @@ def _read_carried(
     # A problem with the configuration encoded in the name belongs to the
     # field. It is located at the field, where the name is, and the
     # `input` and `ctx` that described a configuration member do not apply
-    # to the name, so they are cleared.
+    # to the name, so they are cleared. A name is a single token, so each
+    # problem is a wrong value of the name: a part it lacks is not a missing
+    # key, and a part the definition does not declare is not an unknown key
+    # a reader may leave out. The parts it does not declare are reported in
+    # one problem, by how the name spells them.
     problems = (
         *beside,
-        *(dataclasses.replace(found, loc=loc, input=UNSET, ctx={}) for found in judged),
+        *(
+            dataclasses.replace(found, loc=loc, input=UNSET, ctx={}, kind="invalid_value")
+            for found in judged
+            if found.kind != "unknown_key"
+        ),
     )
-    # A name is a single token. An undeclared part of the encoded
-    # configuration cannot be left out, as an extra key next to the name
-    # can, so any problem with the encoded configuration refuses the field.
+    undeclared = dict.fromkeys(
+        kind._name_part(cast("str", found.loc[0]))
+        for found in judged
+        if found.kind == "unknown_key"
+    )
+    if len(undeclared) != 0:
+        message = (
+            f"expected a name {definition.name!r} reads, got {shown(name)}, which encodes "
+            f"{said(list(undeclared))} that it does not take"
+        )
+        problems = (*problems, ValidationProblem(loc, message, "invalid_value"))
+    # Any problem with the encoded configuration refuses the field.
     if configuration is None or not _usable(beside) or len(judged) != 0:
         refused = RefusedField(json=data, name=name, read_as=kind, definition=definition)
         return refused, problems

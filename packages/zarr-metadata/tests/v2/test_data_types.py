@@ -148,10 +148,13 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     ],
 )
 def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at: Loc) -> None:
-    """A typestr with a size, byte order or unit that its family does not accept is refused, and the problem is located at the field. A struct's problems are located at the record and the position inside it, where the document writes them. If a record's type is refused, the problem is reported there and the struct is still read."""
+    """A typestr with a size, byte order or unit that its family does not accept is refused with one `invalid_value` problem, located at the field. A struct's problems are located at the record and the position inside it, where the document writes them. If a record's type is refused, the problem is reported there and the struct is still read."""
     kind, problems = _read(value)
     assert kind is RefusedField or len(at) > 1
     assert next(loc for loc, _ in problems) == at
+    if isinstance(value, str):
+        # A typestr is one token: one wrong value, never a key a reader may skip.
+        assert problems == [(at, "invalid_value")]
     # Each location is in the document, so a tool can point at it.
     assert value_at({"dtype": value}, at) is not UNSET
 
@@ -168,9 +171,9 @@ def test_error_a_str_typestr_without_a_byte_order_states_its_size_in_bytes() -> 
 def test_error_a_time_typestr_without_a_unit_is_refused_with_an_example_of_its_own_family(
     value: str, example: str
 ) -> None:
-    """`<M8` and `<m8` are refused as a dtype, because the v2 spec requires a unit. The message gives an example with a unit of the same family: a datetime for `M`, a timedelta for `m`."""
+    """`<M8` and `<m8` are refused as a dtype, because the v2 spec requires a unit. The unit is a part of the typestr, so the typestr is an `invalid_value`, not a missing key. The message gives an example with a unit of the same family: a datetime for `M`, a timedelta for `m`."""
     _, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
-    assert [(p.kind, example in p.message) for p in problems] == [("missing_key", True)]
+    assert [(p.kind, example in p.message) for p in problems] == [("invalid_value", True)]
 
 
 @pytest.mark.parametrize(
