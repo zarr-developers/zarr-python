@@ -1817,7 +1817,7 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
         # Values of more than one byte require an `endian`.
         (
             {"data_type": "int16", "codecs": ({"name": "bytes"},)},
-            [(("codecs", 0, "configuration", "endian"), "missing_key")],
+            [(("codecs", 0, "configuration"), "missing_key")],
         ),
         ({"shape": (2,), "dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
         # The shape is not derived from the grid, and the scalar default

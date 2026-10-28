@@ -277,14 +277,33 @@ def test_error_a_codec_with_a_problem_of_its_own_hands_on_a_chunk_nothing_is_kno
 def test_error_a_bytes_codec_without_endian_handed_values_of_several_bytes(
     data_type: JSONValue,
 ) -> None:
-    assert _problems(["bytes"], _of(data_type)) == [((0, "configuration", "endian"), "missing_key")]
+    assert _problems(["bytes"], _of(data_type)) == [((0, "configuration"), "missing_key")]
+
+
+@pytest.mark.parametrize(
+    ("codec", "no_endian", "varying_size"),
+    [
+        ("bytes", (0, "configuration"), (0,)),
+        ({"name": "bytes"}, (0, "configuration"), (0,)),
+        (
+            {"name": "bytes", "configuration": {}},
+            (0, "configuration", "endian"),
+            (0, "configuration"),
+        ),
+    ],
+    ids=["name", "object", "empty-configuration"],
+)
+def test_error_a_bytes_codec_s_problems_are_located_where_its_document_writes(
+    codec: JSONValue, no_endian: tuple[str | int, ...], varying_size: tuple[str | int, ...]
+) -> None:
+    """A codec's chunk rules are located in its document. A missing `endian` is a member of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A problem with the configuration as a whole is the codec's when it writes none."""
+    assert _problems([codec], _of("int16")) == [(no_endian, "missing_key")]
+    assert _problems([codec], _of("string")) == [(varying_size, "invalid_value")]
 
 
 def test_error_a_bytes_codec_without_endian_after_a_cast_past_a_codec_nothing_claims() -> None:
     # The cast declares the data type it outputs, whatever it receives.
-    assert _problems(["zfpy", _cast("float32"), "bytes"]) == [
-        ((2, "configuration", "endian"), "missing_key")
-    ]
+    assert _problems(["zfpy", _cast("float32"), "bytes"]) == [((2, "configuration"), "missing_key")]
 
 
 @pytest.mark.parametrize("data_type", ["string", "bytes"])
@@ -470,7 +489,7 @@ def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks
     assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 3), "invalid_value"),
         (("codecs", 0, "configuration", "order"), "invalid_value"),
-        (("codecs", 1, "configuration", "endian"), "missing_key"),
+        (("codecs", 1, "configuration"), "missing_key"),
     ]
 
 
