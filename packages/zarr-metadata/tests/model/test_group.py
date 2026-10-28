@@ -136,9 +136,9 @@ def test_group_zarr_format_rejects_float(
     document: object,
     read: Callable[[object], ZarrV2GroupMetadataReading | ZarrV3GroupMetadataReading],
 ) -> None:
-    """Integer-valued floats do not satisfy integer format literals."""
+    """Integer-valued floats do not satisfy integer format literals. The float is the wrong type, as `4.0` is in `shape` and `1.0` in a codec's integer literal."""
     problems = read(document).problems
-    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_type")]
 
 
 def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, ...], str]]:

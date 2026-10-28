@@ -1728,9 +1728,9 @@ def test_array_zarr_format_rejects_float(
     document: object,
     read: Callable[[object], ZarrV2ArrayMetadataReading | ZarrV3ArrayMetadataReading],
 ) -> None:
-    """Integer-valued floats do not satisfy integer format literals."""
+    """Integer-valued floats do not satisfy integer format literals. The float is the wrong type, as `4.0` is in `shape` and `1.0` in a codec's integer literal."""
     problems = read(document).problems
-    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_type")]
 
 
 def test_array_v2_keeps_an_unknown_document_member() -> None:

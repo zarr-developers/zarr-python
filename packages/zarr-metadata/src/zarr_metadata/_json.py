@@ -652,9 +652,20 @@ def json_type(value: object) -> str:
 
 
 def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
-    """The kind of problem for `value` outside a closed set: `invalid_type` when no member of the set has its JSON type, else `invalid_value`."""
-    same_type = json_type(value) in {json_type(entry) for entry in allowed}
+    """The kind of problem for `value` outside a closed set: `invalid_type` when no member of the set has its type, else `invalid_value`.
+
+    An integer is a type of its own here, as everywhere a reader expects
+    one: `2.0` for `zarr_format` is the wrong type, as `4.0` in `shape` is.
+    """
+    same_type = _set_type(value) in {_set_type(entry) for entry in allowed}
     return "invalid_value" if same_type else "invalid_type"
+
+
+def _set_type(value: object) -> str:
+    """The type `refused_kind` compares: the JSON type, with an integer told apart from any other number."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "an integer"
+    return json_type(value)
 
 
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:

@@ -958,6 +958,21 @@ def test_a_message_names_what_was_expected_and_shows_the_json_it_got(
     assert [problem.message for problem in _read(annotation, value)[1]] == [message]
 
 
+@pytest.mark.parametrize(
+    "annotation", [Literal[0, 1, 2], Literal[0, 1, 2] | bool], ids=["alone", "in-a-union"]
+)
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [(1.0, "invalid_type"), (5, "invalid_value"), ("1", "invalid_type")],
+    ids=["integral-float", "other-integer", "string"],
+)
+def test_error_a_value_outside_an_integer_literal_has_one_kind_wherever_the_literal_is(
+    annotation: object, value: object, kind: str
+) -> None:
+    """A float is the wrong type for an integer `Literal`, as it is for an `int`, whether the `Literal` stands alone or in a union. Another integer is the wrong value."""
+    assert _found(_read(annotation, value)) == [((), kind)]
+
+
 def test_a_shape_is_described_as_a_message_would_name_it() -> None:
     assert describe(Literal[0, "auto"]) == 'one of ["auto", 0]'
     assert describe(Literal["0.5"]) == '"0.5"'
