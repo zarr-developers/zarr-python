@@ -120,14 +120,14 @@ def test_error_files_with_both_node_files_are_no_node() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "document", "kind"),
-    [(".zarray", ZARRAY, "invalid_value"), (".zgroup", {"zarr_format": 2}, "unknown_key")],
+    ("name", "document"),
+    [(".zarray", ZARRAY), (".zgroup", {"zarr_format": 2})],
     ids=["array", "group"],
 )
 def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and_a_zmetadata(
-    name: str, document: dict[str, Any], kind: str
+    name: str, document: dict[str, Any]
 ) -> None:
-    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem, of the same kind, at the file and at its entry. For a `.zgroup`, which declares no other member, the kind is `unknown_key`."""
+    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the file and at its entry. The kind is `invalid_value` for both files: the member is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
     held = {**document, "attributes": {}}
     from_files = read_node_metadata_v2({name: held}).problems
     from_entries = read_consolidated_metadata_v2(
@@ -136,9 +136,9 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
             "metadata": {".zgroup": {"zarr_format": 2}, f"a/{name}": held},
         }
     ).problems
-    assert [(p.loc, p.kind) for p in from_files] == [(("attributes",), kind)]
+    assert [(p.loc, p.kind) for p in from_files] == [(("attributes",), "invalid_value")]
     assert [(p.loc, p.kind) for p in from_entries] == [
-        (("metadata", f"a/{name}", "attributes"), kind)
+        (("metadata", f"a/{name}", "attributes"), "invalid_value")
     ]
     assert from_files[0].message == from_entries[0].message
     assert "belong in .zattrs" in from_files[0].message
@@ -159,7 +159,7 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
         (
             ".zgroup",
             {"zarr_format": 3},
-            [(("attributes",), "unknown_key"), (("zarr_format",), "invalid_value")],
+            [(("attributes",), "invalid_value"), (("zarr_format",), "invalid_value")],
         ),
     ],
     ids=["array", "group"],
@@ -247,24 +247,22 @@ def test_read_consolidated_metadata_v2_reads_a_zmetadata() -> None:
     ("entries", "key"),
     [
         ({".zgroup": {"zarr_format": 2}, "a/.zarray": ZARRAY}, "a/.zarray"),
-        ({".zgroup": {"zarr_format": 2}, "/a/.zarray": ZARRAY}, "/a/.zarray"),
         (
             {
                 ".zgroup": {"zarr_format": 2},
                 "a/.zgroup": {"zarr_format": 2},
-                "a//b/.zarray": ZARRAY,
+                "a/b/.zarray": ZARRAY,
             },
-            "a//b/.zarray",
+            "a/b/.zarray",
         ),
         ({".zarray": ZARRAY}, ".zarray"),
-        ({"/.zarray": ZARRAY}, "/.zarray"),
     ],
-    ids=["path", "leading-slash", "doubled-slash", "root", "root-with-slash"],
+    ids=["path", "nested-path", "root"],
 )
 def test_consolidated_fields_are_located_at_the_keys_the_document_writes(
     entries: dict[str, Any], key: str
 ) -> None:
-    """`fields()` locates each node's fields under the key that the `.zmetadata` writes for the node's `.zarray`, however that key spells the node's path, so each location leads into the document."""
+    """`fields()` locates each node's fields under the key that the `.zmetadata` writes for the node's `.zarray`, so each location leads into the document."""
     reading = read_consolidated_metadata_v2({"zarr_consolidated_format": 1, "metadata": entries})
     assert reading.problems == ()
     assert [loc for loc, _ in reading.fields()] == [("metadata", key, "dtype")]

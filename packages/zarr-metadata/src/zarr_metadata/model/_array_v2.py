@@ -189,7 +189,8 @@ def read_array_v2(
     # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so a member outside
     # _ARRAY_METADATA_STANDARD_KEYS_V2 is not a problem just for being there.
     # Ignored does not mean unchecked: as in v3, the member must be JSON,
-    # and its key must be a string.
+    # and its key must be a string. Like a v3 member that nothing claims,
+    # it is not read, so it may hold any number, as attributes may.
     problems: list[ValidationProblem] = list(missing_keys(_ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
     extra_fields, found = other_members(doc, _ARRAY_METADATA_STANDARD_KEYS_V2)
     problems.extend(found)
@@ -616,7 +617,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @property
     def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims, its dtype or a codec, located as `reading.fields()` locates it: at its place in the document, except that a struct dtype's field types are located by record and position, as their problems are.
+        """Every field nothing in scope claims, its dtype or a codec, located as `reading.fields()` locates it: at its place in the document, where a struct dtype's field types are at their record and position, as their problems are.
 
         This answers whether a reader can open the array: a reader cannot
         decode data with a dtype or a codec it does not understand, and the

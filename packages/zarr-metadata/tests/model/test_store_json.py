@@ -288,7 +288,10 @@ _REFUSED: dict[str, _Refused] = {
             ".zmetadata",
             {
                 "zarr_consolidated_format": 1,
-                "metadata": {"a/.zattrs": {"x": math.nan}, "a/.zarray": {"fill_value": math.nan}},
+                "metadata": {
+                    "a/.zattrs": {"x": math.nan},
+                    "a/.zarray": {**_V2_ARRAY, "fill_value": math.nan},
+                },
             },
         ),
         ("metadata", "a/.zarray", "fill_value"),

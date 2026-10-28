@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NewType, TypeGuard
 
-from zarr_metadata._hierarchy import tree_problems
+from zarr_metadata._hierarchy import said, tree_problems
 from zarr_metadata._json import MetadataValidationError, ValidationProblem, shown, with_input
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
     from zarr_metadata._hierarchy import NodeType
 
@@ -46,13 +46,6 @@ a path starts with `/`, does not end with `/`, and has a node name between
 each pair of `/`
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L211-L229).
 """
-
-
-def said(faults: Sequence[str]) -> str:
-    """Join `faults`, each a reason, into one clause: `a`, `a and b`, `a, b and c`."""
-    if len(faults) <= 1:
-        return "".join(faults)
-    return f"{', '.join(faults[:-1])} and {faults[-1]}"
 
 
 def name_faults(name: str) -> list[str]:

@@ -500,8 +500,8 @@ class ExtraFieldDefinition(Definition[C]):
         return json
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        return loc
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        return (*loc, *place)
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:

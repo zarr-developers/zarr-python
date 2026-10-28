@@ -62,7 +62,7 @@ PRIVATE = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2], codecs=[ZLIB_CODEC_V2])
             AcceptedField,
             None,
             (),
-            [("dtype",), ("dtype", "fields", 0, 1)],
+            [("dtype",), ("dtype", 0, 1)],
         ),
     ],
     ids=["default", "all-read", "unclaimed", "private-scope", "struct"],

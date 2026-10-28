@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._hierarchy import NodeType, tree_problems
+from zarr_metadata._hierarchy import NodeType, said, tree_problems
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
@@ -104,9 +104,9 @@ _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
     ("attributes",),
     f"unexpected key 'attributes' in {ZARR_V2_GROUP_METADATA_STORE_KEY}: a group's attributes "
     f"belong in {ZARR_V2_ATTRIBUTES_STORE_KEY}",
-    "unknown_key",
+    "invalid_value",
 )
-"""The problem of a `.zgroup` that holds `attributes`, which `.zgroup` does not declare: a group's attributes belong in `.zattrs`."""
+"""The problem of a `.zgroup` that holds `attributes`, which belong in `.zattrs`. The kind is the one `.zarray` gives the same member: the key is not unknown, but taken by the attributes, and a caller who tolerates an unknown key would drop the attributes the member holds."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -659,37 +659,45 @@ _NODE_FILES: Final = (
 def _entries_by_path(
     entries: Mapping[str, JSONValue],
 ) -> tuple[dict[str, dict[str, str]], list[ValidationProblem]]:
-    """The store key of each `.zarray`, `.zgroup` and `.zattrs` entry, by node path and then by file name. Also a problem for each extra key that names a file of a node already seen, since that entry would otherwise not be read."""
+    """The store key of each `.zarray`, `.zgroup` and `.zattrs` entry, by node path and then by file name. Also a problem for each such key that does not name its file by the node's path, since a reader would not find that entry."""
     by_path: dict[str, dict[str, str]] = {}
     problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
         if name not in _NODE_FILES:
             continue
-        # A node's path, as a store names it: segments joined by a single `/`.
-        segments = [segment for segment in path.split("/") if segment != ""]
-        if any(segment in (".", "..") for segment in segments):
+        faults = _key_faults(key)
+        if len(faults) != 0:
             problems.append(
                 ValidationProblem(
                     ("metadata", key),
-                    f"expected the path of a node, got {key!r}, which has a '.' or '..' segment",
+                    f"expected the path of a node, got {key!r}, which {said(faults)}",
                     "invalid_value",
                 )
             )
             continue
-        path = "/".join(segments)
-        files = by_path.setdefault(path, {})
-        if name in files:
-            problems.append(
-                ValidationProblem(
-                    ("metadata", key),
-                    f"a second {name} for the node at {path!r}, which {files[name]!r} is",
-                    "invalid_value",
-                )
-            )
-            continue
-        files[name] = key
+        by_path.setdefault(path, {})[name] = key
     return by_path, problems
+
+
+def _key_faults(key: str) -> list[str]:
+    """Each reason `key`, the key of a node's file in a `.zmetadata`, does not name the file by its node's path.
+
+    A store names a node's file by the node's path: names joined by a
+    single `/`, with no leading `/`. zarr-python 2.x looks an entry up by
+    that key, so it never finds an entry written otherwise. Such a key is
+    refused, as a v3 listing refuses it.
+    """
+    names = key.split("/")[:-1]
+    faults: list[str] = []
+    if key.startswith("/"):
+        faults.append('starts with "/"')
+        names = names[1:]
+    if "" in names:
+        faults.append('holds an empty name between two "/"')
+    if any(name in (".", "..") for name in names):
+        faults.append("has a '.' or '..' segment")
+    return faults
 
 
 def _read_consolidated_v2(
@@ -702,10 +710,13 @@ def _read_consolidated_v2(
 ]:
     """Read `data`, a `.zmetadata` document. Return the document as read, with its keys in the order it writes them and each entry as read; the model of each node read in `context`, by path; the entry key of each node's files, by path and then by file name; and every problem, located in the document.
 
-    Each entry is read as the kind of document its key names. A `.zattrs`
-    entry is user data. Any other entry must be JSON by RFC 8259. A
-    `.zarray` or `.zgroup` entry is read as that document, merged with
-    its sibling `.zattrs`. Its problems are located under its own entry,
+    Each entry is read as the kind of document its key names. An entry
+    for a node's file is refined as user data, and its reader judges each
+    value the spec interprets: a `.zattrs` entry is user data, and a
+    `.zarray` or `.zgroup` reader refuses a non-finite number in a member
+    the spec defines, as it does in a store. Any other entry must be JSON
+    by RFC 8259. A `.zarray` or `.zgroup` entry is read as that document,
+    merged with its sibling `.zattrs`. Its problems are located under its own entry,
     and problems with the attributes under the `.zattrs` entry. The
     nodes and their files are empty when there is any problem.
     """
@@ -732,22 +743,18 @@ def _read_consolidated_v2(
             for key, value in entries.items():
                 if not isinstance(key, str):
                     continue
-                refine = (
-                    refine_user_data
-                    if key.rsplit("/", 1)[-1] == ZARR_V2_ATTRIBUTES_STORE_KEY
-                    else refine_json
-                )
+                refine = refine_user_data if key.rsplit("/", 1)[-1] in _NODE_FILES else refine_json
                 entry, found = refine(value, ("metadata", key))
                 problems.extend(found)
                 refined[key] = entry
     nodes: dict[str, ZarrV2NodeMetadata] = {}
     by_path: dict[str, dict[str, str]] = {}
     if len(problems) == 0:
-        # A second key for one file is reported along with the node
-        # problems. Every node is still read, so a user sees all problems
-        # at once.
-        by_path, doubled = _entries_by_path(refined)
-        problems.extend(doubled)
+        # A key that does not name its node's path is reported along with
+        # the node problems. Every other node is still read, so a user sees
+        # all problems at once.
+        by_path, misnamed = _entries_by_path(refined)
+        problems.extend(misnamed)
         for path, names in by_path.items():
             node, found = _read_node_v2(path, names, refined, context)
             problems.extend(found)

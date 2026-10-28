@@ -1179,9 +1179,16 @@ def _nested_listing_problems(
             continue
         own = listing.members.get(path)
         flat_members = members.get(joined)
+        # A document with a problem of its own may still have members (a
+        # group whose attributes are not an object has them, without the
+        # attributes), so the problems decide whether the two are compared.
+        # An unknown key leaves the rest of the document read, so a copy
+        # with only that is still compared.
         if (
             own is not None
             and flat_members is not None
+            and _read_whole(entry)
+            and _read_whole(readings[joined])
             and not _read_alike(readings[joined], flat_members, entry, own)
         ):
             message = (
@@ -1190,6 +1197,11 @@ def _nested_listing_problems(
             )
             problems.append(ValidationProblem(here, message, "invalid_value"))
     return problems
+
+
+def _read_whole(reading: ZarrV3NodeMetadataReading) -> bool:
+    """Whether every member of the document `reading` read was read: it has no problem but unknown keys, which are reported and left out."""
+    return all(found.kind == "unknown_key" for found in reading.problems)
 
 
 def _read_alike(

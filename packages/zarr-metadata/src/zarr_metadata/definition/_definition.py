@@ -254,9 +254,9 @@ class Definition(Generic[C]):
         return refine_json(data, loc)
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        """The location of the configuration of a field at `loc`: under `configuration` for v3, or at the field itself for a format that writes the parameters next to the name."""
-        return (*loc, "configuration")
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        """The location in the document of `place`, a location in the configuration of a field at `loc`: under `configuration` for v3, or under the field itself for a format that writes the parameters next to the name. `place` is `()` for the configuration itself."""
+        return (*loc, "configuration", *place)
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:
@@ -1209,15 +1209,15 @@ def fields_of(
 ) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
     """Yield `resolved` (a field a scope read) with its location, then each nested field recursively, each with its location.
 
-    `loc` is the location of `resolved`. A nested field is located inside
-    the configuration, at the kind's `_configuration_loc` followed by the
-    field's place, the same way `resolve` locates problems. Each field's
-    nested fields are its `nested`. A field whose configuration was not
-    checked has none.
+    `loc` is the location of `resolved`. A nested field is located where
+    the document writes its place in the configuration, as the kind's
+    `_in_configuration` says, the same way `resolve` locates problems.
+    Each field's nested fields are its `nested`. A field whose
+    configuration was not checked has none.
     """
     yield loc, resolved
     for place, inner in resolved.nested.items():
-        yield from fields_of(inner, (*resolved.read_as._configuration_loc(loc), *place))
+        yield from fields_of(inner, resolved.read_as._in_configuration(loc, place))
 
 
 def with_problems(
@@ -1484,7 +1484,7 @@ def _read(
     _, carried = kind._filed_under(name)
     if carried is not None:
         return _read_carried(data, name, kind, definition, given, carried, loc)
-    at = kind._configuration_loc(loc)
+    at = kind._in_configuration(loc, ())
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), missing
@@ -1498,14 +1498,16 @@ def _read(
     written: dict[Loc, JSONValue] = {}
     inside: list[ValidationProblem] = []
     for field in nested:
-        inside.extend(_envelope(field))
-        inner, found_inside = _read(field.json, field.kind, context, field.loc)
-        within[field.loc[len(at) :]] = inner
+        place = field.loc[len(at) :]
+        placed = dataclasses.replace(field, loc=kind._in_configuration(loc, place))
+        inside.extend(_envelope(placed))
+        inner, found_inside = _read(field.json, field.kind, context, placed.loc)
+        within[place] = inner
         # The input was refined JSON, so the result is JSON, or a field
         # refused for its contents, never for not being JSON.
         written[field.loc] = cast("JSONValue", document_json(inner))
         inside.extend(found_inside)
-        inside.extend(_sized(field, inner))
+        inside.extend(_sized(placed, inner))
     # The rules may look up a nested field by its name, so they run only
     # when every nested field has a name. Any other problem with a nested
     # field belongs to that field and is reported at its location, as with
@@ -1524,6 +1526,10 @@ def _read(
         own.extend(
             ruled(definition, lambda: definition.rules(read_only(configuration), within), at)
         )
+    own = [
+        dataclasses.replace(found, loc=kind._in_configuration(loc, found.loc[len(at) :]))
+        for found in own
+    ]
     if configuration is None or not _usable(own):
         refused = RefusedField(
             json=data, name=name, read_as=kind, definition=definition, nested=within
@@ -1560,7 +1566,7 @@ def _read_carried(
     _, beside, _ = _checked(
         EmptyConfiguration,
         {} if given is None else given,
-        kind._configuration_loc(loc),
+        kind._in_configuration(loc, ()),
     )
     configuration, judged = definition.read_configuration(carried)
     # A problem with the configuration encoded in the name belongs to the
