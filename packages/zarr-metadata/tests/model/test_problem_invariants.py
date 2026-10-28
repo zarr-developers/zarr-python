@@ -19,6 +19,7 @@ node paths.
 from __future__ import annotations
 
 import copy
+import json
 import math
 from collections.abc import Callable, Mapping
 from typing import Any, cast
@@ -247,6 +248,25 @@ def _misplaced(
     return misplaced
 
 
+def _misquoted(
+    document: object, problems: tuple[ValidationProblem, ...]
+) -> list[ValidationProblem]:
+    """The problems whose `input` is not the value at their location in `document`. A missing key has no value there to quote."""
+    misquoted: list[ValidationProblem] = []
+    for found in problems:
+        if found.kind == "missing_key":
+            continue
+        there = value_at(document, found.loc)
+        if there is UNSET or not _same(found.input, there):
+            misquoted.append(found)
+    return misquoted
+
+
+def _same(one: object, other: object) -> bool:
+    """Whether two JSON values are equal as JSON text: an array is the same as a tuple, and `NaN` as `NaN`."""
+    return json.dumps(one, sort_keys=True) == json.dumps(other, sort_keys=True)
+
+
 def _repeated(problems: tuple[ValidationProblem, ...]) -> list[tuple[object, ...]]:
     seen: set[tuple[object, ...]] = set()
     repeated: list[tuple[object, ...]] = []
@@ -264,13 +284,14 @@ def _repeated(problems: tuple[ValidationProblem, ...]) -> list[tuple[object, ...
 def test_every_problem_is_located_in_the_document_and_reported_once(
     which: str, data: st.DataObject
 ) -> None:
-    """Whatever a reader makes of a changed document, each problem is located in that document, a missing key where it would go, and no problem is reported twice. An unknown key is located at the key itself."""
+    """Whatever a reader makes of a changed document, each problem is located in that document, a missing key where it would go, and carries the value found there as its `input`. No problem is reported twice. An unknown key is located at the key itself."""
     read, valid = _READERS[which]
     assert read(valid).problems == ()
     document = data.draw(_changed(valid))
     problems = read(document).problems
     event("refused" if len(problems) != 0 else "read")
     assert _misplaced(document, problems) == []
+    assert _misquoted(document, problems) == []
     assert _repeated(problems) == []
     for found in problems:
         if found.kind == "unknown_key":
@@ -288,9 +309,10 @@ def _node_files(draw: st.DrawFn) -> dict[str, object]:
 @_PROPERTY
 @given(files=_node_files())
 def test_a_node_s_problems_are_located_in_the_files_it_reads(files: dict[str, object]) -> None:
-    """`read_node_metadata_v2` reads a mapping of files, so each problem is located in one of them."""
+    """`read_node_metadata_v2` reads a mapping of files, so each problem is located in one of them, and carries the value found there."""
     problems = read_node_metadata_v2(files).problems
     assert _misplaced(files, problems) == []
+    assert _misquoted(files, problems) == []
 
 
 _TYPESTRS = st.builds(

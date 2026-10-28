@@ -1041,7 +1041,12 @@ def _read_consolidated_v3(
     if past is not None:
         return {}, {}, None, within((past,), at)
     if not is_object(value):
-        return {}, {}, None, (ValidationProblem((), "expected an object", "invalid_type"),)
+        return (
+            {},
+            {},
+            None,
+            with_input((ValidationProblem((), "expected an object", "invalid_type"),), value),
+        )
     env = value
     problems = _envelope_problems(env)
     readings: dict[str, ZarrV3NodeMetadataReading] = {}
@@ -1110,7 +1115,9 @@ def _read_consolidated_v3(
         }
         held: dict[str, JSONValue] = {**_CONSOLIDATED_ENVELOPE, "metadata": documents}
         refined = {key: held[key] for key in cast("Mapping[str, object]", env)}
-    return readings, members, refined, tuple(problems)
+    # Each problem carries the value found at its location, as every other
+    # reader's problems do.
+    return readings, members, refined, with_input(problems, value)
 
 
 def _document_of(members: ArrayMembersV3 | GroupMembersV3) -> dict[str, JSONValue]:
