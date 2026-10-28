@@ -143,11 +143,7 @@ def read_group_metadata_v2(
         return ZarrV2GroupMetadataReading(problems=problems)
     # The document was checked above, so the model is built without
     # checking it again, as for a group in a `.zmetadata`.
-    document = refined_object(value)
-    attributes: dict[str, JSONValue] | UNSET = (
-        object_at(document, "attributes") if "attributes" in document else UNSET
-    )
-    return ZarrV2GroupMetadata._of(document, context, attributes).reading  # pyright: ignore[reportPrivateUsage]
+    return ZarrV2GroupMetadata._of(value, context).reading  # pyright: ignore[reportPrivateUsage]
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,33 +282,22 @@ class ZarrV2GroupMetadata(Keyed):
         problems = _group_problems_v2(document)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        # Refine once. The attributes the model holds are taken from the
-        # refined document, which shares no objects with the input.
+        self._adopt(document, context)
+
+    @classmethod
+    def _of(cls, document: object, context: ZarrV2Context) -> ZarrV2GroupMetadata:
+        """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
+        model = object.__new__(cls)
+        model._adopt(document, context)
+        return model
+
+    def _adopt(self, document: object, context: ZarrV2Context) -> None:
+        """Hold `document`, which a read found no problems with, refined once. The attributes the model holds are taken from the refined document, which shares no objects with the input."""
         refined = refined_object(document)
         attributes: dict[str, JSONValue] | UNSET = (
             object_at(refined, "attributes") if "attributes" in refined else UNSET
         )
-        self._adopt(refined, context, attributes)
-
-    @classmethod
-    def _of(
-        cls,
-        document: dict[str, JSONValue],
-        context: ZarrV2Context,
-        attributes: dict[str, JSONValue] | UNSET,
-    ) -> ZarrV2GroupMetadata:
-        """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
-        model = object.__new__(cls)
-        model._adopt(document, context, attributes)
-        return model
-
-    def _adopt(
-        self,
-        document: dict[str, JSONValue],
-        context: ZarrV2Context,
-        attributes: dict[str, JSONValue] | UNSET,
-    ) -> None:
-        self._document = document
+        self._document = refined
         self._context = context
         self._attributes = attributes
         self._shown = frozen({} if attributes is UNSET else attributes)
@@ -384,7 +369,7 @@ class ZarrV2GroupMetadata(Keyed):
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
         context = scoped(context, CORE_V2)
-        return self._of(self._document, context, self._attributes)
+        return self._of(self._document, context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`. A group has no fields, so no scope conflicts with its reading, and this is the same as `with_context`."""
@@ -855,8 +840,4 @@ def _read_node_v2(
     found = _group_problems_v2(merged)
     if len(found) != 0 or len(beside) != 0:
         return None, [*beside, *prefixed("metadata", in_files(found, key, entries))]
-    document = refined_object(merged)
-    attributes: dict[str, JSONValue] | UNSET = (
-        object_at(document, "attributes") if "attributes" in document else UNSET
-    )
-    return ZarrV2GroupMetadata._of(document, context, attributes), []  # pyright: ignore[reportPrivateUsage]
+    return ZarrV2GroupMetadata._of(merged, context), []  # pyright: ignore[reportPrivateUsage]
