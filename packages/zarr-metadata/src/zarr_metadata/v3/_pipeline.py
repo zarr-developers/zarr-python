@@ -38,6 +38,7 @@ from zarr_metadata.definition._definition import (
     AcceptedField,
     ResolvedField,
     asked,
+    in_document,
     read_only,
     ruled,
 )
@@ -50,7 +51,6 @@ from zarr_metadata.v3._definition import (
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
-    from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.definition._definition import (
         Nested,
@@ -138,7 +138,7 @@ def read_pipeline(
         if isinstance(codec, AcceptedField):
             configuration, nested = codec.configuration, codec.nested
             found = _chunk_problems(definition, configuration, nested, incoming, at)
-            problems.extend(_written(found, codec.json, (*loc, index)))
+            problems.extend(in_document(codec, (*loc, index), found))
             inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
@@ -209,21 +209,6 @@ def _chunk_problems(
     return ruled(
         definition, lambda: definition.chunk_rules(read_only(configuration), nested, chunk), at
     )
-
-
-def _written(found: Problems, json: JSONValue, codec: Loc) -> Problems:
-    """`found`, the problems the chunk rules find in the configuration of the codec at `codec`, located where the document writes them.
-
-    A codec written as its name alone, or as an object with no
-    `configuration`, has an empty configuration, which the document does
-    not write. A member the rules find missing is then the configuration
-    itself, missing, as for a codec that requires a configuration, and a
-    problem with the configuration as a whole is the codec's.
-    """
-    if is_object(json) and "configuration" in json:
-        return found
-    at = (*codec, "configuration")
-    return tuple(dataclasses.replace(each, loc=codec if each.loc == at else at) for each in found)
 
 
 def _inner_pipelines(

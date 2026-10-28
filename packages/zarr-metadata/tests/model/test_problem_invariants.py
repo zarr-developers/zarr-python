@@ -10,9 +10,10 @@ does not have is a diagnostic nobody can place.
 
 The other tests pin one rule each, where an earlier release broke it: a
 typestr is one token, so each of its problems is a wrong value of the
-dtype, never an unknown or missing key; a float for an integer `Literal` is the wrong type wherever the
-`Literal` sits; a member nothing claims may hold any number in both
-formats; and both formats refuse the same node paths.
+dtype, never an unknown or missing key; a float for an integer `Literal`
+is the wrong type wherever the `Literal` sits; a member nothing claims
+may hold any number in both formats; and both formats refuse the same
+node paths.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from hypothesis import strategies as st
 
 from zarr_metadata import UNSET
 from zarr_metadata._json import ValidationProblem, value_at
+from zarr_metadata.definition import RefusedField
 from zarr_metadata.model import (
     read_array_metadata_v2,
     read_array_metadata_v3,
@@ -311,13 +313,13 @@ def test_a_typestr_s_problems_are_wrong_values_of_the_dtype(typestr: str, nested
     dtype: object = [["a", typestr]] if nested else typestr
     at: tuple[str | int, ...] = ("dtype", 0, 1) if nested else ("dtype",)
     document = {**_V2_ARRAY, "dtype": dtype, "fill_value": None, "filters": None}
-    found = [
-        (problem.loc, problem.kind)
-        for problem in read_array_metadata_v2(document).problems
-        if problem.loc[: len(at)] == at
-    ]
+    reading = read_array_metadata_v2(document)
+    found = {(problem.loc, problem.kind) for problem in reading.problems}
     event("refused" if len(found) != 0 else "read")
-    assert set(found) <= {(at, "invalid_value")}
+    assert found <= {(at, "invalid_value")}
+    # The typestr is refused exactly when it has a problem. A type code the
+    # spec does not list is unclaimed, which is no problem.
+    assert isinstance(dict(reading.fields())[at], RefusedField) == (len(found) != 0)
 
 
 _INTEGER_LITERALS: dict[str, tuple[Reader, dict[str, Any], tuple[str, ...]]] = {
@@ -395,11 +397,9 @@ def test_a_member_nothing_claims_may_hold_any_number_in_either_format(member: ob
 
 
 def _leaves(value: object) -> list[object]:
-    if isinstance(value, Mapping):
-        return [leaf for item in value.values() for leaf in _leaves(item)]
-    if isinstance(value, list):
-        return [leaf for item in value for leaf in _leaves(item)]
-    return [value]
+    """Each value inside `value` that is not an object or an array."""
+    inside = (value_at(value, place) for place in _places(value))
+    return [leaf for leaf in inside if not isinstance(leaf, (Mapping, list))]
 
 
 _PATHS = st.builds(
