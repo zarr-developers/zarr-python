@@ -61,7 +61,6 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._hierarchy import said
 from zarr_metadata._json import (
     Problems,
     ValidationProblem,
@@ -72,6 +71,7 @@ from zarr_metadata._json import (
     json_text,
     refine_json,
     refine_user_data,
+    said,
     shown,
     with_input,
 )
@@ -255,9 +255,12 @@ class Definition(Generic[C]):
         return refine_json(data, loc)
 
     @classmethod
-    def _name_part(cls, key: str) -> str:
-        """How a message names the part of a name that encodes the configuration member `key`, for a kind whose names encode configuration: `key` itself by default."""
-        return key
+    def _undeclared_parts(cls, family: str, name: str, keys: Sequence[str]) -> str:
+        """The message for `name`, a name filed under `family` that encodes the configuration members `keys`, which the definition does not declare. For a kind whose names encode configuration; by default the message names the keys."""
+        return (
+            f"expected a name that {family!r} reads, got {shown(name)}, which encodes "
+            f"{said(keys)} that it does not declare"
+        )
 
     @classmethod
     def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
@@ -1611,7 +1614,7 @@ def _read_carried(
     # name spells them, and the rest is read.
     members = typeddict_keys(definition.configuration).members
     declared = {key: value for key, value in carried.items() if key in members}
-    undeclared = dict.fromkeys(kind._name_part(key) for key in carried if key not in members)
+    undeclared = [key for key in carried if key not in members]
     configuration, judged = definition.read_configuration(declared)
     # A problem with the configuration encoded in the name belongs to the
     # field. It is located at the field, where the name is, and the
@@ -1626,10 +1629,7 @@ def _read_carried(
         ),
     )
     if len(undeclared) != 0:
-        message = (
-            f"expected a name {definition.name!r} reads, got {shown(name)}, which encodes "
-            f"{said(list(undeclared))} that it does not take"
-        )
+        message = kind._undeclared_parts(definition.name, name, undeclared)
         problems = (*problems, ValidationProblem(loc, message, "invalid_value"))
     # Any problem with the encoded configuration refuses the field.
     if configuration is None or not _usable(beside) or len(judged) != 0 or len(undeclared) != 0:

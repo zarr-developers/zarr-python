@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from typing_extensions import TypeAliasType
 
-from zarr_metadata._json import ValidationProblem, is_object, shown
+from zarr_metadata._json import ValidationProblem, is_object, said, shown
 from zarr_metadata.definition._definition import (
     C,
     Definition,
@@ -34,7 +34,7 @@ from zarr_metadata.definition._definition import (
 from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._json import Problems
@@ -228,9 +228,11 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         return name
 
     @classmethod
-    def _name_part(cls, key: str) -> str:
-        # A unit carries its scale factor: `[10ms]` is one part of a typestr.
-        return _TYPESTR_PARTS[key]
+    def _undeclared_parts(cls, family: str, name: str, keys: Sequence[str]) -> str:
+        # Name each part as the typestr spells it. A unit carries its scale
+        # factor: `[10ms]` is one part.
+        parts = list(dict.fromkeys(_TYPESTR_PARTS[key] for key in keys))
+        return f"expected a typestr of the {family} family without {said(parts)}, got {shown(name)}"
 
     @classmethod
     def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:

@@ -16,17 +16,10 @@ from typing import TYPE_CHECKING, Literal
 from zarr_metadata._json import ValidationProblem, shown
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
 NodeType = Literal["array", "group"]
 """The two kinds of node in a hierarchy."""
-
-
-def said(faults: Sequence[str]) -> str:
-    """Join `faults`, each a reason, into one clause: `a`, `a and b`, `a, b and c`."""
-    if len(faults) <= 1:
-        return "".join(faults)
-    return f"{', '.join(faults[:-1])} and {faults[-1]}"
 
 
 def tree_problems(nodes: Mapping[str, NodeType | None]) -> tuple[ValidationProblem, ...]:
@@ -136,4 +129,4 @@ def _names(path: str) -> list[str]:
     return [] if path == "/" else path[1:].split("/")
 
 
-__all__ = ["NodeType", "said", "tree_problems"]
+__all__ = ["NodeType", "tree_problems"]

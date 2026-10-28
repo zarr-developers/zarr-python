@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._hierarchy import NodeType, said, tree_problems
+from zarr_metadata._hierarchy import NodeType, tree_problems
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
@@ -26,6 +26,7 @@ from zarr_metadata._json import (
     refine_json,
     refine_user_data,
     refined_object,
+    said,
     shown,
     with_input,
 )

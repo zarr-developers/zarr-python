@@ -30,6 +30,7 @@ from zarr_metadata._json import (
     outside_of,
     prefixed,
     refine_user_data,
+    said,
     shown,
     shown_key,
     with_input,
@@ -81,7 +82,7 @@ from zarr_metadata.v3._common import ZarrV3ExtensionField
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import GroupExtraFieldDefinition
-from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults, said
+from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
     ZarrV3ConsolidatedMetadataJSON,

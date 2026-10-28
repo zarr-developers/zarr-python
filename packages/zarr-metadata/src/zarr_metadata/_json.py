@@ -608,6 +608,13 @@ def shown_by_python(value: object) -> str:
 V = TypeVar("V")
 
 
+def said(faults: Sequence[str]) -> str:
+    """Join `faults`, each a reason, into one clause: `a`, `a and b`, `a, b and c`."""
+    if len(faults) <= 1:
+        return "".join(faults)
+    return f"{', '.join(faults[:-1])} and {faults[-1]}"
+
+
 def choices(allowed: Sequence[object]) -> str:
     """A closed set of values as a message names it: `"C"` alone, or `one of ["C", "F"]`."""
     values = [shown(value) for value in listed(allowed)]
@@ -819,6 +826,7 @@ __all__ = [
     "refine_json",
     "refine_user_data",
     "refused_kind",
+    "said",
     "shown",
     "shown_key",
     "validate_json",

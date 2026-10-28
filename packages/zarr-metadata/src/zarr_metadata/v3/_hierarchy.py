@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NewType, TypeGuard
 
-from zarr_metadata._hierarchy import said, tree_problems
-from zarr_metadata._json import MetadataValidationError, ValidationProblem, shown, with_input
+from zarr_metadata._hierarchy import tree_problems
+from zarr_metadata._json import MetadataValidationError, ValidationProblem, said, shown, with_input
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -186,7 +186,6 @@ __all__ = [
     "parse_node_name_v3",
     "parse_node_path_v3",
     "path_faults",
-    "said",
     "validate_node_name_v3",
     "validate_node_path_v3",
 ]
