@@ -22,6 +22,7 @@ from zarr_metadata._json import (
     json_text,
     not_an_object,
     object_at,
+    prefixed,
     refine_json,
     refine_user_data,
     refined_object,
@@ -36,8 +37,10 @@ from zarr_metadata.model._array_v2 import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataReading,
     decoded_node_files_v2,
+    in_files,
+    missing_store_key,
     node_document_v2,
-    read_array_metadata_v2,
+    read_array_node_v2,
     read_array_v2,
 )
 from zarr_metadata.model._keyed import Keyed
@@ -137,7 +140,13 @@ def read_group_metadata_v2(
     problems = _group_problems_v2(value)
     if len(problems) != 0:
         return ZarrV2GroupMetadataReading(problems=problems)
-    return ZarrV2GroupMetadata(value, context=context).reading
+    # The document was checked above, so the model is built without
+    # checking it again, as for a group in a `.zmetadata`.
+    document = refined_object(value)
+    attributes: dict[str, JSONValue] | UNSET = (
+        object_at(document, "attributes") if "attributes" in document else UNSET
+    )
+    return ZarrV2GroupMetadata._of(document, context, attributes).reading  # pyright: ignore[reportPrivateUsage]
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +189,11 @@ def read_node_metadata_v2(
     both, give a `ZarrV2UnknownNodeMetadataReading` with the problem. A
     `.zarray` or `.zgroup` that writes `attributes` itself gives the
     reading of its node type with no model, and with that problem
-    followed by the problems of the rest of the file. This is the
+    followed by the problems of the rest of the file. Each problem is
+    located in the file that holds it, such as `(".zarray", "order")` or
+    `(".zattrs", "x")`, and so is each field of an array's reading, whose
+    `at` is `(".zarray",)`. The model reads its merged document, so its
+    own `reading` locates fields there, at `("dtype",)`. This is the
     v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
     and its `node_type`.
     """
@@ -195,29 +208,29 @@ def read_node_metadata_v2(
         )
         return ZarrV2UnknownNodeMetadataReading((both,))
     if is_array:
-        document, problems = node_document_v2(
-            files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
-        )
-        reading = read_array_metadata_v2(document, context=context)
-        if len(problems) != 0:
-            return dataclasses.replace(
-                reading, problems=(*problems, *reading.problems), metadata=None
-            )
-        return reading
+        return read_array_node_v2(files, context)
     if is_group:
-        document, problems = node_document_v2(
-            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
-        )
-        reading = read_group_metadata_v2(document, context=context)
-        if len(problems) != 0:
-            return ZarrV2GroupMetadataReading(problems=(*problems, *reading.problems))
-        return reading
+        return _read_group_node_v2(files, context)
     neither = ValidationProblem(
         (),
         f"expected a {ZARR_V2_ARRAY_METADATA_STORE_KEY} or a {ZARR_V2_GROUP_METADATA_STORE_KEY}",
         "missing_key",
     )
     return ZarrV2UnknownNodeMetadataReading((neither,))
+
+
+def _read_group_node_v2(
+    files: Mapping[str, object], context: ZarrV2Context
+) -> ZarrV2GroupMetadataReading:
+    """Read the v2 group node whose files are `files`, which hold its `.zgroup`, as `read_node_metadata_v2` reads it: each problem located in the file that holds it."""
+    document, problems = node_document_v2(
+        files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+    )
+    reading = read_group_metadata_v2(document, context=context)
+    problems = (*problems, *in_files(reading.problems, ZARR_V2_GROUP_METADATA_STORE_KEY, files))
+    if len(problems) != 0:
+        return ZarrV2GroupMetadataReading(problems=problems)
+    return reading
 
 
 def node_metadata_from_key_value_v2(
@@ -413,14 +426,12 @@ class ZarrV2GroupMetadata(Keyed):
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        document, problems = node_document_v2(
-            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
-        )
-        if len(problems) != 0:
-            if document is not None:
-                problems = (*problems, *_group_problems_v2(document))
-            raise MetadataValidationError(problems)
-        return cls(document, context=context)
+        if ZARR_V2_GROUP_METADATA_STORE_KEY not in files:
+            raise missing_store_key(ZARR_V2_GROUP_METADATA_STORE_KEY)
+        reading = _read_group_node_v2(files, context)
+        if reading.metadata is None:
+            raise MetadataValidationError(reading.problems)
+        return reading.metadata
 
 
 ZarrV2NodeMetadata = TypeAliasType("ZarrV2NodeMetadata", ZarrV2ArrayMetadata | ZarrV2GroupMetadata)
@@ -835,25 +846,14 @@ def _read_node_v2(
     if zattrs is not None:
         merged["attributes"] = entries[zattrs]
 
-    def located(found: tuple[ValidationProblem, ...]) -> list[ValidationProblem]:
-        placed: list[ValidationProblem] = []
-        for problem in found:
-            if zattrs is not None and problem.loc[:1] == ("attributes",):
-                placed.append(
-                    dataclasses.replace(problem, loc=("metadata", zattrs, *problem.loc[1:]))
-                )
-            else:
-                placed.append(dataclasses.replace(problem, loc=("metadata", key, *problem.loc)))
-        return placed
-
     if zarray is not None:
         reading, members = read_array_v2(merged, context)
         if members is None or len(beside) != 0:
-            return None, [*beside, *located(reading.problems)]
+            return None, [*beside, *prefixed("metadata", in_files(reading.problems, key, entries))]
         return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = _group_problems_v2(merged)
     if len(found) != 0 or len(beside) != 0:
-        return None, [*beside, *located(found)]
+        return None, [*beside, *prefixed("metadata", in_files(found, key, entries))]
     document = refined_object(merged)
     attributes: dict[str, JSONValue] | UNSET = (
         object_at(document, "attributes") if "attributes" in document else UNSET

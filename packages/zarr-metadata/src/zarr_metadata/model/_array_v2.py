@@ -21,6 +21,7 @@ from zarr_metadata._json import (
     json_text,
     not_an_object,
     outside_of,
+    prefixed,
     refine_json,
     with_input,
     within,
@@ -76,7 +77,7 @@ from zarr_metadata.v2.definition import (
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v2.array import ZarrV2ArrayMetadataStoreKey
@@ -137,7 +138,9 @@ class ZarrV2ArrayMetadataReading:
 
     A field the document does not hold is `UNSET`, and so is a `filters`
     that is not an array, which holds no filters to read. A `compressor`
-    or `filters` written as `null` is None.
+    or `filters` written as `null` is None. Each problem and each field is
+    located in what was read: the document, or the files of a node that
+    `read_node_metadata_v2` reads, where `at` is `(".zarray",)`.
     """
 
     dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
@@ -150,22 +153,29 @@ class ZarrV2ArrayMetadataReading:
     """Every reason the document is not valid."""
     metadata: ZarrV2ArrayMetadata | None = None
     """The document's model, which holds these fields, when there is no problem; None otherwise."""
+    at: Loc = ()
+    """Where the document's fields are in what was read: `()` for a document read alone, `(".zarray",)` for the files of a node. A model's own reading is of its merged document, at `()`."""
 
     def __reduce__(self) -> str | tuple[object, ...]:
         # Same as the v3 reading: pickle through the model, when there is one.
         if self.metadata is not None:
-            return (reading_of, (self.metadata,))
+            return (_reading_at, (self.metadata, self.at))
         return object.__reduce__(self)
 
     def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field in the document, as the scope read it, with its location: the dtype, followed by a struct's record types, then the compressor, then each filter at its index."""
+        """Each field in the document, as the scope read it, with its location under `at`: the dtype, followed by a struct's record types, then the compressor, then each filter at its index."""
         if self.dtype is not UNSET:
-            yield from fields_of(self.dtype, ("dtype",))
+            yield from fields_of(self.dtype, (*self.at, "dtype"))
         if self.compressor is not UNSET and self.compressor is not None:
-            yield from fields_of(self.compressor, ("compressor",))
+            yield from fields_of(self.compressor, (*self.at, "compressor"))
         if self.filters is not UNSET and self.filters is not None:
             for index, entry in enumerate(self.filters):
-                yield from fields_of(entry, ("filters", index))
+                yield from fields_of(entry, (*self.at, "filters", index))
+
+
+def _reading_at(model: ZarrV2ArrayMetadata, at: Loc) -> ZarrV2ArrayMetadataReading:
+    """The reading that `model` holds, with its fields at `at`. Unpickling a reading that held a model rebuilds it with this function."""
+    return dataclasses.replace(cast("ZarrV2ArrayMetadataReading", reading_of(model)), at=at)
 
 
 def read_array_v2(
@@ -358,25 +368,61 @@ def node_document_v2(
 ) -> tuple[object, tuple[ValidationProblem, ...]]:
     """The merged v2 document of the node whose file is `key` in `files` (each file's decoded JSON, keyed by its name): the file's JSON, with the attributes at `.zattrs` when `files` holds it.
 
-    Returns the document and the problems found in merging. A missing
-    `key` gives None and that problem. A file that holds `attributes`
-    itself gives `beside_attributes`, since attributes belong in
-    `.zattrs`, and the document without that member, so that its reader
-    still reports every other problem. A file that is not an object is
-    returned as it is, for the document's reader to report.
+    `files` must hold `key`. Returns the document and the problems found
+    in merging, located in `files`. A file that holds `attributes` itself
+    gives `beside_attributes`, at the member in that file, since
+    attributes belong in `.zattrs`, and the document without that member,
+    so that its reader still reports every other problem. A file that is
+    not an object is returned as it is, for the document's reader to
+    report.
     """
-    if key not in files:
-        return None, (ValidationProblem((key,), "missing store key", "missing_key"),)
     document = files[key]
     if not is_object(document):
         return document, ()
     problems: tuple[ValidationProblem, ...] = ()
     if "attributes" in document:
-        problems = with_input((beside_attributes,), document)
+        problems = prefixed(key, with_input((beside_attributes,), document))
         document = {name: value for name, value in document.items() if name != "attributes"}
     if ZARR_V2_ATTRIBUTES_STORE_KEY not in files:
         return document, problems
     return {**document, "attributes": files[ZARR_V2_ATTRIBUTES_STORE_KEY]}, problems
+
+
+def read_array_node_v2(
+    files: Mapping[str, object], context: ZarrV2Context
+) -> ZarrV2ArrayMetadataReading:
+    """Read the v2 array node whose files are `files`, which hold its `.zarray`, as `read_node_metadata_v2` reads it: each problem and each field located in the file that holds it."""
+    document, problems = node_document_v2(
+        files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
+    )
+    reading = read_array_metadata_v2(document, context=context)
+    problems = (*problems, *in_files(reading.problems, ZARR_V2_ARRAY_METADATA_STORE_KEY, files))
+    return dataclasses.replace(
+        reading,
+        problems=problems,
+        metadata=reading.metadata if len(problems) == 0 else None,
+        at=(ZARR_V2_ARRAY_METADATA_STORE_KEY,),
+    )
+
+
+def missing_store_key(key: str) -> MetadataValidationError:
+    """The error of a `from_key_value` whose mapping does not hold `key`, the node's own file."""
+    return MetadataValidationError((ValidationProblem((key,), "missing store key", "missing_key"),))
+
+
+def in_files(
+    problems: Sequence[ValidationProblem], key: str, files: Mapping[str, object]
+) -> tuple[ValidationProblem, ...]:
+    """`problems`, located in the merged document of a v2 node whose files are `files`, each located in the file that holds it: a problem in the attributes in `.zattrs`, when `files` holds one, and any other in `key`, the node's `.zarray` or `.zgroup`. The keys of `files` may be the entries of a `.zmetadata`, such as `a/.zarray`."""
+    path, slash, _ = key.rpartition("/")
+    attributes_key = f"{path}{slash}{ZARR_V2_ATTRIBUTES_STORE_KEY}"
+    placed: list[ValidationProblem] = []
+    for found in problems:
+        if attributes_key in files and found.loc[:1] == ("attributes",):
+            placed.append(dataclasses.replace(found, loc=(attributes_key, *found.loc[1:])))
+        else:
+            placed.append(dataclasses.replace(found, loc=(key, *found.loc)))
+    return tuple(placed)
 
 
 ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
@@ -796,11 +842,9 @@ class ZarrV2ArrayMetadata(Keyed):
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        document, problems = node_document_v2(
-            files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
-        )
-        if len(problems) != 0:
-            if document is not None:
-                problems = (*problems, *read_array_metadata_v2(document, context=context).problems)
-            raise MetadataValidationError(problems)
-        return cls(document, context=context)
+        if ZARR_V2_ARRAY_METADATA_STORE_KEY not in files:
+            raise missing_store_key(ZARR_V2_ARRAY_METADATA_STORE_KEY)
+        reading = read_array_node_v2(files, context)
+        if reading.metadata is None:
+            raise MetadataValidationError(reading.problems)
+        return reading.metadata

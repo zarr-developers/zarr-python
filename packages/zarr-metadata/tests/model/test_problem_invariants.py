@@ -285,10 +285,6 @@ def _node_files(draw: st.DrawFn) -> dict[str, object]:
     return {".zarray": zarray, ".zattrs": draw(st.one_of(_JSON, st.just({"a": 1})))}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="read_node_metadata_v2 locates problems in the merged document, not in the files it reads",
-)
 @_PROPERTY
 @given(files=_node_files())
 def test_a_node_s_problems_are_located_in_the_files_it_reads(files: dict[str, object]) -> None:

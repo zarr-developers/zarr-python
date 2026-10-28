@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import pickle
 from typing import Any, cast
 
 import pytest
 
+from zarr_metadata.definition import with_problems
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataReading,
@@ -127,7 +129,7 @@ def test_error_files_with_both_node_files_are_no_node() -> None:
 def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and_a_zmetadata(
     name: str, document: dict[str, Any]
 ) -> None:
-    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the file and at its entry. The kind is `invalid_value` for both files: the member is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
+    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the member in the file and in its entry. The kind is `invalid_value` for both files: the member is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
     held = {**document, "attributes": {}}
     from_files = read_node_metadata_v2({name: held}).problems
     from_entries = read_consolidated_metadata_v2(
@@ -136,7 +138,7 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
             "metadata": {".zgroup": {"zarr_format": 2}, f"a/{name}": held},
         }
     ).problems
-    assert [(p.loc, p.kind) for p in from_files] == [(("attributes",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in from_files] == [((name, "attributes"), "invalid_value")]
     assert [(p.loc, p.kind) for p in from_entries] == [
         (("metadata", f"a/{name}", "attributes"), "invalid_value")
     ]
@@ -151,15 +153,18 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
             ".zarray",
             {**ZARRAY, "dtype": "bogus", "order": "Q"},
             [
-                (("attributes",), "invalid_value"),
-                (("dtype",), "invalid_value"),
-                (("order",), "invalid_value"),
+                ((".zarray", "attributes"), "invalid_value"),
+                ((".zarray", "dtype"), "invalid_value"),
+                ((".zarray", "order"), "invalid_value"),
             ],
         ),
         (
             ".zgroup",
             {"zarr_format": 3},
-            [(("attributes",), "invalid_value"), (("zarr_format",), "invalid_value")],
+            [
+                ((".zgroup", "attributes"), "invalid_value"),
+                ((".zgroup", "zarr_format"), "invalid_value"),
+            ],
         ),
     ],
     ids=["array", "group"],
@@ -167,7 +172,7 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
 def test_error_a_node_file_that_holds_attributes_still_reports_its_other_problems(
     name: str, document: dict[str, Any], found: list[tuple[tuple[str, ...], str]]
 ) -> None:
-    """A `.zarray` or `.zgroup` that holds `attributes` does not hide its other problems: the rest of the file is still read, and its problems follow the one about `attributes`. `read_node_metadata_v2`, `read_consolidated_metadata_v2` (at the entry) and the model's `from_key_value` report the same problems."""
+    """A `.zarray` or `.zgroup` that holds `attributes` does not hide its other problems: the rest of the file is still read, and its problems follow the one about `attributes`. `read_node_metadata_v2`, `read_consolidated_metadata_v2` and the model's `from_key_value` report the same problems, each in the file that holds it, or in its entry."""
     held = {**document, "attributes": {}}
     model = ZarrV2ArrayMetadata if name == ".zarray" else ZarrV2GroupMetadata
     from_entries = read_consolidated_metadata_v2(
@@ -180,15 +185,15 @@ def test_error_a_node_file_that_holds_attributes_still_reports_its_other_problem
         model.from_key_value({name: json.dumps(held).encode()})
     assert [(p.loc, p.kind) for p in read_node_metadata_v2({name: held}).problems] == found
     assert [(p.loc, p.kind) for p in from_entries] == [
-        (("metadata", f"a/{name}", *loc), kind) for loc, kind in found
+        (("metadata", f"a/{loc[0]}", *loc[1:]), kind) for loc, kind in found
     ]
     assert [(p.loc, p.kind) for p in raised.value.problems] == found
 
 
 def test_error_a_node_file_that_holds_attributes_next_to_a_bad_zattrs_reports_both() -> None:
-    """A `.zarray` that holds `attributes`, next to a `.zattrs` that is not an object, has two problems, one in each file, and neither hides the other. `read_node_metadata_v2` and the model's `from_key_value` merge the files, so both are at `attributes`. `read_consolidated_metadata_v2` reads the entries apart, so it reports each at its own entry."""
+    """A `.zarray` that holds `attributes`, next to a `.zattrs` that is not an object, has two problems, one in each file, and neither hides the other. `read_node_metadata_v2`, the model's `from_key_value` and `read_consolidated_metadata_v2` each report them in the file, or the entry, that holds each."""
     held = {**ZARRAY, "attributes": {}}
-    found = [(("attributes",), "invalid_value"), (("attributes",), "invalid_type")]
+    found = [((".zarray", "attributes"), "invalid_value"), ((".zattrs",), "invalid_type")]
     assert [
         (p.loc, p.kind) for p in read_node_metadata_v2(_files(_zarray=held, _zattrs=5)).problems
     ] == found
@@ -214,12 +219,29 @@ def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> No
     assert [(p.loc, p.kind) for p in raised.value.problems] == [((".zarray",), "invalid_json")]
 
 
+def test_a_v2_node_reading_locates_its_fields_in_the_files_it_read() -> None:
+    """A node's reading is of its files, so each field is under `.zarray`, as each problem is, and `with_problems` pairs a field with the problems in it. The model reads the merged document, so its own reading locates the same field at `dtype`. A pickled node reading keeps where its fields are."""
+    struct = {**ZARRAY, "dtype": [["a", "<i4"]], "fill_value": None}
+    valid = read_node_metadata_v2(_files(_zarray=struct))
+    assert isinstance(valid, ZarrV2ArrayMetadataReading)
+    assert valid.metadata is not None
+    assert [loc for loc, _ in valid.fields()] == [(".zarray", "dtype"), (".zarray", "dtype", 0, 1)]
+    assert [loc for loc, _ in valid.metadata.reading.fields()] == [("dtype",), ("dtype", 0, 1)]
+    assert pickle.loads(pickle.dumps(valid)) == valid
+    refused = read_node_metadata_v2(_files(_zarray={**struct, "dtype": [["a", "float32"]]}))
+    paired = {
+        loc: [p.loc for p in problems]
+        for loc, _, problems in with_problems(refused.fields(), refused.problems)
+    }
+    assert paired[(".zarray", "dtype", 0, 1)] == [(".zarray", "dtype", 0, 1)]
+
+
 def test_error_a_v2_node_with_a_bad_document_reports_its_problems() -> None:
-    """A node whose document has a problem gives the reading of its node type with the problems, as the model's reader reports them, and no model."""
+    """A node whose document has a problem gives the reading of its node type with the problems, located in the file that holds each, and no model."""
     files = _files(_zarray={**ZARRAY, "shape": [-1]})
     reading = read_node_metadata_v2(files)
     assert type(reading) is ZarrV2ArrayMetadataReading
-    assert [(p.loc, p.kind) for p in reading.problems] == [(("shape",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in reading.problems] == [((".zarray", "shape"), "invalid_value")]
     assert reading.metadata is None
 
 

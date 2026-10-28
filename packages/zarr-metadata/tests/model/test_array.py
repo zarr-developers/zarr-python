@@ -1112,7 +1112,7 @@ def test_v2_from_key_value_rejects_zarray_attributes() -> None:
         ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        (("attributes",), "invalid_value")
+        ((".zarray", "attributes"), "invalid_value")
     ]
 
 
@@ -2061,7 +2061,7 @@ def test_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2ArrayMetadata.from_key_value({".zarray": b"null"})
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((), "invalid_type")
+        ((".zarray",), "invalid_type")
     ]
 
 

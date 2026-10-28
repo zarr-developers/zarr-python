@@ -480,7 +480,7 @@ def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str, ki
         ZarrV2GroupMetadata.from_key_value({".zgroup": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((extra_key,), kind)
+        ((".zgroup", extra_key), kind)
     ]
 
 
@@ -1157,7 +1157,7 @@ def test_group_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2GroupMetadata.from_key_value({".zgroup": b"null"})
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((), "invalid_type")
+        ((".zgroup",), "invalid_type")
     ]
 
 

@@ -279,7 +279,7 @@ _REFUSED: dict[str, _Refused] = {
     "zarray": (
         ZarrV2ArrayMetadata.from_key_value,
         _stored(".zarray", {**_V2_ARRAY, "fill_value": math.nan}),
-        ("fill_value",),
+        (".zarray", "fill_value"),
     ),
     # Each `.zmetadata` entry is validated as the document type its key names.
     "zmetadata-entry": (
