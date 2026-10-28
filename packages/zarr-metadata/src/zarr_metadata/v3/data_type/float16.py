@@ -7,8 +7,16 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
-from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    multi_byte,
+)
+from zarr_metadata.v3.data_type._float import (
+    FloatSpecialFillValue,
+    float_fill_value_canonical,
+    float_fill_value_rules,
+)
 
 FLOAT16_DATA_TYPE_NAME: Final = "float16"
 """The `data_type` value for the `float16` type."""
@@ -69,9 +77,10 @@ FLOAT16_DATA_TYPE: Final = DataTypeDefinition(
     configuration=EmptyConfiguration,
     fill_value=Float16FillValue,
     fill_value_rules=float_fill_value_rules("float16", hex_float16),
+    fill_value_canonical=float_fill_value_canonical(16),
     storage=multi_byte,
 )
-"""The `float16` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
+"""The `float16` data type. It is written as a bare name and has no configuration. Its fill value is a number, a named value or a hex string."""
 
 
 __all__ = [

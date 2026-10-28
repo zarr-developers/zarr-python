@@ -47,7 +47,8 @@ requires-python = ">=3.12"
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.16',
+    # 0.16.6 and 0.17.1 refuse to unpickle untrusted data (GHSA-jqc8-qjfv-5m6r); 0.17.0 does not.
+    'numcodecs>=0.16.6,!=0.17.0',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -121,7 +122,7 @@ test = [
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.21",
+    "uv==0.13.4",
 ]
 remote-tests = [
     {include-group = "test"},
