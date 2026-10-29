@@ -548,8 +548,6 @@ async def save_array(
 
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    if np.isscalar(arr):
-        arr = np.array(arr)
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
