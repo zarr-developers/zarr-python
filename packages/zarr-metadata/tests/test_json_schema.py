@@ -37,8 +37,9 @@ from zarr_metadata.typed_json import JSONValue, check
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3.codec.gzip import GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -472,7 +473,7 @@ def _changed(draw: st.DrawFn, value: object) -> object:
     return value
 
 
-_CONTEXTS = (CORE, CORE_AND_EXTENSIONS, ZarrV3Context())
+_CONTEXTS = (CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT, ZARR_PYTHON_CONTEXT, ZarrV3Context())
 _FIELD_BASES: tuple[tuple[str, object], ...] = (
     *CASES,
     # Names that nothing claims, so nothing checks their configuration.
@@ -498,12 +499,19 @@ _INDEXED = {"chunk_shape": [2], "codecs": ["bytes"]}
 # it, and whether the scope reads it without a problem. Where the two
 # differ, a rule found a problem that the schema cannot express.
 FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = [
-    ("object", {"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CORE, True, True),
+    (
+        "object",
+        {"name": "gzip", "configuration": {"level": 5}},
+        CodecDefinition,
+        CORE_CONTEXT,
+        True,
+        True,
+    ),
     (
         "out-of-bounds",
         {"name": "gzip", "configuration": {"level": 12}},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -511,17 +519,17 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "unknown-key",
         {"name": "gzip", "configuration": {"level": 5, "window": 15}},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
-    ("bare-name-needing-a-configuration", "gzip", CodecDefinition, CORE, False, False),
-    ("bare-name", "bytes", CodecDefinition, CORE, True, True),
+    ("bare-name-needing-a-configuration", "gzip", CodecDefinition, CORE_CONTEXT, False, False),
+    ("bare-name", "bytes", CodecDefinition, CORE_CONTEXT, True, True),
     (
         "understood",
         {"name": "gzip", "configuration": {"level": 5}, "must_understand": True},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         True,
     ),
@@ -529,7 +537,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "not-understood",
         {"name": "gzip", "configuration": {"level": 5}, "must_understand": False},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -537,7 +545,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "stray-member",
         {"name": "gzip", "configuration": {"level": 5}, "version": 2},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -545,16 +553,16 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "unclaimed",
         {"name": "zfpy", "configuration": {"mode": 4}},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         True,
     ),
-    ("unclaimed-bare", "zfpy", CodecDefinition, CORE, True, True),
+    ("unclaimed-bare", "zfpy", CodecDefinition, CORE_CONTEXT, True, True),
     (
         "unclaimed-not-understood",
         {"name": "zfpy", "must_understand": False},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -574,7 +582,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             "configuration": {"cname": "lz4", "clevel": 1, "shuffle": "shuffle", "blocksize": 0},
         },
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         False,
     ),
@@ -585,7 +593,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             "configuration": {**_INDEXED, "index_codecs": ["bytes", "crc32c"]},
         },
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         True,
     ),
@@ -599,7 +607,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             },
         },
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -610,7 +618,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             "configuration": {**_INDEXED, "index_codecs": ["bytes", "acme.sum"]},
         },
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         True,
     ),
@@ -625,25 +633,32 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             },
         },
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
-    ("raw-bits", "r16", DataTypeDefinition, CORE, True, True),
-    ("raw-bits-object", {"name": "r16", "configuration": {}}, DataTypeDefinition, CORE, True, True),
+    ("raw-bits", "r16", DataTypeDefinition, CORE_CONTEXT, True, True),
+    (
+        "raw-bits-object",
+        {"name": "r16", "configuration": {}},
+        DataTypeDefinition,
+        CORE_CONTEXT,
+        True,
+        True,
+    ),
     # The values a raw-bits name carries are not also written in a configuration.
     (
         "raw-bits-configured",
         {"name": "r16", "configuration": {"bits": 16}},
         DataTypeDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
-    ("raw-bits-of-a-size-the-spec-refuses", "r12", DataTypeDefinition, CORE, True, False),
+    ("raw-bits-of-a-size-the-spec-refuses", "r12", DataTypeDefinition, CORE_CONTEXT, True, False),
     # `r*` is the notation of the spec's table, not a name: `*` is not
     # allowed in a name.
-    ("raw-bits-notation", "r*", DataTypeDefinition, CORE, False, False),
+    ("raw-bits-notation", "r*", DataTypeDefinition, CORE_CONTEXT, False, False),
     # The pattern is matched to the end of the name, as the package matches
     # it, so a validator that matches as Python does must not accept a final
     # newline. It is also not a name, because a newline is not allowed in one.
@@ -651,7 +666,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "raw-bits-and-a-newline",
         {"name": "r16\n", "configuration": {"x": 1}},
         DataTypeDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -672,7 +687,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
             },
         },
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS,
+        CORE_AND_EXTENSIONS_CONTEXT,
         False,
         False,
     ),
@@ -680,7 +695,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "grid-out-of-bounds",
         {"name": "regular", "configuration": {"chunk_shape": [0]}},
         ChunkGridDefinition,
-        CORE,
+        CORE_CONTEXT,
         False,
         False,
     ),
@@ -688,11 +703,11 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         "encoding",
         {"name": "v2", "configuration": {"separator": "/"}},
         ChunkKeyEncodingDefinition,
-        CORE,
+        CORE_CONTEXT,
         True,
         True,
     ),
-    ("transformer", {"name": "acme.cache"}, StorageTransformerDefinition, CORE, True, True),
+    ("transformer", {"name": "acme.cache"}, StorageTransformerDefinition, CORE_CONTEXT, True, True),
 ]
 
 
@@ -714,14 +729,14 @@ def test_field_json_schema_says_what_the_scope_reads(
     ("key", "field"), CASES, ids=[f"{key}:{index}" for index, (key, _) in enumerate(CASES)]
 )
 def test_every_example_field_is_one_its_schema_accepts(key: str, field: object) -> None:
-    schema = field_json_schema_v3(KINDS[key.split(":")[0]], context=CORE_AND_EXTENSIONS)
+    schema = field_json_schema_v3(KINDS[key.split(":")[0]], context=ZARR_PYTHON_CONTEXT)
     assert Draft202012Validator(schema).is_valid(cast("Any", field))
 
 
 @_PROPERTY
 @given(st.data())
 def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
-    # Each example is changed in one place and read in one of three scopes.
+    # Each example is changed in one place and read in one of four scopes.
     # If the scope still reads it without a problem, the schema accepts it.
     key, example = data.draw(st.sampled_from(_FIELD_BASES), label="example")
     kind = KINDS[key.split(":")[0]]
@@ -741,7 +756,7 @@ def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
 
 def test_field_json_schema_refuses_what_is_not_a_kind() -> None:
     with pytest.raises(TypeError, match="is not a kind of metadata"):
-        field_json_schema_v3(Definition, context=CORE)  # pyright: ignore[reportArgumentType]
+        field_json_schema_v3(Definition, context=CORE_CONTEXT)  # pyright: ignore[reportArgumentType]
 
 
 # --- a zarr.json ------------------------------------------------------------
@@ -889,7 +904,7 @@ def _node_validator(context: int) -> Draft202012Validator:
 @_PROPERTY
 @given(st.data())
 def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
-    # Each document is changed in one place and read in one of three scopes.
+    # Each document is changed in one place and read in one of four scopes.
     # If `read_node_metadata_v3` finds no problem, the schema accepts it.
     base = data.draw(st.sampled_from(_BASES), label="base")
     context = data.draw(st.sampled_from(range(len(_CONTEXTS))), label="context")
@@ -902,8 +917,8 @@ def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.Da
 
 @pytest.mark.parametrize(
     "context",
-    [CORE, CORE_AND_EXTENSIONS, ZarrV3Context()],
-    ids=["core", "core-and-extensions", "empty"],
+    [CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT, ZARR_PYTHON_CONTEXT, ZarrV3Context()],
+    ids=["core", "core-and-extensions", "zarr-python", "empty"],
 )
 def test_every_schema_is_a_json_schema_written_the_same_each_time(context: ZarrV3Context) -> None:
     schema = node_metadata_json_schema_v3(context=context)
@@ -959,12 +974,12 @@ def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> N
     # The schema rejects it, as the reader does: the envelope of an
     # unclaimed name holds only the name and its configuration.
     field = {"name": "zfpy", "version": 2}
-    assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE)[1]] == [
+    assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_CONTEXT)[1]] == [
         (("version",), "unknown_key")
     ]
-    assert not Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(
-        field
-    )
+    assert not Draft202012Validator(
+        field_json_schema_v3(CodecDefinition, context=CORE_CONTEXT)
+    ).is_valid(field)
 
 
 @pytest.mark.parametrize(
@@ -1000,10 +1015,12 @@ def test_the_schema_names_an_extension_as_the_reader_does(name: str) -> None:
     # A name matches the spec's regex or is a URI. The schema's `pattern`
     # accepts exactly the names that `well_named` accepts.
     field = {"name": name}
-    _, problems = resolve(field, CodecDefinition, CORE)
+    _, problems = resolve(field, CodecDefinition, CORE_CONTEXT)
     accepted = len(problems) == 0
     assert (
-        Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(field)
+        Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE_CONTEXT)).is_valid(
+            field
+        )
         is accepted
     )
     assert accepted is (

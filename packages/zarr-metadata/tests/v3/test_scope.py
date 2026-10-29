@@ -29,8 +29,8 @@ from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     ArrayExtraFieldDefinition,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -73,8 +73,8 @@ def _read(data: object, kind: type[Definition[Any]], context: ZarrV3Context) -> 
             ZarrV3Context(codecs=[BYTES_CODEC, GZIP_CODEC]),
             True,
         ),
-        (CORE, pickle.loads(pickle.dumps(CORE)), True),
-        (CORE, CORE_AND_EXTENSIONS, False),
+        (CORE_CONTEXT, pickle.loads(pickle.dumps(CORE_CONTEXT)), True),
+        (CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT, False),
         (ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[GZIP_CODEC, ZSTD_CODEC]), False),
         (ZarrV3Context(), ZarrV3Context(), True),
     ],
@@ -91,7 +91,10 @@ def test_a_scope_is_equal_to_another_by_the_definitions_it_files(
 
 def test_a_scope_is_a_set_member() -> None:
     """A scope is hashable, so it can be a dict key or a set member. It was not hashable when its tables were mapping proxies."""
-    assert len({CORE, CORE_AND_EXTENSIONS, pickle.loads(pickle.dumps(CORE))}) == 2
+    assert (
+        len({CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT, pickle.loads(pickle.dumps(CORE_CONTEXT))})
+        == 2
+    )
 
 
 def test_error_a_scope_conflict_says_each_disagreement() -> None:
@@ -114,14 +117,14 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
 @pytest.mark.parametrize(
     ("field", "claims"),
     [
-        (_read("gzip", CodecDefinition, CORE), {(CodecDefinition, "gzip"): GZIP_CODEC}),
-        (_read("zstd", CodecDefinition, CORE), {(CodecDefinition, "zstd"): None}),
+        (_read("gzip", CodecDefinition, CORE_CONTEXT), {(CodecDefinition, "gzip"): GZIP_CODEC}),
+        (_read("zstd", CodecDefinition, CORE_CONTEXT), {(CodecDefinition, "zstd"): None}),
         (
-            _read("r16", DataTypeDefinition, CORE),
+            _read("r16", DataTypeDefinition, CORE_CONTEXT),
             {(DataTypeDefinition, "r*"): RAW_BYTES_DATA_TYPE},
         ),
         (
-            _read(SHARD, CodecDefinition, CORE),
+            _read(SHARD, CodecDefinition, CORE_CONTEXT),
             {
                 (CodecDefinition, "sharding_indexed"): SHARDING_INDEXED_CODEC,
                 (CodecDefinition, "bytes"): BYTES_CODEC,
@@ -129,7 +132,7 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
             },
         ),
         (
-            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE),
+            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_CONTEXT),
             {(CodecDefinition, "gzip"): GZIP_CODEC},
         ),
         (RefusedField(json=3, name=None, read_as=CodecDefinition), {}),
@@ -146,7 +149,7 @@ def test_claims_of_says_what_a_reading_claimed_of_each_name(
 def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
     """Fields read in two scopes that give one name two different definitions have no single set of claims. `claims_of` raises a `ScopeConflictError` that names the key."""
     fields = [
-        *fields_of(_read("gzip", CodecDefinition, CORE), ("codecs", 0)),
+        *fields_of(_read("gzip", CodecDefinition, CORE_CONTEXT), ("codecs", 0)),
         *fields_of(_read("gzip", CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])), ("codecs", 1)),
     ]
     with pytest.raises(ScopeConflictError) as raised:
@@ -188,61 +191,69 @@ NESTED_ZSTD = {
 @pytest.mark.parametrize(
     ("field", "other", "expected"),
     [
-        (_read(GZIP_FIELD, CodecDefinition, CORE), _read(GZIP_FIELD, CodecDefinition, CORE), True),
         (
-            _read({"name": "crc32c"}, CodecDefinition, CORE),
-            _read("crc32c", CodecDefinition, CORE),
+            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
+            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
             True,
         ),
         (
-            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS),
-            _read(ZSTD_FIELD, CodecDefinition, CORE),
+            _read({"name": "crc32c"}, CodecDefinition, CORE_CONTEXT),
+            _read("crc32c", CodecDefinition, CORE_CONTEXT),
             True,
         ),
         (
-            _read(ZSTD_FIELD, CodecDefinition, CORE),
-            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS),
+            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _read(ZSTD_FIELD, CodecDefinition, CORE_CONTEXT),
+            True,
+        ),
+        (
+            _read(ZSTD_FIELD, CodecDefinition, CORE_CONTEXT),
+            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
             False,
         ),
         (
-            _read(GZIP_FIELD, CodecDefinition, CORE),
+            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
             _read(GZIP_FIELD, CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])),
             False,
         ),
         (
-            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS),
-            _read(NESTED_ZSTD, CodecDefinition, CORE),
+            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _read(NESTED_ZSTD, CodecDefinition, CORE_CONTEXT),
             True,
         ),
         (
-            _read(NESTED_ZSTD, CodecDefinition, CORE),
-            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS),
+            _read(NESTED_ZSTD, CodecDefinition, CORE_CONTEXT),
+            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
             False,
         ),
         (
-            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE),
-            _read("gzip", CodecDefinition, CORE),
-            False,
-        ),
-        (_read("zstd", CodecDefinition, CORE), _read("zstd", CodecDefinition, CORE), True),
-        (
-            _read({"name": "zstd", "configuration": {"level": 1}}, CodecDefinition, CORE),
-            _read({"name": "zstd", "configuration": {"level": 2}}, CodecDefinition, CORE),
+            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_CONTEXT),
+            _read("gzip", CodecDefinition, CORE_CONTEXT),
             False,
         ),
         (
-            _read("crc32c", CodecDefinition, CORE),
+            _read("zstd", CodecDefinition, CORE_CONTEXT),
+            _read("zstd", CodecDefinition, CORE_CONTEXT),
+            True,
+        ),
+        (
+            _read({"name": "zstd", "configuration": {"level": 1}}, CodecDefinition, CORE_CONTEXT),
+            _read({"name": "zstd", "configuration": {"level": 2}}, CodecDefinition, CORE_CONTEXT),
+            False,
+        ),
+        (
+            _read("crc32c", CodecDefinition, CORE_CONTEXT),
             _read({"name": "crc32c"}, CodecDefinition, ZarrV3Context()),
             True,
         ),
         (
-            _read(BLOSC_LEVEL_ONE, CodecDefinition, CORE),
+            _read(BLOSC_LEVEL_ONE, CodecDefinition, CORE_CONTEXT),
             _read(BLOSC_LEVEL_TRUE, CodecDefinition, ZarrV3Context()),
             False,
         ),
         (
-            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE),
-            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE),
+            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE_CONTEXT),
+            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE_CONTEXT),
             True,
         ),
     ],
@@ -279,7 +290,7 @@ DOCUMENTS = [
     BLOSC_LEVEL_ONE,
     SHARD_HOLDING_REFUSED,
 ]
-CONTEXTS = [ZarrV3Context(), CORE, CORE_AND_EXTENSIONS]
+CONTEXTS = [ZarrV3Context(), CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT]
 READINGS = [
     _read(document, CodecDefinition, context) for document in DOCUMENTS for context in CONTEXTS
 ]
@@ -301,15 +312,15 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
 @pytest.mark.parametrize(
     ("context", "claims", "gains", "conflicts"),
     [
-        (CORE, {(CodecDefinition, "gzip"): GZIP_CODEC}, (), ()),
+        (CORE_CONTEXT, {(CodecDefinition, "gzip"): GZIP_CODEC}, (), ()),
         (
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             {(CodecDefinition, "zstd"): None},
             ((CodecDefinition, "zstd"),),
             (),
         ),
         (
-            CORE,
+            CORE_CONTEXT,
             {(CodecDefinition, "zstd"): ZSTD_CODEC},
             (),
             (Conflict((CodecDefinition, "zstd"), ZSTD_CODEC, None),),
@@ -320,8 +331,8 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
             (),
             (Conflict((CodecDefinition, "gzip"), GZIP_CODEC, MY_GZIP),),
         ),
-        (CORE, {(CodecDefinition, "acme.x"): None}, (), ()),
-        (CORE, {(DataTypeDefinition, "r*"): RAW_BYTES_DATA_TYPE}, (), ()),
+        (CORE_CONTEXT, {(CodecDefinition, "acme.x"): None}, (), ()),
+        (CORE_CONTEXT, {(DataTypeDefinition, "r*"): RAW_BYTES_DATA_TYPE}, (), ()),
     ],
     ids=["agrees", "gain", "loss", "conflict", "unclaimed-both", "raw-bits"],
 )
@@ -341,13 +352,13 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
 @pytest.mark.parametrize(
     ("contexts", "united"),
     [
-        ((CORE, CORE_AND_EXTENSIONS), CORE_AND_EXTENSIONS),
+        ((CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT), CORE_AND_EXTENSIONS_CONTEXT),
         (
             (ZarrV3Context(codecs=[GZIP_CODEC]), ZarrV3Context(codecs=[ZSTD_CODEC])),
             ZarrV3Context(codecs=[GZIP_CODEC, ZSTD_CODEC]),
         ),
-        ((CORE,), CORE),
-        ((CORE, CORE), CORE),
+        ((CORE_CONTEXT,), CORE_CONTEXT),
+        ((CORE_CONTEXT, CORE_CONTEXT), CORE_CONTEXT),
         (
             (ZarrV3Context(codecs=[BYTES_CODEC]), ZarrV3Context(data_types=[BYTES_DATA_TYPE])),
             ZarrV3Context(data_types=[BYTES_DATA_TYPE], codecs=[BYTES_CODEC]),
@@ -366,7 +377,7 @@ def test_union_is_the_least_scope_above_each(
 def test_error_union_refuses_one_name_filed_two_ways() -> None:
     """Scopes that file different definitions under one name have no union. `union` raises a `ScopeConflictError` that names the key and both definitions."""
     with pytest.raises(ScopeConflictError) as raised:
-        CORE.union(ZarrV3Context(codecs=[MY_GZIP]))
+        CORE_CONTEXT.union(ZarrV3Context(codecs=[MY_GZIP]))
     (conflict,) = raised.value.conflicts
     assert (conflict.key, conflict.claimed, conflict.found) == (
         (CodecDefinition, "gzip"),
@@ -398,21 +409,25 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
         resolve,
     )
     from zarr_metadata.v3.definition import (
-        CORE,
+        CORE_CONTEXT,
         ChunkKeyEncodingDefinition,
     )
 
     nothing = ZarrV3Context()
     spelled_out, _ = resolve(
-        {"name": "default", "configuration": {"separator": "/"}}, ChunkKeyEncodingDefinition, CORE
+        {"name": "default", "configuration": {"separator": "/"}},
+        ChunkKeyEncodingDefinition,
+        CORE_CONTEXT,
     )
-    bare, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, CORE)
+    bare, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, CORE_CONTEXT)
     unclaimed, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, nothing)
     assert spelled_out == bare
     assert refines(bare, unclaimed)
     assert refines(spelled_out, unclaimed)
     other, _ = resolve(
-        {"name": "default", "configuration": {"separator": "."}}, ChunkKeyEncodingDefinition, CORE
+        {"name": "default", "configuration": {"separator": "."}},
+        ChunkKeyEncodingDefinition,
+        CORE_CONTEXT,
     )
     assert not refines(other, unclaimed)
     shard = {
@@ -424,7 +439,7 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
             "index_location": "end",
         },
     }
-    read, _ = resolve(shard, CodecDefinition, CORE)
+    read, _ = resolve(shard, CodecDefinition, CORE_CONTEXT)
     unread, _ = resolve({**shard, "must_understand": True}, CodecDefinition, nothing)
     assert refines(read, unread)
 
@@ -440,7 +455,7 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
     import copy
 
     with pytest.raises(ScopeConflictError) as raised:
-        CORE.union(ZarrV3Context(codecs=[OTHER_GZIP]))
+        CORE_CONTEXT.union(ZarrV3Context(codecs=[OTHER_GZIP]))
     error = raised.value
     error.add_note("seen in a union")
     for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
@@ -457,16 +472,18 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
     import dataclasses
 
     from zarr_metadata.model import ZarrV3ArrayMetadata
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT
 
     document = dict(
         ZarrV3ArrayMetadata.create_default(shape=(2,), data_type="r16", fill_value=[0, 0]).to_json()
     )
-    model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS)
+    model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS_CONTEXT)
     other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=EmptyConfiguration)
     with pytest.raises(ScopeConflictError) as raised:
         model.refined_in(
-            CORE_AND_EXTENSIONS.update(data_types={**CORE_AND_EXTENSIONS.data_types, "r*": other})
+            CORE_AND_EXTENSIONS_CONTEXT.update(
+                data_types={**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": other}
+            )
         )
     message = str(raised.value)
     assert message.startswith("data type 'r16'")
@@ -489,11 +506,11 @@ def test_each_slot_is_a_read_only_view_by_name() -> None:
         "array_extra_fields": ArrayExtraFieldDefinition,
         "group_extra_fields": GroupExtraFieldDefinition,
     }
-    assert CORE.codecs["gzip"] is GZIP_CODEC
-    assert CORE.data_types["r*"] is RAW_BYTES_DATA_TYPE
-    assert dict(CORE.storage_transformers) == {}
+    assert CORE_CONTEXT.codecs["gzip"] is GZIP_CODEC
+    assert CORE_CONTEXT.data_types["r*"] is RAW_BYTES_DATA_TYPE
+    assert dict(CORE_CONTEXT.storage_transformers) == {}
     with pytest.raises(TypeError):
-        CORE.codecs["gzip"] = MY_GZIP  # pyright: ignore[reportIndexIssue]
+        CORE_CONTEXT.codecs["gzip"] = MY_GZIP  # pyright: ignore[reportIndexIssue]
 
 
 def test_error_a_slot_refuses_a_definition_of_another_kind() -> None:

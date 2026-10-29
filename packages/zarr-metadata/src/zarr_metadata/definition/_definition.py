@@ -1365,7 +1365,7 @@ def resolve(
     else raises `TypeError`.
     """
     if not _is_scope(context):
-        msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {described(context)}"
+        msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS_CONTEXT, got {described(context)}"
         raise TypeError(msg)
     asked = as_kind(kind)
     _check_format(asked, context)

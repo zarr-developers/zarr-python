@@ -51,8 +51,8 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -201,9 +201,9 @@ ACME_PAIRED = CodecDefinition(
     rules=acme_paired_rules,
 )
 
-CONTEXT = CORE_AND_EXTENSIONS.update(
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(
     codecs=[
-        *CORE_AND_EXTENSIONS.codecs.values(),
+        *CORE_AND_EXTENSIONS_CONTEXT.codecs.values(),
         ACME_STACK,
         ACME_LEVEL,
         ACME_TOTAL,
@@ -225,9 +225,12 @@ def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
-    """Each slot of `CORE` files a subset of what the same slot of `CORE_AND_EXTENSIONS` files."""
+    """Each slot of `CORE_CONTEXT` files a subset of what the same slot of `CORE_AND_EXTENSIONS_CONTEXT` files."""
     for kind in ZarrV3Context.kinds.values():
-        assert CORE.definitions_of(kind).items() <= CORE_AND_EXTENSIONS.definitions_of(kind).items()
+        assert (
+            CORE_CONTEXT.definitions_of(kind).items()
+            <= CORE_AND_EXTENSIONS_CONTEXT.definitions_of(kind).items()
+        )
 
 
 def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
@@ -240,7 +243,7 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
             "index_codecs": ["bytes", "crc32c"],
         },
     }
-    resolved, _ = resolve(shard, CodecDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(shard, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert {loc: inner.json for loc, inner in resolved.nested.items()} == {
         ("codecs", 0): "bytes",
@@ -248,17 +251,19 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
         ("index_codecs", 1): "crc32c",
     }
     cast_value = {"name": "cast_value", "configuration": {"data_type": "int8"}}
-    resolved, _ = resolve(cast_value, CodecDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(cast_value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert resolved.nested[("data_type",)] == INT8
     # A field with no nested fields has nothing inside. A field that nothing
     # in scope claims holds no fields at all. A field refused by its check
     # or rules keeps the nested fields it read.
-    assert resolve("int8", DataTypeDefinition, CORE)[0] == INT8
+    assert resolve("int8", DataTypeDefinition, CORE_CONTEXT)[0] == INT8
     unclaimed = {"name": "acme.cast", "configuration": {"data_type": "int8"}}
-    assert isinstance(resolve(unclaimed, CodecDefinition, CORE_AND_EXTENSIONS)[0], UnclaimedField)
+    assert isinstance(
+        resolve(unclaimed, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0], UnclaimedField
+    )
     refused = {"name": "cast_value", "configuration": {"data_type": "int8", "rounding": 1}}
-    resolved, _ = resolve(refused, CodecDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(refused, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert resolved.nested[("data_type",)] == INT8
 
@@ -279,7 +284,7 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
 def test_a_reading_says_the_name_the_field_was_written_with(
     field: JSONValue, kind: type[Definition[Any]], name: str | None
 ) -> None:
-    assert resolve(field, kind, CORE_AND_EXTENSIONS)[0].name == name
+    assert resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)[0].name == name
 
 
 KINDLESS: Final = Definition(name="acme.kindless", configuration=EmptyConfiguration)
@@ -766,7 +771,7 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
         for problem in read_array_metadata_v3(document).problems
         if problem.loc[: len(at)] == at
     ]
-    assert _locs(resolve(field, kind, CORE_AND_EXTENSIONS)[1]) == by_model
+    assert _locs(resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)[1]) == by_model
     assert by_model == [(("must_understand",), "invalid_value")]
 
 
@@ -774,7 +779,7 @@ def _ruled_by(
     rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
-    return CORE.update(codecs=[*CORE.codecs.values(), lying])
+    return CORE_CONTEXT.update(codecs=[*CORE_CONTEXT.codecs.values(), lying])
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
@@ -1044,7 +1049,7 @@ class _HugeFormat(_ClaimsWithNoFormat):
     "context",
     [
         None,
-        "CORE",
+        "CORE_CONTEXT",
         ZarrV3Context,
         _ClaimsWithNoFormat(),
         _BooleanFormatScope(),
@@ -1126,7 +1131,9 @@ def test_a_scope_takes_a_name_over() -> None:
             else []
         ),
     )
-    context = CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": strict})
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        codecs={**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": strict}
+    )
     _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, context)
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
     assert context.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
@@ -1134,17 +1141,17 @@ def test_a_scope_takes_a_name_over() -> None:
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
     # Kept short, because `help` shows it as a validator's default argument.
-    count = sum(len(CORE.definitions_of(kind)) for kind in ZarrV3Context.kinds.values())
-    assert repr(CORE) == f"ZarrV3Context(<{count} definitions>)"
+    count = sum(len(CORE_CONTEXT.definitions_of(kind)) for kind in ZarrV3Context.kinds.values())
+    assert repr(CORE_CONTEXT) == f"ZarrV3Context(<{count} definitions>)"
 
 
 def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
     # A model holds the scope it was read in, and takes it along to another process.
-    again = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS))
-    assert again == CORE_AND_EXTENSIONS
-    assert again.codecs == CORE_AND_EXTENSIONS.codecs
-    assert copy.copy(CORE) is CORE
-    assert copy.deepcopy(CORE) is CORE
+    again = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS_CONTEXT))
+    assert again == CORE_AND_EXTENSIONS_CONTEXT
+    assert again.codecs == CORE_AND_EXTENSIONS_CONTEXT.codecs
+    assert copy.copy(CORE_CONTEXT) is CORE_CONTEXT
+    assert copy.deepcopy(CORE_CONTEXT) is CORE_CONTEXT
 
 
 LE: Final = {"name": "bytes", "configuration": {"endian": "little"}}
@@ -1279,8 +1286,8 @@ def test_two_fields_are_equal_when_they_read_the_same(
     one: JSONValue, other: JSONValue, kind: type[Definition[Any]], equal: bool
 ) -> None:
     """However each field was spelled, equal fields have the same simplest spelling and the same hash, though each is written back as it was read."""
-    first, _ = resolve(one, kind, CORE_AND_EXTENSIONS)
-    second, _ = resolve(other, kind, CORE_AND_EXTENSIONS)
+    first, _ = resolve(one, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    second, _ = resolve(other, kind, CORE_AND_EXTENSIONS_CONTEXT)
     assert isinstance(first, (AcceptedField, UnclaimedField))
     assert isinstance(second, (AcceptedField, UnclaimedField))
     assert (first == second) is equal
@@ -1290,7 +1297,9 @@ def test_two_fields_are_equal_when_they_read_the_same(
 
 
 def test_a_field_copied_or_pickled_is_read_by_a_definition_equal_to_its_own() -> None:
-    field, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, CORE)
+    field, _ = resolve(
+        {"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, CORE_CONTEXT
+    )
     for again in (pickle.loads(pickle.dumps(field)), copy.deepcopy(field)):
         assert again == field
         assert configuration_of(again, GZIP_CODEC) == {"level": 1}
@@ -1508,7 +1517,7 @@ def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
 def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> None:
     """An extension name matches the spec's regex `^[a-z][a-z0-9-_.]+$`, or is a URI, which earlier versions of the spec required. Any other name is refused before any definition is consulted."""
     for field, at in ((name, ()), ({"name": name}, ("name",))):
-        resolved, problems = resolve(field, CodecDefinition, CORE)
+        resolved, problems = resolve(field, CodecDefinition, CORE_CONTEXT)
         if valid:
             assert not isinstance(resolved, RefusedField)
             assert problems == ()
@@ -1523,7 +1532,7 @@ def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:
     # A field whose configuration is not JSON reports its name problem as
     # the JSON path does, and no definition is asked to claim it.
     field = {"name": "Acme", "configuration": {"x": float("nan")}}
-    resolved, problems = resolve(field, CodecDefinition, CORE)
+    resolved, problems = resolve(field, CodecDefinition, CORE_CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert resolved.definition is None
     assert [(p.loc, p.kind) for p in problems] == [
@@ -1547,7 +1556,7 @@ def test_error_a_field_built_by_hand_is_named_as_the_spec_names_one() -> None:
 
 
 def test_error_a_field_without_a_name_is_missing_one() -> None:
-    resolved, problems = resolve({"configuration": {}}, CodecDefinition, CORE)
+    resolved, problems = resolve({"configuration": {}}, CodecDefinition, CORE_CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert [(p.loc, p.kind, p.message) for p in problems] == [
         (("name",), "missing_key", "missing required key")
@@ -1559,7 +1568,9 @@ def test_raw_bits_of_more_than_a_hundred_digits_are_no_size_but_a_name(digits: i
     # `int` refuses to convert more than 4,300 digits, and no real size has a
     # hundred digits. Such a name is an extension name, which nothing in
     # scope claims.
-    resolved, problems = resolve("r" + "1" * digits, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, problems = resolve(
+        "r" + "1" * digits, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )
     assert type(resolved) is UnclaimedField
     assert problems == ()
 
@@ -1573,8 +1584,8 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
         cast("dict[str, object]", configuration)["level"] = -1
         yield from ()
 
-    context = CORE.update(
-        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, rules=writes)}
+    context = CORE_CONTEXT.update(
+        codecs={**CORE_CONTEXT.codecs, "gzip": dataclasses.replace(GZIP_CODEC, rules=writes)}
     )
     with pytest.raises(TypeError, match="does not support item assignment") as raised:
         resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
@@ -1598,8 +1609,11 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         cast("dict[str, object]", configuration)["level"] = 0
         return configuration
 
-    context = CORE.update(
-        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=folds_in_place)}
+    context = CORE_CONTEXT.update(
+        codecs={
+            **CORE_CONTEXT.codecs,
+            "gzip": dataclasses.replace(GZIP_CODEC, canonical=folds_in_place),
+        }
     )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(TypeError, match="does not support item assignment"):
@@ -1610,8 +1624,8 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE.update(
-        codecs={**CORE.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses)}
+    context = CORE_CONTEXT.update(
+        codecs={**CORE_CONTEXT.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses)}
     )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
@@ -1622,7 +1636,9 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
 def test_error_a_field_s_configuration_and_nested_fields_are_read_only() -> None:
     """A field's `json`, `configuration` and `nested` attributes are read-only at every level. So a field cannot be changed into a state where its key, `==` and `refines` disagree."""
     whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
-    shard, _ = resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)
+    shard, _ = resolve(
+        {"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE_CONTEXT
+    )
     assert isinstance(shard, AcceptedField)
     with pytest.raises(TypeError):
         shard.configuration["index_location"] = "start"  # pyright: ignore[reportIndexIssue]
@@ -1637,14 +1653,16 @@ def test_error_a_field_s_configuration_and_nested_fields_are_read_only() -> None
     assert isinstance(shard.json, Mapping)
     with pytest.raises(TypeError):
         shard.json["name"] = "gzip"  # pyright: ignore[reportIndexIssue]
-    unclaimed, _ = resolve({"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE)
+    unclaimed, _ = resolve(
+        {"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE_CONTEXT
+    )
     assert isinstance(unclaimed, UnclaimedField)
     with pytest.raises(TypeError):
         unclaimed.configuration["a"] = 2  # pyright: ignore[reportIndexIssue]
     refused, _ = resolve(
         {"name": "sharding_indexed", "configuration": {**whole, "index_location": "x"}},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
     )
     assert isinstance(refused, RefusedField)
     with pytest.raises(TypeError):
@@ -1655,12 +1673,14 @@ def test_a_field_holding_fields_is_copied_and_pickled_whole() -> None:
     """A field pickles and deep-copies together with the fields it holds, and stays equal to itself, whether it is accepted, refused or unclaimed."""
     whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
     fields = [
-        resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)[0],
-        resolve({"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE)[0],
+        resolve(
+            {"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE_CONTEXT
+        )[0],
+        resolve({"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE_CONTEXT)[0],
         resolve(
             {"name": "sharding_indexed", "configuration": {**whole, "index_location": "x"}},
             CodecDefinition,
-            CORE,
+            CORE_CONTEXT,
         )[0],
     ]
     for field in fields:
@@ -1697,8 +1717,8 @@ def test_a_field_its_caller_refined_reads_as_resolve_reads_it(field: object) -> 
     """`resolve_refined` is `resolve` for a caller that has already refined the field. It gives the same field and the same problems, at the same locations, with the same `input`."""
     refined, problems = refine_json(field, ("codecs", 0))
     assert problems == ()
-    expected = resolve(field, CodecDefinition, CORE, ("codecs", 0))
-    found = resolve_refined(field, refined, problems, CodecDefinition, CORE, ("codecs", 0))
+    expected = resolve(field, CodecDefinition, CORE_CONTEXT, ("codecs", 0))
+    found = resolve_refined(field, refined, problems, CodecDefinition, CORE_CONTEXT, ("codecs", 0))
     assert found == expected
     assert [(p.loc, p.kind, p.input) for p in found[1]] == [
         (p.loc, p.kind, p.input) for p in expected[1]
@@ -1711,7 +1731,7 @@ def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> No
     refined, problems = refine_json(field, ("codecs", 0))
     assert refined is None
     resolved, found = resolve_refined(
-        field, refined, problems, CodecDefinition, CORE, ("codecs", 0)
+        field, refined, problems, CodecDefinition, CORE_CONTEXT, ("codecs", 0)
     )
     assert resolved == RefusedField(
         json=UNSET, name="gzip", read_as=CodecDefinition, definition=GZIP_CODEC
@@ -1719,7 +1739,7 @@ def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> No
     assert [(p.loc, p.kind) for p in found] == [
         (("codecs", 0, "configuration", "level"), "invalid_type")
     ]
-    assert (resolved, found) == resolve(field, CodecDefinition, CORE, ("codecs", 0))
+    assert (resolved, found) == resolve(field, CodecDefinition, CORE_CONTEXT, ("codecs", 0))
 
 
 def test_error_a_refined_field_is_not_read_in_a_scope_of_the_other_format() -> None:
@@ -1738,8 +1758,8 @@ V3_IN_A_V2_SCOPE = (
 @pytest.mark.parametrize(
     ("field", "kind", "context", "message"),
     [
-        ({"id": "gzip"}, ZarrV2CodecDefinition, CORE, V2_IN_A_V3_SCOPE),
-        (5, ZarrV2CodecDefinition, CORE, V2_IN_A_V3_SCOPE),
+        ({"id": "gzip"}, ZarrV2CodecDefinition, CORE_CONTEXT, V2_IN_A_V3_SCOPE),
+        (5, ZarrV2CodecDefinition, CORE_CONTEXT, V2_IN_A_V3_SCOPE),
         ({"name": "gzip"}, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
         (5, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
     ],

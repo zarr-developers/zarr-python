@@ -14,7 +14,7 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2Context,
 )
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -127,7 +127,7 @@ def test_every_v2_entry_point_reads_in_the_scope_it_is_given(name: str) -> None:
 def test_error_every_v2_entry_point_refuses_a_scope_of_another_format(name: str) -> None:
     """A v2 entry point given a v3 scope raises `TypeError`. A scope reads documents of one format, and a v3 scope claims nothing that a v2 document contains."""
     with pytest.raises(TypeError, match="format"):
-        ENTRY_POINTS[name](context=CORE_AND_EXTENSIONS)
+        ENTRY_POINTS[name](context=CORE_AND_EXTENSIONS_CONTEXT)
 
 
 NOT_JSON = b"{not json"
@@ -156,6 +156,6 @@ def test_error_a_v2_store_reader_refuses_a_scope_of_another_format_before_decodi
 ) -> None:
     """A v2 entry point that reads a store's bytes raises `TypeError` for a v3 scope before it decodes the bytes, so the wrong scope is reported even when the bytes are not JSON. With a v2 scope, the same bytes raise `MetadataValidationError`."""
     with pytest.raises(TypeError, match="format"):
-        STORE_READERS[name](context=CORE_AND_EXTENSIONS)
+        STORE_READERS[name](context=CORE_AND_EXTENSIONS_CONTEXT)
     with pytest.raises(MetadataValidationError):
         STORE_READERS[name](context=CORE_V2)

@@ -1,0 +1,1 @@
+Rename the v3 scopes `CORE` and `CORE_AND_EXTENSIONS` to `CORE_CONTEXT` and `CORE_AND_EXTENSIONS_CONTEXT`, so that a scope's name says it is a `ZarrV3Context`. Replace each import and use of the old names with the new ones.

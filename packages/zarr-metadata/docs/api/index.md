@@ -35,7 +35,7 @@ The package is organized to mirror the structure of the Zarr specifications:
   scope type `Context`. Its module docstring is the guide
 - [`zarr_metadata.v3.definition`](v3/definition.md) — the five v3 kinds
   of metadata (`CodecDefinition`, `DataTypeDefinition`, ...), the codec
-  pipeline types, and the v3 scopes `CORE` and `CORE_AND_EXTENSIONS`
+  pipeline types, and the v3 scopes `CORE_CONTEXT` and `CORE_AND_EXTENSIONS_CONTEXT`
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so

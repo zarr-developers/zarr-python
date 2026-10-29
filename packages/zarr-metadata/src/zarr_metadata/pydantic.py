@@ -20,7 +20,7 @@ as follows:
   `"zarr_metadata_context_v2"` item. This lets a model with fields of
   both formats give a scope for each format.
 - If no scope is given for a format, its field types read in the default
-  scope for that format, `CORE_AND_EXTENSIONS` or `CORE_V2`.
+  scope for that format, `CORE_AND_EXTENSIONS_CONTEXT` or `CORE_V2`.
 
 A mapping key that starts like these keys but is not one of them raises
 `TypeError`, so a misspelled key is not read as no scope. To fix a field's
@@ -129,7 +129,7 @@ from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import Context
 from zarr_metadata.definition._scope import ScopeConflictError
 from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, ZarrV3Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -321,7 +321,7 @@ ZarrV3ArrayMetadataField = Annotated[
             _model.ZarrV3ArrayMetadata,
             _model.ZarrV3ArrayMetadata.from_json,
             _model.ZarrV3ArrayMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ArrayMetadataSchema,
@@ -353,7 +353,7 @@ ZarrV3GroupMetadataField = Annotated[
             _model.ZarrV3GroupMetadata,
             _model.ZarrV3GroupMetadata.from_json,
             _model.ZarrV3GroupMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3GroupMetadataSchema,
@@ -385,7 +385,7 @@ ZarrV3ConsolidatedMetadataField = Annotated[
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
             _model.ZarrV3ConsolidatedMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
@@ -419,12 +419,12 @@ ZarrV2ConsolidatedMetadataField = Annotated[
 _FIELD_PARTS: Final[Mapping[type[Any], tuple[ZarrV3Context | ZarrV2Context, object]]] = (
     MappingProxyType(
         {
-            _model.ZarrV3ArrayMetadata: (CORE_AND_EXTENSIONS, _ZarrV3ArrayMetadataSchema),
+            _model.ZarrV3ArrayMetadata: (CORE_AND_EXTENSIONS_CONTEXT, _ZarrV3ArrayMetadataSchema),
             _model.ZarrV2ArrayMetadata: (CORE_V2, _ZarrV2ArrayMetadataSchema),
-            _model.ZarrV3GroupMetadata: (CORE_AND_EXTENSIONS, _ZarrV3GroupMetadataSchema),
+            _model.ZarrV3GroupMetadata: (CORE_AND_EXTENSIONS_CONTEXT, _ZarrV3GroupMetadataSchema),
             _model.ZarrV2GroupMetadata: (CORE_V2, _ZarrV2GroupMetadataSchema),
             _model.ZarrV3ConsolidatedMetadata: (
-                CORE_AND_EXTENSIONS,
+                CORE_AND_EXTENSIONS_CONTEXT,
                 _ZarrV3ConsolidatedMetadataSchema,
             ),
             _model.ZarrV2ConsolidatedMetadata: (CORE_V2, _ZarrV2ConsolidatedMetadataSchema),

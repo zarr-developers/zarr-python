@@ -47,7 +47,7 @@ from zarr_metadata.model._group_v3 import ZarrV3NodeMetadataReading, read_node_m
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 
 if TYPE_CHECKING:
@@ -278,7 +278,7 @@ def read_repaired_node_metadata_v3(
     Content that no repair applies to is read as it is, and reported the
     same way `read_node_metadata_v3` reports it.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     repaired, repairs = repair_node_metadata_v3(value)
     return ZarrV3RepairedNodeMetadataReading(
         read_node_metadata_v3(repaired, context=context), repairs

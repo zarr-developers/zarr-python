@@ -49,8 +49,8 @@ from zarr_metadata.v3 import ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     CodecDefinition,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
@@ -148,7 +148,9 @@ def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, .
 
 
 def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]:
-    return [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)[1]]
+    return [
+        (p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -639,7 +641,9 @@ ACME_X = CodecDefinition(
 
 def test_group_update_keeps_the_documents_it_holds() -> None:
     """`update` does not read the consolidated documents again: a child read in an extended scope keeps each field as it was read, and the group keeps its scope."""
-    context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_X])
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_X]
+    )
     child = ZarrV3ArrayMetadata.create_default(
         context=context, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
@@ -654,18 +658,18 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
 
 
 def test_group_update_writes_the_consolidated_metadata_it_is_given() -> None:
-    """`update` takes consolidated metadata as a document writes it, or as a `ZarrV3ConsolidatedMetadata`, whose document it writes; the group holds the same member either way. `UNSET` removes it. `zstd` is an extension, so `CORE` leaves it unclaimed, and the member read in the group's scope holds it as unclaimed."""
+    """`update` takes consolidated metadata as a document writes it, or as a `ZarrV3ConsolidatedMetadata`, whose document it writes; the group holds the same member either way. `UNSET` removes it. `zstd` is an extension, so `CORE_CONTEXT` leaves it unclaimed, and the member read in the group's scope holds it as unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     member = cast("Any", _inline(a=_array(codecs=[LITTLE, zstd])))
-    held = ZarrV3ConsolidatedMetadata(member, context=CORE)
+    held = ZarrV3ConsolidatedMetadata(member, context=CORE_CONTEXT)
     child = held.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
     assert isinstance(child.codecs[1], UnclaimedField)
-    group = ZarrV3GroupMetadata.create_default(context=CORE)
+    group = ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT)
     updated = group.update(consolidated_metadata=held)
     assert updated.consolidated_metadata == held.to_json()
     assert updated == group.update(consolidated_metadata=member)
-    assert ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=CORE) == held
+    assert ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=CORE_CONTEXT) == held
     removed = updated.update(consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
 
@@ -690,7 +694,7 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
         # the outer group also lists. The listed group's own listing is
         # checked against the outer one, and its documents are not models
         # of the outer member. The listed group's member is its extra field,
-        # which `CORE` reads as an envelope.
+        # which `CORE_CONTEXT` reads as an envelope.
         (
             _inline(g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}),
             ["g", "g/b"],
@@ -859,9 +863,9 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
         reads.append(configuration)
         yield from ()
 
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         codecs={
-            **CORE_AND_EXTENSIONS.codecs,
+            **CORE_AND_EXTENSIONS_CONTEXT.codecs,
             "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
         }
     )

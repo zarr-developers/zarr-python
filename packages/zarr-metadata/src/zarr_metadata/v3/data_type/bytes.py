@@ -8,7 +8,7 @@ import base64
 from collections.abc import Iterator
 from typing import Final, Literal
 
-from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import Base64Bytes, base64_bytes
 from zarr_metadata.definition._definition import (
     EmptyConfiguration,
@@ -18,7 +18,7 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     variable_length,
 )
-from zarr_metadata.v3.data_type._byte import ByteValue
+from zarr_metadata.v3.data_type._byte import ByteValue, base64_problems
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -38,14 +38,8 @@ def _fill_value_rules(
     configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
 ) -> Iterator[ValidationProblem]:
     """Check that a string fill value is standard-alphabet base64. A fill value written as byte values is not checked here."""
-    if not isinstance(value, str):
-        return
-    try:
-        base64_bytes(value)
-    except ValueError:
-        yield ValidationProblem(
-            (), f"expected standard-alphabet base64, got {shown(value)}", "invalid_value"
-        )
+    if isinstance(value, str):
+        yield from base64_problems(value)
 
 
 def _fill_value_canonical(

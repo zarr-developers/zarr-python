@@ -53,8 +53,8 @@ from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     ArrayExtraFieldDefinition,
     CodecDefinition,
 )
@@ -473,16 +473,16 @@ def test_update_can_add_an_extension_member() -> None:
 def test_update_reads_every_member_in_the_models_own_scope() -> None:
     """`update` reads the new document in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed. Use `with_context` to read it in another scope.
 
-    `zstd` is an extension, so `CORE` leaves it unclaimed and unchecked.
+    `zstd` is an extension, so `CORE_CONTEXT` leaves it unclaimed and unchecked.
     """
     little: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
-    base = ZarrV3ArrayMetadata.create_default(context=CORE, codecs=(little, zstd))
+    base = ZarrV3ArrayMetadata.create_default(context=CORE_CONTEXT, codecs=(little, zstd))
     assert isinstance(base.codecs[1], UnclaimedField)
     kept = base.update(attributes={"k": 1})
     assert kept.codecs[1] == base.codecs[1]
-    assert kept.context == CORE
-    given = base.with_context(CORE_AND_EXTENSIONS).update(codecs=(little, zstd))
+    assert kept.context == CORE_CONTEXT
+    given = base.with_context(CORE_AND_EXTENSIONS_CONTEXT).update(codecs=(little, zstd))
     assert isinstance(given.codecs[1], AcceptedField)
 
 
@@ -689,7 +689,7 @@ def test_a_model_pickles_and_copies_with_its_definitions() -> None:
             {"name": "bytes", "configuration": {"endian": "little"}},
             {"name": "gzip", "configuration": {"level": 1}},
         ),
-        context=CORE,
+        context=CORE_CONTEXT,
     )
     for again in (pickle.loads(pickle.dumps(model)), copy.copy(model), copy.deepcopy(model)):
         assert again == model
@@ -996,14 +996,14 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
 @pytest.mark.parametrize("name", ["bytes", "acme.codec", "urn:example:codec"])
 def test_metadata_field_accepts_a_name_as_the_spec_names_one(name: str) -> None:
     """The envelope check accepts a name in a form the spec allows for an extension name, whether or not a definition in scope claims it."""
-    assert resolve({"name": name}, CodecDefinition, CORE_AND_EXTENSIONS)[1] == ()
+    assert resolve({"name": name}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1] == ()
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
 def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
     """must_understand is a JSON boolean, not a truthy scalar."""
     _, problems = resolve(
-        {"name": "acme.x", "must_understand": value}, CodecDefinition, CORE_AND_EXTENSIONS
+        {"name": "acme.x", "must_understand": value}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
     )
     assert [(problem.loc, problem.kind) for problem in problems] == [
         (("must_understand",), "invalid_type")
@@ -1012,7 +1012,9 @@ def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
 
 def test_metadata_field_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
-    _, problems = resolve({"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS)
+    _, problems = resolve(
+        {"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )
     assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "unknown_key")]
 
 
@@ -1240,7 +1242,7 @@ def test_a_field_read_from_abstract_containers_writes_canonical_containers() -> 
     """`resolve` reads a field given as abstract containers, and the field writes canonical containers at every nesting level."""
     value = UserDict({"name": "example", "configuration": UserDict({"values": range(2)})})
 
-    field, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS)
+    field, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert isinstance(field, UnclaimedField)
     written = field.to_json()
 
@@ -1282,7 +1284,7 @@ def test_resolve_reports_the_problems_of_a_metadata_field(
     case: Expect[object, frozenset[tuple[str | int, ...]]],
 ) -> None:
     """`resolve` reports the problems of a metadata-field value, read as a codec."""
-    _, problems = resolve(case.input, CodecDefinition, CORE_AND_EXTENSIONS)
+    _, problems = resolve(case.input, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert (problems == ()) is (case.output == frozenset())
     assert {p.loc for p in problems} >= case.output
 
@@ -1952,11 +1954,11 @@ def test_a_field_s_configuration_member_is_counted_from_the_field_s_root() -> No
     for _ in range(JSON_DEPTH - 2):
         nested = {"x": nested}
     field = {"name": "acme.x", "configuration": {"y": nested}}
-    _, problems = resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)
+    _, problems = resolve(field, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert [(len(p.loc), p.kind) for p in problems] == [(JSON_DEPTH, "invalid_value")]
     assert problems[0].loc[:2] == ("configuration", "y")
     shallower = {"name": "acme.x", "configuration": {"y": nested["x"]}}
-    assert resolve(shallower, CodecDefinition, CORE_AND_EXTENSIONS)[1] == ()
+    assert resolve(shallower, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1] == ()
 
 
 def test_a_v2_dtype_of_nested_records_is_read_to_the_levels_a_reader_walks() -> None:
@@ -2438,7 +2440,9 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
     document = {**ZarrV3ArrayMetadata.create_default().to_json(), "zarr_format": 10**5000}
     (problem,) = read_array_metadata_v3(document).problems
     assert problem.message == f"expected 3, got an integer of {(10**5000).bit_length()} bits"
-    (problem,) = resolve({"name": "gzip", 10**5000: 1}, CodecDefinition, CORE_AND_EXTENSIONS)[1]
+    (problem,) = resolve(
+        {"name": "gzip", 10**5000: 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )[1]
     assert problem.message == (
         f"non-string key an integer of {(10**5000).bit_length()} bits in JSON object"
     )
@@ -2450,7 +2454,9 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
         assert (
             problem.message == "expected 3, got a value of type list the interpreter will not write"
         )
-    (problem,) = resolve({"name": "gzip", (10**5000,): 1}, CodecDefinition, CORE_AND_EXTENSIONS)[1]
+    (problem,) = resolve(
+        {"name": "gzip", (10**5000,): 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )[1]
     assert problem.message == (
         "non-string key a value of type tuple the interpreter will not write in JSON object"
     )

@@ -62,7 +62,7 @@ from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJS
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
     Chunk,
@@ -499,7 +499,7 @@ class ZarrV3ArrayMetadata(Keyed):
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         reading, members = read_array_v3(document, context)
         if members is None:
             raise MetadataValidationError(reading.problems)
@@ -696,7 +696,7 @@ class ZarrV3ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         if disagreements(context, claims_of(self._reading.fields())).agrees:
             return self._of(self._document, context, self._reading, self._members)
         return type(self)(self._document, context=context)
@@ -713,7 +713,7 @@ class ZarrV3ArrayMetadata(Keyed):
         gain can expose a problem. `with_context` reads the document in
         any scope.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         found = disagreements(context, claims_of(self._reading.fields()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
@@ -811,7 +811,7 @@ class ZarrV3ArrayMetadata(Keyed):
         are not JSON, or the document is not valid. Raises `TypeError` for
         a scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
@@ -888,7 +888,7 @@ def read_array_metadata_v3(
     spec's fields), iterate over the reading's `fields()`. A value that
     is not an object has no fields.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     reading, members = read_array_v3(value, context)
     if members is None:
         return reading

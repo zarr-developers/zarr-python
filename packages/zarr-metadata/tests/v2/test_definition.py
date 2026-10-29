@@ -21,7 +21,7 @@ from zarr_metadata.v2.definition import (
 )
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     CodecDefinition,
 )
 
@@ -33,10 +33,10 @@ def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
     assert CORE_V2.zarr_format == 2
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not None
-    assert CORE_AND_EXTENSIONS.claimant(CodecDefinition, "gzip") is GZIP_CODEC
+    assert CORE_AND_EXTENSIONS_CONTEXT.claimant(CodecDefinition, "gzip") is GZIP_CODEC
     assert CORE_V2.claimant(ZarrV2DataTypeDefinition, "<f4") is not None
     with pytest.raises(TypeError, match="one Zarr format"):
-        CORE_V2.union(CORE_AND_EXTENSIONS)  # pyright: ignore[reportArgumentType]
+        CORE_V2.union(CORE_AND_EXTENSIONS_CONTEXT)  # pyright: ignore[reportArgumentType]
     assert pickle.loads(pickle.dumps(CORE_V2)) == CORE_V2
 
 

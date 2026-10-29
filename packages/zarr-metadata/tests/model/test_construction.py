@@ -31,8 +31,8 @@ from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     CodecDefinition,
 )
 
@@ -195,8 +195,8 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
         yield from ()
 
     counting = dataclasses.replace(INT8_DATA_TYPE, fill_value_rules=counted)
-    context = CORE_AND_EXTENSIONS.update(
-        data_types={**CORE_AND_EXTENSIONS.data_types, "int8": counting}
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        data_types={**CORE_AND_EXTENSIONS_CONTEXT.data_types, "int8": counting}
     )
     model = ZarrV3ArrayMetadata.create_default(context=context, data_type="int8", fill_value=3)
     assert values == [3]
@@ -324,7 +324,9 @@ def test_error_update_takes_fields_as_json() -> None:
 
 def test_error_update_takes_no_refused_field() -> None:
     """A field refused by its definition holds JSON its definition does not read, so it has no JSON for `update` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
-    refused, _ = resolve({"name": "gzip", "configuration": {"level": 99}}, CodecDefinition, CORE)
+    refused, _ = resolve(
+        {"name": "gzip", "configuration": {"level": 99}}, CodecDefinition, CORE_CONTEXT
+    )
     assert isinstance(refused, RefusedField)
     with pytest.raises(TypeError, match="a refused field has no JSON"):
         ARRAY.update(codecs=(ARRAY.to_json()["codecs"][0], refused))  # pyright: ignore[reportArgumentType]
@@ -456,9 +458,9 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
         asked.append(1)
         return configuration
 
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         codecs={
-            **CORE_AND_EXTENSIONS.codecs,
+            **CORE_AND_EXTENSIONS_CONTEXT.codecs,
             "gzip": dataclasses.replace(GZIP_CODEC, canonical=counting),
         }
     )
@@ -489,9 +491,9 @@ def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compare
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         codecs={
-            **CORE_AND_EXTENSIONS.codecs,
+            **CORE_AND_EXTENSIONS_CONTEXT.codecs,
             "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses),
         }
     )
