@@ -88,15 +88,16 @@ def test_a_v2_dtype_name_is_filed_under_its_family(
             {"fields": [["x", "<f4"], ["y", "<i4", [2]]]},
         ),
         ((("x", "<f4"),), "struct", {"fields": (("x", "<f4"),)}),
+        ("struct", None, None),
         (3, None, None),
         ({"name": "float32"}, None, None),
     ],
-    ids=["string", "records", "refined-records", "number", "v3-object"],
+    ids=["string", "records", "refined-records", "struct-string", "number", "v3-object"],
 )
 def test_a_v2_dtype_is_a_string_or_records(
     value: object, name: str | None, configuration: object
 ) -> None:
-    """A dtype field is either a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records. Any other value has no name."""
+    """A dtype field is either a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records. Any other value has no name, and so has the string `struct`: it is not a typestr, and only records read as a struct."""
     assert ZarrV2DataTypeDefinition._named_configuration(value) == (name, configuration, ())
 
 
@@ -104,7 +105,7 @@ def test_a_v2_dtype_is_a_string_or_records(
     ("value", "problems"),
     [
         ("<f4", []),
-        ("struct", []),
+        ("struct", [((), "invalid_value")]),
         ([["x", "<f4"]], []),
         ("float32", [((), "invalid_value")]),
         (3, [((), "invalid_type")]),
@@ -114,7 +115,7 @@ def test_a_v2_dtype_is_a_string_or_records(
 def test_a_v2_dtype_envelope_is_a_typestr_or_records(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """The envelope of a dtype field is valid when it is a typestr or an array of records. A string that is neither is reported as an invalid value, and the message names the typestr form. Any other value is reported as an invalid type."""
+    """The envelope of a dtype field is valid when it is a typestr or an array of records. A string that is neither, `struct` included, is reported as an invalid value, and the message names the typestr form. Any other value is reported as an invalid type."""
     found = ZarrV2DataTypeDefinition._envelope_problems(value)
     assert [(p.loc, p.kind) for p in found] == problems
     if value == "float32":
@@ -122,11 +123,16 @@ def test_a_v2_dtype_envelope_is_a_typestr_or_records(
 
 
 def test_a_v2_dtype_writes_back_as_a_string_or_records() -> None:
-    """`envelope_json` writes a dtype as its string, and a struct as its records. Both the name and the configuration are located at the field."""
+    """`envelope_json` writes a dtype as its string, and a struct as its records. The name is located at the field, and so is each record: a place under the struct's `fields` is located without `fields`."""
     assert ZarrV2DataTypeDefinition._envelope_json("<f4", {}) == "<f4"
     records = (("x", "<f4"),)
     assert ZarrV2DataTypeDefinition._envelope_json("struct", {"fields": records}) == records
-    assert ZarrV2DataTypeDefinition._configuration_loc(("dtype",)) == ("dtype",)
+    assert ZarrV2DataTypeDefinition._in_configuration(("dtype",), ()) == ("dtype",)
+    assert ZarrV2DataTypeDefinition._in_configuration(("dtype",), ("fields", 0, 1)) == (
+        "dtype",
+        0,
+        1,
+    )
     assert ZarrV2DataTypeDefinition._name_loc(("dtype",)) == ("dtype",)
 
 
@@ -156,7 +162,10 @@ def test_a_v2_codec_is_an_object_with_a_string_id(
 def test_a_v2_codec_writes_back_with_its_id_beside_its_parameters() -> None:
     """`envelope_json` writes a codec as `{"id": name, **parameters}`. The parameters are located at the field and the name is located under `id`."""
     assert ZarrV2CodecDefinition._envelope_json("zlib", {"level": 1}) == {"id": "zlib", "level": 1}
-    assert ZarrV2CodecDefinition._configuration_loc(("compressor",)) == ("compressor",)
+    assert ZarrV2CodecDefinition._in_configuration(("compressor",), ("level",)) == (
+        "compressor",
+        "level",
+    )
     assert ZarrV2CodecDefinition._name_loc(("compressor",)) == ("compressor", "id")
     assert ZarrV2CodecDefinition._filed_under("zlib") == ("zlib", None)
 

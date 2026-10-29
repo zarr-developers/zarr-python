@@ -325,7 +325,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     kind: CodecKind
     size: CodecSize
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
-    """The spec violations for this codec with a given input chunk, located in the configuration."""
+    """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
     transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
     """The chunk the next codec receives, given the chunk this array -> array codec receives."""
     pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
@@ -500,8 +500,8 @@ class ExtraFieldDefinition(Definition[C]):
         return json
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        return loc
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        return (*loc, *place)
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:

@@ -90,6 +90,11 @@ class BaseTestZDType:
     # pairs. the first element of the pair is used to create a dtype instance, and the second
     # element is the json serialization of the scalar that we want to round-trip.
 
+    # for testing v2 JSON spellings that read as a valid dtype but are not the
+    # spelling zarr writes: (alias json, canonical json) pairs. Reading either
+    # spelling gives the same dtype, and writing it gives the canonical spelling.
+    json_alias_v2_params: ClassVar[tuple[tuple[DTypeSpec_V2, DTypeSpec_V2], ...]] = ()
+
     scalar_v2_params: ClassVar[tuple[tuple[ZDType[Any, Any], Any], ...]] = ()
     scalar_v3_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
     cast_value_params: ClassVar[tuple[tuple[ZDType[Any, Any], Any, Any], ...]] = ()
@@ -126,6 +131,14 @@ class BaseTestZDType:
     def test_from_json_roundtrip_v3(self, valid_json_v3: DTypeSpec_V3) -> None:
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
+
+    def test_from_json_alias_v2(
+        self, json_alias_v2_params: tuple[DTypeSpec_V2, DTypeSpec_V2]
+    ) -> None:
+        alias, canonical = json_alias_v2_params
+        zdtype = self.test_cls.from_json(alias, zarr_format=2)
+        assert zdtype == self.test_cls.from_json(canonical, zarr_format=2)
+        assert zdtype.to_json(zarr_format=2) == canonical
 
     def test_from_json_invalid_v2(self, invalid_json_v2: DTypeSpec_V2) -> None:
         with pytest.raises(DataTypeValidationError):
