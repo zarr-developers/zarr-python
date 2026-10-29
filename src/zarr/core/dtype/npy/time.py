@@ -239,6 +239,16 @@ class TimeDTypeBase[
             # Store the NumPy spelling; "μs" stays accepted as input and in stored metadata.
             object.__setattr__(self, "unit", "us")
 
+    def _v2_name(self) -> str:
+        """The v2 typestr: NumPy's spelling, except that the generic unit, which
+        NumPy's `dtype.str` omits, is written in brackets with its scale, because
+        the v2 spec requires a bracketed unit."""
+        name: str = self.to_native_dtype().str
+        if self.unit != "generic":
+            return name
+        scale = "" if self.scale_factor == 1 else self.scale_factor
+        return f"{name}[{scale}generic]"
+
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
@@ -497,13 +507,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
-            name: str = self.to_native_dtype().str
-            if self.unit == "generic":
-                # NumPy's dtype.str omits the generic unit (and its scale), but the
-                # v2 spec requires a bracketed unit, so write it explicitly.
-                scale = "" if self.scale_factor == 1 else self.scale_factor
-                name += f"[{scale}generic]"
-            return {"name": name, "object_codec_id": None}
+            return {"name": self._v2_name(), "object_codec_id": None}
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
@@ -787,13 +791,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
-            name: str = self.to_native_dtype().str
-            if self.unit == "generic":
-                # NumPy's dtype.str omits the generic unit (and its scale), but the
-                # v2 spec requires a bracketed unit, so write it explicitly.
-                scale = "" if self.scale_factor == 1 else self.scale_factor
-                name += f"[{scale}generic]"
-            return {"name": name, "object_codec_id": None}
+            return {"name": self._v2_name(), "object_codec_id": None}
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
