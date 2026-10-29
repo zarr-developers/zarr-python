@@ -80,6 +80,23 @@ class TestDateTime64(_TestTimeBase):
         np.dtype("timedelta64[ns]"),
     )
     valid_json_v2 = _v2_names("M8")
+    # The legacy unitless spelling reads as the generic unit and writes back
+    # bracketed, as the v2 spec requires (#4580); NumPy's microsecond alias
+    # reads as NumPy's own spelling.
+    json_alias_v2_params = (
+        (
+            {"name": "<M8", "object_codec_id": None},
+            {"name": "<M8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": ">M8", "object_codec_id": None},
+            {"name": ">M8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": "<M8[μs]", "object_codec_id": None},
+            {"name": "<M8[us]", "object_codec_id": None},
+        ),
+    )
     valid_json_v3 = _v3_configurations("numpy.datetime64")
     invalid_json_v2 = (
         {"name": "datetime64", "object_codec_id": None},
@@ -124,6 +141,21 @@ class TestTimeDelta64(_TestTimeBase):
     )
 
     valid_json_v2 = _v2_names("m8")
+    # See TestDateTime64.json_alias_v2_params.
+    json_alias_v2_params = (
+        (
+            {"name": "<m8", "object_codec_id": None},
+            {"name": "<m8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": ">m8", "object_codec_id": None},
+            {"name": ">m8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": "<m8[μs]", "object_codec_id": None},
+            {"name": "<m8[us]", "object_codec_id": None},
+        ),
+    )
     valid_json_v3 = _v3_configurations("numpy.timedelta64")
     invalid_json_v2 = (
         {"name": "timedelta64", "object_codec_id": None},
@@ -279,21 +311,3 @@ def test_generic_time_array_roundtrip(
     np.testing.assert_array_equal(
         values[4:].view(values.dtype.byteorder + "i8"), [expected_fill, expected_fill]
     )
-
-
-def test_unitless_time_v2_reads_as_generic_and_writes_bracketed() -> None:
-    """The legacy unitless spellings stay readable as the generic unit, and write
-    back with the bracketed unit the v2 spec requires (#4580)."""
-    cases: tuple[tuple[str, DateTime64 | TimeDelta64], ...] = (
-        ("<M8", DateTime64(unit="generic", scale_factor=1, endianness="little")),
-        (">M8", DateTime64(unit="generic", scale_factor=1, endianness="big")),
-        ("<m8", TimeDelta64(unit="generic", scale_factor=1, endianness="little")),
-        (">m8", TimeDelta64(unit="generic", scale_factor=1, endianness="big")),
-    )
-    for name, expected in cases:
-        zdtype = type(expected).from_json({"name": name, "object_codec_id": None}, zarr_format=2)
-        assert zdtype == expected
-        assert dict(zdtype.to_json(zarr_format=2)) == {
-            "name": f"{name}[generic]",
-            "object_codec_id": None,
-        }
