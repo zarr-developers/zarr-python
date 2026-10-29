@@ -33,10 +33,9 @@ def _native_dtypes(kind: str) -> tuple[np.dtype[np.generic], ...]:
 
 
 def _v2_names(kind: str) -> tuple[DTypeSpec_V2, ...]:
-    # NumPy's spelling, except that a generic scale is written explicitly.
+    # NumPy's spelling, except that the generic unit, which NumPy omits, is
+    # written explicitly: the v2 spec requires a bracketed unit.
     def suffix(unit: str, scale: int) -> str:
-        if unit == "generic" and scale == 1:
-            return ""
         return f"[{unit}]" if scale == 1 else f"[{scale}{unit}]"
 
     return tuple(
@@ -280,3 +279,21 @@ def test_generic_time_array_roundtrip(
     np.testing.assert_array_equal(
         values[4:].view(values.dtype.byteorder + "i8"), [expected_fill, expected_fill]
     )
+
+
+def test_unitless_time_v2_reads_as_generic_and_writes_bracketed() -> None:
+    """The legacy unitless spellings stay readable as the generic unit, and write
+    back with the bracketed unit the v2 spec requires (#4580)."""
+    cases: tuple[tuple[str, DateTime64 | TimeDelta64], ...] = (
+        ("<M8", DateTime64(unit="generic", scale_factor=1, endianness="little")),
+        (">M8", DateTime64(unit="generic", scale_factor=1, endianness="big")),
+        ("<m8", TimeDelta64(unit="generic", scale_factor=1, endianness="little")),
+        (">m8", TimeDelta64(unit="generic", scale_factor=1, endianness="big")),
+    )
+    for name, expected in cases:
+        zdtype = type(expected).from_json({"name": name, "object_codec_id": None}, zarr_format=2)
+        assert zdtype == expected
+        assert dict(zdtype.to_json(zarr_format=2)) == {
+            "name": f"{name}[generic]",
+            "object_codec_id": None,
+        }

@@ -498,9 +498,11 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         """
         if zarr_format == 2:
             name: str = self.to_native_dtype().str
-            if self.unit == "generic" and self.scale_factor != 1:
-                # NumPy omits generic scale from dtype.str; preserve it explicitly.
-                name += f"[{self.scale_factor}generic]"
+            if self.unit == "generic":
+                # NumPy's dtype.str omits the generic unit (and its scale), but the
+                # v2 spec requires a bracketed unit, so write it explicitly.
+                scale = "" if self.scale_factor == 1 else self.scale_factor
+                name += f"[{scale}generic]"
             return {"name": name, "object_codec_id": None}
         elif zarr_format == 3:
             return {
@@ -786,9 +788,11 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         """
         if zarr_format == 2:
             name: str = self.to_native_dtype().str
-            if self.unit == "generic" and self.scale_factor != 1:
-                # NumPy omits generic scale from dtype.str; preserve it explicitly.
-                name += f"[{self.scale_factor}generic]"
+            if self.unit == "generic":
+                # NumPy's dtype.str omits the generic unit (and its scale), but the
+                # v2 spec requires a bracketed unit, so write it explicitly.
+                scale = "" if self.scale_factor == 1 else self.scale_factor
+                name += f"[{scale}generic]"
             return {"name": name, "object_codec_id": None}
         elif zarr_format == 3:
             return {
