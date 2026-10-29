@@ -1,60 +1,72 @@
+"""Types, models and readers for Zarr v2 and v3 metadata documents.
+
+This namespace is a convenience: it re-exports the names most code needs,
+with Zarr v3 first. Each name also has one home module, where its
+documentation lives:
+
+- `zarr_metadata.v3` and `zarr_metadata.v2`: the JSON types of each
+  document, extension and data type;
+- `zarr_metadata.model`: the document models and their readers;
+- `zarr_metadata.definition`: definitions, scopes and the field reader
+  that both formats share;
+- `zarr_metadata.problems`: the problems every reader reports;
+- `zarr_metadata.typed_json`: `check`, the type checker for JSON;
+- `zarr_metadata.json_schema`: JSON Schema output;
+- `zarr_metadata.pydantic`: the optional pydantic field types.
+"""
+
 from importlib.metadata import version
 
-from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata.model import (
     UNSET,
-    ZARR_V2_ARRAY_METADATA_STORE_KEY,
-    ZARR_V2_ATTRIBUTES_STORE_KEY,
-    ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY,
-    ZARR_V2_GROUP_METADATA_STORE_KEY,
-    ZARR_V3_ARRAY_METADATA_STORE_KEY,
-    ZARR_V3_CONSOLIDATED_METADATA_KEY,
-    ZARR_V3_GROUP_METADATA_STORE_KEY,
-    MetadataValidationError,
-    ProblemKind,
-    ValidationProblem,
     ZarrV2ArrayMetadata,
-    ZarrV2ArrayMetadataPartial,
-    ZarrV2ArrayMetadataStoreKey,
-    ZarrV2AttributesStoreKey,
+    ZarrV2ArrayMetadataUpdate,
     ZarrV2ConsolidatedMetadata,
-    ZarrV2ConsolidatedMetadataStoreKey,
     ZarrV2GroupMetadata,
-    ZarrV2GroupMetadataPartial,
-    ZarrV2GroupMetadataStoreKey,
+    ZarrV2GroupMetadataUpdate,
     ZarrV3ArrayMetadata,
-    ZarrV3ArrayMetadataPartial,
-    ZarrV3ArrayMetadataStoreKey,
+    ZarrV3ArrayMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
+    ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
-    ZarrV3GroupMetadataPartial,
-    ZarrV3GroupMetadataStoreKey,
-    ZarrV3MetadataField,
-    ZarrV3NamedConfig,
+    ZarrV3GroupMetadataUpdate,
+    ZarrV3NodeMetadataInput,
 )
+from zarr_metadata.problems import MetadataValidationError, ProblemKind, ValidationProblem
+from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
+    ZARR_V2_ARRAY_METADATA_STORE_KEY,
     ZARR_V2_ARRAY_ORDER,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
-    ZarrV2ArrayMetadataJSONPartial,
+    ZarrV2ArrayMetadataStoreKey,
     ZarrV2ArrayOrder,
-    ZarrV2DataTypeMetadata,
     ZarrV2ZArrayJSON,
 )
-from zarr_metadata.v2.attributes import ZarrV2ZAttrsJSON
+from zarr_metadata.v2.attributes import (
+    ZARR_V2_ATTRIBUTES_STORE_KEY,
+    ZarrV2AttributesStoreKey,
+    ZarrV2ZAttrsJSON,
+)
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
-from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataJSON
+from zarr_metadata.v2.consolidated import (
+    ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY,
+    ZarrV2ConsolidatedMetadataJSON,
+    ZarrV2ConsolidatedMetadataStoreKey,
+)
+from zarr_metadata.v2.data_type import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.group import (
+    ZARR_V2_GROUP_METADATA_STORE_KEY,
     ZarrV2GroupMetadataJSON,
-    ZarrV2GroupMetadataJSONPartial,
+    ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import (
+    ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
-    ZarrV3ArrayMetadataJSONPartial,
-    ZarrV3ExtensionField,
+    ZarrV3ArrayMetadataStoreKey,
 )
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RECTILINEAR_CHUNK_GRID_NAME,
@@ -125,7 +137,11 @@ from zarr_metadata.v3.codec.transpose import (
     TransposeCodecName,
 )
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME, ZstdCodecMetadata, ZstdCodecName
-from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
+from zarr_metadata.v3.consolidated import (
+    ZARR_V3_CONSOLIDATED_METADATA_KEY,
+    ZarrV3ConsolidatedMetadataEnvelopeJSON,
+    ZarrV3ConsolidatedMetadataJSON,
+)
 from zarr_metadata.v3.data_type.bool import (
     BOOL_DATA_TYPE_NAME,
     BoolDataTypeName,
@@ -183,15 +199,15 @@ from zarr_metadata.v3.data_type.int64 import (
 )
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
     NUMPY_DATETIME64_DATA_TYPE_NAME,
+    NUMPY_TIME_UNIT,
     NumpyDatetime64DataTypeName,
     NumpyDatetime64FillValue,
+    NumpyTimeUnit,
 )
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NUMPY_TIME_UNIT,
     NUMPY_TIMEDELTA64_DATA_TYPE_NAME,
     NumpyTimedelta64DataTypeName,
     NumpyTimedelta64FillValue,
-    NumpyTimeUnit,
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataTypeName, RawBytesFillValue
 from zarr_metadata.v3.data_type.string import (
@@ -224,7 +240,11 @@ from zarr_metadata.v3.data_type.uint64 import (
     Uint64DataTypeName,
     Uint64FillValue,
 )
-from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON, ZarrV3GroupMetadataJSONPartial
+from zarr_metadata.v3.group import (
+    ZARR_V3_GROUP_METADATA_STORE_KEY,
+    ZarrV3GroupMetadataJSON,
+    ZarrV3GroupMetadataStoreKey,
+)
 
 __version__ = version("zarr-metadata")
 
@@ -361,9 +381,8 @@ __all__ = [
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayMetadataJSONPartial",
-    "ZarrV2ArrayMetadataPartial",
     "ZarrV2ArrayMetadataStoreKey",
+    "ZarrV2ArrayMetadataUpdate",
     "ZarrV2ArrayOrder",
     "ZarrV2AttributesStoreKey",
     "ZarrV2CodecMetadata",
@@ -373,29 +392,27 @@ __all__ = [
     "ZarrV2DataTypeMetadata",
     "ZarrV2GroupMetadata",
     "ZarrV2GroupMetadataJSON",
-    "ZarrV2GroupMetadataJSONPartial",
-    "ZarrV2GroupMetadataPartial",
     "ZarrV2GroupMetadataStoreKey",
+    "ZarrV2GroupMetadataUpdate",
     "ZarrV2ZArrayJSON",
     "ZarrV2ZAttrsJSON",
     "ZarrV2ZGroupJSON",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataJSON",
-    "ZarrV3ArrayMetadataJSONPartial",
-    "ZarrV3ArrayMetadataPartial",
     "ZarrV3ArrayMetadataStoreKey",
+    "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
+    "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3GroupMetadataJSONPartial",
-    "ZarrV3GroupMetadataPartial",
     "ZarrV3GroupMetadataStoreKey",
-    "ZarrV3MetadataField",
+    "ZarrV3GroupMetadataUpdate",
     "ZarrV3MetadataFieldJSON",
-    "ZarrV3NamedConfig",
     "ZarrV3NamedConfigJSON",
+    "ZarrV3NodeMetadataInput",
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "__version__",
