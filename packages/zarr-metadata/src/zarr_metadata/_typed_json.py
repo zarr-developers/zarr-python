@@ -454,10 +454,19 @@ def _named(annotation: object, seen: frozenset[object]) -> tuple[str, str]:
         return choices(values), f"values in [{listed}]"
     if is_union(inner):
         # Name each shape once, since two TypedDicts are both "an object".
-        # A broader shape absorbs a narrower one: "a number" absorbs "an
-        # integer", and "a string" absorbs a `Literal` of strings.
+        # Arrays of two or more fixed lengths are named by their lengths:
+        # a union reports an array against itself only when it has none of
+        # them. A broader shape absorbs a narrower one: "a number" absorbs
+        # "an integer", and "a string" absorbs a `Literal` of strings.
         branches = get_args(inner)
-        named = dict.fromkeys(_named(branch, seen) for branch in branches)
+        lengths = sorted({length for length in map(fixed_length, branches) if length is not None})
+        if len(lengths) > 1:
+            listed = f"{', '.join(map(str, lengths[:-1]))} or {lengths[-1]}"
+            arrays = (f"an array of {listed} elements", f"arrays of {listed} elements")
+            rest = [branch for branch in branches if fixed_length(branch) is None]
+            named = dict.fromkeys([arrays, *(_named(branch, seen) for branch in rest)])
+        else:
+            named = dict.fromkeys(_named(branch, seen) for branch in branches)
         if ("a number", "numbers") in named:
             named.pop(("an integer", "integers"), None)
         if ("a string", "strings") in named:
@@ -541,6 +550,22 @@ def shape_of(annotation: object) -> str | None:
     if isinstance(inner, type) and is_typeddict(inner):
         return "mapping"
     return None
+
+
+def fixed_length(annotation: object) -> int | None:
+    """The length of an array of a fixed length, such as `tuple[str, int]`; None for any other annotation, including `tuple[int, ...]`."""
+    inner = _unaliased(annotation)
+    if get_origin(inner) is not tuple:
+        return None
+    arguments = get_args(inner)
+    if len(arguments) == 2 and arguments[1] is Ellipsis:
+        return None
+    return len(arguments)
+
+
+def _has_length(length: int | None, value: object) -> bool:
+    """Whether `value` has `length` elements, when a branch is an array of a fixed length. Any value passes a branch without one."""
+    return length is None or (is_list_or_tuple(value) and len(value) == length)
 
 
 def has_shape(shape: str | None, value: object) -> bool:
@@ -640,8 +665,8 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     return parse
 
 
-Branch: TypeAlias = tuple[str | None, Parser, frozenset[str] | None]
-"""A branch of a union: its top-level shape (from `shape_of`), its parser, and its keys if it is a TypedDict."""
+Branch: TypeAlias = tuple[str | None, int | None, Parser, frozenset[str] | None]
+"""A branch of a union: its top-level shape (from `shape_of`), its length if it is an array of a fixed length (from `fixed_length`), its parser, and its keys if it is a TypedDict."""
 
 Tag: TypeAlias = tuple[str, Mapping[tuple[type, object], int]]
 """A key that every branch requires as a `Literal`, and the branch that each of its values selects."""
@@ -657,7 +682,8 @@ def any_of(
     """A member whose type is a union of shapes, parsed by the matching branch.
 
     The parser tries only the branches whose top-level shape matches the
-    value. This way a bad element inside an array is reported at its
+    value, and an array of a fixed length only on an array of that length.
+    This way a bad element inside an array is reported at its
     position inside the array, rather than the whole array being reported
     as wrong. A value that matches no branch's shape is reported once,
     with the expected shapes. When every branch is a TypedDict that
@@ -683,8 +709,8 @@ def any_of(
             return _by_tag(branches, tag, value, loc)
         clean: list[tuple[int, int, Parsed]] = []
         failed: list[tuple[int, int, Parsed]] = []
-        for index, (shape, branch, keys) in enumerate(branches):
-            if not has_shape(shape, value):
+        for index, (shape, length, branch, keys) in enumerate(branches):
+            if not has_shape(shape, value) or not _has_length(length, value):
                 continue
             result = branch(value, loc)
             if len(result[1]) != 0:
@@ -716,7 +742,8 @@ def _by_tag(branches: Sequence[Branch], tag: Tag, value: object, loc: Loc) -> Pa
     index = picks.get((type(said), said)) if _hashable(said) else None
     if index is None:
         return value, (outside_of((*loc, key), said, tuple(entry for _, entry in picks)),)
-    return branches[index][1](value, loc)
+    _, _, parse, _ = branches[index]
+    return parse(value, loc)
 
 
 def _keys_of(value: object) -> AbstractSet[str] | None:
@@ -953,7 +980,7 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
             if isinstance(typeddict, type) and is_typeddict(typeddict)
             else None
         )
-        branches.append((shape_of(branch), member, keys))
+        branches.append((shape_of(branch), fixed_length(branch), member, keys))
     literals = frozenset(
         index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
