@@ -60,10 +60,25 @@ The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+
+def _canonical(configuration: V2ChunkKeyEncodingConfiguration) -> V2ChunkKeyEncodingConfiguration:
+    """Remove a `separator` of `.`, because an absent `separator` means the same thing.
+
+    "If not specified, `separator` defaults to `.`"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29),
+    so the two spellings describe the same encoding.
+    """
+    if configuration.get("separator") != ".":
+        return configuration
+    return {}
+
+
 V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
-    name=V2_CHUNK_KEY_ENCODING_NAME, configuration=V2ChunkKeyEncodingConfiguration
+    name=V2_CHUNK_KEY_ENCODING_NAME,
+    configuration=V2ChunkKeyEncodingConfiguration,
+    canonical=_canonical,
 )
-"""The `v2` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
+"""The `v2` chunk key encoding. The type of `separator` already restricts its values, so the encoding has no rules of its own."""
 
 
 __all__ = [
