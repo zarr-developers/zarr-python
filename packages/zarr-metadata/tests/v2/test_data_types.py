@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from zarr_metadata import UNSET
+from zarr_metadata._json import value_at
 from zarr_metadata.definition import (
     AcceptedField,
     RefusedField,
@@ -108,12 +110,15 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         ("<M8[ns][s]", ("dtype",)),
         ("<M8[x]", ("dtype",)),
         ("|O4", ("dtype",)),
-        ([["x", "<f4"], ["x", "<i4"]], ("dtype", "fields", 1, 0)),
-        ([["x", "float32"]], ("dtype", "fields", 0, 1)),
-        ([["x", "<f4", [-1]]], ("dtype", "fields", 0, 2, 0)),
-        ([["x"]], ("dtype", "fields", 0)),
-        ([["x", "<f4", [2], 0]], ("dtype", "fields", 0)),
-        ([["r", "|u1"], ["s", [["t", "float32"]]]], ("dtype", "fields", 1, 1, "fields", 0, 1)),
+        ([["x", "<f4"], ["x", "<i4"]], ("dtype", 1, 0)),
+        ([["x", "float32"]], ("dtype", 0, 1)),
+        ([["x", "<f4", [-1]]], ("dtype", 0, 2, 0)),
+        ([["x"]], ("dtype", 0)),
+        ([["x", "<f4", [2], 0]], ("dtype", 0)),
+        ([["r", "|u1"], ["s", [["t", "float32"]]]], ("dtype", 1, 1, 0, 1)),
+        ([[5, "<f4"]], ("dtype", 0, 0)),
+        ("struct", ("dtype",)),
+        ([["x", "struct"]], ("dtype", 0, 1)),
     ],
     ids=[
         "no-typestr",
@@ -137,13 +142,21 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         "short-record",
         "long-record",
         "nested-record-type",
+        "record-name",
+        "struct-string",
+        "record-struct-string",
     ],
 )
 def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at: Loc) -> None:
-    """A typestr with a size, byte order or unit that its family does not accept is refused, and the problem is located at the field. A struct's problems are located under `fields`, at the record and the position inside it. If a record's type is refused, the problem is reported there and the struct is still read."""
+    """A typestr with a size, byte order or unit that its family does not accept is refused with one `invalid_value` problem, located at the field. A struct's problems are located at the record and the position inside it, where the document writes them. If a record's type is refused, the problem is reported there and the struct is still read."""
     kind, problems = _read(value)
-    assert kind is RefusedField or "fields" in at
+    assert kind is RefusedField or len(at) > 1
     assert next(loc for loc, _ in problems) == at
+    if isinstance(value, str):
+        # A typestr is one token: one wrong value, never a key a reader may skip.
+        assert problems == [(at, "invalid_value")]
+    # Each location is in the document, so a tool can point at it.
+    assert value_at({"dtype": value}, at) is not UNSET
 
 
 def test_error_a_str_typestr_without_a_byte_order_states_its_size_in_bytes() -> None:
@@ -158,9 +171,9 @@ def test_error_a_str_typestr_without_a_byte_order_states_its_size_in_bytes() -> 
 def test_error_a_time_typestr_without_a_unit_is_refused_with_an_example_of_its_own_family(
     value: str, example: str
 ) -> None:
-    """`<M8` and `<m8` are refused as a dtype, because the v2 spec requires a unit. The message gives an example with a unit of the same family: a datetime for `M`, a timedelta for `m`."""
+    """`<M8` and `<m8` are refused as a dtype, because the v2 spec requires a unit. The unit is a part of the typestr, so the typestr is an `invalid_value`, not a missing key. The message gives an example with a unit of the same family: a datetime for `M`, a timedelta for `m`."""
     _, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
-    assert [(p.kind, example in p.message) for p in problems] == [("missing_key", True)]
+    assert [(p.kind, example in p.message) for p in problems] == [("invalid_value", True)]
 
 
 @pytest.mark.parametrize(
@@ -254,15 +267,21 @@ def test_every_family_has_an_example() -> None:
     }
 
 
+def test_error_a_struct_record_s_problem_holds_the_value_the_document_writes_there() -> None:
+    """A problem in a record is located in the document, so it carries the value written there as its `input`."""
+    _, problems = resolve([["x", "float32"]], ZarrV2DataTypeDefinition, CONTEXT, ("dtype",))
+    assert [(p.loc, p.input) for p in problems] == [(("dtype", 0, 1), "float32")]
+
+
 def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
-    """`fields_of` places a record's type under the struct's own configuration location, `("dtype", "fields", 0, 1)`, not under a `configuration` key a v2 document does not have."""
+    """`fields_of` places a record's type where the document writes it, `("dtype", 0, 1)`: under neither a `configuration` key nor a `fields` key, which a v2 document does not have."""
     resolved, _ = resolve(
         [["a", "<i0"], ["b", "<f4"]], ZarrV2DataTypeDefinition, CONTEXT, ("dtype",)
     )
     assert [loc for loc, _ in fields_of(resolved, ("dtype",))] == [
         ("dtype",),
-        ("dtype", "fields", 0, 1),
-        ("dtype", "fields", 1, 1),
+        ("dtype", 0, 1),
+        ("dtype", 1, 1),
     ]
 
 
