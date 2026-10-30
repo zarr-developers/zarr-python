@@ -71,6 +71,7 @@ from zarr_metadata._json import (
     json_text,
     refine_json,
     refine_user_data,
+    said,
     shown,
     with_input,
 )
@@ -254,9 +255,17 @@ class Definition(Generic[C]):
         return refine_json(data, loc)
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        """The location of the configuration of a field at `loc`: under `configuration` for v3, or at the field itself for a format that writes the parameters next to the name."""
-        return (*loc, "configuration")
+    def _undeclared_parts(cls, family: str, name: str, keys: Sequence[str]) -> str:
+        """The message for `name`, a name filed under `family` that encodes the configuration members `keys`, which the definition does not declare. For a kind whose names encode configuration; by default the message names the keys."""
+        return (
+            f"expected a name that {family!r} reads, got {shown(name)}, which encodes "
+            f"{said(keys)} that it does not declare"
+        )
+
+    @classmethod
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        """The location in the document of `place`, a location in the configuration of a field at `loc`: under `configuration` for v3, or under the field itself for a format that writes the parameters next to the name. `place` is `()` for the configuration itself."""
+        return (*loc, "configuration", *place)
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:
@@ -1209,15 +1218,15 @@ def fields_of(
 ) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
     """Yield `resolved` (a field a scope read) with its location, then each nested field recursively, each with its location.
 
-    `loc` is the location of `resolved`. A nested field is located inside
-    the configuration, at the kind's `_configuration_loc` followed by the
-    field's place, the same way `resolve` locates problems. Each field's
-    nested fields are its `nested`. A field whose configuration was not
-    checked has none.
+    `loc` is the location of `resolved`. A nested field is located where
+    the document writes its place in the configuration, as the kind's
+    `_in_configuration` says, the same way `resolve` locates problems.
+    Each field's nested fields are its `nested`. A field whose
+    configuration was not checked has none.
     """
     yield loc, resolved
     for place, inner in resolved.nested.items():
-        yield from fields_of(inner, (*resolved.read_as._configuration_loc(loc), *place))
+        yield from fields_of(inner, resolved.read_as._in_configuration(loc, place))
 
 
 def with_problems(
@@ -1484,7 +1493,7 @@ def _read(
     _, carried = kind._filed_under(name)
     if carried is not None:
         return _read_carried(data, name, kind, definition, given, carried, loc)
-    at = kind._configuration_loc(loc)
+    at = kind._in_configuration(loc, ())
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), missing
@@ -1498,14 +1507,16 @@ def _read(
     written: dict[Loc, JSONValue] = {}
     inside: list[ValidationProblem] = []
     for field in nested:
-        inside.extend(_envelope(field))
-        inner, found_inside = _read(field.json, field.kind, context, field.loc)
-        within[field.loc[len(at) :]] = inner
+        place = field.loc[len(at) :]
+        placed = dataclasses.replace(field, loc=kind._in_configuration(loc, place))
+        inside.extend(_envelope(placed))
+        inner, found_inside = _read(field.json, field.kind, context, placed.loc)
+        within[place] = inner
         # The input was refined JSON, so the result is JSON, or a field
         # refused for its contents, never for not being JSON.
         written[field.loc] = cast("JSONValue", document_json(inner))
         inside.extend(found_inside)
-        inside.extend(_sized(field, inner))
+        inside.extend(_sized(placed, inner))
     # The rules may look up a nested field by its name, so they run only
     # when every nested field has a name. Any other problem with a nested
     # field belongs to that field and is reported at its location, as with
@@ -1524,15 +1535,50 @@ def _read(
         own.extend(
             ruled(definition, lambda: definition.rules(read_only(configuration), within), at)
         )
-    if configuration is None or not _usable(own):
+    placed = _in_document(kind, loc, given is not None, own)
+    if configuration is None or not _usable(placed):
         refused = RefusedField(
             json=data, name=name, read_as=kind, definition=definition, nested=within
         )
-        return refused, (*own, *inside)
+        return refused, (*placed, *inside)
     read = AcceptedField(
         json=data, name=name, definition=definition, configuration=configuration, nested=within
     )
-    return read, (*own, *inside)
+    return read, (*placed, *inside)
+
+
+def in_document(
+    field: ResolvedField[Any], loc: Loc, problems: Sequence[ValidationProblem]
+) -> Problems:
+    """`problems`, which a definition's functions found in the configuration of `field` (a field at `loc`), located under the configuration as the kind locates it, each moved to where the document writes it, as `resolve` places a definition's rules."""
+    written = field.read_as._named_configuration(field.json)[1] is not None
+    return _in_document(field.read_as, loc, written, problems)
+
+
+def _in_document(
+    kind: type[Definition[Any]], loc: Loc, written: bool, problems: Sequence[ValidationProblem]
+) -> Problems:
+    """`problems`, found in the configuration of a field of `kind` at `loc` and located under the configuration's location, each moved to where the document writes its place, as `kind._in_configuration` says.
+
+    `written` says whether the document writes a configuration. A field
+    whose configuration has a location of its own, and which writes none
+    (a v3 codec written as its name alone, or with no `configuration`),
+    has an empty configuration that the document does not hold. A member
+    found missing from it is then the configuration itself, missing, as
+    for a field that requires a configuration, and a problem with the
+    configuration as a whole is the field's.
+    """
+    at = kind._in_configuration(loc, ())
+    absent = not written and at != loc
+    placed: list[ValidationProblem] = []
+    for found in problems:
+        place = found.loc[len(at) :]
+        if not absent:
+            there = kind._in_configuration(loc, place)
+        else:
+            there = loc if len(place) == 0 else at
+        placed.append(dataclasses.replace(found, loc=there))
+    return tuple(placed)
 
 
 def _named(field: _NestedField) -> bool:
@@ -1560,21 +1606,33 @@ def _read_carried(
     _, beside, _ = _checked(
         EmptyConfiguration,
         {} if given is None else given,
-        kind._configuration_loc(loc),
+        kind._in_configuration(loc, ()),
     )
-    configuration, judged = definition.read_configuration(carried)
+    # A name is a single token, so a part the definition does not declare is
+    # a wrong value of the name, not an unknown key a reader may leave out.
+    # The parts it does not declare are reported in one problem, by how the
+    # name spells them, and the rest is read.
+    members = typeddict_keys(definition.configuration).members
+    declared = {key: value for key, value in carried.items() if key in members}
+    undeclared = [key for key in carried if key not in members]
+    configuration, judged = definition.read_configuration(declared)
     # A problem with the configuration encoded in the name belongs to the
     # field. It is located at the field, where the name is, and the
     # `input` and `ctx` that described a configuration member do not apply
-    # to the name, so they are cleared.
+    # to the name, so they are cleared. Each is a wrong value of the name:
+    # a part it lacks is not a missing key.
     problems = (
         *beside,
-        *(dataclasses.replace(found, loc=loc, input=UNSET, ctx={}) for found in judged),
+        *(
+            dataclasses.replace(found, loc=loc, input=UNSET, ctx={}, kind="invalid_value")
+            for found in judged
+        ),
     )
-    # A name is a single token. An undeclared part of the encoded
-    # configuration cannot be left out, as an extra key next to the name
-    # can, so any problem with the encoded configuration refuses the field.
-    if configuration is None or not _usable(beside) or len(judged) != 0:
+    if len(undeclared) != 0:
+        message = kind._undeclared_parts(definition.name, name, undeclared)
+        problems = (*problems, ValidationProblem(loc, message, "invalid_value"))
+    # Any problem with the encoded configuration refuses the field.
+    if configuration is None or not _usable(beside) or len(judged) != 0 or len(undeclared) != 0:
         refused = RefusedField(json=data, name=name, read_as=kind, definition=definition)
         return refused, problems
     return AcceptedField(
@@ -1723,6 +1781,7 @@ __all__ = [
     "fill_value_problems",
     "format_of",
     "held",
+    "in_document",
     "is_field",
     "kind_of",
     "named_configuration",

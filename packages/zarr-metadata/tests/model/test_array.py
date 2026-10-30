@@ -46,6 +46,7 @@ from zarr_metadata.model import (
     is_node_path_v3,
     read_array_metadata_v2,
     read_array_metadata_v3,
+    read_consolidated_metadata_v2,
     read_group_metadata_v2,
     read_group_metadata_v3,
 )
@@ -1111,7 +1112,7 @@ def test_v2_from_key_value_rejects_zarray_attributes() -> None:
         ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        (("attributes",), "invalid_value")
+        ((".zarray", "attributes"), "invalid_value")
     ]
 
 
@@ -1631,7 +1632,7 @@ def test_v2_structured_dtype_malformed_record_rejected() -> None:
     """A field record with the wrong arity is rejected, at the record."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dtype": (("a",),)}
     problems = read_array_metadata_v2(doc).problems
-    assert [p.loc for p in problems] == [("dtype", "fields", 0)]
+    assert [p.loc for p in problems] == [("dtype", 0)]
 
 
 def test_v2_order_literal_enforced() -> None:
@@ -1727,9 +1728,9 @@ def test_array_zarr_format_rejects_float(
     document: object,
     read: Callable[[object], ZarrV2ArrayMetadataReading | ZarrV3ArrayMetadataReading],
 ) -> None:
-    """Integer-valued floats do not satisfy integer format literals."""
+    """Integer-valued floats do not satisfy integer format literals. The float is the wrong type, as `4.0` is in `shape` and `1.0` in a codec's integer literal."""
     problems = read(document).problems
-    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_type")]
 
 
 def test_array_v2_keeps_an_unknown_document_member() -> None:
@@ -1751,9 +1752,8 @@ def test_array_v2_keeps_an_unknown_document_member() -> None:
         (object(), "invalid_type"),
         ({1, 2}, "invalid_type"),
         (b"\x00", "invalid_type"),
-        (math.nan, "invalid_value"),
     ],
-    ids=["object", "set", "bytes", "nan"],
+    ids=["object", "set", "bytes"],
 )
 def test_error_array_v2_unknown_member_that_is_not_json(member: object, kind: str) -> None:
     """Ignored does not mean unchecked: an unknown member must be a JSON value, as in v3."""
@@ -1762,6 +1762,19 @@ def test_error_array_v2_unknown_member_that_is_not_json(member: object, kind: st
     assert [(p.loc, p.kind) for p in read_array_metadata_v2(doc).problems] == [
         (("unexpected",), kind)
     ]
+
+
+def test_an_unknown_member_may_hold_a_non_finite_number_in_either_format() -> None:
+    """A member the spec does not define is not read, so like attributes it may hold `NaN` and the infinities, in a v2 `.zarray` as in a v3 document, read alone or in consolidated metadata."""
+    v2 = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": math.nan}
+    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"unexpected": math.nan}
+    zmetadata = {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": v2}}
+    assert read_array_metadata_v2(v2).problems == ()
+    assert read_array_metadata_v3(v3).problems == ()
+    assert read_consolidated_metadata_v2(zmetadata).problems == ()
+    model = read_array_metadata_v2(v2).metadata
+    assert model is not None
+    assert math.isnan(cast("float", model.extra_fields["unexpected"]))
 
 
 @pytest.mark.parametrize("key", [7, None, True, (1, 2)], ids=["int", "none", "bool", "tuple"])
@@ -1804,7 +1817,7 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
         # Values of more than one byte require an `endian`.
         (
             {"data_type": "int16", "codecs": ({"name": "bytes"},)},
-            [(("codecs", 0, "configuration", "endian"), "missing_key")],
+            [(("codecs", 0, "configuration"), "missing_key")],
         ),
         ({"shape": (2,), "dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
         # The shape is not derived from the grid, and the scalar default
@@ -2048,7 +2061,7 @@ def test_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2ArrayMetadata.from_key_value({".zarray": b"null"})
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((), "invalid_type")
+        ((".zarray",), "invalid_type")
     ]
 
 

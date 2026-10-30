@@ -53,7 +53,7 @@ def test_a_v2_document_the_scope_reads_has_no_problem(changes: dict[str, Any]) -
     [
         ({"dtype": "float32"}, ("dtype",), "invalid_value"),
         ({"dtype": "<i3"}, ("dtype",), "invalid_value"),
-        ({"dtype": [["x", "<f4"], ["x", "<f4"]]}, ("dtype", "fields", 1, 0), "invalid_value"),
+        ({"dtype": [["x", "<f4"], ["x", "<f4"]]}, ("dtype", 1, 0), "invalid_value"),
         ({"dtype": 3}, ("dtype",), "invalid_type"),
         ({"dtype": "<i4", "fill_value": "NaN"}, ("fill_value",), "invalid_type"),
         ({"dtype": "<u1", "fill_value": 256}, ("fill_value",), "invalid_value"),

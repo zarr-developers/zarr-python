@@ -935,13 +935,42 @@ def test_a_shape_is_what_a_union_dispatches_on(annotation: object, shape: str | 
         (Literal["C", "F"], "Q", 'expected one of ["C", "F"], got "Q"'),
         (tuple[str, ...], "nuclei", 'expected an array, got "nuclei"'),
         (str, None, "expected a string, got null"),
+        (
+            tuple[str, int, int] | tuple[str, int],
+            ["a"],
+            'expected an array of 2 or 3 elements, got ["a"]',
+        ),
+        (tuple[str, int, int] | tuple[str, int], [5, 1], "expected a string, got 5"),
     ],
-    ids=["a-union-of-objects", "one-value", "values", "array", "null"],
+    ids=[
+        "a-union-of-objects",
+        "one-value",
+        "values",
+        "array",
+        "null",
+        "arrays-of-no-length-given",
+        "array-of-a-length-given",
+    ],
 )
 def test_a_message_names_what_was_expected_and_shows_the_json_it_got(
     annotation: object, value: object, message: str
 ) -> None:
     assert [problem.message for problem in _read(annotation, value)[1]] == [message]
+
+
+@pytest.mark.parametrize(
+    "annotation", [Literal[0, 1, 2], Literal[0, 1, 2] | bool], ids=["alone", "in-a-union"]
+)
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [(1.0, "invalid_type"), (5, "invalid_value"), ("1", "invalid_type")],
+    ids=["integral-float", "other-integer", "string"],
+)
+def test_error_a_value_outside_an_integer_literal_has_one_kind_wherever_the_literal_is(
+    annotation: object, value: object, kind: str
+) -> None:
+    """A float is the wrong type for an integer `Literal`, as it is for an `int`, whether the `Literal` stands alone or in a union. Another integer is the wrong value."""
+    assert _found(_read(annotation, value)) == [((), kind)]
 
 
 def test_a_shape_is_described_as_a_message_would_name_it() -> None:
@@ -956,6 +985,10 @@ def test_a_shape_is_described_as_a_message_would_name_it() -> None:
     assert describe(tuple[tuple[str, ...], ...]) == "an array of arrays of strings"
     assert describe(tuple[Literal["C", "F"], ...]) == 'an array of values in ["C", "F"]'
     assert describe(int | tuple[int, ...]) == "an integer or an array of integers"
+    # Arrays of fixed lengths are named by their lengths.
+    assert describe(tuple[str, int, int] | tuple[str, int] | None) == (
+        "an array of 2 or 3 elements or null"
+    )
     # A broader shape includes a narrower one: "a string" covers the hex
     # string spelling of a float32 and the strings of its non-finite values.
     assert describe(Float32FillValue) == "a number or a string"
