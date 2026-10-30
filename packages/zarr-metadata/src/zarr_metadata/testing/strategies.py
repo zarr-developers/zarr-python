@@ -42,7 +42,8 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypeVar, cast
 
 from hypothesis import strategies as st
 
-from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition._definition import Definition, as_kind, canonicalize, kind_of
 from zarr_metadata.testing._chunk_grid import CHUNK_GRID_STRATEGIES
 from zarr_metadata.testing._chunk_key_encoding import CHUNK_KEY_ENCODING_STRATEGIES
 from zarr_metadata.testing._codec import CODEC_STRATEGIES
@@ -57,16 +58,9 @@ from zarr_metadata.testing._strategy import (
     DefinitionStrategy,
     Strategies,
 )
-from zarr_metadata.v3._definition import (
-    Chunk,
-    DataTypeDefinition,
-    Definition,
-    as_kind,
-    canonicalize,
-    carrying_name,
-    kind_of,
-)
-from zarr_metadata.v3._registry import CORE, Context
+from zarr_metadata.v3._context import ZarrV3Context
+from zarr_metadata.v3._core import CORE
+from zarr_metadata.v3._definition import Chunk, DataTypeDefinition
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -74,12 +68,13 @@ if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
 
     from zarr_metadata._common import JSONValue
+    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3._context import ZarrV3ContextSlots
     from zarr_metadata.v3._definition import (
         ChunkGridDefinition,
         ChunkKeyEncodingDefinition,
         CodecDefinition,
     )
-    from zarr_metadata.v3.definition import ZarrV3MetadataFieldJSON
 
 C = TypeVar("C")
 
@@ -201,7 +196,7 @@ def _any_spelling(
     spec defines itself, are written as the bare name.
     """
     configuration = cast("Mapping[str, JSONValue]", draw(configurations))
-    carried = carrying_name(definition, configuration)
+    carried = definition._carrying_name(configuration)  # pyright: ignore[reportPrivateUsage]
     if carried is not None:
         return carried
     if _written_bare(definition):
@@ -217,12 +212,18 @@ def _any_spelling(
     return cast("ZarrV3MetadataFieldJSON", field)
 
 
+def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
+    """The scope that claims `definition` and nothing else."""
+    slot = next(slot for slot, kind in ZarrV3Context.kinds.items() if isinstance(definition, kind))
+    return ZarrV3Context(**cast("ZarrV3ContextSlots", {slot: (definition,)}))
+
+
 def _canonical(
     definition: Definition[Any], field: ZarrV3MetadataFieldJSON
 ) -> ZarrV3MetadataFieldJSON:
     """`field` in the spelling `canonicalize` gives it, read in a scope of its own definition."""
     kind = as_kind(kind_of(definition))
-    canonical, problems = canonicalize(field, kind, Context.of(definition))
+    canonical, problems = canonicalize(field, kind, _scope_of(definition))
     if len(problems) != 0:
         msg = f"the strategy for {definition.name!r} drew {field!r}, which is refused: {problems!r}"
         raise ValueError(msg)

@@ -13,13 +13,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias, cast
 
+from zarr_metadata.definition._definition import Definition
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
-    Definition,
 )
 
 if TYPE_CHECKING:

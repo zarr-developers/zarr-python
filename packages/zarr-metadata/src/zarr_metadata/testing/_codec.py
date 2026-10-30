@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
 
+from zarr_metadata.definition._definition import AcceptedField
 from zarr_metadata.testing._data_type import FLOAT_WIDTHS, INTEGER_RANGES, finite_floats
 from zarr_metadata.testing._strategy import CodecStrategy
 from zarr_metadata.v3._definition import Chunk, storage_of
@@ -95,8 +96,7 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
     are small non-negative integers, which every listed type holds.
     """
     data_type = chunk.data_type
-    read = data_type is not None and data_type.resolution == "read"
-    definition = data_type.definition if data_type is not None and read else None
+    definition = data_type.definition if isinstance(data_type, AcceptedField) else None
     if definition is None:
         offset: st.SearchStrategy[JSONValue] = st.integers(0, 127)
         scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)

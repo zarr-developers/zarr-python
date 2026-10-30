@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, Any, Final, Literal, cast, get_args
 
 from hypothesis import strategies as st
 
+from zarr_metadata._numpy import NUMPY_TIME_MAX_SCALE_FACTOR
+from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.testing._strategy import DataTypeStrategy
-from zarr_metadata.v3._definition import EmptyConfiguration
 from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
-from zarr_metadata.v3.data_type._numpy_time import NUMPY_TIME_MAX_SCALE_FACTOR
+from zarr_metadata.v3.data_type._numpy_time import NUMPY_TIME_UNIT
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
@@ -28,10 +29,7 @@ from zarr_metadata.v3.data_type.int16 import INT16_DATA_TYPE
 from zarr_metadata.v3.data_type.int32 import INT32_DATA_TYPE
 from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
-from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NUMPY_TIME_UNIT,
-    NUMPY_TIMEDELTA64_DATA_TYPE,
-)
+from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE
 from zarr_metadata.v3.data_type.uint8 import UINT8_DATA_TYPE

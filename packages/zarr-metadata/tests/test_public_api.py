@@ -5,7 +5,12 @@ import pkgutil
 import re
 from typing import Literal, get_args, get_origin
 
+import pytest
+
 import zarr_metadata as zm
+from zarr_metadata.definition import Definition
+from zarr_metadata.v2.definition import ZarrV2Context
+from zarr_metadata.v3.definition import ZarrV3Context
 
 
 def _group_rank(s: str) -> int:
@@ -24,36 +29,33 @@ def _group_rank(s: str) -> int:
 EXPECTED = [
     # Category A — metadata-document types
     "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ZArrayJSON",
     "ZarrV2GroupMetadataJSON",
-    "ZarrV2GroupMetadataJSONPartial",
     "ZarrV2ZGroupJSON",
     "ZarrV2ConsolidatedMetadataJSON",
     "ZarrV2ZAttrsJSON",
     "ZarrV2CodecMetadata",
     "ZarrV3ArrayMetadataJSON",
-    "ZarrV3ArrayMetadataJSONPartial",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3GroupMetadataJSONPartial",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3NamedConfigJSON",
     "ZarrV3MetadataFieldJSON",
     "JSONValue",
     # Category A' — metadata models (in-memory dataclasses over the documents)
     "ZarrV2ArrayMetadata",
-    "ZarrV2ArrayMetadataPartial",
+    "ZarrV2ArrayMetadataUpdate",
     "ZarrV3ArrayMetadata",
-    "ZarrV3ArrayMetadataPartial",
+    "ZarrV3ArrayMetadataUpdate",
     "ZarrV2GroupMetadata",
-    "ZarrV2GroupMetadataPartial",
+    "ZarrV2GroupMetadataUpdate",
     "ZarrV3GroupMetadata",
-    "ZarrV3GroupMetadataPartial",
+    "ZarrV3GroupMetadataUpdate",
+    "ZarrV3ConsolidatedMetadataInput",
+    "ZarrV3NodeMetadataInput",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadata",
-    "ZarrV3NamedConfig",
-    "ZarrV3MetadataField",
     "ValidationProblem",
     "MetadataValidationError",
     "ProblemKind",
@@ -240,7 +242,7 @@ def test_all_is_grouped_and_unique() -> None:
 
 # Core document/model names: the format version comes first (`ZarrV2` /
 # `ZarrV3`), then the CamelCase entity, then an optional role suffix
-# (`JSON`, `JSONPartial`, `Partial`, `StoreKey`) — validated loosely here
+# (`JSON`, `Update`, `Reading`, `StoreKey`) — validated loosely here
 # because `JSON` decomposes into single-letter words under any strict
 # word-splitting regex.
 _CORE_NAME = re.compile(r"^ZarrV[23](?:[A-Z][a-z0-9]*)+$")
@@ -267,11 +269,13 @@ _EXTENSION_ROLES = (
     "FillValue",
     "Configuration",
     "Component",
-    # What one kind of extension's metadata is, as JSON: `CodecDefinition`,
-    # the value holding a codec's name, configuration TypedDict and rules.
+    # The definition of one kind of extension metadata as JSON: for example,
+    # `CodecDefinition`, which holds a codec's name, configuration TypedDict
+    # and rules.
     "Definition",
-    # A configuration member holding a metadata field of that kind:
-    # `CodecField`, read in the scope its field is read in.
+    # A configuration member that holds a metadata field of that kind: for
+    # example, `ZarrV3CodecField`, read in the same scope as the field that
+    # contains it.
     "Field",
     # How to draw one kind of definition's configurations, in
     # `zarr_metadata.testing.strategies`: `CodecStrategy`.
@@ -289,6 +293,13 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Chunk",
+        # The algebra of scopes: the key of a claim, and a conflict between
+        # two definitions of one name.
+        "ClaimKey",
+        "Conflict",
+        "ScopeConflictError",
+        # A reader's problems, as the signatures of every reader name them.
+        "Problems",
         "CodecKind",
         "CodecSize",
         "Context",
@@ -296,24 +307,38 @@ _STANDALONE_VOCAB = frozenset(
         "Lengths",
         "Loc",
         "Nested",
-        "Resolution",
-        "Resolved",
+        "NodeName",
+        "NodePath",
+        # The result of reading a field in a scope: `AcceptedField` (read by the
+        # definition that claims its name), `UnclaimedField`, or `RefusedField`.
+        # `ResolvedField` is the union of the three.
+        "AcceptedField",
+        "RefusedField",
+        "ResolvedField",
         "Stage",
         "StorageClass",
-        "Unread",
+        "UnclaimedField",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",
         "HexFloat16",
         "HexFloat32",
         "HexFloat64",
+        "JSONSchema",
         "JSONValue",
+        "UserJSONValue",
+        # A pydantic field's scope, fixed: `Annotated[Model, InScope(CONTEXT)]`.
+        "InScope",
         "MetadataValidationError",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
+        # What a repair of a writer's bug changed, in the same way that
+        # `ValidationProblem` and `ProblemKind` describe what a read found.
+        "Repair",
+        "RepairKind",
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",
@@ -321,7 +346,6 @@ _STANDALONE_VOCAB = frozenset(
         "Strategies",
         "Struct",
         "StructField",
-        "TypedDictKeys",
         "ValidationProblem",
     }
 )
@@ -399,10 +423,10 @@ def constant_name_for(type_name: str) -> str:
     word boundary in the spec vocabulary these names model.
 
     Consecutive capitals do not split, so acronym-adjacent names derive badly:
-    `ZarrV2ZArrayJSON` -> `ZARR_V2ZARRAY_JSON` and `...JSONPartial` ->
-    `...JSONPARTIAL`. Every such name in the package today is a `TypedDict` or
-    `TypeAliasType` that backs no constant, so none reaches this function — but
-    a future `Literal` spelled that way would silently be held to a bad name.
+    `ZarrV2ZArrayJSON` -> `ZARR_V2ZARRAY_JSON`. Every such name in the package
+    today is a `TypedDict` or `TypeAliasType` that backs no constant, so none
+    reaches this function — but a future `Literal` spelled that way would
+    silently be held to a bad name.
     Splitting acronyms correctly needs a vocabulary, not a regex, so the rule
     stays syntactic and this stays a known limit.
     """
@@ -492,7 +516,7 @@ def _value_tied_constants() -> set[str]:
 # `Literal` in the same module has identical members. Pairing is by value, so a
 # tie carries no signal about which name the constant should take. These are
 # checked by eye; the count below fails if the tied set grows silently.
-KNOWN_VALUE_TIES = 9
+KNOWN_VALUE_TIES = 7
 
 
 def test_constant_names_derive_from_their_type_names() -> None:
@@ -525,3 +549,72 @@ def test_value_tied_constants_are_a_known_set() -> None:
         f"these are unchecked by the derivation rule and must be named by hand:\n"
         + "\n".join(sorted(tied))
     )
+
+
+_FRONT_DOORS = ("zarr_metadata.v2", "zarr_metadata.v3")
+"""The module of each format that also exports every definition and scope of that format, and the format's scope class."""
+
+
+_SCOPE_CLASSES = (ZarrV2Context, ZarrV3Context)
+"""The class of the scope of each format."""
+
+
+def _builds_scopes(value: object) -> bool:
+    """Whether a front door may alias `value`: a definition, a scope, or a scope class."""
+    return isinstance(value, (Definition, *_SCOPE_CLASSES)) or any(
+        value is scope for scope in _SCOPE_CLASSES
+    )
+
+
+def _homes() -> dict[str, list[str]]:
+    """Each public name, and every public submodule that exports it, with a format's front door left out for a definition or scope it aliases."""
+    homes: dict[str, list[str]] = {}
+    for module_name in sorted(_iter_module_names() - {"zarr_metadata"}):
+        for name in getattr(importlib.import_module(module_name), "__all__", ()):
+            homes.setdefault(name, []).append(module_name)
+    for name, modules in homes.items():
+        others = [module for module in modules if module not in _FRONT_DOORS]
+        if len(others) == 1 and len(modules) == 2:
+            homes[name] = others
+    return homes
+
+
+def test_every_name_has_one_public_home() -> None:
+    """Each public name is exported by exactly one public submodule, its home. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object, and so may the front door of its format (`zarr_metadata.v2` or `zarr_metadata.v3`) when the name is a definition, a scope or the scope class of that format."""
+    homes = _homes()
+    duplicated = {name: modules for name, modules in homes.items() if len(modules) > 1}
+    assert duplicated == {}
+    homeless = [name for name in zm.__all__ if name not in homes and name != "__version__"]
+    assert homeless == [], "a top-level name must also be exported by its home submodule"
+    aliases = [
+        name
+        for name in zm.__all__
+        if name in homes
+        and getattr(zm, name) is not getattr(importlib.import_module(homes[name][0]), name)
+    ]
+    assert aliases == [], "a top-level name must be the same object as the name in its home module"
+    for door in _FRONT_DOORS:
+        module = importlib.import_module(door)
+        for name in module.__all__:
+            (home,) = homes[name]
+            if home == door:
+                continue
+            value = getattr(importlib.import_module(home), name)
+            assert home.startswith(f"{door}."), f"{door} aliases {name} of another format"
+            assert _builds_scopes(value), f"{door} aliases {name}"
+            assert getattr(module, name) is value, f"{door}.{name} is another object"
+
+
+@pytest.mark.parametrize("door", _FRONT_DOORS)
+def test_a_front_door_exports_every_definition_and_scope_of_its_format(door: str) -> None:
+    """`zarr_metadata.v2` and `zarr_metadata.v3` each export every definition, scope and scope class that a submodule of theirs exports, so one import builds or extends a scope of that format."""
+    exported = set(importlib.import_module(door).__all__)
+    missing = sorted(
+        name
+        for module_name in _iter_module_names()
+        if module_name.startswith(f"{door}.")
+        for name in getattr(importlib.import_module(module_name), "__all__", ())
+        if _builds_scopes(getattr(importlib.import_module(module_name), name))
+        and name not in exported
+    )
+    assert missing == []
