@@ -24,9 +24,6 @@ if TYPE_CHECKING:
 
     from zarr_metadata.definition._definition import Nested
 
-# List the longer record first. A record that matches neither form is
-# reported against the first branch, and a wrong shape is a deeper
-# problem than a wrong length.
 ZarrV2StructRecord = (
     tuple[str, ZarrV2DataTypeField, tuple[Annotated[int, Ge(0)], ...]]
     | tuple[str, ZarrV2DataTypeField]

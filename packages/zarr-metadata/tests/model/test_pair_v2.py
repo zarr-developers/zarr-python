@@ -432,21 +432,39 @@ def test_error_a_node_entry_with_a_problem_is_refused_at_the_entry(
     assert raised.value.problems[0].loc == at
 
 
-def test_error_two_entries_for_one_node_file_are_refused() -> None:
-    """Two keys that name the same file of the same node (`.zarray` and `/.zarray`) are a problem at the second key, since one of them would otherwise not be read. A conflict is located at the key as the document writes it."""
+@pytest.mark.parametrize(
+    ("key", "fault"),
+    [
+        ("/.zarray", 'starts with "/"'),
+        ("/a/.zarray", 'starts with "/"'),
+        ("a//.zarray", 'holds an empty name between two "/"'),
+        ("a/./.zarray", "has a '.' or '..' segment"),
+    ],
+    ids=["root-with-slash", "leading-slash", "doubled-slash", "dot"],
+)
+def test_error_a_node_file_key_that_is_not_the_node_s_path_is_refused(key: str, fault: str) -> None:
+    """A key for a node's file names the file by the node's path, as a v3 listing names a node: no leading `/`, no empty name and no `.` or `..`. zarr-python looks an entry up by that key and would not find one written otherwise, so such a key is a problem at the key, and is not read as the node at another path."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
-            {"zarr_consolidated_format": 1, "metadata": {".zarray": ZARRAY, "/.zarray": ZARRAY}}
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {".zgroup": {"zarr_format": 2}, key: ZARRAY},
+            }
         )
     assert [(p.loc, p.kind) for p in raised.value.problems] == [
-        (("metadata", "/.zarray"), "invalid_value")
+        (("metadata", key), "invalid_value")
     ]
+    assert fault in raised.value.problems[0].message
+
+
+def test_error_a_conflict_is_located_at_the_key_the_document_writes() -> None:
+    """A conflict in a node's file is located at the entry's key in the `.zmetadata`."""
     gained = ZarrV2ConsolidatedMetadata(
-        {"zarr_consolidated_format": 1, "metadata": {"/.zarray": ZARRAY}}, PRIVATE
+        {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}, PRIVATE
     )
     with pytest.raises(ScopeConflictError) as conflict:
         gained.refined_in(CORE_V2)
-    assert [c.loc for c in conflict.value.conflicts] == [("metadata", "/.zarray", "compressor")]
+    assert [c.loc for c in conflict.value.conflicts] == [("metadata", "a/.zarray", "compressor")]
 
 
 def test_the_node_type_is_exported() -> None:
@@ -482,8 +500,8 @@ def test_each_node_alias_holds_its_union_at_run_time() -> None:
     )
 
 
-def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
-    """A second key that names the same file of the same node is one problem among the document's problems. Every node is still read and each node's problems are reported, so a user sees everything at once. A leading or repeated `/` does not make a second node."""
+def test_error_a_misnamed_node_file_key_hides_no_other_problem() -> None:
+    """A key that does not name its node's path is one problem among the document's problems. Every other node is still read and each node's problems are reported, so a user sees everything at once."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {
@@ -499,21 +517,6 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
         ("metadata", "/a/.zarray"),
         ("metadata", "b/.zgroup", "zarr_format"),
     ]
-    one = ZarrV2ConsolidatedMetadata(
-        {"zarr_consolidated_format": 1, "metadata": {"/a/.zarray": ZARRAY}}
-    )
-    assert set(
-        ZarrV2ConsolidatedMetadata(
-            {
-                "zarr_consolidated_format": 1,
-                "metadata": {"x/.zgroup": {"zarr_format": 2}, "x//y/.zarray": ZARRAY},
-            }
-        ).metadata
-    ) == {"x", "x/y"}
-    assert set(one.metadata) == {"a"}
-    assert one == ZarrV2ConsolidatedMetadata(
-        {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
-    )
 
 
 @pytest.mark.parametrize("name", ["__private", "zarr.json"])
@@ -529,7 +532,7 @@ def test_a_v2_node_may_have_a_name_that_only_v3_reserves(name: str) -> None:
 
 
 def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:
-    """A `.zmetadata` key whose path has a `.` or `..` segment names no node, unlike a key with a leading or repeated `/`. It is a problem at the key, and it does not make a second node next to the one it would name."""
+    """A `.zmetadata` key whose path has a `.` or `..` segment names no node, as a key with a leading or repeated `/` names none. It is a problem at the key, and it does not make a second node next to the one it would name."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {
