@@ -564,3 +564,22 @@ def check_json_bool(data: JSON) -> TypeGuard[bool]:
         True if the data is a boolean, False otherwise.
     """
     return isinstance(data, bool)
+
+
+def check_json_byte_list(data: JSON) -> TypeGuard[list[int]]:
+    """
+    Check if a JSON value is a list of byte values.
+
+    Parameters
+    ----------
+    data : JSON
+        The JSON value to check.
+
+    Returns
+    -------
+    Bool
+        True if the data is a list of integers in the range [0, 255], False otherwise.
+    """
+    return isinstance(data, list) and all(
+        isinstance(e, int) and not isinstance(e, bool) and 0 <= e <= 255 for e in data
+    )
