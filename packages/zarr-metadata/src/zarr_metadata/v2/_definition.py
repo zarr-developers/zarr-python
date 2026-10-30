@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from typing_extensions import TypeAliasType
 
-from zarr_metadata._json import ValidationProblem, is_object, shown
+from zarr_metadata._json import ValidationProblem, is_object, said, shown
 from zarr_metadata.definition._definition import (
     C,
     Definition,
@@ -34,7 +34,7 @@ from zarr_metadata.definition._definition import (
 from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._json import Problems
@@ -45,6 +45,9 @@ ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadat
 
 STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""
+
+_RECORDS: Final = "fields"
+"""The one member of a struct's configuration: the records, which the document writes as the dtype itself."""
 
 FAMILIES: Final[Mapping[str, str]] = {
     "b": "bool",
@@ -105,10 +108,17 @@ def item_bytes(name: str) -> int | None:
     return size * CODE_POINT_BYTES if code == "U" else size
 
 
+_TYPESTR_PARTS: Final[Mapping[str, str]] = {
+    "byteorder": "a byte order",
+    "itemsize": "a size",
+    "unit": "a unit",
+    "scale_factor": "a unit",
+}
+"""How a message names the part of a typestr that each member of its configuration comes from."""
+
+
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
-    """Return the problem at `at` if `name` is not a typestr. Return None if it is a typestr or `struct`."""
-    if name == STRUCT_NAME:
-        return None
+    """Return the problem at `at` if `name` is not a typestr. Return None if it is a typestr."""
     if TYPESTR_PATTERN.fullmatch(name) is not None:
         if parse_typestr(name) is not None:
             return None
@@ -134,9 +144,12 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
     read for every typestr of the family. The byte order, size and unit
     of the typestr are its configuration. The rules state which of those
     the family accepts. `struct` is read for an array of field records,
-    with the configuration `{"fields": records}`. A problem in a record
-    is therefore located under `fields`, for example at
-    `("dtype", "fields", 0, 1)` for the type of the first record.
+    with the configuration `{"fields": records}`. The document writes the
+    records as the dtype itself, so a problem in a record is located
+    without `fields`, for example at `("dtype", 0, 1)` for the type of the
+    first record. A definition's functions still find the type of that
+    record in `nested` at `("fields", 0, 1)`, its place in the
+    configuration.
     """
 
     label: ClassVar[str] = "v2 data type"
@@ -153,6 +166,10 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
 
     @classmethod
     def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+        # `struct` is the name a records array reads as, never a name a
+        # document writes: `_named_configuration` gives it only to an array.
+        if name == STRUCT_NAME:
+            return None
         return typestr_problem(name, at)
 
     @classmethod
@@ -185,9 +202,10 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
         if isinstance(value, str):
-            return value, None, ()
+            # The string `struct` is not a typestr; only records read as a struct.
+            return (None, None, ()) if value == STRUCT_NAME else (value, None, ())
         if isinstance(value, (list, tuple)):
-            return STRUCT_NAME, {"fields": cast("JSONValue", value)}, ()
+            return STRUCT_NAME, {_RECORDS: cast("JSONValue", value)}, ()
         return None, None, ()
 
     @classmethod
@@ -208,13 +226,26 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
 
     @classmethod
     def _envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
-        if name == STRUCT_NAME and "fields" in configuration:
-            return configuration["fields"]
+        if name == STRUCT_NAME and _RECORDS in configuration:
+            return configuration[_RECORDS]
         return name
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        return loc
+    def _undeclared_parts(cls, family: str, name: str, keys: Sequence[str]) -> str:
+        # Name each part as the typestr spells it. A unit carries its scale
+        # factor: `[10ms]` is one part.
+        parts = list(dict.fromkeys(_TYPESTR_PARTS[key] for key in keys))
+        return f"expected a typestr of the {family} family without {said(parts)}, got {shown(name)}"
+
+    @classmethod
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        # `_named_configuration` gives a v2 dtype a configuration only as a
+        # struct's `{_RECORDS: records}`, and every other dtype's
+        # configuration is encoded in its name, which is located at the
+        # field. So a place is the configuration itself, `()`, or starts
+        # with `_RECORDS`, which the document does not write: it writes the
+        # records as the dtype itself.
+        return (*loc, *place[1:])
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:
@@ -280,8 +311,8 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
         return {"id": name, **configuration}
 
     @classmethod
-    def _configuration_loc(cls, loc: Loc) -> Loc:
-        return loc
+    def _in_configuration(cls, loc: Loc, place: Loc) -> Loc:
+        return (*loc, *place)
 
     @classmethod
     def _name_loc(cls, loc: Loc) -> Loc:
