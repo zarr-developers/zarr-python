@@ -40,6 +40,12 @@ Zarr-Python provides both synchronous and asynchronous APIs:
 - **[Async API](./api/asynchronous.md)** - Asynchronous operations for concurrent access
 - **[Sync API](./api/synchronous.md)** - Synchronous operations for simple usage
 
+To run the asynchronous API from synchronous code, use `zarr.run`, which
+executes a coroutine to completion on a Zarr-managed event loop and returns
+its result. It raises `RuntimeError` when called from the target event loop's
+thread. Calls from a different running loop block the calling thread; prefer
+awaiting the async API directly in async code.
+
 ## Abstract Base Classes
 
 The ABC module defines interfaces for extending Zarr:
