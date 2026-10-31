@@ -65,9 +65,10 @@ def _edges(draw: st.DrawFn, extent: int | None) -> JSONValue:
 
     Runs are drawn apart, so two of one size can sit side by side and a
     pair can count one chunk: spellings the canonical form merges. A
-    dimension of length zero is covered by no edges at all.
+    dimension of length zero, or of a length not known, may be covered by
+    no edges at all.
     """
-    min_runs = 0 if extent == 0 else 1
+    min_runs = 0 if extent is None or extent == 0 else 1
     runs = draw(
         st.lists(
             st.tuples(st.integers(1, _MAX_LENGTH), st.integers(1, _MAX_COUNT)),

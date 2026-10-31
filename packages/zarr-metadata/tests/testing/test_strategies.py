@@ -33,7 +33,6 @@ from zarr_metadata.testing.strategies import (
     ChunkKeyEncodingStrategy,
     CodecStrategy,
     Spellings,
-    Strategies,
     chunk_grid_configurations,
     codec_configurations,
     data_type_configurations,
@@ -91,11 +90,6 @@ _DEFINITIONS = sorted(DEFAULT_STRATEGIES, key=lambda definition: definition.name
 _DATA_TYPES = [d for d in _DEFINITIONS if isinstance(d, DataTypeDefinition)]
 _CHUNK_GRIDS = [d for d in _DEFINITIONS if isinstance(d, ChunkGridDefinition)]
 _CODECS = [d for d in _DEFINITIONS if isinstance(d, CodecDefinition)]
-
-_OPEN_FOR_SCALE_OFFSET = frozenset(
-    {"complex64", "complex128", "numpy.datetime64", "numpy.timedelta64"}
-)
-"""Data types `scale_offset` is drawn for none of, though its rules refuse none: its registry entry leaves them open."""
 
 _SHAPES = st.lists(st.integers(0, 12), max_size=4).map(tuple)
 
@@ -196,8 +190,6 @@ def test_codecs_take_their_chunk(
         assert chunk.data_type.definition is not None
         data_type_name = chunk.data_type.definition.name
         event(f"takes no {data_type_name}")
-        if definition is SCALE_OFFSET_CODEC and data_type_name in _OPEN_FOR_SCALE_OFFSET:
-            return
         codec = _read(definition, data.draw(fields(definition)))
         assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) != []
         return
@@ -300,7 +292,9 @@ def test_a_definition_without_a_strategy_is_a_lookup_error() -> None:
 
 
 def test_a_strategy_of_another_kind_is_a_type_error() -> None:
-    strategies: Strategies = {GZIP_CODEC: ChunkKeyEncodingStrategy(configurations=st.just({}))}
+    # Unannotated, as an extension author writes it: a mapping keyed by a
+    # `CodecDefinition` is a `Strategies`.
+    strategies = {GZIP_CODEC: ChunkKeyEncodingStrategy(configurations=st.just({}))}
     with pytest.raises(TypeError, match="draws configurations of a ChunkKeyEncodingDefinition"):
         codec_configurations(GZIP_CODEC, strategies=strategies)
 

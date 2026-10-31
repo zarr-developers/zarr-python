@@ -65,6 +65,12 @@ FLOAT_WIDTHS: Final[Mapping[DataTypeDefinition[Any], FloatWidth]] = {
 }
 """The width in bits of each floating-point data type."""
 
+COMPLEX_WIDTHS: Final[Mapping[DataTypeDefinition[Any], FloatWidth]] = {
+    COMPLEX64_DATA_TYPE: 32,
+    COMPLEX128_DATA_TYPE: 64,
+}
+"""The width in bits of each part of each complex data type."""
+
 _EMPTY: Final = st.builds(EmptyConfiguration)
 """A fresh empty configuration for each draw, so a test that changes one changes no other."""
 
@@ -168,8 +174,10 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
         definition: _fill_values_of(_float_fill_values(width))
         for definition, width in FLOAT_WIDTHS.items()
     },
-    COMPLEX64_DATA_TYPE: _fill_values_of(_complex_fill_values(32)),
-    COMPLEX128_DATA_TYPE: _fill_values_of(_complex_fill_values(64)),
+    **{
+        definition: _fill_values_of(_complex_fill_values(width))
+        for definition, width in COMPLEX_WIDTHS.items()
+    },
     RAW_BYTES_DATA_TYPE: DataTypeStrategy(
         configurations=st.integers(1, _MAX_RAW_BYTES).map(
             lambda size: RawBytesConfiguration(bits=8 * size)
@@ -184,9 +192,11 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
 """A strategy for each data type that holds no other field."""
 
 __all__ = [
+    "COMPLEX_WIDTHS",
     "DATA_TYPE_STRATEGIES",
     "FLOAT_WIDTHS",
     "INTEGER_RANGES",
+    "FloatWidth",
     "finite_floats",
     "float_spellings",
 ]

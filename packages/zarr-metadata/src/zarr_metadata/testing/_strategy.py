@@ -13,7 +13,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias, cast
 
-from zarr_metadata.definition._definition import Definition
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
 
     from zarr_metadata._common import JSONValue
+    from zarr_metadata.definition._definition import Definition
 
 Configurations: TypeAlias = "SearchStrategy[Mapping[str, JSONValue]]"
 """Configurations of one definition, each the mapping every configuration is."""
@@ -118,8 +118,13 @@ class CodecStrategy(DefinitionStrategy):
         return cast("Configurations", self.configurations(NOTHING_KNOWN))
 
 
-Strategies: TypeAlias = Mapping[Definition[Any], DefinitionStrategy]
-"""How to draw each definition's configurations, by the definition."""
+Strategies: TypeAlias = Mapping[Any, DefinitionStrategy]
+"""How to draw each definition's configurations, by the definition.
+
+The key is `Any`, not `Definition[Any]`: a mapping's key type is
+invariant, so `{MY_CODEC: CodecStrategy(...)}`, a mapping keyed by a
+`CodecDefinition`, would not be a `Mapping[Definition[Any], ...]`.
+"""
 
 __all__ = [
     "NOTHING_KNOWN",

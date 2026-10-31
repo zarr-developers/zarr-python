@@ -14,13 +14,16 @@ from hypothesis import strategies as st
 
 from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
 from zarr_metadata.testing._data_type import (
+    COMPLEX_WIDTHS,
     FLOAT_WIDTHS,
     INTEGER_RANGES,
+    FloatWidth,
     finite_floats,
     float_spellings,
 )
 from zarr_metadata.testing._strategy import CodecStrategy
 from zarr_metadata.v3._definition import Chunk, storage_of
+from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
 from zarr_metadata.v3.codec.blosc import BLOSC_CNAME, BLOSC_CODEC, BLOSC_NO_SHUFFLE, BLOSC_SHUFFLE
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC, ENDIANNESS
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
@@ -28,6 +31,9 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC, ZSTD_MAX_LEVEL, ZSTD_MIN_LEVEL
+from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
+from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
+from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -45,6 +51,9 @@ _BLOSC_MAX_BLOCKSIZE: Final = 2**31 - 1
 """The largest block c-blosc takes, a signed 32-bit size; 0 lets it choose."""
 
 _ENDIAN: Final = st.sampled_from(ENDIANNESS)
+
+_NUMPY_TIMES: Final = frozenset({NUMPY_DATETIME64_DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE})
+"""The numpy time types, each stored as a signed 64-bit integer."""
 
 
 def _bytes(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
@@ -88,38 +97,61 @@ def _transpose(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]]:
     return st.integers(0, _MAX_RANK).flatmap(_order)
 
 
+def _finite_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+    """A finite float of `width` bits, as a number or the hex string of its bits."""
+    return finite_floats(width).flatmap(lambda value: float_spellings(value, width))
+
+
+def _non_zero_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+    """A finite, non-zero float of `width` bits, as a number or the hex string of its bits."""
+    return (
+        finite_floats(width)
+        .filter(lambda value: value != 0)
+        .flatmap(lambda value: float_spellings(value, width))
+    )
+
+
 def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
-    """An `offset` and a `scale`, each a finite value of the data type the codec is handed, the scale not zero.
+    """An `offset` and a `scale`, each a finite value of the data type the codec is handed, the scale not zero; None for a data type whose values are not numbers.
 
     Each is a fill value of the chunk's data type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43),
-    a float's as a number or the hex string of its bits. Each is drawn
-    finite, and the scale non-zero, so that decoding never divides by
-    zero; a scale small enough that decoding overflows is still drawn. Handed a data type the codec's registry entry does
-    not list -- truth values, raw bits, complex numbers, numpy times --
-    nothing is drawn: for some the spec refuses it, and for the others
-    leaves it open. Handed a chunk whose data type is unknown, the values
-    are small non-negative integers, which every listed type holds.
+    a float's as a number or the hex string of its bits, a complex
+    number's as a pair of them. Each is drawn finite, and the scale
+    non-zero, so that decoding never divides by zero; a scale small
+    enough that decoding overflows is still drawn. A numpy time is drawn
+    as the signed 64-bit integer it is stored as, since it "is compatible
+    with any codec that supports arrays of signed 64-bit integers"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
+    A data type this package does not define, whose values it cannot
+    draw, takes only the configuration with neither, the identity.
+    Handed a chunk whose data type is unknown, the values are small
+    non-negative integers, which every integer and float type holds.
     """
     data_type = chunk.data_type
     definition = data_type.definition if isinstance(data_type, AcceptedField) else None
     if definition is None:
         offset: st.SearchStrategy[JSONValue] = st.integers(0, 127)
         scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)
-    elif definition in INTEGER_RANGES:
-        low, high = INTEGER_RANGES[definition]
+    elif definition.name in NOT_NUMBERS:
+        return None
+    elif definition in INTEGER_RANGES or definition in _NUMPY_TIMES:
+        low, high = INTEGER_RANGES.get(definition, INTEGER_RANGES[INT64_DATA_TYPE])
         offset = st.integers(low, high)
         scale = st.integers(low, high).filter(lambda value: value != 0)
     elif definition in FLOAT_WIDTHS:
-        width = FLOAT_WIDTHS[definition]
-        offset = finite_floats(width).flatmap(lambda value: float_spellings(value, width))
-        scale = (
-            finite_floats(width)
-            .filter(lambda value: value != 0)
-            .flatmap(lambda value: float_spellings(value, width))
+        offset = _finite_float_values(FLOAT_WIDTHS[definition])
+        scale = _non_zero_float_values(FLOAT_WIDTHS[definition])
+    elif definition in COMPLEX_WIDTHS:
+        width = COMPLEX_WIDTHS[definition]
+        offset = st.tuples(_finite_float_values(width), _finite_float_values(width))
+        # Non-zero in either part is a non-zero complex number.
+        scale = st.one_of(
+            st.tuples(_non_zero_float_values(width), _finite_float_values(width)),
+            st.tuples(_finite_float_values(width), _non_zero_float_values(width)),
         )
     else:
-        return None
+        return st.builds(EmptyConfiguration)
     return st.fixed_dictionaries({}, optional={"offset": offset, "scale": scale})
 
 
