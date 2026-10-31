@@ -136,9 +136,9 @@ def test_group_zarr_format_rejects_float(
     document: object,
     read: Callable[[object], ZarrV2GroupMetadataReading | ZarrV3GroupMetadataReading],
 ) -> None:
-    """Integer-valued floats do not satisfy integer format literals."""
+    """Integer-valued floats do not satisfy integer format literals. The float is the wrong type, as `4.0` is in `shape` and `1.0` in a codec's integer literal."""
     problems = read(document).problems
-    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in problems] == [(("zarr_format",), "invalid_type")]
 
 
 def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, ...], str]]:
@@ -471,16 +471,18 @@ def test_group_v2_key_value_split() -> None:
     assert ZarrV2GroupMetadata.from_key_value(kv) == model
 
 
-@pytest.mark.parametrize("extra_key", ["attributes", "vendor_extension"])
-def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str) -> None:
-    """Raw `.zgroup` documents reject every non-spec member."""
+@pytest.mark.parametrize(
+    ("extra_key", "kind"), [("attributes", "invalid_value"), ("vendor_extension", "unknown_key")]
+)
+def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str, kind: str) -> None:
+    """Raw `.zgroup` documents reject every non-spec member. `attributes` is not unknown, but belongs in `.zattrs`."""
     doc: dict[str, object] = {"zarr_format": 2, extra_key: {}}
 
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2GroupMetadata.from_key_value({".zgroup": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((extra_key,), "unknown_key")
+        ((".zgroup", extra_key), kind)
     ]
 
 
@@ -1159,7 +1161,7 @@ def test_group_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2GroupMetadata.from_key_value({".zgroup": b"null"})
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((), "invalid_type")
+        ((".zgroup",), "invalid_type")
     ]
 
 
@@ -1397,6 +1399,44 @@ def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists(
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ConsolidatedMetadata(_inline(b=inner, **{"b/c": ZarrV3ArrayMetadata(same)}))
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(at, "invalid_value")]
+
+
+@pytest.mark.parametrize(
+    ("nested", "outer", "at"),
+    [
+        (
+            {"attributes": 5},
+            {},
+            ("metadata", "g", "consolidated_metadata", "metadata", "x", "attributes"),
+        ),
+        ({}, {"attributes": 5}, ("metadata", "g/x", "attributes")),
+    ],
+    ids=["nested-copy", "outer-copy"],
+)
+def test_error_a_listed_document_with_its_own_problem_is_reported_for_that_problem_alone(
+    nested: dict[str, Any], outer: dict[str, Any], at: tuple[str, ...]
+) -> None:
+    """A listed group whose attributes are not an object is reported for its attributes, whichever copy of the node is bad, and is not also compared with the other copy, which it would read otherwise than."""
+    document = _inline(
+        g=_group(consolidated_metadata=_inline(x=_group(**nested))), **{"g/x": _group(**outer)}
+    )
+    found = read_consolidated_metadata_v3(document).problems
+    assert [(p.loc, p.kind) for p in found] == [(at, "invalid_type")]
+
+
+def test_error_a_listed_document_with_only_an_unknown_key_is_still_compared() -> None:
+    """An unknown key leaves the rest of a listed group read, so a copy whose only problem is one is still compared with the other copy, and a difference in attributes is reported alongside it."""
+    unknown = {**_inline(), "foo": 1}
+    nested = _group(attributes={"a": 1}, consolidated_metadata=unknown)
+    document = _inline(
+        g=_group(consolidated_metadata=_inline(x=nested)), **{"g/x": _group(attributes={"a": 2})}
+    )
+    found = read_consolidated_metadata_v3(document).problems
+    x = ("metadata", "g", "consolidated_metadata", "metadata", "x")
+    assert [(p.loc, p.kind) for p in found] == [
+        ((*x, "consolidated_metadata", "foo"), "unknown_key"),
+        (x, "invalid_value"),
+    ]
 
 
 def test_error_a_model_inside_consolidated_metadata_is_not_json() -> None:

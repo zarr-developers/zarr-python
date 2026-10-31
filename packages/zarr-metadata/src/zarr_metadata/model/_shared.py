@@ -75,7 +75,12 @@ def other_members(
     additional_reserved_keys: frozenset[str] = frozenset(),
     at: Loc = (),
 ) -> tuple[dict[str, JSONValue], tuple[ValidationProblem, ...]]:
-    """Each member outside `standard_keys`, refined to JSON, and every problem found in them. A member that is not JSON is left out of the result."""
+    """Each member outside `standard_keys`, refined as user data, and every problem found in them. A member that is not JSON is left out of the result.
+
+    The spec does not interpret such a member, so like attributes, and
+    like a v3 member that nothing claims, it may hold `NaN`, `Infinity`
+    and `-Infinity`.
+    """
     members: dict[str, JSONValue] = {}
     problems: list[ValidationProblem] = []
     reserved_keys = standard_keys | additional_reserved_keys
@@ -87,7 +92,7 @@ def other_members(
             continue
         if key in reserved_keys:
             continue
-        refined, found = refine_json(value, (*at, key))
+        refined, found = refine_user_data(value, (*at, key))
         problems.extend(within(found, at))
         if len(found) == 0:
             members[key] = refined

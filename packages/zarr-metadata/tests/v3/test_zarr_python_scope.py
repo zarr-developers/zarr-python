@@ -151,15 +151,13 @@ def test_error_a_fill_value_that_is_not_base64(data_type: object) -> None:
 @pytest.mark.parametrize("codec", ["vlen-utf8", "vlen-bytes"])
 def test_error_a_variable_length_codec_for_a_data_type_of_fixed_size(codec: str) -> None:
     reading = read_array_metadata_v3(_document(_UTF32, "", [codec]), context=ZARR_PYTHON_CONTEXT)
-    assert [(p.loc, p.kind) for p in reading.problems] == [
-        (("codecs", 0, "configuration"), "invalid_value")
-    ]
+    assert [(p.loc, p.kind) for p in reading.problems] == [(("codecs", 0), "invalid_value")]
 
 
 def test_error_a_bytes_codec_without_an_endian_for_fixed_length_utf32() -> None:
     reading = read_array_metadata_v3(_document(_UTF32, "", ["bytes"]), context=ZARR_PYTHON_CONTEXT)
     assert [(p.loc, p.kind) for p in reading.problems] == [
-        (("codecs", 0, "configuration", "endian"), "missing_key")
+        (("codecs", 0, "configuration"), "missing_key")
     ]
 
 

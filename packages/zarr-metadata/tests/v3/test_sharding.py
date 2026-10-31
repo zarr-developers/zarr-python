@@ -213,13 +213,13 @@ def test_error_an_inner_chunk_length_that_does_not_divide_the_shard(
         ),
         (
             _shard([4, 4], codecs=["bytes"]),
-            [((0, "configuration", "codecs", 0, "configuration", "endian"), "missing_key")],
+            [((0, "configuration", "codecs", 0, "configuration"), "missing_key")],
         ),
         # The index has data type uint64, whose values take several bytes, and
         # has one more axis than the shard.
         (
             _shard([4, 4], index=["bytes"]),
-            [((0, "configuration", "index_codecs", 0, "configuration", "endian"), "missing_key")],
+            [((0, "configuration", "index_codecs", 0, "configuration"), "missing_key")],
         ),
         (
             _shard([4, 4], index=[_transpose(1, 0), LITTLE]),
@@ -240,7 +240,7 @@ def test_error_an_array_document_s_shard_is_read_where_it_sits() -> None:
     assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 0, "configuration", "chunk_shape", 1), "invalid_value"),
         (
-            ("codecs", 0, "configuration", "index_codecs", 0, "configuration", "endian"),
+            ("codecs", 0, "configuration", "index_codecs", 0, "configuration"),
             "missing_key",
         ),
     ]

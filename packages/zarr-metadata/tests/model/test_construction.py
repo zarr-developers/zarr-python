@@ -410,8 +410,8 @@ def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> N
         (V2_GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
         (
             V2_CONSOLIDATED,
-            {"metadata": {"a/.zarray": {"x": math.nan}}},
-            [(("metadata", "a/.zarray", "x"), "invalid_value")],
+            {"metadata": {"a/.zarray": {"x": object()}}},
+            [(("metadata", "a/.zarray", "x"), "invalid_type")],
         ),
     ],
     ids=[
