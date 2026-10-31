@@ -23,6 +23,13 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     return cast("SeparatorLiteral", parse_field(data, Literal[".", "/"], "separator"))
 
 
+def _parse_key_component(part: str) -> int:
+    # A chunk grid index can be negative; "-0" would name the same chunk as "0".
+    if part.startswith("-0"):
+        raise ValueError(f"Invalid chunk key component: {part!r}")
+    return int(part)
+
+
 class ChunkKeyEncodingParams(TypedDict):
     name: Literal["v2", "default"]
     separator: NotRequired[SeparatorLiteral]
@@ -81,7 +88,7 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
         # Strip the "c<sep>" prefix (e.g. "c/" or "c.") before splitting.
         prefix = "c" + self.separator
         if chunk_key.startswith(prefix):
-            return tuple(map(int, chunk_key[len(prefix) :].split(self.separator)))
+            return tuple(map(_parse_key_component, chunk_key[len(prefix) :].split(self.separator)))
         raise ValueError(f"Invalid chunk key for default encoding: {chunk_key!r}")
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
@@ -98,7 +105,7 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
         object.__setattr__(self, "separator", separator_parsed)
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
-        return tuple(map(int, chunk_key.split(self.separator)))
+        return tuple(map(_parse_key_component, chunk_key.split(self.separator)))
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         chunk_identifier = self.separator.join(map(str, chunk_coords))

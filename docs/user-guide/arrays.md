@@ -154,6 +154,26 @@ z.append(np.vstack([a, a]), axis=1)
 print(f"Shape after second append: {z.shape}")
 ```
 
+### Prepending
+
+[`zarr.Array.prepend`][] adds data before index 0 of an axis, the way [`zarr.Array.append`][]
+adds it after the end. The existing chunks keep their keys and their bytes. Data that does not
+fill a whole chunk goes into a partly filled first chunk, like the partly filled last chunk of
+any array.
+
+The first prepend switches the chunk grid from `regular` to `regular_bounded`, which records
+the coordinate of the first element (`lower_bound`) and of the start of chunk 0 (`origin`), so
+chunks in front of the old start get negative keys such as `c/-1/0`. Indexing stays zero-based,
+and [`zarr.Array.domain`][] gives the coordinate range of each dimension. Readers that do not
+implement `regular_bounded` refuse such an array rather than misread it.
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z = zarr.create_array(store='data/example-5.zarr', shape=(6, 4), dtype='int32', chunks=(4, 4), overwrite=True)
+z[:] = 1
+z.prepend(np.full((3, 4), 2, dtype='int32'))
+print(f"Shape: {z.shape}, domain: {z.domain}")
+```
+
 ## Runtime configuration
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
