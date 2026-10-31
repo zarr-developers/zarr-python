@@ -13,6 +13,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias, cast
 
+from hypothesis import strategies as st
+
+from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
@@ -32,6 +35,12 @@ Configurations: TypeAlias = "SearchStrategy[Mapping[str, JSONValue]]"
 
 NOTHING_KNOWN: Final = Chunk()
 """A chunk nothing is known of, which every codec takes."""
+
+MAX_RANK: Final = 5
+"""The most axes drawn where the number of axes is not known."""
+
+EMPTY_CONFIGURATIONS: Final = st.builds(EmptyConfiguration)
+"""A fresh empty configuration for each draw, so a test that changes one changes no other."""
 
 
 class DefinitionStrategy(ABC):

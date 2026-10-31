@@ -14,8 +14,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, cast, get_args
 from hypothesis import strategies as st
 
 from zarr_metadata._numpy import NUMPY_TIME_MAX_SCALE_FACTOR
-from zarr_metadata.definition._definition import EmptyConfiguration
-from zarr_metadata.testing._strategy import DataTypeStrategy
+from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, DataTypeStrategy
 from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
 from zarr_metadata.v3.data_type._numpy_time import NUMPY_TIME_UNIT
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
@@ -71,8 +70,6 @@ COMPLEX_WIDTHS: Final[Mapping[DataTypeDefinition[Any], FloatWidth]] = {
 }
 """The width in bits of each part of each complex data type."""
 
-_EMPTY: Final = st.builds(EmptyConfiguration)
-"""A fresh empty configuration for each draw, so a test that changes one changes no other."""
 
 _MAX_RAW_BYTES: Final = 32
 """The widest raw bits drawn, in bytes: `r256`."""
@@ -120,7 +117,9 @@ def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
 
 def _fill_values_of(values: st.SearchStrategy[JSONValue]) -> DataTypeStrategy:
     """A data type with nothing to configure, whose fill values are `values`."""
-    return DataTypeStrategy(configurations=_EMPTY, fill_values=lambda _configuration: values)
+    return DataTypeStrategy(
+        configurations=EMPTY_CONFIGURATIONS, fill_values=lambda _configuration: values
+    )
 
 
 def _byte_values(size: int) -> st.SearchStrategy[JSONValue]:

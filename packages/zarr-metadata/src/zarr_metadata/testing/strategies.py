@@ -255,9 +255,11 @@ def fields(
     once it is known not to be None. `spellings` says whether every
     spelling the spec allows is drawn, or only the simplest.
 
-    Each field is read in a scope of its definition alone, and one that
-    is refused, as one drawn from `configurations` the definition does
-    not accept is, raises a `ValueError`.
+    Each field is read in a scope of its definition alone, with no chunk
+    known, and one its definition's rules refuse, as they refuse one
+    drawn from `configurations` they do not accept, raises a
+    `ValueError`. A codec's chunk rules are not checked: what fits the
+    chunk is what `codec_configurations` draws.
     """
     drawn: Configurations | SearchStrategy[C] = (
         _strategy_for(definition, strategies).unconstrained()

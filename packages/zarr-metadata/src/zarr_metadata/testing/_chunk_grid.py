@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
 
-from zarr_metadata.testing._strategy import ChunkGridStrategy
+from zarr_metadata.testing._strategy import MAX_RANK, ChunkGridStrategy
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 
@@ -22,9 +22,6 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3._definition import ChunkGridDefinition
-
-_MAX_RANK: Final = 5
-"""The most dimensions a grid is drawn with, over no shape."""
 
 _MAX_LENGTH: Final = 16
 """The longest chunk drawn along a dimension whose length is unknown."""
@@ -46,7 +43,7 @@ def _length(extent: int | None) -> st.SearchStrategy[int]:
 def _regular(shape: tuple[int, ...] | None) -> st.SearchStrategy[Mapping[str, JSONValue]]:
     """A chunk length for each dimension."""
     if shape is None:
-        lengths = st.lists(_length(None), max_size=_MAX_RANK).map(tuple)
+        lengths = st.lists(_length(None), max_size=MAX_RANK).map(tuple)
     else:
         lengths = st.tuples(*(_length(extent) for extent in shape))
     return lengths.map(lambda chunk_shape: {"chunk_shape": chunk_shape})
@@ -93,7 +90,7 @@ def _rectilinear_dimension(extent: int | None) -> st.SearchStrategy[JSONValue]:
 def _rectilinear(shape: tuple[int, ...] | None) -> st.SearchStrategy[Mapping[str, JSONValue]]:
     """Inline chunk shapes, one entry for each dimension."""
     if shape is None:
-        dimensions = st.lists(_rectilinear_dimension(None), max_size=_MAX_RANK).map(tuple)
+        dimensions = st.lists(_rectilinear_dimension(None), max_size=MAX_RANK).map(tuple)
     else:
         dimensions = st.tuples(*(_rectilinear_dimension(extent) for extent in shape))
     return dimensions.map(lambda chunk_shapes: {"kind": "inline", "chunk_shapes": chunk_shapes})

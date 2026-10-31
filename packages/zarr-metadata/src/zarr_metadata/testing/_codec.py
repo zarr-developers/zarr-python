@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
 
-from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
+from zarr_metadata.definition._definition import AcceptedField
 from zarr_metadata.testing._data_type import (
     COMPLEX_WIDTHS,
     FLOAT_WIDTHS,
@@ -21,7 +21,7 @@ from zarr_metadata.testing._data_type import (
     finite_floats,
     float_spellings,
 )
-from zarr_metadata.testing._strategy import CodecStrategy
+from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, MAX_RANK, CodecStrategy
 from zarr_metadata.v3._definition import Chunk, storage_of
 from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
 from zarr_metadata.v3.codec.blosc import BLOSC_CNAME, BLOSC_CODEC, BLOSC_NO_SHUFFLE, BLOSC_SHUFFLE
@@ -31,7 +31,6 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC, ZSTD_MAX_LEVEL, ZSTD_MIN_LEVEL
-from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 
@@ -40,9 +39,6 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3._definition import CodecDefinition
-
-_MAX_RANK: Final = 5
-"""The most axes an `order` is drawn with, when the chunk does not say."""
 
 _BLOSC_MAX_TYPESIZE: Final = 255
 """The widest element c-blosc takes: `BLOSC_MAX_TYPESIZE`."""
@@ -54,6 +50,9 @@ _ENDIAN: Final = st.sampled_from(ENDIANNESS)
 
 _NUMPY_TIMES: Final = frozenset({NUMPY_DATETIME64_DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE})
 """The numpy time types, each stored as a signed 64-bit integer."""
+
+_NUMPY_TIME_RANGE: Final = (-(2**63) + 1, 2**63 - 1)
+"""The signed 64-bit integers but the least, which numpy reads as `NaT`: the finite numpy times."""
 
 
 def _bytes(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
@@ -94,7 +93,7 @@ def _transpose(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]]:
     """A permutation of the chunk's axes; of some number of axes, when the chunk does not say."""
     if chunk.rank is not None:
         return _order(chunk.rank)
-    return st.integers(0, _MAX_RANK).flatmap(_order)
+    return st.integers(0, MAX_RANK).flatmap(_order)
 
 
 def _finite_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
@@ -120,8 +119,9 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
     number's as a pair of them. Each is drawn finite, and the scale
     non-zero, so that decoding never divides by zero; a scale small
     enough that decoding overflows is still drawn. A numpy time is drawn
-    as the signed 64-bit integer it is stored as, since it "is compatible
-    with any codec that supports arrays of signed 64-bit integers"
+    as the signed 64-bit integer it is stored as, never `NaT`, since it
+    "is compatible with any codec that supports arrays of signed 64-bit
+    integers"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
     A data type this package does not define, whose values it cannot
     draw, takes only the configuration with neither, the identity.
@@ -136,7 +136,7 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
     elif definition.name in NOT_NUMBERS:
         return None
     elif definition in INTEGER_RANGES or definition in _NUMPY_TIMES:
-        low, high = INTEGER_RANGES.get(definition, INTEGER_RANGES[INT64_DATA_TYPE])
+        low, high = INTEGER_RANGES.get(definition, _NUMPY_TIME_RANGE)
         offset = st.integers(low, high)
         scale = st.integers(low, high).filter(lambda value: value != 0)
     elif definition in FLOAT_WIDTHS:
@@ -151,7 +151,7 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
             st.tuples(_finite_float_values(width), _non_zero_float_values(width)),
         )
     else:
-        return st.builds(EmptyConfiguration)
+        return EMPTY_CONFIGURATIONS
     return st.fixed_dictionaries({}, optional={"offset": offset, "scale": scale})
 
 
@@ -163,7 +163,7 @@ def _unchunked(configurations: st.SearchStrategy[Mapping[str, JSONValue]]) -> Co
 CODEC_STRATEGIES: Final[Mapping[CodecDefinition[Any], CodecStrategy]] = {
     BLOSC_CODEC: _unchunked(_blosc()),
     BYTES_CODEC: CodecStrategy(configurations=_bytes),
-    CRC32C_CODEC: _unchunked(st.builds(EmptyConfiguration)),
+    CRC32C_CODEC: _unchunked(EMPTY_CONFIGURATIONS),
     GZIP_CODEC: _unchunked(st.fixed_dictionaries({"level": st.integers(0, 9)})),
     SCALE_OFFSET_CODEC: CodecStrategy(configurations=_scale_offset),
     TRANSPOSE_CODEC: CodecStrategy(configurations=_transpose),
