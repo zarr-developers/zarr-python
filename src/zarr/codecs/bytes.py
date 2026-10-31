@@ -105,14 +105,7 @@ class BytesCodec(ArrayBytesCodec):
         # configuration; the byte order of the decoded array is set by the array's
         # data type. The two are independent: the raw bytes are viewed with a dtype
         # in the stored byte order, then converted to the declared dtype if needed.
-        if isinstance(chunk_spec.dtype, HasEndianness):
-            view_dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
-        elif isinstance(chunk_spec.dtype, Struct) and endian_str is not None:
-            # Per the struct data type spec, all multi-byte fields are stored in the
-            # byte order configured on this codec.
-            view_dtype = dtype.newbyteorder(endian_str)
-        else:
-            view_dtype = dtype
+        view_dtype = dtype.newbyteorder(endian_str) if endian_str is not None else dtype
         as_array_like = chunk_bytes.as_array_like()
         chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
             as_array_like.view(dtype=view_dtype)  # type: ignore[attr-defined]
