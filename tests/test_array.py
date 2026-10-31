@@ -1037,17 +1037,26 @@ def test_write_empty_chunks_negative_zero(
         (np.nan * 1j, ["NaN", "NaN"]),
         (np.nan, ["NaN", 0.0]),
         (np.inf, ["Infinity", 0.0]),
-        (np.inf * 1j, ["NaN", "Infinity"]),
+        (np.inf * 1j, None),
         (-np.inf, ["-Infinity", 0.0]),
         (math.inf, ["Infinity", 0.0]),
     ],
 )
-async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
+async def test_special_complex_fill_values_roundtrip(
+    fill_value: Any, expected: list[Any] | None
+) -> None:
     store = MemoryStore()
     zarr.create_array(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
     content = await store.get("zarr.json", prototype=default_buffer_prototype())
     assert content is not None
     actual = json.loads(content.to_bytes())
+    if expected is None:
+        # inf * 1j computes 0 * inf for the real part, which produces a NaN
+        # whose sign bit is platform-dependent. Only the exact canonical bits
+        # serialize as "NaN"; any other NaN writes as hex.
+        real_bits = int(np.array([np.complex64(fill_value)]).view(np.uint32)[0])
+        canonical = int(np.asarray(np.nan, dtype=np.float32).view(np.uint32))
+        expected = ["NaN" if real_bits == canonical else f"0x{real_bits:08x}", "Infinity"]
     assert actual["fill_value"] == expected
 
 
