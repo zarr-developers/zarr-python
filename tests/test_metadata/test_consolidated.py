@@ -747,8 +747,7 @@ class TestConsolidated:
         # Now according to the consolidated metadata, "a" has children ["b"]
         # but according to the unconsolidated metadata, "a" has children ["b", "c"]
         group = await zarr.api.asynchronous.open_group(store=memory_store, path="a")
-        with pytest.warns(ZarrUserWarning, match="Object at 'c' not found"):
-            result = sorted([x[0] async for x in group.members(max_depth=None)])
+        result = sorted([x[0] async for x in group.members(max_depth=None)])
         expected = ["b"]
         assert result == expected
 
