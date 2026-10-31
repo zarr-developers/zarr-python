@@ -85,6 +85,72 @@ implementation.
 Custom stores can be created by implementing the [`zarr.abc.store.Store`][] interface.
 See [developing custom stores](storage.md#developing-custom-stores) for more information.
 
+## Custom URL pipeline adapters
+
+In a [URL pipeline](storage.md#user-guide-url-pipelines) such as
+`s3://bucket/data.zip|zip:|zarr3:`, each sub-URL after the first names an *adapter*
+that reinterprets everything to its left. A package provides an adapter by subclassing
+[`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing one classmethod, which
+returns an open store and the path addressed inside it as a
+[`StorePath`][zarr.storage.StorePath]:
+
+```python test="true" session="url-adapter"
+from zarr.abc.url_pipeline import URLPipelineAdapter
+from zarr.storage import PipelineContext, PipelineSegment, StorePath, WrapperStore
+
+
+class MyAdapter(URLPipelineAdapter):
+    @classmethod
+    async def open_pipeline_segment(
+        cls, segment: PipelineSegment, context: PipelineContext
+    ) -> StorePath:
+        # A wrapper adapter opens the resource to its left and wraps it, joining the
+        # preceding residual path with this segment's own path.
+        preceding = await context.resolve_preceding()
+        store = WrapperStore(preceding.store)
+        path = "/".join(part.strip("/") for part in (preceding.path, segment.body) if part)
+        return StorePath(store, path)
+```
+
+To resolve the preceding pipeline with another mode or options, use a derived context:
+`await dataclasses.replace(context, mode="r").resolve_preceding()`. Wrapper adapters
+compose: `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` resolves to `a/b`.
+
+```python test="true" session="url-adapter"
+import zarr
+from zarr.registry import register_url_adapter
+from zarr.storage import URLPipeline
+
+register_url_adapter("mypackage.myscheme", MyAdapter)
+url = "memory://x|mypackage.myscheme:a|mypackage.myscheme:b"
+# keep a reference: in-memory data lives only while a store refers to it
+created = zarr.create_group(URLPipeline.from_url(url))
+group = zarr.open_group(URLPipeline.from_url(url), mode="r")
+assert group.path == "a/b"
+```
+
+Register the class under the `zarr.url_adapters` entry-point group with the scheme as
+the entry-point name, vendor-prefixed for nonstandard schemes. Adapters are imported
+only when a pipeline naming their scheme is resolved.
+
+```toml
+[project.entry-points."zarr.url_adapters"]
+"mypackage.myscheme" = "mypackage.zarr_adapter:MyAdapter"
+```
+
+An adapter can also be a *root* scheme (`mypackage.myscheme://org/repo`), with an empty
+`context.preceding`. Installing a root adapter for a scheme fsspec also handles takes
+that scheme over at the root of every pipeline. The schemes zarr handles itself
+(`file`, `memory`, `zarr`, `zarr2`, `zarr3`) cannot be registered, and entry points
+with those names are ignored.
+
+Every adapter sees all of the caller's `storage_options`, including the root's
+credentials: consume only keys namespaced for your adapter, strip them before resolving
+the rest of the pipeline, and never log the options. The returned store must honor
+`context.read_only`, and `open_pipeline_segment` must not block or call zarr's
+synchronous API. See [`PipelineContext`][zarr.storage.PipelineContext] for the full
+contract.
+
 ## Custom array buffers
 
 Zarr-python provides control over where and how arrays are stored in memory through

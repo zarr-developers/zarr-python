@@ -38,6 +38,7 @@ from zarr_metadata.definition._definition import (
     AcceptedField,
     ResolvedField,
     asked,
+    in_document,
     read_only,
     ruled,
 )
@@ -109,9 +110,12 @@ def read_pipeline(
     First the order is checked: array -> array codecs, then one
     array -> bytes codec, then bytes -> bytes codecs. Then each codec is
     processed in turn, with the chunk the previous codec passed on. Its
-    chunk rules check it and locate their problems in its configuration.
-    Each pipeline it contains is read the same way, at its location in the
-    configuration. An array -> array codec is also asked what chunk it
+    chunk rules check it, and each problem is located where the document
+    writes it: a member of its configuration in the configuration (or at
+    the configuration itself, missing, for a codec that writes none), and
+    a problem with the codec as a whole at the codec, as `_codec_problems`
+    says. Each pipeline it contains is read the same way, at its location
+    in the configuration. An array -> array codec is also asked what chunk it
     passes on. Problems are located under `loc`, the location of the
     codecs, with each codec at its index.
     """
@@ -136,7 +140,8 @@ def read_pipeline(
         inner = _no_stages()
         if isinstance(codec, AcceptedField):
             configuration, nested = codec.configuration, codec.nested
-            problems.extend(_chunk_problems(definition, configuration, nested, incoming, at))
+            found = _chunk_problems(definition, configuration, nested, incoming, at)
+            problems.extend(_codec_problems(codec, (*loc, index), at, found))
             inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
@@ -206,6 +211,26 @@ def _chunk_problems(
     """The problems `definition`'s chunk rules find in a codec that receives `chunk`, located under `at`."""
     return ruled(
         definition, lambda: definition.chunk_rules(read_only(configuration), nested, chunk), at
+    )
+
+
+def _codec_problems(
+    codec: ResolvedField[CodecDefinition[Any]], here: Loc, at: Loc, found: Problems
+) -> Problems:
+    """`found`, the problems the chunk rules find in `codec` at `here`, located under `at`, its configuration, each moved to where the document writes it.
+
+    A chunk rule judges the codec against the chunk it is handed, so a
+    problem it reports at the configuration as a whole is the codec's,
+    however the codec is spelled: `"bytes"` and a `bytes` with a
+    configuration, handed values that vary in size, are one mistake at
+    `here`. Any other is located as `in_document` locates a definition's
+    rules.
+    """
+    return tuple(
+        dataclasses.replace(each, loc=here)
+        if each.loc == at
+        else in_document(codec, here, (each,))[0]
+        for each in found
     )
 
 

@@ -30,6 +30,7 @@ from zarr_metadata._json import (
     outside_of,
     prefixed,
     refine_user_data,
+    said,
     shown,
     shown_key,
     with_input,
@@ -81,7 +82,7 @@ from zarr_metadata.v3._common import ZarrV3ExtensionField
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import GroupExtraFieldDefinition
-from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults, said
+from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
     ZarrV3ConsolidatedMetadataJSON,
@@ -1040,7 +1041,12 @@ def _read_consolidated_v3(
     if past is not None:
         return {}, {}, None, within((past,), at)
     if not is_object(value):
-        return {}, {}, None, (ValidationProblem((), "expected an object", "invalid_type"),)
+        return (
+            {},
+            {},
+            None,
+            with_input((ValidationProblem((), "expected an object", "invalid_type"),), value),
+        )
     env = value
     problems = _envelope_problems(env)
     readings: dict[str, ZarrV3NodeMetadataReading] = {}
@@ -1109,7 +1115,9 @@ def _read_consolidated_v3(
         }
         held: dict[str, JSONValue] = {**_CONSOLIDATED_ENVELOPE, "metadata": documents}
         refined = {key: held[key] for key in cast("Mapping[str, object]", env)}
-    return readings, members, refined, tuple(problems)
+    # Each problem carries the value found at its location, as every other
+    # reader's problems do.
+    return readings, members, refined, with_input(problems, value)
 
 
 def _document_of(members: ArrayMembersV3 | GroupMembersV3) -> dict[str, JSONValue]:
@@ -1179,9 +1187,16 @@ def _nested_listing_problems(
             continue
         own = listing.members.get(path)
         flat_members = members.get(joined)
+        # A document with a problem of its own may still have members (a
+        # group whose attributes are not an object has them, without the
+        # attributes), so the problems decide whether the two are compared.
+        # An unknown key leaves the rest of the document read, so a copy
+        # with only that is still compared.
         if (
             own is not None
             and flat_members is not None
+            and _read_whole(entry)
+            and _read_whole(readings[joined])
             and not _read_alike(readings[joined], flat_members, entry, own)
         ):
             message = (
@@ -1190,6 +1205,11 @@ def _nested_listing_problems(
             )
             problems.append(ValidationProblem(here, message, "invalid_value"))
     return problems
+
+
+def _read_whole(reading: ZarrV3NodeMetadataReading) -> bool:
+    """Whether every member of the document `reading` read was read: it has no problem but unknown keys, which are reported and left out."""
+    return all(found.kind == "unknown_key" for found in reading.problems)
 
 
 def _read_alike(
