@@ -26,21 +26,16 @@ an `UnclaimedField`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v2._context import ZarrV2Context, ZarrV2ContextSlots, ZarrV2Kind
+from zarr_metadata.v2._core import CORE_V2_CONTEXT, RENAMED_SCOPES_V2
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     ZarrV2DataTypeField,
 )
-from zarr_metadata.v2.codec import CODECS_V2
-from zarr_metadata.v2.data_type import DATA_TYPES_V2
-
-CORE_V2_CONTEXT: Final = ZarrV2Context(data_types=DATA_TYPES_V2, codecs=CODECS_V2)
-"""The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
-
 
 __all__ = [
     "CORE_V2_CONTEXT",
@@ -58,4 +53,4 @@ if not TYPE_CHECKING:
     # name of this module as a scope.
     def __getattr__(name: str) -> object:
         """`CORE_V2`, the scope's name before it ended in `_CONTEXT`, with a `DeprecationWarning`."""
-        return renamed_scope(__name__, name, {"CORE_V2": ("CORE_V2_CONTEXT", CORE_V2_CONTEXT)})
+        return renamed_scope(__name__, name, RENAMED_SCOPES_V2)

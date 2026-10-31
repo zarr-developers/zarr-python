@@ -148,8 +148,19 @@ def test_error_a_size_that_holds_no_whole_value(data_type: object) -> None:
 
 @pytest.mark.parametrize(
     ("data_type", "value"),
-    [(_UTF32, "abcd"), (_NULL_TERMINATED, "YWJjZGU="), (_RAW, "YWJjZGU=")],
-    ids=["utf32-four-code-points", "null-terminated-five-bytes", "raw-five-bytes"],
+    [
+        (_UTF32, "abcd"),
+        # The spec counts trailing U+0000 too, although the value is "abc".
+        (_UTF32, "abc\x00"),
+        (_NULL_TERMINATED, "YWJjZGU="),
+        (_RAW, "YWJjZGU="),
+    ],
+    ids=[
+        "utf32-four-code-points",
+        "utf32-padding-past-capacity",
+        "null-terminated-five-bytes",
+        "raw-five-bytes",
+    ],
 )
 def test_error_a_fill_value_longer_than_the_type(data_type: object, value: str) -> None:
     resolved, _ = resolve(data_type, DataTypeDefinition, ZARR_PYTHON_CONTEXT)

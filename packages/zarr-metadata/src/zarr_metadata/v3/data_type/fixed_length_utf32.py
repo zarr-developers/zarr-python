@@ -64,7 +64,16 @@ def _rules(
 def _fill_value_rules(
     configuration: FixedLengthUtf32Configuration, nested: Nested, value: FixedLengthUtf32FillValue
 ) -> Iterator[ValidationProblem]:
-    """Check that the fill value fits: "a JSON string of at most `length_bytes / 4` code points" (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/data-types/fixed_length_utf32/README.md?plain=1#L124-L126)."""
+    """Check that the fill value fits: "a JSON string of at most `length_bytes / 4` code points" (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/data-types/fixed_length_utf32/README.md?plain=1#L124-L126).
+
+    Trailing `U+0000` code points count, although `_fill_value_canonical`
+    removes them: a string "with more than `length_bytes / 4` code points
+    is invalid and MUST be rejected"
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/data-types/fixed_length_utf32/README.md?plain=1#L112-L113).
+    `null_terminated_bytes`, which no specification defines, follows
+    zarr-python instead, which drops trailing null bytes before it checks
+    the size.
+    """
     capacity = configuration["length_bytes"] // _CODE_POINT_BYTES
     if len(value) > capacity:
         yield ValidationProblem(

@@ -15,6 +15,7 @@ configuration types and constants are.
 from typing import TYPE_CHECKING
 
 from zarr_metadata._renamed import renamed_scope
+from zarr_metadata.v2._core import RENAMED_SCOPES_V2
 from zarr_metadata.v2.codec.checksum import (
     ADLER32_CODEC_V2,
     CRC32_CODEC_V2,
@@ -108,4 +109,4 @@ if not TYPE_CHECKING:
     # name of this module as a scope.
     def __getattr__(name: str) -> object:
         """`CORE_V2`, the scope's name before it ended in `_CONTEXT`, with a `DeprecationWarning`."""
-        return renamed_scope(__name__, name, {"CORE_V2": ("CORE_V2_CONTEXT", CORE_V2_CONTEXT)})
+        return renamed_scope(__name__, name, RENAMED_SCOPES_V2)
