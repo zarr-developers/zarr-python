@@ -8,6 +8,7 @@ bits, a `bytes` value's as an array of byte values or base64.
 from __future__ import annotations
 
 import base64
+import struct
 from typing import TYPE_CHECKING, Any, Final, Literal, cast, get_args
 
 from hypothesis import strategies as st
@@ -79,9 +80,18 @@ def finite_floats(width: FloatWidth) -> st.SearchStrategy[float]:
     return st.floats(width=width, allow_nan=False, allow_infinity=False)
 
 
+_PACKED: Final[Mapping[FloatWidth, str]] = {16: ">e", 32: ">f", 64: ">d"}
+"""How `struct` packs a float of each width, most significant byte first."""
+
+
 def _hex_spellings(digits: str) -> st.SearchStrategy[str]:
     """`0x` and the digits, the letters in either case."""
     return st.sampled_from((f"0x{digits}", f"0x{digits.upper()}"))
+
+
+def float_spellings(value: float, width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+    """`value`, a float of `width` bits, as a number or as the hex string of its bits."""
+    return st.just(value) | _hex_spellings(struct.pack(_PACKED[width], value).hex())
 
 
 def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
@@ -173,4 +183,10 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
 }
 """A strategy for each data type that holds no other field."""
 
-__all__ = ["DATA_TYPE_STRATEGIES", "FLOAT_WIDTHS", "INTEGER_RANGES", "finite_floats"]
+__all__ = [
+    "DATA_TYPE_STRATEGIES",
+    "FLOAT_WIDTHS",
+    "INTEGER_RANGES",
+    "finite_floats",
+    "float_spellings",
+]

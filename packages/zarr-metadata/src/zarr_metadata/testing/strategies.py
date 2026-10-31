@@ -37,6 +37,7 @@ Requires the `testing` extra (`pip install zarr-metadata[testing]`).
 
 from __future__ import annotations
 
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, TypeVar, cast
 
@@ -213,21 +214,30 @@ def _any_spelling(
 
 
 def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
-    """The scope that claims `definition` and nothing else."""
-    slot = next(slot for slot, kind in ZarrV3Context.kinds.items() if isinstance(definition, kind))
-    return ZarrV3Context(**cast("ZarrV3ContextSlots", {slot: (definition,)}))
+    """The scope that claims `definition` and nothing else; a `TypeError` for a definition no slot of a Zarr v3 scope holds."""
+    for slot, kind in ZarrV3Context.kinds.items():
+        if isinstance(definition, kind):
+            return ZarrV3Context(**cast("ZarrV3ContextSlots", {slot: (definition,)}))
+    msg = f"{definition.name!r} is a {type(definition).__name__}, which no slot of a Zarr v3 scope holds"
+    raise TypeError(msg)
 
 
-def _canonical(
-    definition: Definition[Any], field: ZarrV3MetadataFieldJSON
+def _checked(
+    field: ZarrV3MetadataFieldJSON,
+    *,
+    definition: Definition[Any],
+    kind: type[Definition[Any]],
+    scope: ZarrV3Context,
+    spellings: Spellings,
 ) -> ZarrV3MetadataFieldJSON:
-    """`field` in the spelling `canonicalize` gives it, read in a scope of its own definition."""
-    kind = as_kind(kind_of(definition))
-    canonical, problems = canonicalize(field, kind, _scope_of(definition))
+    """`field`, or its canonical spelling, once it reads without a problem in `scope`; a `ValueError` when it does not."""
+    canonical, problems = canonicalize(field, kind, scope)
     if len(problems) != 0:
-        msg = f"the strategy for {definition.name!r} drew {field!r}, which is refused: {problems!r}"
+        msg = f"{field!r}, drawn for {definition.name!r}, which is refused: {problems!r}"
         raise ValueError(msg)
-    return cast("ZarrV3MetadataFieldJSON", canonical)
+    if spellings == "canonical":
+        return cast("ZarrV3MetadataFieldJSON", canonical)
+    return field
 
 
 def fields(
@@ -244,16 +254,24 @@ def fields(
     `codec_configurations(definition, chunk)` for a codec handed a chunk,
     once it is known not to be None. `spellings` says whether every
     spelling the spec allows is drawn, or only the simplest.
+
+    Each field is read in a scope of its definition alone, and one that
+    is refused, as one drawn from `configurations` the definition does
+    not accept is, raises a `ValueError`.
     """
     drawn: Configurations | SearchStrategy[C] = (
         _strategy_for(definition, strategies).unconstrained()
         if configurations is UNSET
         else configurations
     )
-    spelled = _any_spelling(definition, drawn)
-    if spellings == "canonical":
-        return spelled.map(lambda field: _canonical(definition, field))
-    return spelled
+    checked = partial(
+        _checked,
+        definition=definition,
+        kind=as_kind(kind_of(definition)),
+        scope=_scope_of(definition),
+        spellings=spellings,
+    )
+    return _any_spelling(definition, drawn).map(checked)
 
 
 __all__ = [

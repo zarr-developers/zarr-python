@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING, Any, Final
 from hypothesis import strategies as st
 
 from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
-from zarr_metadata.testing._data_type import FLOAT_WIDTHS, INTEGER_RANGES, finite_floats
+from zarr_metadata.testing._data_type import (
+    FLOAT_WIDTHS,
+    INTEGER_RANGES,
+    finite_floats,
+    float_spellings,
+)
 from zarr_metadata.testing._strategy import CodecStrategy
 from zarr_metadata.v3._definition import Chunk, storage_of
 from zarr_metadata.v3.codec.blosc import BLOSC_CNAME, BLOSC_CODEC, BLOSC_NO_SHUFFLE, BLOSC_SHUFFLE
@@ -88,8 +93,9 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
 
     Each is a fill value of the chunk's data type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43),
-    drawn finite, and the scale non-zero, so that decoding, which divides
-    by it, is defined. Handed a data type the codec's registry entry does
+    a float's as a number or the hex string of its bits. Each is drawn
+    finite, and the scale non-zero, so that decoding never divides by
+    zero; a scale small enough that decoding overflows is still drawn. Handed a data type the codec's registry entry does
     not list -- truth values, raw bits, complex numbers, numpy times --
     nothing is drawn: for some the spec refuses it, and for the others
     leaves it open. Handed a chunk whose data type is unknown, the values
@@ -105,8 +111,13 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
         offset = st.integers(low, high)
         scale = st.integers(low, high).filter(lambda value: value != 0)
     elif definition in FLOAT_WIDTHS:
-        offset = finite_floats(FLOAT_WIDTHS[definition])
-        scale = finite_floats(FLOAT_WIDTHS[definition]).filter(lambda value: value != 0)
+        width = FLOAT_WIDTHS[definition]
+        offset = finite_floats(width).flatmap(lambda value: float_spellings(value, width))
+        scale = (
+            finite_floats(width)
+            .filter(lambda value: value != 0)
+            .flatmap(lambda value: float_spellings(value, width))
+        )
     else:
         return None
     return st.fixed_dictionaries({}, optional={"offset": offset, "scale": scale})

@@ -40,6 +40,7 @@ from zarr_metadata.testing.strategies import (
     fields,
     fill_values,
 )
+from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3._definition import chunk_grid_lengths
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC
@@ -175,11 +176,12 @@ def test_chunk_grids_fit_their_shape(
 
 @st.composite
 def _chunks(draw: st.DrawFn) -> Chunk:
-    """A chunk of some lengths, of a data type drawn from the strategies."""
-    definition = draw(st.sampled_from(_DATA_TYPES))
-    data_type = _read(definition, draw(fields(definition)))
-    lengths = draw(st.lists(st.integers(1, 8), max_size=4))
-    return Chunk(tuple(frozenset({length}) for length in lengths), data_type)
+    """A chunk of a data type drawn from the strategies, or of none known, with lengths known along some axes, all, or none."""
+    definition = draw(st.none() | st.sampled_from(_DATA_TYPES))
+    data_type = None if definition is None else _read(definition, draw(fields(definition)))
+    axis = st.none() | st.integers(1, 8).map(lambda length: frozenset({length}))
+    lengths = draw(st.none() | st.lists(axis, max_size=4).map(tuple))
+    return Chunk(lengths, data_type)
 
 
 @pytest.mark.parametrize("definition", _CODECS, ids=_id)
@@ -187,12 +189,12 @@ def _chunks(draw: st.DrawFn) -> Chunk:
 def test_codecs_take_their_chunk(
     definition: CodecDefinition[Any], data: st.DataObject, chunk: Chunk
 ) -> None:
-    """A codec drawn for a chunk takes it; one drawn for none is one the spec does not give it."""
-    assert chunk.data_type is not None
-    assert chunk.data_type.definition is not None
-    data_type_name = chunk.data_type.definition.name
+    """A codec drawn for a chunk takes it; one drawn for none is one the spec does not give it, which needs the data type known."""
     configurations = codec_configurations(definition, chunk)
     if configurations is None:
+        assert chunk.data_type is not None
+        assert chunk.data_type.definition is not None
+        data_type_name = chunk.data_type.definition.name
         event(f"takes no {data_type_name}")
         if definition is SCALE_OFFSET_CODEC and data_type_name in _OPEN_FOR_SCALE_OFFSET:
             return
@@ -308,10 +310,35 @@ def test_a_codec_strategy_refusing_an_unknown_chunk_is_a_value_error() -> None:
         CodecStrategy(configurations=lambda _chunk: None)
 
 
-def test_a_refused_draw_in_the_canonical_spelling_is_a_value_error() -> None:
-    refused = fields(GZIP_CODEC, st.just({"level": 99}), spellings="canonical")
+@pytest.mark.parametrize("spellings", get_args(Spellings))
+def test_a_refused_draw_is_a_value_error(spellings: Spellings) -> None:
+    refused = fields(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
     with pytest.raises(ValueError, match="which is refused"):
         find(refused, lambda _field: True, settings=settings(database=None))
+
+
+def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:
+    zlib = CORE_V2.codecs["zlib"]
+    with pytest.raises(TypeError, match="which no slot of a Zarr v3 scope holds"):
+        fields(zlib, st.just({}))
+
+
+@pytest.mark.parametrize(
+    "definition", [FLOAT16_DATA_TYPE, FLOAT32_DATA_TYPE, FLOAT64_DATA_TYPE], ids=_id
+)
+@pytest.mark.parametrize("member", ["offset", "scale"])
+def test_scale_offset_reaches_a_value_written_in_hex(
+    definition: DataTypeDefinition[Any], member: str
+) -> None:
+    """A float's `offset` and `scale` are fill values of its type, which the bits in hex spell too."""
+    chunk = Chunk(None, _read(definition, definition.name))
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    find(
+        configurations,
+        lambda configuration: isinstance(configuration.get(member), str),
+        settings=_REACH,
+    )
 
 
 def _has_pair(configuration: Mapping[str, Any]) -> bool:
