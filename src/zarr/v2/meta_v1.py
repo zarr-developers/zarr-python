@@ -1,0 +1,64 @@
+import json
+
+import numpy as np
+
+from zarr.errors import MetadataError
+
+
+def decode_metadata(b):
+    s = str(b, "ascii")
+    meta = json.loads(s)
+    zarr_format = meta.get("zarr_format", None)
+    if zarr_format != 1:
+        raise MetadataError(f"unsupported zarr format: {zarr_format}")
+    try:
+        meta = dict(
+            zarr_format=meta["zarr_format"],
+            shape=tuple(meta["shape"]),
+            chunks=tuple(meta["chunks"]),
+            dtype=decode_dtype(meta["dtype"]),
+            compression=meta["compression"],
+            compression_opts=meta["compression_opts"],
+            fill_value=meta["fill_value"],
+            order=meta["order"],
+        )
+    except Exception as e:
+        raise MetadataError(f"error decoding metadata: {e}") from e
+    else:
+        return meta
+
+
+def encode_metadata(meta):
+    meta = dict(
+        zarr_format=1,
+        shape=meta["shape"],
+        chunks=meta["chunks"],
+        dtype=encode_dtype(meta["dtype"]),
+        compression=meta["compression"],
+        compression_opts=meta["compression_opts"],
+        fill_value=meta["fill_value"],
+        order=meta["order"],
+    )
+    s = json.dumps(meta, indent=4, sort_keys=True, ensure_ascii=True)
+    b = s.encode("ascii")
+    return b
+
+
+def encode_dtype(d):
+    if d.fields is None:
+        return d.str
+    else:
+        return d.descr
+
+
+def _decode_dtype_descr(d):
+    # need to convert list of lists to list of tuples
+    if isinstance(d, list):
+        # recurse to handle nested structures
+        d = [(f, _decode_dtype_descr(v)) for f, v in d]
+    return d
+
+
+def decode_dtype(d):
+    d = _decode_dtype_descr(d)
+    return np.dtype(d)
