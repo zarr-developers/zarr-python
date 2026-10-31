@@ -21,7 +21,7 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_DATA_TYPE_V2
 from zarr_metadata.v2.definition import (
-    CORE_V2,
+    CORE_V2_CONTEXT,
     ZarrV2CodecDefinition,
     ZarrV2Context,
 )
@@ -75,7 +75,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     filters: object,
     locs: list[Loc],
 ) -> None:
-    """`read_array_metadata_v2` reads the document once in the given scope (`CORE_V2` by default). Each of `dtype`, `compressor` and `filters` is an `AcceptedField`, an `UnclaimedField`, or None, depending on what the document contains. `fields()` returns them in document order, with a struct's record types after the struct. A valid document produces no problems."""
+    """`read_array_metadata_v2` reads the document once in the given scope (`CORE_V2_CONTEXT` by default). Each of `dtype`, `compressor` and `filters` is an `AcceptedField`, an `UnclaimedField`, or None, depending on what the document contains. `fields()` returns them in document order, with a struct's record types after the struct. A valid document produces no problems."""
     reading = read_array_metadata_v2({**BASE, **changes}, context=context)
     assert reading.problems == ()
     assert type(reading.dtype) is dtype
@@ -125,7 +125,7 @@ def test_the_v2_readers_read_in_the_scope_given() -> None:
     doc = {**BASE, "compressor": {"id": "zlib", "level": 1}}
     assert read_array_metadata_v2(doc).problems == ()
     found = read_array_metadata_v2(
-        doc, context=CORE_V2.update(codecs={**CORE_V2.codecs, "zlib": bare})
+        doc, context=CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": bare})
     ).problems
     assert [p.loc for p in found] == [("compressor", "level")]
 

@@ -8,14 +8,18 @@ types. Each document type is in the submodule for its node: `array`,
 `definition`.
 
 This module also exports every v3 definition (`BYTES_CODEC`,
-`FLOAT64_DATA_TYPE`, `REGULAR_CHUNK_GRID`, ...), the scopes `CORE` and
-`CORE_AND_EXTENSIONS`, and the scope class `ZarrV3Context`, so that one
+`FLOAT64_DATA_TYPE`, `REGULAR_CHUNK_GRID`, ...), the scopes `CORE_CONTEXT`,
+`CORE_AND_EXTENSIONS_CONTEXT` and `ZARR_PYTHON_CONTEXT`, and the scope class `ZarrV3Context`, so that one
 import builds or updates a scope. Each is the same object as in its own
 submodule, where a definition's configuration types and constants are.
 """
 
+from typing import TYPE_CHECKING
+
 from zarr_metadata._common import ZarrV3NamedConfigJSON
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._core import RENAMED_SCOPES
 from zarr_metadata.v3._hierarchy import NodeName, NodePath
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -29,12 +33,15 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
+from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC
+from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.consolidated import CONSOLIDATED_METADATA_EXTRA_FIELD
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
 from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
+from zarr_metadata.v3.data_type.fixed_length_utf32 import FIXED_LENGTH_UTF32_DATA_TYPE
 from zarr_metadata.v3.data_type.float16 import FLOAT16_DATA_TYPE
 from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE
 from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE
@@ -42,6 +49,7 @@ from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.data_type.int16 import INT16_DATA_TYPE
 from zarr_metadata.v3.data_type.int32 import INT32_DATA_TYPE
 from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
+from zarr_metadata.v3.data_type.null_terminated_bytes import NULL_TERMINATED_BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
@@ -51,9 +59,12 @@ from zarr_metadata.v3.data_type.uint8 import UINT8_DATA_TYPE
 from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
 from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
+from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
     ZarrV3Context,
 )
 
@@ -66,10 +77,11 @@ __all__ = [
     "COMPLEX64_DATA_TYPE",
     "COMPLEX128_DATA_TYPE",
     "CONSOLIDATED_METADATA_EXTRA_FIELD",
-    "CORE",
-    "CORE_AND_EXTENSIONS",
+    "CORE_AND_EXTENSIONS_CONTEXT",
+    "CORE_CONTEXT",
     "CRC32C_CODEC",
     "DEFAULT_CHUNK_KEY_ENCODING",
+    "FIXED_LENGTH_UTF32_DATA_TYPE",
     "FLOAT16_DATA_TYPE",
     "FLOAT32_DATA_TYPE",
     "FLOAT64_DATA_TYPE",
@@ -78,6 +90,7 @@ __all__ = [
     "INT16_DATA_TYPE",
     "INT32_DATA_TYPE",
     "INT64_DATA_TYPE",
+    "NULL_TERMINATED_BYTES_DATA_TYPE",
     "NUMPY_DATETIME64_DATA_TYPE",
     "NUMPY_TIMEDELTA64_DATA_TYPE",
     "RAW_BYTES_DATA_TYPE",
@@ -93,6 +106,11 @@ __all__ = [
     "UINT32_DATA_TYPE",
     "UINT64_DATA_TYPE",
     "V2_CHUNK_KEY_ENCODING",
+    "VARIABLE_LENGTH_BYTES_DATA_TYPE",
+    "VLEN_BYTES_CODEC",
+    "VLEN_UTF8_CODEC",
+    "ZARR_PYTHON_CONTEXT",
+    "ZARR_PYTHON_RAW_BYTES_DATA_TYPE",
     "ZSTD_CODEC",
     "NodeName",
     "NodePath",
@@ -101,3 +119,11 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
 ]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> object:
+        """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name, RENAMED_SCOPES)

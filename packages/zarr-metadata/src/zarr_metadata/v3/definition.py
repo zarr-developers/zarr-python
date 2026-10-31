@@ -11,8 +11,8 @@ definition is and how a field is read are in `zarr_metadata.definition`,
 which both formats share. `ZarrV3Context` is the v3 scope, with one slot
 for each kind: `data_types`, `chunk_grids`, `chunk_key_encodings`,
 `codecs`, `storage_transformers`, `array_extra_fields` and
-`group_extra_fields`. `CORE` and `CORE_AND_EXTENSIONS` are the v3 scopes
-this package provides.
+`group_extra_fields`. `CORE_CONTEXT`, `CORE_AND_EXTENSIONS_CONTEXT` and `ZARR_PYTHON_CONTEXT` are
+the v3 scopes this package provides.
 
 A scope reads whole documents as well as fields.
 `read_array_metadata_v3(document, context=CONTEXT)`, from
@@ -93,6 +93,9 @@ refers to nothing in any scope.
 `zarr.json`, as a JSON Schema.
 """
 
+from typing import TYPE_CHECKING
+
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v3._common import (
     ZarrV3ChunkGridField,
     ZarrV3ChunkKeyEncodingField,
@@ -102,7 +105,12 @@ from zarr_metadata.v3._common import (
     ZarrV3StorageTransformerField,
 )
 from zarr_metadata.v3._context import ZarrV3Context, ZarrV3ContextSlots, ZarrV3Kind
-from zarr_metadata.v3._core import CORE, CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import (
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    RENAMED_SCOPES,
+    ZARR_PYTHON_CONTEXT,
+)
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
     Chunk,
@@ -122,8 +130,9 @@ from zarr_metadata.v3._definition import (
 from zarr_metadata.v3._pipeline import Stage
 
 __all__ = [
-    "CORE",
-    "CORE_AND_EXTENSIONS",
+    "CORE_AND_EXTENSIONS_CONTEXT",
+    "CORE_CONTEXT",
+    "ZARR_PYTHON_CONTEXT",
     "ArrayExtraFieldDefinition",
     "Chunk",
     "ChunkGridDefinition",
@@ -149,3 +158,11 @@ __all__ = [
     "ZarrV3StorageTransformerField",
     "storage_of",
 ]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> object:
+        """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name, RENAMED_SCOPES)

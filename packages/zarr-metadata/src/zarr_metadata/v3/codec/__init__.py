@@ -2,7 +2,7 @@
 
 Each codec defined by the spec or by zarr-extensions has its own submodule
 (`blosc`, `bytes`, `cast_value`, `crc32c`, `gzip`, `scale_offset`,
-`sharding_indexed`, `transpose`, `zstd`). Import a codec's types and its
+`sharding_indexed`, `transpose`, `vlen_bytes`, `vlen_utf8`, `zstd`). Import a codec's types and its
 definition from its submodule: `<X>CodecMetadata`, the canonical type for
 the codec's permitted JSON shapes (object form plus, where the spec allows,
 a bare-string short-hand form), `<X>CodecObject`, `<X>_CODEC`, and, for a

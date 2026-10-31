@@ -40,7 +40,7 @@ from zarr_metadata.model import (
 from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
 )
 
@@ -86,7 +86,7 @@ ACME_POINT = DataTypeDefinition(
 
 
 def _problems(data_type: JSONValue, value: object) -> list[tuple[tuple[str | int, ...], str]]:
-    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
     return [(problem.loc, problem.kind) for problem in fill_value_problems(resolved, value)]
 
@@ -139,7 +139,7 @@ def _problems(data_type: JSONValue, value: object) -> list[tuple[tuple[str | int
     ],
 )
 def test_every_data_type_takes_its_fill_values(data_type: JSONValue, fill_value: object) -> None:
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert fill_value_problems(resolved, fill_value) == ()
 
 
@@ -235,7 +235,7 @@ def test_a_fill_value_s_range_is_its_type_s(
 ) -> None:
     # `Int8FillValue` is `Annotated[int, Interval(ge=-128, le=127)]`. The
     # problem holds the range and the value that was found.
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     problems = fill_value_problems(resolved, fill_value)
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [
         (loc, value_at(fill_value, loc), ctx)
@@ -288,8 +288,8 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
 
 def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
     # The extra key is reported and hidden from the rules, which still check the other keys.
-    context = CORE_AND_EXTENSIONS.update(
-        data_types=[*CORE_AND_EXTENSIONS.data_types.values(), ACME_POINT]
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), ACME_POINT]
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     found = fill_value_problems(resolved, {"x": 99, "extra": 1})
@@ -335,7 +335,7 @@ def _alike(left: object, right: object) -> bool:
 
 
 def _read(data_type: JSONValue) -> AcceptedField[DataTypeDefinition[Any]]:
-    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
     assert isinstance(resolved, AcceptedField)
     return resolved
@@ -416,7 +416,7 @@ def test_a_fill_value_s_canonical_spelling_is_its_value_s(
 
 
 def test_a_data_type_nothing_in_scope_claims_spells_a_fill_value_as_written() -> None:
-    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     values: list[JSONValue] = [-0.0, True, 1, [1.0], None]
     for value in values:
         assert _alike(canonical_fill_value(unclaimed, value), value)
@@ -453,7 +453,7 @@ def test_error_a_fill_value_with_a_problem_has_no_canonical_spelling() -> None:
     assert canonical_fill_value(_read("float32"), "0x7fc0") is UNSET
     assert canonical_fill_value(_read("int8"), 1.0) is UNSET
     assert canonical_fill_value(_read("int8"), math.nan) is UNSET
-    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert canonical_fill_value(unclaimed, None) is None
 
 
@@ -461,9 +461,9 @@ def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it()
     def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         data_types=[
-            *CORE_AND_EXTENSIONS.data_types.values(),
+            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
             dataclasses.replace(ACME_POINT, fill_value_canonical=refuses),
         ]
     )
@@ -477,9 +477,9 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         return cast("JSONValue", {1, 2})
 
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         data_types=[
-            *CORE_AND_EXTENSIONS.data_types.values(),
+            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
             dataclasses.replace(ACME_POINT, fill_value_canonical=not_json),
         ]
     )

@@ -88,6 +88,8 @@ EXPECTED = [
     "ScaleOffsetCodecMetadata",
     "ShardingIndexedCodecMetadata",
     "TransposeCodecMetadata",
+    "VlenBytesCodecMetadata",
+    "VlenUtf8CodecMetadata",
     "ZstdCodecMetadata",
     # Category C — grid/key canonical unions
     "RegularChunkGridMetadata",
@@ -150,6 +152,10 @@ EXPECTED = [
     "StringDataTypeName",
     "STRING_DATA_TYPE_NAME",
     "StringFillValue",
+    # fixed_length_utf32
+    "FixedLengthUtf32DataTypeName",
+    "FIXED_LENGTH_UTF32_DATA_TYPE_NAME",
+    "FixedLengthUtf32FillValue",
     # numpy_datetime64
     "NumpyDatetime64DataTypeName",
     "NUMPY_DATETIME64_DATA_TYPE_NAME",
@@ -188,6 +194,10 @@ EXPECTED = [
     "CastValueCodecName",
     "CRC32C_CODEC_NAME",
     "Crc32cCodecName",
+    "VLEN_BYTES_CODEC_NAME",
+    "VlenBytesCodecName",
+    "VLEN_UTF8_CODEC_NAME",
+    "VlenUtf8CodecName",
     "GZIP_CODEC_NAME",
     "GzipCodecName",
     "SCALE_OFFSET_CODEC_NAME",
@@ -327,6 +337,9 @@ _STANDALONE_VOCAB = frozenset(
         # A pydantic field's scope, fixed: `Annotated[Model, InScope(CONTEXT)]`.
         "InScope",
         "MetadataValidationError",
+        "FixedLengthUtf32",
+        "NullTerminatedBytes",
+        "ZarrPythonRawBytes",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",

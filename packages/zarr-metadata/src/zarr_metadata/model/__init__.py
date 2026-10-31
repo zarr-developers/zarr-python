@@ -9,7 +9,7 @@ Every document type has a reader: `read_array_metadata_v3`,
 `read_consolidated_metadata_v2`. A reader checks a document's JSON
 structure. In a v3 document it also reads each extension point (codecs,
 chunk grids, data types, ...) through the definition that claims its
-name in a scope. The scope is `CORE_AND_EXTENSIONS` unless a `context`
+name in a scope. The scope is `CORE_AND_EXTENSIONS_CONTEXT` unless a `context`
 is passed. A v3 reader checks the fill value against the data type the
 document names, the chunk grid against the shape, and the codecs as a
 pipeline, each codec against the chunk it receives. Each reader does one

@@ -80,7 +80,7 @@ from zarr_metadata.v3._common import ZarrV3ExtensionField
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3._definition import GroupExtraFieldDefinition
 from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults
 from zarr_metadata.v3.consolidated import (
@@ -169,7 +169,7 @@ class ZarrV3GroupMetadata(Keyed):
     the document as written, refined, and `context` is the scope.
     `attributes` and `consolidated_metadata` are views of the values the
     read refined. Each member the spec does not define is an extra field,
-    in `extra_fields`, as the scope read it. `CORE` reads a
+    in `extra_fields`, as the scope read it. `CORE_CONTEXT` reads a
     `consolidated_metadata` member as the envelope the core spec fixes,
     and no definition reads the documents the member lists: they follow a
     convention of the reference implementation, not the core spec. To
@@ -186,7 +186,7 @@ class ZarrV3GroupMetadata(Keyed):
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         reading, members = read_group_v3(document, context)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
@@ -281,7 +281,7 @@ class ZarrV3GroupMetadata(Keyed):
     def extra_fields(
         self,
     ) -> Mapping[str, AcceptedField[GroupExtraFieldDefinition[Any]] | UnclaimedField]:
-        """Each member the spec does not define, by key, as the scope read it: an `AcceptedField` when a definition in scope claims the key (as `CORE` claims `consolidated_metadata`), and an `UnclaimedField` otherwise."""
+        """Each member the spec does not define, by key, as the scope read it: an `AcceptedField` when a definition in scope claims the key (as `CORE_CONTEXT` claims `consolidated_metadata`), and an `UnclaimedField` otherwise."""
         return self._shown[3]
 
     @property
@@ -365,7 +365,7 @@ class ZarrV3GroupMetadata(Keyed):
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         if disagreements(context, claims_of(self._reading.fields())).agrees:
             return self._of(self._document, context, self._reading, self._members)
         return type(self)(self._document, context=context)
@@ -382,7 +382,7 @@ class ZarrV3GroupMetadata(Keyed):
         in `context`, and `ZarrV3ConsolidatedMetadata.refined_in` checks
         that they read the same there.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         found = disagreements(context, claims_of(self._reading.fields()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
@@ -409,7 +409,7 @@ class ZarrV3GroupMetadata(Keyed):
         **overrides: Unpack[ZarrV3GroupMetadataUpdate],
     ) -> ZarrV3GroupMetadata:
         """Return a group with no attributes, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member and a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         changes = member_changes(
             overrides, ZarrV3GroupMetadataUpdate, GroupExtraFieldDefinition.spec_members
         )
@@ -426,7 +426,7 @@ class ZarrV3GroupMetadata(Keyed):
         Raises `MetadataValidationError` with every problem the read finds.
         A `consolidated_metadata` of `null`, which zarr-python 3.0 and 3.1
         wrote, is a value the document wrote that is not an object. In a
-        scope that claims the member, as `CORE` does, this is a problem,
+        scope that claims the member, as `CORE_CONTEXT` does, this is a problem,
         because the spec requires an object. Use
         `read_repaired_node_metadata_v3` to read such a store. A member the
         spec does not define is kept in `extra_fields`.
@@ -443,7 +443,7 @@ class ZarrV3GroupMetadata(Keyed):
         are not JSON, or the document is not valid. Raises `TypeError` for
         a scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         return cls(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY), context=context)
 
 
@@ -495,7 +495,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     must_understand: Final = False
 
     def __init__(self, member: object, context: ZarrV3Context | None = None) -> None:
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         # The member is always under a group's key, even when read on its
         # own, so nesting depth is counted from there, as in the group.
         readings, members, document, problems = _read_consolidated_v3(
@@ -561,7 +561,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ConsolidatedMetadata:
         """Return this member with every document read in `context`, whatever that changes. Raises `MetadataValidationError` when a document has a problem in `context`. The existing readings are reused when `context` reads every claim of every document identically."""
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         if all(
             disagreements(context, claims_of(node.reading.fields())).agrees
             for node in self._metadata.values()
@@ -577,7 +577,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         document's path. Raises `MetadataValidationError` when a gain
         exposes a problem.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         conflicts = [
             dataclasses.replace(
                 conflict, loc=("metadata", path, *(() if conflict.loc is None else conflict.loc))
@@ -681,8 +681,8 @@ class ZarrV3ConsolidatedMetadataReading:
 def read_consolidated_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3ConsolidatedMetadataReading:
-    """Read `value`, a group's `consolidated_metadata` member, in `context` (`CORE_AND_EXTENSIONS` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV3ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    """Read `value`, a group's `consolidated_metadata` member, in `context` (`CORE_AND_EXTENSIONS_CONTEXT` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV3ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     readings, members, document, problems = _read_consolidated_v3(
         value, context, (ZARR_V3_CONSOLIDATED_METADATA_KEY,)
     )
@@ -737,7 +737,7 @@ def read_node_metadata_v3(
     read `node_type` from unvalidated JSON, and a document in another
     format is reported as not v3.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     node_type, problems = _node_type(value)
     if node_type == "array":
         return read_array_metadata_v3(value, context=context)
@@ -761,7 +761,7 @@ def node_metadata_from_json_v3(
     `MetadataValidationError` with every problem `read_node_metadata_v3`
     finds, including a `node_type` that is neither array nor group.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     reading = read_node_metadata_v3(data, context=context)
     if reading.metadata is None:
         raise MetadataValidationError(reading.problems)
@@ -776,7 +776,7 @@ def node_metadata_from_key_value_v3(
     Raises `MetadataValidationError` when the key is missing, its bytes
     are not JSON, or the document is not a valid array or group.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     # Array documents and group documents are both stored at `zarr.json`.
     document = load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY)
     return node_metadata_from_json_v3(document, context=context)
@@ -853,13 +853,13 @@ def read_group_metadata_v3(
     reader must understand each one that does not declare
     `must_understand: false`; the model reports these as
     `must_understand_fields`. A `consolidated_metadata` member, if
-    present and claimed by the scope, as `CORE` claims it, is checked
+    present and claimed by the scope, as `CORE_CONTEXT` claims it, is checked
     against the envelope the core spec fixes. The documents it lists are
     not read; `read_consolidated_metadata_v3` reads them. This is the
     form of `ZarrV3GroupMetadata(value, context)` that returns problems
     instead of raising them.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     reading, members = read_group_v3(value, context)
     if members is None or members.document is None:
         return reading

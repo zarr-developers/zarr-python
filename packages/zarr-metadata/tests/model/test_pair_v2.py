@@ -29,7 +29,7 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2
 from zarr_metadata.v2.definition import (
-    CORE_V2,
+    CORE_V2_CONTEXT,
     ZarrV2CodecDefinition,
     ZarrV2Context,
 )
@@ -49,7 +49,7 @@ ARRAY: dict[str, Any] = {
 }
 BARE_ZLIB = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
 SMALL = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2])
-PRIVATE = CORE_V2.update(codecs={**CORE_V2.codecs, "zlib": BARE_ZLIB})
+PRIVATE = CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": BARE_ZLIB})
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:
@@ -58,9 +58,9 @@ def _document(changes: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_a_model_is_its_document_read_in_its_scope() -> None:
-    """The constructor reads the document in the given scope (`CORE_V2` by default). `to_json` returns the refined document (arrays as tuples), which shares nothing with the model. A missing `dimension_separator` stays missing. `context` is the scope, and the reading holds the model."""
+    """The constructor reads the document in the given scope (`CORE_V2_CONTEXT` by default). `to_json` returns the refined document (arrays as tuples), which shares nothing with the model. A missing `dimension_separator` stays missing. `context` is the scope, and the reading holds the model."""
     model = ZarrV2ArrayMetadata(ARRAY)
-    assert model.context is CORE_V2
+    assert model.context is CORE_V2_CONTEXT
     document = model.to_json()
     assert document["shape"] == (4,)
     assert document.get("attributes") == {"a": (1, 2)}
@@ -153,7 +153,9 @@ def test_a_model_read_in_two_scopes_that_read_it_alike_is_one_model() -> None:
     """Equality depends on interpretation. The same document read with a private `zlib` that takes no parameters and with the core `zlib` gives two different models. Read in two scopes that hold the same `zlib`, it gives equal models."""
     document = {**ARRAY, "compressor": {"id": "zlib"}}
     assert ZarrV2ArrayMetadata(document) != ZarrV2ArrayMetadata(document, PRIVATE)
-    same = ZarrV2Context(data_types=CORE_V2.data_types.values(), codecs=CORE_V2.codecs.values())
+    same = ZarrV2Context(
+        data_types=CORE_V2_CONTEXT.data_types.values(), codecs=CORE_V2_CONTEXT.codecs.values()
+    )
     assert ZarrV2ArrayMetadata(document) == ZarrV2ArrayMetadata(document, same)
 
 
@@ -227,7 +229,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
     assert gained.refines(unclaimed)
     assert not unclaimed.refines(gained)
     with pytest.raises(ScopeConflictError) as conflict:
-        gained.refined_in(CORE_V2)
+        gained.refined_in(CORE_V2_CONTEXT)
     assert [c.loc for c in conflict.value.conflicts] == [("compressor",)]
     lost = gained.with_context(SMALL)
     assert isinstance(lost.compressor, UnclaimedField)
@@ -407,7 +409,7 @@ def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them()
     assert gained.refines(small)
     assert not small.refines(gained)
     with pytest.raises(ScopeConflictError) as conflict:
-        gained.refined_in(CORE_V2)
+        gained.refined_in(CORE_V2_CONTEXT)
     assert [c.loc for c in conflict.value.conflicts] == [("metadata", "a/.zarray", "compressor")]
     assert gained.with_context(SMALL) == small
 
@@ -463,7 +465,7 @@ def test_error_a_conflict_is_located_at_the_key_the_document_writes() -> None:
         {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}, PRIVATE
     )
     with pytest.raises(ScopeConflictError) as conflict:
-        gained.refined_in(CORE_V2)
+        gained.refined_in(CORE_V2_CONTEXT)
     assert [c.loc for c in conflict.value.conflicts] == [("metadata", "a/.zarray", "compressor")]
 
 

@@ -25,7 +25,7 @@ from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
@@ -42,7 +42,7 @@ INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
 def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
-    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
+    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0]
 
 
 FLOAT32 = _dt("float32")
@@ -81,7 +81,7 @@ def _read(
 ) -> tuple[tuple[Stage, ...], tuple[ValidationProblem, ...]]:
     """The stages, and every problem: first each codec's own problems at its location, then the pipeline's."""
     read = [
-        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS, (index,))
+        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT, (index,))
         for index, codec in enumerate(codecs)
     ]
     stages, found = read_pipeline([resolved for resolved, _ in read], chunk)
