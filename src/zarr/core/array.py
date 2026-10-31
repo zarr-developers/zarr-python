@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import math
 import warnings
@@ -57,7 +58,6 @@ from zarr.core.chunk_key_encodings import (
     parse_chunk_key_encoding,
 )
 from zarr.core.common import (
-    _UNSPECIFIED,
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -68,9 +68,9 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     _default_zarr_format,
-    _UnspecifiedType,
     _warn_order_kwarg,
     ceildiv_int,
+    concurrent_foreach,
     concurrent_map,
     parse_shapelike,
     product,
@@ -156,7 +156,8 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage._common import StorePath, _resolve_open_zarr_format, make_store_path
+from zarr.storage._common import StorePath, make_store_path, resolve_zarr_format
+from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
@@ -468,9 +469,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
 
-        store_path = await make_store_path(store)
-        zarr_format = store_path.resolve_zarr_format(zarr_format) or zarr_format
+        zarr_format = resolve_zarr_format(store, zarr_format)
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+        store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
 
@@ -781,7 +782,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
+        zarr_format: ZarrFormat | None = 3,
+        *,
+        config: ArrayConfigLike | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -793,10 +796,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
-            The Zarr format version; None means auto-detect from the store
-            contents. When not passed, a URL pipeline decides (its `zarr2:` /
-            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
-            a format segment), and every other store defaults to 3.
+            The Zarr format version (default is 3).
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the opened array. Keys not specified are taken from
+            the global configuration.
 
         Returns
         -------
@@ -824,12 +827,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # <AsyncArray memory://... shape=(100, 100) dtype=int32>
         ```
         """
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(store)
-        zarr_format = _resolve_open_zarr_format(store, store_path, zarr_format, default=3)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict, config=config)
 
     @property
     def store(self) -> Store:
@@ -2060,7 +2063,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
+        *,
+        config: ArrayConfigLike | None = None,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -2070,18 +2074,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Store containing the Array. See the
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
-        zarr_format : {2, 3, None}, optional
-            The zarr format to expect; None means auto-detect from the store
-            contents. When not passed, a URL pipeline decides (its `zarr2:` /
-            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
-            a format segment), and every other store defaults to 3.
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the opened array. Keys not specified are taken from
+            the global configuration.
 
         Returns
         -------
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store, zarr_format=zarr_format))
+        async_array = sync(AsyncArray.open(store, config=config))
         return cls(async_array)
 
     @property
@@ -4190,6 +4192,21 @@ class ShardsConfigParam(TypedDict):
 type ShardsLike = ChunksLike | ShardsConfigParam | Literal["auto"]
 
 
+def _stores_share_data(a: Store, b: Store) -> bool:
+    """Whether two stores are views onto the same underlying data.
+
+    ``Store.__eq__`` can't answer this directly. Several stores include ``read_only`` in
+    their equality check, so a read-only and a writable view of the same data are
+    unequal. ``MemoryStore`` compares its dicts by value, so two distinct stores with
+    equal contents are equal.
+    """
+    if type(a) is MemoryStore and type(b) is MemoryStore:
+        return a._store_dict is b._store_dict
+    with contextlib.suppress(NotImplementedError):
+        a = a.with_read_only(b.read_only)
+    return a == b
+
+
 async def from_array(
     store: StoreLike,
     *,
@@ -4394,8 +4411,8 @@ async def from_array(
     """
     mode: Literal["a"] = "a"
     config_parsed = parse_array_config(config)
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
-    zarr_format = store_path.resolve_zarr_format(zarr_format)
 
     (
         chunks,
@@ -4425,6 +4442,23 @@ async def from_array(
     )
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
+
+    # init_array deletes everything under the destination before the copy streams from the
+    # source, so a destination that overlaps the source would copy only fill values.
+    if (
+        write_data
+        and overwrite
+        and isinstance(data, Array)
+        and _stores_share_data(data.store_path.store, store_path.store)
+    ):
+        src_prefix = f"{data.store_path.path}/" if data.store_path.path else ""
+        dest_prefix = f"{store_path.path}/" if store_path.path else ""
+        if src_prefix.startswith(dest_prefix) or dest_prefix.startswith(src_prefix):
+            raise ValueError(
+                f"Cannot overwrite {store_path.path!r} with the array at "
+                f"{data.store_path.path!r} because the paths overlap. Write to a different "
+                "path, or pass data=array[...]."
+            )
 
     result = await init_array(
         store_path=store_path,
@@ -4721,7 +4755,7 @@ async def create_array(
     serializer: SerializerLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
-    zarr_format: ZarrFormat | None = None,
+    zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNamesLike = None,
@@ -4781,10 +4815,13 @@ async def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no `compressors` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_compressors`
-        in [`zarr.config`][zarr.config].
+        returns another bytestream. These values must be instances of
+        [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+        [`zarr.abc.codec.BytesBytesCodec`][]. Multiple compressors may be provided
+        for Zarr format 3. Codecs that take an array and return bytes are serializers
+        and must be supplied with `serializer` instead.
+        If no `compressors` are provided, the default for Zarr format 3 is
+        `(ZstdCodec(),)`.
         Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
@@ -4796,9 +4833,11 @@ async def create_array(
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no `serializer` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_serializer`
-        in [`zarr.config`][zarr.config].
+        Codecs that are instances of [`zarr.abc.codec.ArrayBytesCodec`][] must be
+        supplied here, not with `compressors`.
+        If no `serializer` is provided, a default serializer is chosen based on the data type:
+        `VLenUTF8Codec` for variable-length strings, `VLenBytesCodec` for variable-length
+        bytes, and `BytesCodec` otherwise.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4881,10 +4920,10 @@ async def create_array(
     else:
         mode: Literal["a"] = "a"
 
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )
-        zarr_format = store_path.resolve_zarr_format(zarr_format)
         return await init_array(
             store_path=store_path,
             shape=shape_parsed,
@@ -5895,6 +5934,28 @@ async def _set_selection(
     )
 
 
+def _iter_chunk_coords_to_delete(
+    old_grid_shape: tuple[int, ...], new_grid_shape: tuple[int, ...]
+) -> Iterator[tuple[int, ...]]:
+    """Yield the old grid minus the new grid using only O(ndim) auxiliary space."""
+    remaining_shape = list(old_grid_shape)
+    for axis, (old, new) in enumerate(zip(old_grid_shape, new_grid_shape, strict=True)):
+        if new >= old:
+            continue
+        # Assign each coordinate to its first axis outside the new grid. Earlier
+        # axes have already been clipped, so these slabs never overlap.
+        slab_shape = remaining_shape.copy()
+        slab_shape[axis] = old - new
+        for index in range(math.prod(slab_shape)):
+            coords = [0] * len(slab_shape)
+            # itertools.product caches its inputs, even when they are ranges.
+            for dim in range(len(slab_shape) - 1, -1, -1):
+                index, coords[dim] = divmod(index, slab_shape[dim])
+            coords[axis] += new
+            yield tuple(coords)
+        remaining_shape[axis] = new
+
+
 async def _resize(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
     new_shape: ShapeLike,
@@ -5923,29 +5984,34 @@ async def _resize(
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
 
-    # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
-    only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
-
     # Encode the new metadata before deleting any chunk: metadata that cannot be stored
     # then fails with the store untouched.
     documents = encode_documents(array.store_path, new_metadata)
 
-    if delete_outside_chunks and not only_growing:
-        # Remove all chunks outside of the new shape
-        old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
-        new_chunk_coords = set(new_chunk_grid.all_chunk_coords())
-
-        async def _delete_key(key: str) -> None:
-            await (array.store_path / key).delete()
-
-        await concurrent_map(
-            [
-                (array.metadata.encode_chunk_key(chunk_coords),)
-                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            zarr_config.get("async.concurrency"),
+    if delete_outside_chunks:
+        old_grid_shape = array._chunk_grid.grid_shape
+        new_grid_shape = new_chunk_grid.grid_shape
+        # Chunks of the old grid outside the box it shares with the new grid.
+        # Zero whenever no axis loses a whole chunk, including pure growth.
+        n_delete = math.prod(old_grid_shape) - math.prod(
+            min(old, new) for old, new in zip(old_grid_shape, new_grid_shape, strict=True)
         )
+        if n_delete > 0:
+
+            async def _delete_chunk(coords: tuple[int, ...]) -> None:
+                await (array.store_path / array.metadata.encode_chunk_key(coords)).delete()
+
+            # `None` lifts the I/O concurrency limit, but the worker pool still
+            # needs a bound; 1000 keeps the pool far smaller than the grid.
+            limit = zarr_config.get("async.concurrency") or 1000
+            await concurrent_foreach(
+                (
+                    (coords,)
+                    for coords in _iter_chunk_coords_to_delete(old_grid_shape, new_grid_shape)
+                ),
+                _delete_chunk,
+                min(limit, n_delete),
+            )
 
     # Write new metadata
     await store_documents(array.store_path, documents)

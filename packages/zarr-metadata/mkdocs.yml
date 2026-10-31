@@ -10,11 +10,23 @@ edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr
 site_description: Spec-defined metadata types, models, and validators for Zarr v2 and v3.
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io/']
 
+# The docs tests run each python fence marked `test="true"`, and superfences
+# refuses a fence with options it does not know. zarr-python's hook, shared
+# through a symlink as mkdocs-base.yml is, renders such a fence as a plain
+# code block.
+hooks:
+  - mkdocs_hooks.py
+
 nav:
   - index.md
+  - Parsing / Validation: parsing-validation.md
+  - Context: context.md
   - API Reference:
       - api/index.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.definition</code>': api/definition.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.json_schema</code>': api/json_schema.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/model.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.problems</code>': api/problems.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/pydantic.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.typed_json</code>': api/typed_json.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/v2.md

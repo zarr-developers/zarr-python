@@ -87,67 +87,69 @@ See [developing custom stores](storage.md#developing-custom-stores) for more inf
 
 ## Custom URL pipeline adapters
 
-[URL pipelines](storage.md#user-guide-url-pipelines) are `|`-chained URLs such as
-`s3://bucket/data.zip|zip:|zarr3:`. Each sub-URL after the first names an *adapter*
-that reinterprets everything to its left. A package provides an adapter for a scheme by
-subclassing [`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing its single
-classmethod, which resolves the adapter's segment into an open store and a residual path:
+In a [URL pipeline](storage.md#user-guide-url-pipelines) such as
+`s3://bucket/data.zip|zip:|zarr3:`, each sub-URL after the first names an *adapter*
+that reinterprets everything to its left. A package provides an adapter by subclassing
+[`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing one classmethod, which
+returns an open store and the path addressed inside it as a
+[`StorePath`][zarr.storage.StorePath]:
 
 ```python test="true" session="url-adapter"
-import dataclasses
-
-from zarr.abc.url_pipeline import (
-    AdapterResolution,
-    PipelineContext,
-    PipelineSegment,
-    URLPipelineAdapter,
-)
-from zarr.storage import WrapperStore
+from zarr.abc.url_pipeline import URLPipelineAdapter
+from zarr.storage import PipelineContext, PipelineSegment, StorePath, WrapperStore
 
 
 class MyAdapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
-        # A *wrapper* adapter opens the resource to its left and wraps it. Join the
-        # preceding residual path with this segment's own path, and keep every other
-        # field (e.g. zarr_format) via dataclasses.replace.
+    ) -> StorePath:
+        # A wrapper adapter opens the resource to its left and wraps it, joining the
+        # preceding residual path with this segment's own path.
         preceding = await context.resolve_preceding()
         store = WrapperStore(preceding.store)
         path = "/".join(part.strip("/") for part in (preceding.path, segment.body) if part)
-        return dataclasses.replace(preceding, store=store, path=path)
+        return StorePath(store, path)
 ```
 
-Wrapper adapters compose: in `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` the
-inner adapter sees the outer one's residual path `a` and the pipeline resolves to `a/b`.
+To resolve the preceding pipeline with another mode or options, use a derived context:
+`await dataclasses.replace(context, mode="r").resolve_preceding()`. Wrapper adapters
+compose: `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` resolves to `a/b`.
 
 ```python test="true" session="url-adapter"
-import asyncio
-
+import zarr
 from zarr.registry import register_url_adapter
-from zarr.storage import resolve_pipeline
+from zarr.storage import URLPipeline
 
 register_url_adapter("mypackage.myscheme", MyAdapter)
-resolution = asyncio.run(resolve_pipeline("memory://x|mypackage.myscheme:a|mypackage.myscheme:b"))
-assert resolution.path == "a/b"
+url = "memory://x|mypackage.myscheme:a|mypackage.myscheme:b"
+# keep a reference: in-memory data lives only while a store refers to it
+created = zarr.create_group(URLPipeline.from_url(url))
+group = zarr.open_group(URLPipeline.from_url(url), mode="r")
+assert group.path == "a/b"
 ```
 
-Register the class under the `zarr.url_adapters` entry-point group, using the URL
-scheme as the entry-point name. Nonstandard schemes should be vendor-prefixed
-(`vendor.scheme`), per the URL pipeline specification:
+Register the class under the `zarr.url_adapters` entry-point group with the scheme as
+the entry-point name, vendor-prefixed for nonstandard schemes. Adapters are imported
+only when a pipeline naming their scheme is resolved.
 
 ```toml
 [project.entry-points."zarr.url_adapters"]
 "mypackage.myscheme" = "mypackage.zarr_adapter:MyAdapter"
 ```
 
-Adapters are loaded lazily, only when a pipeline naming their scheme is resolved. An
-adapter may also be used as a *root* scheme (e.g. `mypackage.myscheme://org/repo`), in
-which case `context.preceding` is empty. The returned store must honor
-`context.read_only`, and `open_pipeline_segment` runs on zarr's internal event loop, so
-it must not block or call zarr's synchronous API. See
-[`zarr.abc.url_pipeline`][] for the full contract.
+An adapter can also be a *root* scheme (`mypackage.myscheme://org/repo`), with an empty
+`context.preceding`. Installing a root adapter for a scheme fsspec also handles takes
+that scheme over at the root of every pipeline. The schemes zarr handles itself
+(`file`, `memory`, `zarr`, `zarr2`, `zarr3`) cannot be registered, and entry points
+with those names are ignored.
+
+Every adapter sees all of the caller's `storage_options`, including the root's
+credentials: consume only keys namespaced for your adapter, strip them before resolving
+the rest of the pipeline, and never log the options. The returned store must honor
+`context.read_only`, and `open_pipeline_segment` must not block or call zarr's
+synchronous API. See [`PipelineContext`][zarr.storage.PipelineContext] for the full
+contract.
 
 ## Custom array buffers
 

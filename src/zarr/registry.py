@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import warnings
 from collections import defaultdict
@@ -35,8 +36,6 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
-    "get_url_adapter",
-    "list_url_adapter_schemes",
     "register_buffer",
     "register_chunk_key_encoding",
     "register_codec",
@@ -309,19 +308,16 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         entry_points.select(group="zarr", name="chunk_key_encoding")
     )
 
-    # Builtin adapters go first, as lazily loaded entry points, so that they
-    # are imported only when a pipeline naming them is resolved and so that a
-    # third-party entry point with the same name is reported as shadowed.
-    _url_adapter_registry.lazy_load_list.extend(
-        _builtin_url_adapter_entry_point(scheme)
-        for scheme in _BUILTIN_URL_ADAPTERS
-        if scheme not in _url_adapter_registry
-        and not any(
-            e.name == scheme and _is_builtin_url_adapter_entry_point(e)
-            for e in _url_adapter_registry.lazy_load_list
-        )
-    )
-    _url_adapter_registry.lazy_load_list.extend(entry_points.select(group="zarr.url_adapters"))
+    for entry_point in entry_points.select(group="zarr.url_adapters"):
+        if _is_adapter_scheme(entry_point.name):
+            _url_adapter_registry.lazy_load_list.append(entry_point)
+        else:
+            warnings.warn(
+                f"ignoring the 'zarr.url_adapters' entry point {entry_point.name!r} "
+                f"({entry_point.value!r}): not a valid adapter scheme",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
 
     _pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     _pipeline_registry.lazy_load_list.extend(
@@ -525,36 +521,40 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
     return _chunk_key_encoding_registry[key]
 
 
-# URL pipeline adapters shipped with zarr-python, as `scheme -> "module:attr"`.
-# They are registered as lazily loaded entry points (see `_collect_entrypoints`),
-# so importing zarr never imports them. These are adapter-only schemes: they are
-# never dispatched to as a pipeline *root* (see `zarr.storage._url_pipeline`).
-_BUILTIN_URL_ADAPTERS: dict[str, str] = {
-    "zarr": "zarr.storage._url_adapters._format:ZarrAdapter",
-    "zarr2": "zarr.storage._url_adapters._format:Zarr2Adapter",
-    "zarr3": "zarr.storage._url_adapters._format:Zarr3Adapter",
-    "zip": "zarr.storage._url_adapters._zip:ZipAdapter",
-}
+# An RFC 3986 URL scheme (ASCII only), e.g. "s3" or "foo.myscheme".
+# Use with fullmatch.
+_URL_SCHEME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*")
+
+# Schemes zarr-python handles itself: the native `file:` and `memory:` roots
+# and the `zarr:`/`zarr2:`/`zarr3:` format segments.
+_RESERVED_URL_SCHEMES = frozenset({"file", "memory", "zarr", "zarr2", "zarr3"})
 
 
-def _builtin_url_adapter_entry_point(scheme: str) -> EntryPoint:
-    from importlib.metadata import EntryPoint
-
-    return EntryPoint(name=scheme, value=_BUILTIN_URL_ADAPTERS[scheme], group="zarr.url_adapters")
-
-
-def _is_builtin_url_adapter_entry_point(entry_point: EntryPoint) -> bool:
-    return _BUILTIN_URL_ADAPTERS.get(entry_point.name.lower()) == entry_point.value
+def _is_adapter_scheme(scheme: str) -> bool:
+    return bool(_URL_SCHEME_RE.fullmatch(scheme)) and scheme.lower() not in _RESERVED_URL_SCHEMES
 
 
 def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
     """
     Register a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
-    class for a URL scheme.
+    class for a URL scheme (case-insensitive).
 
     Registering a scheme that already has an adapter replaces it and emits a
     [`ZarrUserWarning`][zarr.errors.ZarrUserWarning].
+
+    Raises
+    ------
+    ValueError
+        If `scheme` is not a valid URL scheme, or is one zarr-python handles
+        itself (`file`, `memory`, `zarr`, `zarr2`, `zarr3`).
     """
+    if not _URL_SCHEME_RE.fullmatch(scheme):
+        raise ValueError(f"{scheme!r} is not a valid URL scheme")
+    if not _is_adapter_scheme(scheme):
+        raise ValueError(
+            f"the URL scheme {scheme!r} is handled by zarr-python itself and cannot be "
+            "given to a URL pipeline adapter"
+        )
     key = scheme.lower()
     previous = _url_adapter_registry.get(key)
     if previous is not None and previous is not cls:
@@ -567,7 +567,7 @@ def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
     _url_adapter_registry.register(cls, key)
 
 
-def list_url_adapter_schemes() -> set[str]:
+def _list_url_adapter_schemes() -> set[str]:
     """
     The set of URL schemes with a registered URL pipeline adapter.
 
@@ -575,28 +575,25 @@ def list_url_adapter_schemes() -> set[str]:
     entry points; consulting this does not import any adapter code.
     Schemes are case-insensitive and reported lowercased.
     """
-    return set(_url_adapter_registry) | {
+    schemes = set(_url_adapter_registry) | {
         e.name.lower() for e in _url_adapter_registry.lazy_load_list
     }
+    return {scheme for scheme in schemes if _is_adapter_scheme(scheme)}
 
 
 _url_adapter_lock = threading.Lock()
 
 
-def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
+def _get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
     """
     Get the URL pipeline adapter class registered for `scheme`.
 
     Loads pending `zarr.url_adapters` entry points for this scheme only, so
-    resolving one scheme never imports other providers' packages. zarr's
-    builtin adapters (`zarr:`, `zarr2:`, `zarr3:`, ...) are pending entry points
-    too, and take precedence over a third-party entry point of the same name.
-    When the scheme is already registered, or a builtin provides it, a
-    same-named third-party entry point is discarded with a
-    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning]; when several third-party
-    entry points share the name, the first one wins and a warning names the
-    ones ignored. An explicit `register_url_adapter` call overrides a builtin
-    silently.
+    resolving one scheme never imports other providers' packages. When the
+    scheme is already registered (e.g. with `register_url_adapter`), a
+    same-named entry point is discarded with a
+    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning]; when several entry
+    points share the name, the first one wins and a warning names the rest.
 
     Raises
     ------
@@ -605,10 +602,13 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
         providing it fails to import.
     """
     key = scheme.lower()
-    # Take the matching entry points out of the pending list under the lock,
-    # so concurrent first-time resolutions of different schemes never clobber
-    # each other's view of the list. The import itself runs *outside* the lock:
-    # it may take arbitrarily long and may itself resolve URL adapters.
+    if not _is_adapter_scheme(key):
+        raise URLPipelineError(
+            f"'{key}:' is handled by zarr-python itself and cannot be an adapter segment"
+        )
+    # Claim this scheme's entry points under the lock so concurrent loads of
+    # different schemes can't clobber the list; import outside it, since an
+    # import may be slow or itself resolve URL adapters.
     with _url_adapter_lock:
         registered = _url_adapter_registry.get(key)
         pending = [e for e in _url_adapter_registry.lazy_load_list if e.name.lower() == key]
@@ -616,30 +616,17 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
             _url_adapter_registry.lazy_load_list[:] = [
                 e for e in _url_adapter_registry.lazy_load_list if e.name.lower() != key
             ]
-    # A pending builtin entry point is redundant once the scheme is registered
-    # explicitly (an intentional override), so only third-party entry points
-    # are reported as shadowed.
-    third_party = [e for e in pending if not _is_builtin_url_adapter_entry_point(e)]
     if pending and registered is not None:
-        if third_party:
-            warnings.warn(
-                f"URL pipeline adapter for scheme {scheme!r} is already registered "
-                f"({fully_qualified_name(registered)}); ignoring entry point(s) "
-                f"{[e.value for e in third_party]} of the same name",
-                category=ZarrUserWarning,
-                stacklevel=2,
-            )
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is already registered "
+            f"({fully_qualified_name(registered)}); ignoring entry point(s) "
+            f"{[e.value for e in pending]} of the same name",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
     elif pending:
         entry_point, *duplicates = pending
-        if duplicates and _is_builtin_url_adapter_entry_point(entry_point):
-            warnings.warn(
-                f"the builtin URL pipeline adapter for scheme {entry_point.name!r} takes "
-                f"precedence; ignoring 'zarr.url_adapters' entry point(s) "
-                f"{[e.value for e in duplicates]} of the same name",
-                category=ZarrUserWarning,
-                stacklevel=2,
-            )
-        elif duplicates:
+        if duplicates:
             warnings.warn(
                 f"multiple 'zarr.url_adapters' entry points are named {entry_point.name!r}; "
                 f"using {entry_point.value!r} and ignoring {[e.value for e in duplicates]}",
@@ -654,8 +641,7 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
             with _url_adapter_lock:
                 _url_adapter_registry.lazy_load_list.extend(pending)
             raise URLPipelineError(
-                f"the 'zarr.url_adapters' entry point {entry_point.name!r} "
-                f"({entry_point.value!r}) could not be loaded: {exc!r}"
+                f"the 'zarr.url_adapters' entry point {entry_point.name!r} could not be loaded"
             ) from exc
         with _url_adapter_lock:
             if key not in _url_adapter_registry:
@@ -663,11 +649,9 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
     try:
         return _url_adapter_registry[key]
     except KeyError:
-        registered_schemes = sorted(list_url_adapter_schemes())
         raise URLPipelineError(
-            f"no URL pipeline adapter is registered for scheme {scheme!r}. "
-            f"Registered schemes: {registered_schemes}. Adapters are provided by "
-            "packages via the 'zarr.url_adapters' entry-point group."
+            f"no URL pipeline adapter is registered for scheme {scheme!r}. Adapters are "
+            "provided by packages via the 'zarr.url_adapters' entry-point group."
         ) from None
 
 

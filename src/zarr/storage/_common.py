@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self, overload
 
 from zarr.abc.store import (
     ByteRequest,
@@ -20,7 +20,6 @@ from zarr.core.common import (
     ZGROUP_JSON,
     AccessModeLiteral,
     ZarrFormat,
-    _UnspecifiedType,
 )
 from zarr.errors import (
     ContainsArrayAndGroupError,
@@ -30,7 +29,7 @@ from zarr.errors import (
 )
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._url_pipeline import is_url_pipeline, resolve_pipeline
+from zarr.storage._url_pipeline import _FORMAT_SCHEMES, URLPipeline
 from zarr.storage._utils import UPath, _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
@@ -54,56 +53,18 @@ class StorePath:
         The store to use.
     path : str
         The path within the store.
-
-    Attributes
-    ----------
-    zarr_format : ZarrFormat | None
-        Zarr format selected by a `zarr2:`/`zarr3:` URL pipeline segment,
-        or None. Not part of the StorePath's identity (ignored by `__eq__`).
     """
 
     store: Store
     path: str
-    zarr_format: ZarrFormat | None
 
     def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
         self.path = normalize_path(path)
-        self.zarr_format = None
 
     @property
     def read_only(self) -> bool:
         return self.store.read_only
-
-    def resolve_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat | None:
-        """
-        Combine the zarr format selected by a URL pipeline segment (`zarr2:` /
-        `zarr3:`) with a caller-supplied `zarr_format`.
-
-        Parameters
-        ----------
-        zarr_format : ZarrFormat | None
-            The format requested by the caller, or None when unspecified.
-
-        Returns
-        -------
-        ZarrFormat | None
-            The pipeline's format when the caller did not specify one, otherwise the
-            caller's format. None when neither is set.
-
-        Raises
-        ------
-        ValueError
-            If the caller's format differs from the one selected by the pipeline.
-        """
-        if self.zarr_format is None:
-            return zarr_format
-        if zarr_format is not None and zarr_format != self.zarr_format:
-            raise ValueError(
-                f"zarr_format={zarr_format} conflicts with the 'zarr{self.zarr_format}:' "
-                "segment of the URL pipeline; pass zarr_format=None to use the pipeline's format"
-            )
-        return self.zarr_format
 
     @classmethod
     async def _create_open_instance(cls, store: Store, path: str) -> Self:
@@ -117,10 +78,7 @@ class StorePath:
         Open StorePath based on the provided mode.
 
         * If the mode is None, return an opened version of the store with no changes.
-        * If the mode is 'r+', 'w-', or 'w' and the store is read-only, raise a ValueError.
-        * If the mode is 'a' (open-or-create) and the store is read-only, serve the
-          "open" half: the StorePath is opened read-only, and any subsequent write
-          fails at the store level.
+        * If the mode is 'r+', 'w-', 'w', or 'a' and the store is read-only, raise a ValueError.
         * If the mode is 'r' and the store is not read-only, return a copy of the store with read_only set to True.
         * If the mode is 'w-' and the store is not read-only and the StorePath contains keys, raise a FileExistsError.
 
@@ -146,8 +104,7 @@ class StorePath:
         FileExistsError
             If the mode is 'w-' and the store path already exists.
         ValueError
-            If the mode is "r+", "w-", or "w" and the store is read-only, or if the
-            mode is not a valid access mode.
+            If the mode is not "r" and the store is read-only, or
         """
 
         # fastpath if mode is None
@@ -158,9 +115,8 @@ class StorePath:
             raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
 
         if store.read_only:
-            # mode "a" (open-or-create) on a read-only store means open-only;
-            # unambiguous write modes are rejected outright.
-            if mode not in ("r", "a"):
+            # Don't allow write operations on a read-only store
+            if mode != "r":
                 raise ValueError(
                     f"Store is read-only but mode is {mode!r}. Create a writable store or use 'r' mode."
                 )
@@ -321,9 +277,7 @@ class StorePath:
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
-        result = self.__class__(self.store, _join_paths([self.path, other]))
-        result.zarr_format = self.zarr_format
-        return result
+        return self.__class__(self.store, _join_paths([self.path, other]))
 
     def __str__(self) -> str:
         return _join_paths([str(self.store), self.path])
@@ -351,7 +305,7 @@ class StorePath:
             return False
 
 
-type StoreLike = Store | StorePath | FSMap | Path | UPath | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | URLPipeline | FSMap | Path | UPath | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -372,9 +326,8 @@ async def make_store(
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
     - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
-    - `str` containing `|` (or whose scheme has a registered root adapter) = the store
-      resolved by the [URL pipeline][user-guide-url-pipelines]; the pipeline must address
-      the store root (use `make_store_path` for pipelines that address a path within a store).
+    - `URLPipeline` = the store a [URL pipeline][user-guide-url-pipelines] resolves to;
+      the pipeline must address the store root.
 
     Parameters
     ----------
@@ -401,16 +354,14 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
-    if mode is not None and mode not in ANY_ACCESS_MODE:
-        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
-    _read_only = mode == "r"
-
-    if isinstance(store_like, str) and is_url_pipeline(store_like):
-        result = await resolve_pipeline(store_like, mode=mode, storage_options=storage_options)
-        if normalize_path(result.path):
+    if isinstance(store_like, URLPipeline):
+        if mode is not None and mode not in ANY_ACCESS_MODE:
+            raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
+        result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
+        if result.path:
             result.store.close()
             raise URLPipelineError(
-                f"the URL pipeline {store_like!r} resolves to a path inside a store; "
+                f"{store_like!r} resolves to a path inside a store; "
                 "use zarr.open() or make_store_path() instead of make_store()"
             )
         return result.store
@@ -426,6 +377,10 @@ async def make_store(
                 "'storage_options' was provided but unused. "
                 "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
+
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
+    _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
         # Get underlying store
@@ -520,23 +475,29 @@ async def make_store_path(
     TypeError
         If the StoreLike object is not one of the supported types, or if storage_options is provided but not used.
     ValueError
-        If path is provided for a store that does not support it.
+        If mode is invalid, or path is provided for a store that does not support it.
     URLPipelineError
-        If `store_like` is a [URL pipeline][user-guide-url-pipelines] string that
-        cannot be resolved.
+        If `store_like` is a [URL pipeline][user-guide-url-pipelines] that cannot be
+        resolved.
 
     See Also
     --------
     make_store
     """
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
     path_normalized = normalize_path(path)
 
-    if isinstance(store_like, str) and is_url_pipeline(store_like):
-        result = await resolve_pipeline(store_like, mode=mode, storage_options=storage_options)
-        combined_path = _join_paths([normalize_path(result.path), path_normalized])
-        store_path = await StorePath.open(result.store, path=combined_path, mode=mode)
-        store_path.zarr_format = result.zarr_format
-        return store_path
+    if isinstance(store_like, URLPipeline):
+        result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
+        try:
+            return await StorePath.open(
+                result.store, path=_join_paths([result.path, path_normalized]), mode=mode
+            )
+        except BaseException:
+            # the store was opened for this call; don't leak it
+            result.store.close()
+            raise
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
@@ -557,46 +518,41 @@ async def make_store_path(
         return await StorePath.open(store, path=path_normalized, mode=mode)
 
 
-def _resolve_open_zarr_format(
-    store_like: StoreLike,
-    store_path: StorePath,
-    zarr_format: ZarrFormat | _UnspecifiedType | None,
-    *,
-    default: ZarrFormat | None,
+@overload
+def resolve_zarr_format(store_like: StoreLike | None, zarr_format: ZarrFormat) -> ZarrFormat: ...
+
+
+@overload
+def resolve_zarr_format(
+    store_like: StoreLike | None, zarr_format: ZarrFormat | None
+) -> ZarrFormat | None: ...
+
+
+def resolve_zarr_format(
+    store_like: StoreLike | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
     """
-    Resolve the `zarr_format` of an `open` classmethod whose default is unspecified.
+    Merge the format selected by a `URLPipeline`'s trailing `zarr2:`/`zarr3:`
+    segment with the caller's `zarr_format`. Other `StoreLike`s, and a trailing
+    `zarr:` segment, leave `zarr_format` unchanged.
 
-    An explicit `zarr_format` (including None, meaning auto-detect) is merged with
-    the format selected by a URL pipeline as in
-    [`StorePath.resolve_zarr_format`][zarr.storage.StorePath.resolve_zarr_format].
-    When the caller did not pass one, a URL pipeline decides: its format segment
-    (`zarr2:`/`zarr3:`) if any, otherwise auto-detection. Every other store keeps
-    `default`, so non-pipeline callers see no change.
-
-    Parameters
-    ----------
-    store_like : StoreLike
-        The store argument the caller passed.
-    store_path : StorePath
-        The store path resolved from `store_like`.
-    zarr_format : ZarrFormat | None | _UnspecifiedType
-        The caller's format, or the unspecified sentinel.
-    default : ZarrFormat | None
-        The format to use when neither the caller nor a URL pipeline selects one.
-
-    Returns
-    -------
-    ZarrFormat | None
-        The format to open with, or None to auto-detect.
+    Raises
+    ------
+    ValueError
+        If `zarr_format` is not None and differs from the pipeline's format.
     """
-    if not isinstance(zarr_format, _UnspecifiedType):
-        return store_path.resolve_zarr_format(zarr_format)
-    if store_path.zarr_format is not None:
-        return store_path.zarr_format
-    if isinstance(store_like, str) and is_url_pipeline(store_like):
-        return None
-    return default
+    if not isinstance(store_like, URLPipeline) or store_like._format_segment is None:
+        return zarr_format
+    pipeline_format = _FORMAT_SCHEMES[store_like._format_segment.scheme]
+    if pipeline_format is None:
+        return zarr_format
+    if zarr_format is not None and zarr_format != pipeline_format:
+        raise ValueError(
+            f"zarr_format={zarr_format} conflicts with the 'zarr{pipeline_format}:' segment "
+            f"of {store_like!r}; pass zarr_format={pipeline_format} (or None where accepted), "
+            "or open it with zarr.open_group / zarr.open_array, which follow the pipeline"
+        )
+    return pipeline_format
 
 
 async def ensure_no_existing_node(

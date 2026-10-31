@@ -8,13 +8,10 @@ examples on bullet lines, skipping spans without a `:` or `|`. The spec
 validates each example (and an uppercased-scheme variant) against its ABNF
 grammar, so this corpus is grammar-valid by construction.
 
-The parser must accept every example — including schemes zarr-python has no
-adapter for, since parsing is independent of adapter availability — split it
-into the expected sub-URL schemes, and preserve the text losslessly.
-
-To regenerate after a spec update: extract examples per the rule above and
-recompute the expected scheme tuples with `parse_pipeline`, reviewing any
-changes against the spec diff.
+The parser must accept every example, whether or not an adapter exists for its
+schemes, split it into the expected schemes, and re-parse its canonical form identically. To
+regenerate, re-extract the examples and recompute the expected schemes with
+`_parse_pipeline`, reviewing changes against the spec diff.
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ import re
 
 import pytest
 
-from zarr.storage._url_pipeline import parse_pipeline
+from zarr.storage._url_pipeline import _parse_pipeline
 
 SPEC_EXAMPLES: list[tuple[str, tuple[str, ...]]] = [
     # README.md
@@ -240,19 +237,19 @@ def _uppercase_schemes(example: str) -> str:
     def repl(match: re.Match[str]) -> str:
         return match.group(1) + match.group(2).upper()
 
-    return re.sub(r"((?:^|\|)\s*)([a-zA-Z][a-zA-Z0-9+.-]*)", repl, example)
+    return re.sub(r"(^|\|)([a-zA-Z][a-zA-Z0-9+.-]*)", repl, example)
 
 
-@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
+@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=str)
 def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> None:
-    segments = parse_pipeline(url)
+    segments = _parse_pipeline(url)
     assert tuple(segment.scheme for segment in segments) == expected_schemes
-    # lossless round-trip of the original text
-    assert "|".join(segment.raw for segment in segments) == url
+    # the canonical form re-parses to the same segments
+    assert _parse_pipeline("|".join(segment.url for segment in segments)) == segments
 
 
-@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
+@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=str)
 def test_spec_example_schemes_case_insensitive(url: str, expected_schemes: tuple[str, ...]) -> None:
     upper = _uppercase_schemes(url)
-    segments = parse_pipeline(upper)
+    segments = _parse_pipeline(upper)
     assert tuple(segment.scheme for segment in segments) == expected_schemes
