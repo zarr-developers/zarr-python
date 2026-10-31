@@ -44,6 +44,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     parse_shapelike,
+    validate_node_path,
 )
 from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
@@ -3394,6 +3395,9 @@ def _prepare_nodes(
     """The array or group each of `nodes` describes, at its path in `store`, and the
     metadata documents of `nodes`, by their keys in the store: every node is built and
     encoded before anything is stored."""
+    for path, metadata in nodes.items():
+        validate_node_path(path, metadata.zarr_format)
+
     built = {
         path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
     }
