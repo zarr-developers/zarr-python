@@ -344,7 +344,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
             "codecs": (BytesCodec().to_dict(),),
             "fill_value": 0,
-            "storage_transformers": ({"test": "should_raise"}),
+            "storage_transformers": [{"test": "should_raise"}],
         }
     else:
         metadata_dict = {
@@ -356,7 +356,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "codecs": (BytesCodec().to_dict(),),
             "fill_value": 0,
             "order": "C",
-            "storage_transformers": ({"test": "should_raise"}),
+            "storage_transformers": [{"test": "should_raise"}],
         }
     if zarr_format == 3:
         match = "Arrays with storage transformers are not supported in zarr-python at this time."
