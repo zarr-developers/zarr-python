@@ -13,6 +13,7 @@ from packaging.version import parse as parse_version
 
 import zarr
 import zarr.api.asynchronous
+import zarr.storage._zip_url_adapter
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -35,8 +36,10 @@ from zarr.storage import (
     ZipStore,
 )
 from zarr.storage._common import _has_fsspec
+from zarr.storage._zip_url_adapter import _MissingRangeError, _SparseFile
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from zarr.core.common import AccessModeLiteral
@@ -97,6 +100,30 @@ class _CloseSpyAdapter(URLPipelineAdapter):
     ) -> StorePath:
         preceding = await context.resolve_preceding()
         return StorePath(_CloseSpyStore(preceding.store), preceding.path)
+
+
+class _InflatedSizeStore(_CloseSpyStore):
+    """Reports a larger size than the store holds, like a truncated download."""
+
+    async def getsize(self, key: str) -> int:
+        return await super().getsize(key) + 1000
+
+
+class _BrokenSizeStore(_CloseSpyStore):
+    async def getsize(self, key: str) -> int:
+        raise RuntimeError("store failure")
+
+
+def _wrapping_adapter(wrapper: type[_CloseSpyStore]) -> type[URLPipelineAdapter]:
+    class Adapter(URLPipelineAdapter):
+        @classmethod
+        async def open_pipeline_segment(
+            cls, segment: PipelineSegment, context: PipelineContext
+        ) -> StorePath:
+            preceding = await context.resolve_preceding()
+            return StorePath(wrapper(preceding.store), preceding.path)
+
+    return Adapter
 
 
 def test_registered_as_builtin_entry_point() -> None:
@@ -343,6 +370,20 @@ class TestErrors:
             zarr.open_group(_pipeline(f"{_file_url(path)}|vendor.spy:|zip:"), mode="r")
         assert len(_CloseSpyStore.closed) == 1
 
+    def test_truncated_archive(self, archive: Path) -> None:
+        register_url_adapter("vendor.inflated", _wrapping_adapter(_InflatedSizeStore))
+        _CloseSpyStore.closed.clear()
+        with pytest.raises(URLPipelineError, match="shorter than its reported size"):
+            zarr.open_group(_pipeline(f"{_file_url(archive)}|vendor.inflated:|zip:"), mode="r")
+        assert len(_CloseSpyStore.closed) == 1
+
+    def test_preceding_store_closed_on_unexpected_error(self, archive: Path) -> None:
+        register_url_adapter("vendor.broken", _wrapping_adapter(_BrokenSizeStore))
+        _CloseSpyStore.closed.clear()
+        with pytest.raises(RuntimeError, match="store failure"):
+            zarr.open_group(_pipeline(f"{_file_url(archive)}|vendor.broken:|zip:"), mode="r")
+        assert len(_CloseSpyStore.closed) == 1
+
     def test_close_closes_preceding_store(self, archive: Path) -> None:
         register_url_adapter("vendor.spy", _CloseSpyAdapter)
         _CloseSpyStore.closed.clear()
@@ -430,3 +471,56 @@ class TestReaderStore:
         store = zarr.open_group(_pipeline(f"{_file_url(path)}|zip:"), mode="r").store
         with pytest.raises(OSError, match="bad CRC-32"):
             await store.get("k", default_buffer_prototype())
+
+    async def test_large_member_decompressed_in_thread(
+        self, store: Store, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(zarr.storage._zip_url_adapter, "_THREAD_DECOMPRESS_BYTES", 0)
+        value = await store.get("z", default_buffer_prototype())
+        assert value is not None
+        assert value.to_bytes() == b"0123456789" * 10
+
+    async def test_unexpected_byte_range(self, store: Store) -> None:
+        with pytest.raises(TypeError, match="Unexpected byte_range"):
+            await store.get("a/b", default_buffer_prototype(), object())  # type: ignore[arg-type]
+
+    @staticmethod
+    def _corrupt_archive(path: Path, patch: Callable[[bytearray], None]) -> Store:
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("k", b"payload")
+            zf.writestr("zarr.json", b'{"zarr_format": 3, "node_type": "group"}')
+        raw = bytearray(path.read_bytes())
+        patch(raw)
+        path.write_bytes(bytes(raw))
+        return zarr.open_group(_pipeline(f"{_file_url(path)}|zip:"), mode="r").store
+
+    async def test_bad_local_header(self, tmp_path: Path) -> None:
+        def patch(raw: bytearray) -> None:
+            raw[0:4] = b"XXXX"  # the first member's local header signature
+
+        store = self._corrupt_archive(tmp_path / "bad.zip", patch)
+        with pytest.raises(zipfile.BadZipFile, match="bad local file header"):
+            await store.get("k", default_buffer_prototype())
+
+    async def test_encrypted_member(self, tmp_path: Path) -> None:
+        def patch(raw: bytearray) -> None:
+            entry = raw.index(b"PK\x01\x02")  # the first central directory entry
+            raw[entry + 8] |= 0x1  # its general purpose flag: encrypted
+
+        store = self._corrupt_archive(tmp_path / "enc.zip", patch)
+        with pytest.raises(NotImplementedError, match="encrypted"):
+            await store.get("k", default_buffer_prototype())
+
+
+def test_sparse_file() -> None:
+    f = _SparseFile(10, {0: b"01234", 7: b"789"})
+    assert f.readable()
+    assert f.seekable()
+    f.seek(1)
+    assert f.seek(2, io.SEEK_CUR) == 3
+    assert f.read(2) == b"34"
+    assert f.seek(-3, io.SEEK_END) == 7
+    assert f.read() == b"789"
+    f.seek(4)
+    with pytest.raises(_MissingRangeError):
+        f.read(2)

@@ -158,15 +158,16 @@ def _decompress(info: zipfile.ZipInfo, data: bytes) -> bytes:
     return result
 
 
-def _slice(data: bytes, byte_range: ByteRequest | None) -> bytes:
+def _range_bounds(byte_range: ByteRequest | None, length: int) -> tuple[int, int]:
+    """The `[start, stop)` offsets that `byte_range` selects from `length` bytes."""
     if byte_range is None:
-        return data
+        return 0, length
     if isinstance(byte_range, RangeByteRequest):
-        return data[byte_range.start : byte_range.end]
+        return min(byte_range.start, length), min(byte_range.end, length)
     if isinstance(byte_range, OffsetByteRequest):
-        return data[byte_range.offset :]
+        return min(byte_range.offset, length), length
     if isinstance(byte_range, SuffixByteRequest):
-        return data[max(0, len(data) - byte_range.suffix) :]
+        return max(0, length - byte_range.suffix), length
     raise TypeError(f"Unexpected byte_range, got {byte_range}.")
 
 
@@ -245,9 +246,15 @@ class ZipReaderStore(Store):
                 infos = await asyncio.to_thread(_parse_central_directory, size, segments)
             except _MissingRangeError as missing:
                 stop = min(size, max(missing.stop, missing.start + _MIN_FETCH_BYTES))
-                segments[missing.start] = await _read_resource_range(
+                data = await _read_resource_range(
                     source, key, RangeByteRequest(missing.start, stop)
                 )
+                if len(data) < missing.stop - missing.start:
+                    # a short read would otherwise refetch the same range forever
+                    raise zipfile.BadZipFile(
+                        f"the archive is shorter than its reported size of {size} bytes"
+                    ) from None
+                segments[missing.start] = data
                 continue
             return cls(source, key, size, infos)
 
@@ -301,15 +308,7 @@ class ZipReaderStore(Store):
         start = await self._data_offset(info)
         if info.compress_type == zipfile.ZIP_STORED and byte_range is not None:
             # uncompressed members support true range reads
-            length = info.file_size
-            if isinstance(byte_range, RangeByteRequest):
-                lo, hi = min(byte_range.start, length), min(byte_range.end, length)
-            elif isinstance(byte_range, OffsetByteRequest):
-                lo, hi = min(byte_range.offset, length), length
-            elif isinstance(byte_range, SuffixByteRequest):
-                lo, hi = max(0, length - byte_range.suffix), length
-            else:
-                raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+            lo, hi = _range_bounds(byte_range, info.file_size)
             if hi <= lo:
                 return prototype.buffer.from_bytes(b"")
             data = await _read_resource_range(
@@ -323,7 +322,8 @@ class ZipReaderStore(Store):
             data = await asyncio.to_thread(_decompress, info, raw)
         else:
             data = _decompress(info, raw)
-        return prototype.buffer.from_bytes(_slice(data, byte_range))
+        lo, hi = _range_bounds(byte_range, len(data))
+        return prototype.buffer.from_bytes(data[lo:hi])
 
     async def get_partial_values(
         self,
