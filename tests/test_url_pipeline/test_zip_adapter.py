@@ -298,7 +298,10 @@ class TestErrors:
             zarr.open_group(_pipeline(f"{_file_url(path)}|zip:"), mode="r")
 
     def test_directory_root(self, tmp_path: Path) -> None:
-        with pytest.raises(URLPipelineError, match="not found or is not a file"):
+        # reading a directory is a missing key on POSIX, but a PermissionError on Windows
+        with pytest.raises(
+            URLPipelineError, match="not found or is not a file|could not open the ZIP archive"
+        ):
             zarr.open_group(_pipeline(f"{_file_url(tmp_path)}|zip:"), mode="r")
 
     def test_double_leading_slash_is_invalid(self, archive: Path) -> None:
