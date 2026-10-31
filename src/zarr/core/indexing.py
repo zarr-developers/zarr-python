@@ -231,8 +231,8 @@ def is_bool(x: Any) -> TypeGuard[bool | np.bool_]:
 
 
 def is_integer_list(x: Any) -> TypeGuard[list[int]]:
-    """True if x is a list of integers."""
-    return isinstance(x, list) and len(x) > 0 and all(is_integer(i) for i in x)
+    """True if x is a list of integers (including an empty list, as in NumPy)."""
+    return isinstance(x, list) and all(is_integer(i) for i in x)
 
 
 def is_bool_list(x: Any) -> TypeGuard[list[bool | np.bool_]]:
@@ -510,8 +510,11 @@ def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormali
 
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
+    # An empty list has no dtype to infer; NumPy indexes with it as an empty integer array.
     return tuple(
-        cast("ArrayOfIntOrBool", np.asarray(dim_sel)) if isinstance(dim_sel, list) else dim_sel
+        cast("ArrayOfIntOrBool", np.asarray(dim_sel, dtype=np.intp if len(dim_sel) == 0 else None))
+        if isinstance(dim_sel, list)
+        else dim_sel
         for dim_sel in selection
     )
 
