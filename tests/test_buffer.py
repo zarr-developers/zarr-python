@@ -194,6 +194,8 @@ def test_gpu_buffer_prototype() -> None:
     ndbuffer = gpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=cp.dtype("int64"))
     assert isinstance(buffer.as_array_like(), cp.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), cp.ndarray)
+    # No fill_value must zero-fill, matching the CPU buffer.
+    assert ndbuffer.all_equal(0)
     with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
         ndbuffer.as_scalar()
 
