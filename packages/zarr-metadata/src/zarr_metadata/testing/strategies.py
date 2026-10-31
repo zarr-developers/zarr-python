@@ -258,9 +258,11 @@ def fields(
 
 __all__ = [
     "DEFAULT_STRATEGIES",
+    "NOTHING_KNOWN",
     "ChunkGridStrategy",
     "ChunkKeyEncodingStrategy",
     "CodecStrategy",
+    "Configurations",
     "DataTypeStrategy",
     "DefinitionStrategy",
     "Spellings",

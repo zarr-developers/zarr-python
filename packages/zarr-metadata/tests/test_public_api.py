@@ -297,6 +297,9 @@ _STANDALONE_VOCAB = frozenset(
         # two definitions of one name.
         "ClaimKey",
         "Conflict",
+        # What one definition's configurations are drawn from, in
+        # `zarr_metadata.testing.strategies`.
+        "Configurations",
         "ScopeConflictError",
         # A reader's problems, as the signatures of every reader name them.
         "Problems",

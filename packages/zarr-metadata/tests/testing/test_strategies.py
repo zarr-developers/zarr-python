@@ -137,6 +137,17 @@ def test_fields_read(
         assert canonical == field
 
 
+@pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
+@given(data=st.data())
+def test_a_changed_draw_changes_no_other(definition: Definition[Any], data: st.DataObject) -> None:
+    """Each draw is a fresh value: a test that changes the configuration it drew does not change the next draw, which Hypothesis would report as flaky."""
+    field = data.draw(fields(definition))
+    if isinstance(field, dict) and "configuration" in field:
+        configuration = cast("dict[str, JSONValue]", field["configuration"])
+        assert "changed" not in configuration
+        configuration["changed"] = True
+
+
 @pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
 @given(data=st.data())
 def test_fill_values_fit_their_data_type(

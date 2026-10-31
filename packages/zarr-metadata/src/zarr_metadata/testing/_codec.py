@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
 
-from zarr_metadata.definition._definition import AcceptedField
+from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
 from zarr_metadata.testing._data_type import FLOAT_WIDTHS, INTEGER_RANGES, finite_floats
 from zarr_metadata.testing._strategy import CodecStrategy
 from zarr_metadata.v3._definition import Chunk, storage_of
@@ -120,7 +120,7 @@ def _unchunked(configurations: st.SearchStrategy[Mapping[str, JSONValue]]) -> Co
 CODEC_STRATEGIES: Final[Mapping[CodecDefinition[Any], CodecStrategy]] = {
     BLOSC_CODEC: _unchunked(_blosc()),
     BYTES_CODEC: CodecStrategy(configurations=_bytes),
-    CRC32C_CODEC: _unchunked(st.just({})),
+    CRC32C_CODEC: _unchunked(st.builds(EmptyConfiguration)),
     GZIP_CODEC: _unchunked(st.fixed_dictionaries({"level": st.integers(0, 9)})),
     SCALE_OFFSET_CODEC: CodecStrategy(configurations=_scale_offset),
     TRANSPOSE_CODEC: CodecStrategy(configurations=_transpose),

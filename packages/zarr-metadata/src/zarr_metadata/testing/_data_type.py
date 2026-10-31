@@ -64,7 +64,8 @@ FLOAT_WIDTHS: Final[Mapping[DataTypeDefinition[Any], FloatWidth]] = {
 }
 """The width in bits of each floating-point data type."""
 
-_EMPTY: Final = st.just(EmptyConfiguration())
+_EMPTY: Final = st.builds(EmptyConfiguration)
+"""A fresh empty configuration for each draw, so a test that changes one changes no other."""
 
 _MAX_RAW_BYTES: Final = 32
 """The widest raw bits drawn, in bytes: `r256`."""

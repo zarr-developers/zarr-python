@@ -122,6 +122,7 @@ Strategies: TypeAlias = Mapping[Definition[Any], DefinitionStrategy]
 """How to draw each definition's configurations, by the definition."""
 
 __all__ = [
+    "NOTHING_KNOWN",
     "ChunkGridStrategy",
     "ChunkKeyEncodingStrategy",
     "CodecStrategy",
