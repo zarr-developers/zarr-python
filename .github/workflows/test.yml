@@ -225,7 +225,7 @@ jobs:
         version: 1.58.0
     - name: Run Examples
       run: |
-        HATCH_ENV=test.py3.13-minimal just examples
+        HATCH_ENV=test.py3.13-minimal just test-examples
 
   test-complete:
     name: Test complete

@@ -19,7 +19,7 @@ examples/
 To add a new example:
 
 1. Create a new subdirectory: `examples/my_example/`
-2. Add your Python code: `examples/my_example/my_example.py`. Start it with a [PEP 723](https://peps.python.org/pep-0723/) header that lists its dependencies, including `zarr`. `just examples` runs every example against your local checkout, and CI runs it on every pull request.
+2. Add your Python code: `examples/my_example/my_example.py`. Start it with a [PEP 723](https://peps.python.org/pep-0723/) header that lists its dependencies, including `zarr`. `just test-examples` runs every example against your local checkout, and CI runs it on every pull request.
 3. Create documentation: `examples/my_example/README.md`
 4. Create a documentation page at `docs/user-guide/examples/my_example.md`. The documentation page should simply link to the `README.md` and the source code, e.g.:
 
