@@ -12,7 +12,6 @@ as an `UnclaimedField` and not checked.
 
 from __future__ import annotations
 
-import warnings
 from typing import Final
 
 from zarr_metadata.v3._context import ZarrV3Context
@@ -55,6 +54,7 @@ from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
 from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE
 
 CORE_CONTEXT: Final = ZarrV3Context(
     data_types=(
@@ -115,43 +115,26 @@ ZARR_PYTHON_CONTEXT: Final = CORE_AND_EXTENSIONS_CONTEXT.update(
         *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
         NULL_TERMINATED_BYTES_DATA_TYPE,
         VARIABLE_LENGTH_BYTES_DATA_TYPE,
+        ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
     ],
 )
-"""A scope with `CORE_AND_EXTENSIONS_CONTEXT`, plus the data types that zarr-python writes but no specification registers: `null_terminated_bytes` and `variable_length_bytes`.
+"""A scope with `CORE_AND_EXTENSIONS_CONTEXT`, plus the data types that zarr-python writes but no specification registers: `null_terminated_bytes`, `variable_length_bytes` and `raw_bytes`.
 
 zarr-python warns when it writes these that their spelling may change, so
 they are kept out of `CORE_AND_EXTENSIONS_CONTEXT`. Read in this scope to check
 strictly what zarr-python writes.
 """
 
-_RENAMED: Final = {
+RENAMED_SCOPES: Final = {
     "CORE": ("CORE_CONTEXT", CORE_CONTEXT),
     "CORE_AND_EXTENSIONS": ("CORE_AND_EXTENSIONS_CONTEXT", CORE_AND_EXTENSIONS_CONTEXT),
 }
-"""The scopes' names before they ended in `_CONTEXT`, with each scope's name now and the scope."""
-
-
-def renamed_scope(module: str, name: str) -> ZarrV3Context:
-    """The scope that `name`, a name a scope had before it ended in `_CONTEXT`, refers to, with a `DeprecationWarning`.
-
-    A module that exported the old names calls this from its `__getattr__`,
-    so an import of an old name keeps working for now. Raises
-    `AttributeError`, as attribute lookup does, when `name` is not an old
-    name.
-    """
-    if name not in _RENAMED:
-        raise AttributeError(f"module {module!r} has no attribute {name!r}")
-    new, scope = _RENAMED[name]
-    warnings.warn(
-        f"`{name}` is deprecated and will be removed; use `{new}`, the same scope",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-    return scope
+"""The v3 scopes' names before they ended in `_CONTEXT`, with each scope's name now and the scope."""
 
 
 __all__ = [
     "CORE_AND_EXTENSIONS_CONTEXT",
     "CORE_CONTEXT",
+    "RENAMED_SCOPES",
     "ZARR_PYTHON_CONTEXT",
 ]

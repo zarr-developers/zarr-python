@@ -95,6 +95,7 @@ refers to nothing in any scope.
 
 from typing import TYPE_CHECKING
 
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v3._common import (
     ZarrV3ChunkGridField,
     ZarrV3ChunkKeyEncodingField,
@@ -107,8 +108,8 @@ from zarr_metadata.v3._context import ZarrV3Context, ZarrV3ContextSlots, ZarrV3K
 from zarr_metadata.v3._core import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
+    RENAMED_SCOPES,
     ZARR_PYTHON_CONTEXT,
-    renamed_scope,
 )
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
@@ -162,6 +163,6 @@ __all__ = [
 if not TYPE_CHECKING:
     # Hidden from type checkers, which would otherwise read every missing
     # name of this module as a scope.
-    def __getattr__(name: str) -> ZarrV3Context:
+    def __getattr__(name: str) -> object:
         """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
-        return renamed_scope(__name__, name)
+        return renamed_scope(__name__, name, RENAMED_SCOPES)

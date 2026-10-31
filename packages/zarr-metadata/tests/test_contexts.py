@@ -19,7 +19,7 @@ from zarr_metadata.model import (
     read_array_metadata_v2,
     read_array_metadata_v3,
 )
-from zarr_metadata.v2 import CORE_V2, GZIP_CODEC_V2, ZarrV2Context
+from zarr_metadata.v2 import CORE_V2_CONTEXT, GZIP_CODEC_V2, ZarrV2Context
 from zarr_metadata.v2._context import _KINDS as V2_KINDS
 from zarr_metadata.v2.definition import (
     ZarrV2CodecDefinition,
@@ -42,7 +42,7 @@ V2_ARRAY = ZarrV2ArrayMetadata.create_default().to_json()
 
 FORMATS = [
     pytest.param(ZarrV3Context, CORE_CONTEXT, CodecDefinition, GZIP_CODEC, 3, id="v3"),
-    pytest.param(ZarrV2Context, CORE_V2, ZarrV2CodecDefinition, GZIP_CODEC_V2, 2, id="v2"),
+    pytest.param(ZarrV2Context, CORE_V2_CONTEXT, ZarrV2CodecDefinition, GZIP_CODEC_V2, 2, id="v2"),
 ]
 
 
@@ -236,9 +236,9 @@ def test_error_a_reader_refuses_what_is_not_a_scope_of_its_format(
     ("core", "given", "zarr_format"),
     [
         (CORE_CONTEXT, "nope", 3),
-        (CORE_CONTEXT, CORE_V2, 3),
-        (CORE_V2, "nope", 2),
-        (CORE_V2, CORE_CONTEXT, 2),
+        (CORE_CONTEXT, CORE_V2_CONTEXT, 3),
+        (CORE_V2_CONTEXT, "nope", 2),
+        (CORE_V2_CONTEXT, CORE_CONTEXT, 2),
     ],
     ids=["v3-not-a-scope", "v3-a-v2-scope", "v2-not-a-scope", "v2-a-v3-scope"],
 )
@@ -261,7 +261,7 @@ def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - eith
     slots_type = ZarrV3ContextSlots if cls is ZarrV3Context else ZarrV2ContextSlots
     assert list(cls.kinds) == list(slots_type.__annotations__)
     assert set(cls.kinds.values()) == (V3_KINDS if cls is ZarrV3Context else V2_KINDS)
-    scope: Any = CORE_CONTEXT if cls is ZarrV3Context else CORE_V2
+    scope: Any = CORE_CONTEXT if cls is ZarrV3Context else CORE_V2_CONTEXT
     for slot, kind in cls.kinds.items():
         assert getattr(scope, slot) == scope.definitions_of(kind)
 

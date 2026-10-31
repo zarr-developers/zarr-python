@@ -17,8 +17,9 @@ submodule, where a definition's configuration types and constants are.
 from typing import TYPE_CHECKING
 
 from zarr_metadata._common import ZarrV3NamedConfigJSON
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._core import renamed_scope
+from zarr_metadata.v3._core import RENAMED_SCOPES
 from zarr_metadata.v3._hierarchy import NodeName, NodePath
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -59,6 +60,7 @@ from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
 from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
@@ -108,6 +110,7 @@ __all__ = [
     "VLEN_BYTES_CODEC",
     "VLEN_UTF8_CODEC",
     "ZARR_PYTHON_CONTEXT",
+    "ZARR_PYTHON_RAW_BYTES_DATA_TYPE",
     "ZSTD_CODEC",
     "NodeName",
     "NodePath",
@@ -121,6 +124,6 @@ __all__ = [
 if not TYPE_CHECKING:
     # Hidden from type checkers, which would otherwise read every missing
     # name of this module as a scope.
-    def __getattr__(name: str) -> ZarrV3Context:
+    def __getattr__(name: str) -> object:
         """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
-        return renamed_scope(__name__, name)
+        return renamed_scope(__name__, name, RENAMED_SCOPES)

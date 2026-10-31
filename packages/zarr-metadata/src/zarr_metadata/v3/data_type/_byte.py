@@ -5,6 +5,7 @@ Each byte value is an integer in `[0, 255]`
 the reference for the `bytes` type is https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/bytes/README.md?plain=1#L8).
 """
 
+import base64
 from collections.abc import Iterator
 from typing import Annotated
 
@@ -27,4 +28,17 @@ def base64_problems(value: str) -> Iterator[ValidationProblem]:
         )
 
 
-__all__ = ["ByteValue", "base64_problems"]
+def base64_decoded(value: str) -> bytes | None:
+    """The bytes that `value` encodes in standard-alphabet base64; None when it is not such base64."""
+    try:
+        return base64.b64decode(base64_bytes(value))
+    except ValueError:
+        return None
+
+
+def base64_spelling(data: bytes) -> str:
+    """`data` in the single spelling of a base64 fill value, standard-alphabet base64: `"QR=="` decodes to the byte that `"QQ=="` spells."""
+    return base64.b64encode(data).decode("ascii")
+
+
+__all__ = ["ByteValue", "base64_decoded", "base64_problems", "base64_spelling"]

@@ -18,7 +18,7 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     variable_length,
 )
-from zarr_metadata.v3.data_type._byte import ByteValue, base64_problems
+from zarr_metadata.v3.data_type._byte import ByteValue, base64_problems, base64_spelling
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -53,7 +53,7 @@ def _fill_value_canonical(
     to the same byte as `"QQ=="`.
     """
     data = base64.b64decode(value) if isinstance(value, str) else bytes(value)
-    return base64.b64encode(data).decode("ascii")
+    return base64_spelling(data)
 
 
 BYTES_DATA_TYPE: Final = DataTypeDefinition(

@@ -43,7 +43,7 @@ from zarr_metadata.model import (
 from zarr_metadata.typed_json import (
     check,
 )
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2CodecDefinition, ZarrV2DataTypeField
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2CodecDefinition, ZarrV2DataTypeField
 from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -1744,7 +1744,7 @@ def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> No
 
 def test_error_a_refined_field_is_not_read_in_a_scope_of_the_other_format() -> None:
     with pytest.raises(TypeError, match="got a v2 scope"):
-        resolve_refined("gzip", "gzip", (), CodecDefinition, CORE_V2)
+        resolve_refined("gzip", "gzip", (), CodecDefinition, CORE_V2_CONTEXT)
 
 
 V2_IN_A_V3_SCOPE = (
@@ -1760,8 +1760,8 @@ V3_IN_A_V2_SCOPE = (
     [
         ({"id": "gzip"}, ZarrV2CodecDefinition, CORE_CONTEXT, V2_IN_A_V3_SCOPE),
         (5, ZarrV2CodecDefinition, CORE_CONTEXT, V2_IN_A_V3_SCOPE),
-        ({"name": "gzip"}, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
-        (5, CodecDefinition, CORE_V2, V3_IN_A_V2_SCOPE),
+        ({"name": "gzip"}, CodecDefinition, CORE_V2_CONTEXT, V3_IN_A_V2_SCOPE),
+        (5, CodecDefinition, CORE_V2_CONTEXT, V3_IN_A_V2_SCOPE),
     ],
     ids=["v2-named", "v2-nameless", "v3-named", "v3-nameless"],
 )

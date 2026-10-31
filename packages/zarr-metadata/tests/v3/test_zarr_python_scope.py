@@ -2,8 +2,8 @@
 
 `fixed_length_utf32`, `vlen-utf8` and `vlen-bytes` are registered in
 zarr-extensions, so they are in `CORE_AND_EXTENSIONS_CONTEXT`.
-`null_terminated_bytes` and `variable_length_bytes` are not, so only
-`ZARR_PYTHON_CONTEXT` reads them.
+`null_terminated_bytes`, `variable_length_bytes` and `raw_bytes` are not,
+so only `ZARR_PYTHON_CONTEXT` reads them.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from zarr_metadata.definition import (
 from zarr_metadata.model import read_array_metadata_v3
 from zarr_metadata.v3.data_type.null_terminated_bytes import NULL_TERMINATED_BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     ZARR_PYTHON_CONTEXT,
@@ -48,9 +49,10 @@ def _document(data_type: object, fill_value: object, codecs: list[object]) -> di
 _LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 _UTF32 = {"name": "fixed_length_utf32", "configuration": {"length_bytes": 12}}
 _NULL_TERMINATED = {"name": "null_terminated_bytes", "configuration": {"length_bytes": 4}}
+_RAW = {"name": "raw_bytes", "configuration": {"length_bytes": 4}}
 
 
-# What zarr-python 3.4.2 writes for `<U3`, `S4`, `str` and `VariableLengthBytes()` arrays.
+# What zarr-python 3.4.2 writes for `<U3`, `S4`, `str`, `VariableLengthBytes()` and `V4` arrays.
 @pytest.mark.parametrize(
     ("document", "in_core_and_extensions"),
     [
@@ -63,8 +65,15 @@ _NULL_TERMINATED = {"name": "null_terminated_bytes", "configuration": {"length_b
             ),
             False,
         ),
+        (_document(_RAW, "AAAAAA==", [{"name": "bytes"}]), False),
     ],
-    ids=["fixed_length_utf32", "string", "null_terminated_bytes", "variable_length_bytes"],
+    ids=[
+        "fixed_length_utf32",
+        "string",
+        "null_terminated_bytes",
+        "variable_length_bytes",
+        "raw_bytes",
+    ],
 )
 def test_what_zarr_python_writes_reads_without_a_problem_in_zarr_python(
     document: dict[str, Any], in_core_and_extensions: bool
@@ -86,6 +95,7 @@ def test_zarr_python_is_core_and_extensions_with_zarr_python_s_own_data_types() 
             *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
             NULL_TERMINATED_BYTES_DATA_TYPE,
             VARIABLE_LENGTH_BYTES_DATA_TYPE,
+            ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
         ]
     )
     assert own == ZARR_PYTHON_CONTEXT
@@ -105,6 +115,9 @@ def test_zarr_python_is_core_and_extensions_with_zarr_python_s_own_data_types() 
         # The padding does not count against the size: b"A\x00\x00" fits in 2 bytes.
         ({"name": "null_terminated_bytes", "configuration": {"length_bytes": 2}}, "QQAA", "QQ=="),
         ("variable_length_bytes", "QR==", "QQ=="),
+        # zarr-python pads a shorter value with null bytes, and writes it padded.
+        (_RAW, "QQ==", "QQAAAA=="),
+        (_RAW, "QQAAAA==", "QQAAAA=="),
         ("variable_length_bytes", "QQAA", "QQAA"),
     ],
 )
@@ -121,8 +134,9 @@ def test_the_canonical_fill_value(data_type: object, value: str, canonical: str)
         {"name": "fixed_length_utf32", "configuration": {"length_bytes": 0}},
         {"name": "fixed_length_utf32", "configuration": {"length_bytes": 6}},
         {"name": "null_terminated_bytes", "configuration": {"length_bytes": 0}},
+        {"name": "raw_bytes", "configuration": {"length_bytes": 0}},
     ],
-    ids=["utf32-zero", "utf32-not-a-multiple-of-4", "null-terminated-zero"],
+    ids=["utf32-zero", "utf32-not-a-multiple-of-4", "null-terminated-zero", "raw-zero"],
 )
 def test_error_a_size_that_holds_no_whole_value(data_type: object) -> None:
     resolved, problems = resolve(data_type, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
@@ -134,8 +148,8 @@ def test_error_a_size_that_holds_no_whole_value(data_type: object) -> None:
 
 @pytest.mark.parametrize(
     ("data_type", "value"),
-    [(_UTF32, "abcd"), (_NULL_TERMINATED, "YWJjZGU=")],
-    ids=["utf32-four-code-points", "null-terminated-five-bytes"],
+    [(_UTF32, "abcd"), (_NULL_TERMINATED, "YWJjZGU="), (_RAW, "YWJjZGU=")],
+    ids=["utf32-four-code-points", "null-terminated-five-bytes", "raw-five-bytes"],
 )
 def test_error_a_fill_value_longer_than_the_type(data_type: object, value: str) -> None:
     resolved, _ = resolve(data_type, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
@@ -144,7 +158,7 @@ def test_error_a_fill_value_longer_than_the_type(data_type: object, value: str) 
     ]
 
 
-@pytest.mark.parametrize("data_type", [_NULL_TERMINATED, "variable_length_bytes"])
+@pytest.mark.parametrize("data_type", [_NULL_TERMINATED, "variable_length_bytes", _RAW])
 def test_error_a_fill_value_that_is_not_base64(data_type: object) -> None:
     resolved, _ = resolve(data_type, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
     assert [(p.loc, p.kind) for p in fill_value_problems(resolved, "YWI")] == [
@@ -178,5 +192,10 @@ def test_error_a_bytes_codec_without_an_endian_for_fixed_length_utf32() -> None:
 
 
 def test_an_empty_scope_reads_none_of_them() -> None:
-    for name in ("fixed_length_utf32", "null_terminated_bytes", "variable_length_bytes"):
+    for name in (
+        "fixed_length_utf32",
+        "null_terminated_bytes",
+        "variable_length_bytes",
+        "raw_bytes",
+    ):
         assert ZarrV3Context().claimant(DataTypeDefinition, name) is None

@@ -45,7 +45,7 @@ from zarr_metadata.model._group_v2 import (
 )
 from zarr_metadata.model._group_v3 import ZarrV3NodeMetadataReading, read_node_metadata_v3
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
@@ -482,7 +482,7 @@ def read_repaired_node_metadata_v2(
     Content that no repair applies to is read as it is, and reported the
     same way `read_node_metadata_v2` reports it.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     repaired, repairs = repair_node_metadata_v2(files)
     return ZarrV2RepairedNodeMetadataReading(
         read_node_metadata_v2(repaired, context=context), repairs
@@ -510,7 +510,7 @@ def read_repaired_consolidated_metadata_v2(
     read as it is, and reported the same way
     `read_consolidated_metadata_v2` reports it.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     repaired, repairs = repair_consolidated_metadata_v2(value)
     return ZarrV2RepairedConsolidatedMetadataReading(
         read_consolidated_metadata_v2(repaired, context=context), repairs

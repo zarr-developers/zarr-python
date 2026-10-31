@@ -4,7 +4,8 @@
 See https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/codecs/vlen-utf8/README.md
 
 The codec has no configuration fields, so the `configuration` key is
-absent from the metadata.
+optional. The spec's example leaves it out, and zarr-python writes an
+empty object, `"configuration": {}`.
 """
 
 from collections.abc import Iterator

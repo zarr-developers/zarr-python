@@ -154,6 +154,7 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
         {"name": "null_terminated_bytes", "configuration": {"length_bytes": 1}},
     ),
     "data_type:variable_length_bytes": ("variable_length_bytes",),
+    "data_type:raw_bytes": ({"name": "raw_bytes", "configuration": {"length_bytes": 1}},),
     "data_type:r*": ("r16", "r008"),
     "group_extra_field:consolidated_metadata": (
         {"consolidated_metadata": {"kind": "inline", "must_understand": False, "metadata": {}}},

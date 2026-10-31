@@ -22,7 +22,7 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
   (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`), and
   `zarr_metadata.v2.definition`: the v2 kinds of metadata, the scope
-  `CORE_V2`, and the readers of one `dtype` or codec. Each dtype family's
+  `CORE_V2_CONTEXT`, and the readers of one `dtype` or codec. Each dtype family's
   definition is in `zarr_metadata.v2.data_type`, and each codec's in
   `zarr_metadata.v2.codec`
 - [`zarr_metadata.v3`](v3/index.md) — `TypedDict` shapes for Zarr v3

@@ -339,6 +339,7 @@ _STANDALONE_VOCAB = frozenset(
         "MetadataValidationError",
         "FixedLengthUtf32",
         "NullTerminatedBytes",
+        "ZarrPythonRawBytes",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",

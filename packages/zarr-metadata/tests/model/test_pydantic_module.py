@@ -31,7 +31,7 @@ from zarr_metadata.model import (
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CORE_CONTEXT, ZarrV3Context
@@ -359,10 +359,16 @@ def test_a_field_bound_to_a_scope_reads_in_that_scope() -> None:
             Annotated[ZarrV3ConsolidatedMetadata, zmp.InScope(CORE_CONTEXT)],
             zmp.ZarrV3ConsolidatedMetadataField,
         ),
-        (Annotated[ZarrV2ArrayMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2ArrayMetadataField),
-        (Annotated[ZarrV2GroupMetadata, zmp.InScope(CORE_V2)], zmp.ZarrV2GroupMetadataField),
         (
-            Annotated[ZarrV2ConsolidatedMetadata, zmp.InScope(CORE_V2)],
+            Annotated[ZarrV2ArrayMetadata, zmp.InScope(CORE_V2_CONTEXT)],
+            zmp.ZarrV2ArrayMetadataField,
+        ),
+        (
+            Annotated[ZarrV2GroupMetadata, zmp.InScope(CORE_V2_CONTEXT)],
+            zmp.ZarrV2GroupMetadataField,
+        ),
+        (
+            Annotated[ZarrV2ConsolidatedMetadata, zmp.InScope(CORE_V2_CONTEXT)],
             zmp.ZarrV2ConsolidatedMetadataField,
         ),
     ],
@@ -395,7 +401,7 @@ def test_error_a_field_bound_to_a_scope_refuses_an_instance_it_reads_differently
 def test_error_a_field_bound_to_a_scope_of_the_other_format() -> None:
     """A field of a v3 model bound to a v2 scope is refused when pydantic builds its schema, as every v3 reader refuses a v2 scope."""
     with pytest.raises(TypeError, match="v3 document is read in a scope of that format"):
-        TypeAdapter(Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE_V2)])
+        TypeAdapter(Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE_V2_CONTEXT)])
 
 
 def test_error_a_scope_given_to_validation_reads_an_instance_in_it() -> None:
@@ -467,9 +473,9 @@ _V2_LISTING_WITH_ZLIB = ZarrV2ConsolidatedMetadata(
             "a/.zarray": {**V2_ARRAY_DOC, "compressor": _ZLIB_V2},
         },
     },
-    context=CORE_V2,
+    context=CORE_V2_CONTEXT,
 )
-_V2_WITHOUT_CODECS = ZarrV2Context(data_types=CORE_V2.data_types.values())
+_V2_WITHOUT_CODECS = ZarrV2Context(data_types=CORE_V2_CONTEXT.data_types.values())
 
 
 @pytest.mark.parametrize(
@@ -688,14 +694,14 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
 
 
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
-    """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context_v2` item. When it holds none, they read in `CORE_V2`. The v3 field types work the same way."""
+    """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context_v2` item. When it holds none, they read in `CORE_V2_CONTEXT`. The v3 field types work the same way."""
     from zarr_metadata.definition import UnclaimedField
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
-    from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
+    from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
-    assert adapter.validate_python(doc).context is CORE_V2
+    assert adapter.validate_python(doc).context is CORE_V2_CONTEXT
     small = ZarrV2Context(data_types=[UINT_DATA_TYPE_V2])
     read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert read.context is small
@@ -707,10 +713,10 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
 
 
 def test_each_format_reads_in_its_own_context_key() -> None:
-    """A mapping context gives each format's scope under its own key: `zarr_metadata_context` for v3 and `zarr_metadata_context_v2` for v2. So a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2`. A bare `Context` is the scope for every field type."""
+    """A mapping context gives each format's scope under its own key: `zarr_metadata_context` for v3 and `zarr_metadata_context_v2` for v2. So a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2_CONTEXT`. A bare `Context` is the scope for every field type."""
     from zarr_metadata.definition import UnclaimedField
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
-    from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
+    from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
@@ -719,7 +725,7 @@ def test_each_format_reads_in_its_own_context_key() -> None:
     v3_only = adapter.validate_python(
         doc, context={"zarr_metadata_context": CORE_AND_EXTENSIONS_CONTEXT}
     )
-    assert v3_only.context is CORE_V2
+    assert v3_only.context is CORE_V2_CONTEXT
     with pytest.raises(ValidationError):
         adapter.validate_python(
             {**doc, "fill_value": "garbage"},

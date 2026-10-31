@@ -9,7 +9,7 @@ import pytest
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import RefusedField, resolve
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2DataTypeDefinition
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import CORE_CONTEXT, CodecDefinition, DataTypeDefinition
@@ -54,10 +54,10 @@ def test_error_a_rule_of_a_name_that_encodes_its_configuration_is_a_wrong_value_
             "r*": dataclasses.replace(RAW_BYTES_DATA_TYPE, rules=rules),
         }
     )
-    v2 = CORE_V2.update(
+    v2 = CORE_V2_CONTEXT.update(
         data_types={
-            **CORE_V2.data_types,
-            "float": dataclasses.replace(CORE_V2.data_types["float"], rules=rules),
+            **CORE_V2_CONTEXT.data_types,
+            "float": dataclasses.replace(CORE_V2_CONTEXT.data_types["float"], rules=rules),
         }
     )
     for name, kind, context, at in [

@@ -18,7 +18,7 @@ from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import Base64Bytes
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, single_byte
-from zarr_metadata.v3.data_type._byte import base64_problems
+from zarr_metadata.v3.data_type._byte import base64_decoded, base64_problems, base64_spelling
 
 NULL_TERMINATED_BYTES_DATA_TYPE_NAME: Final = "null_terminated_bytes"
 """The `name` field value of the `null_terminated_bytes` data type."""
@@ -73,11 +73,11 @@ def _fill_value_rules(
     Trailing null bytes are padding, as in `_fill_value_canonical`, so they
     do not count: `"QQAA"` fits in one byte, as `"QQ=="` does.
     """
-    problems = list(base64_problems(value))
-    if problems:
-        yield from problems
+    yield from base64_problems(value)
+    data = base64_decoded(value)
+    if data is None:
         return
-    size = len(base64.b64decode(value).rstrip(b"\x00"))
+    size = len(data.rstrip(b"\x00"))
     if size > configuration["length_bytes"]:
         yield ValidationProblem(
             (),
@@ -96,7 +96,7 @@ def _fill_value_canonical(
     A value is padded with null bytes to `length_bytes`, so `"QQ=="` and
     `"QQAA"` are the same value, as are `"QR=="` and `"QQ=="`.
     """
-    return base64.b64encode(base64.b64decode(value).rstrip(b"\x00")).decode("ascii")
+    return base64_spelling(base64.b64decode(value).rstrip(b"\x00"))
 
 
 NULL_TERMINATED_BYTES_DATA_TYPE: Final = DataTypeDefinition(

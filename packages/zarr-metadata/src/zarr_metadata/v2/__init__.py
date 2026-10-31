@@ -6,12 +6,15 @@ Each document type is in the submodule for its node or file: `array`
 and `data_type`, and the v2 kinds and scope are in `definition`.
 
 This module also exports every v2 definition (`GZIP_CODEC_V2`,
-`FLOAT_DATA_TYPE_V2`, ...), the scope `CORE_V2`, and the scope class
+`FLOAT_DATA_TYPE_V2`, ...), the scope `CORE_V2_CONTEXT`, and the scope class
 `ZarrV2Context`, so that one import builds or updates a scope. Each is
 the same object as in its own submodule, where a definition's
 configuration types and constants are.
 """
 
+from typing import TYPE_CHECKING
+
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v2.codec.checksum import (
     ADLER32_CODEC_V2,
     CRC32_CODEC_V2,
@@ -59,7 +62,7 @@ from zarr_metadata.v2.data_type.time import (
     DATETIME64_DATA_TYPE_V2,
     TIMEDELTA64_DATA_TYPE_V2,
 )
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context
 
 __all__ = [
     "ADLER32_CODEC_V2",
@@ -70,7 +73,7 @@ __all__ = [
     "BYTES_DATA_TYPE_V2",
     "BZ2_CODEC_V2",
     "COMPLEX_DATA_TYPE_V2",
-    "CORE_V2",
+    "CORE_V2_CONTEXT",
     "CRC32C_CODEC_V2",
     "CRC32_CODEC_V2",
     "DATETIME64_DATA_TYPE_V2",
@@ -98,3 +101,11 @@ __all__ = [
     "ZSTD_CODEC_V2",
     "ZarrV2Context",
 ]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> object:
+        """`CORE_V2`, the scope's name before it ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name, {"CORE_V2": ("CORE_V2_CONTEXT", CORE_V2_CONTEXT)})

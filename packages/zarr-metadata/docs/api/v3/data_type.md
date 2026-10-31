@@ -51,3 +51,5 @@ title: data_type
 ::: zarr_metadata.v3.data_type.null_terminated_bytes
 
 ::: zarr_metadata.v3.data_type.variable_length_bytes
+
+::: zarr_metadata.v3.data_type.zarr_python_raw_bytes
