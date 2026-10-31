@@ -70,6 +70,7 @@ classifiers = [
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
     'Programming Language :: Python :: 3.14',
+    'Programming Language :: Python :: 3.15',
 ]
 license = "MIT"
 license-files = ["LICENSE.txt"]
@@ -194,7 +195,7 @@ dependency-groups = ["test"]
 [tool.hatch.envs.test.env-vars]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.12", "3.13", "3.14"]
+python = ["3.12", "3.13", "3.14", "3.15"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
