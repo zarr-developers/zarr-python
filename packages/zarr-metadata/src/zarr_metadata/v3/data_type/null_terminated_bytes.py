@@ -68,12 +68,16 @@ def _fill_value_rules(
     nested: Nested,
     value: NullTerminatedBytesFillValue,
 ) -> Iterator[ValidationProblem]:
-    """Check that the fill value is base64, and that the bytes it encodes fit in `length_bytes`."""
+    """Check that the fill value is base64, and that the bytes it encodes fit in `length_bytes`.
+
+    Trailing null bytes are padding, as in `_fill_value_canonical`, so they
+    do not count: `"QQAA"` fits in one byte, as `"QQ=="` does.
+    """
     problems = list(base64_problems(value))
     if problems:
         yield from problems
         return
-    size = len(base64.b64decode(value))
+    size = len(base64.b64decode(value).rstrip(b"\x00"))
     if size > configuration["length_bytes"]:
         yield ValidationProblem(
             (),

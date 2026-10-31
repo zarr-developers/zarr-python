@@ -12,6 +12,7 @@ as an `UnclaimedField` and not checked.
 
 from __future__ import annotations
 
+import warnings
 from typing import Final
 
 from zarr_metadata.v3._context import ZarrV3Context
@@ -122,6 +123,32 @@ zarr-python warns when it writes these that their spelling may change, so
 they are kept out of `CORE_AND_EXTENSIONS_CONTEXT`. Read in this scope to check
 strictly what zarr-python writes.
 """
+
+_RENAMED: Final = {
+    "CORE": ("CORE_CONTEXT", CORE_CONTEXT),
+    "CORE_AND_EXTENSIONS": ("CORE_AND_EXTENSIONS_CONTEXT", CORE_AND_EXTENSIONS_CONTEXT),
+}
+"""The scopes' names before they ended in `_CONTEXT`, with each scope's name now and the scope."""
+
+
+def renamed_scope(module: str, name: str) -> ZarrV3Context:
+    """The scope that `name`, a name a scope had before it ended in `_CONTEXT`, refers to, with a `DeprecationWarning`.
+
+    A module that exported the old names calls this from its `__getattr__`,
+    so an import of an old name keeps working for now. Raises
+    `AttributeError`, as attribute lookup does, when `name` is not an old
+    name.
+    """
+    if name not in _RENAMED:
+        raise AttributeError(f"module {module!r} has no attribute {name!r}")
+    new, scope = _RENAMED[name]
+    warnings.warn(
+        f"`{name}` is deprecated and will be removed; use `{new}`, the same scope",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return scope
+
 
 __all__ = [
     "CORE_AND_EXTENSIONS_CONTEXT",

@@ -3,27 +3,25 @@
 from collections.abc import Iterator
 
 from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata.definition._definition import EmptyConfiguration, Nested
-from zarr_metadata.v3._definition import Chunk, storage_of
+from zarr_metadata.definition._definition import AcceptedField
+from zarr_metadata.v3._definition import Chunk
 
 
-def vlen_chunk_rules(
-    configuration: EmptyConfiguration, nested: Nested, chunk: Chunk
-) -> Iterator[ValidationProblem]:
-    """Check that the data type's values vary in size, the converse of the `bytes` codec's rule.
+def vlen_problems(chunk: Chunk, compatible: frozenset[str]) -> Iterator[ValidationProblem]:
+    """Check that the chunk's data type is one of the `compatible` data types, named as their definitions name them.
 
-    Each value is written as its length followed by its bytes, so a data
-    type of fixed size needs a fixed-size codec such as `bytes`. The check
-    uses the storage that the data type declares, so it does not tell
-    `string` from `bytes`. If the storage is unknown, nothing is checked.
+    Each value is written as its length followed by its bytes, and each
+    codec reads those bytes as the values of particular data types, so
+    `vlen-utf8` and `vlen-bytes` are not compatible with each other's data
+    type even though both vary in size. If the scope did not read the data
+    type, nothing is checked.
     """
-    if chunk.data_type is None:
+    data_type = chunk.data_type
+    if not isinstance(data_type, AcceptedField) or data_type.definition.name in compatible:
         return
-    storage = storage_of(chunk.data_type)
-    if storage is not None and storage != "variable_length":
-        yield ValidationProblem(
-            (),
-            f"expected a data type whose values vary in size, got {shown(chunk.data_type.name)}, "
-            "whose values have a fixed size",
-            "invalid_value",
-        )
+    expected = " or ".join(shown(name) for name in sorted(compatible))
+    yield ValidationProblem(
+        (),
+        f"expected a chunk of data type {expected}, got {shown(data_type.name)}",
+        "invalid_value",
+    )

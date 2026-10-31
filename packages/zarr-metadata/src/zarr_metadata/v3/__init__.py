@@ -14,8 +14,11 @@ import builds or updates a scope. Each is the same object as in its own
 submodule, where a definition's configuration types and constants are.
 """
 
+from typing import TYPE_CHECKING
+
 from zarr_metadata._common import ZarrV3NamedConfigJSON
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._core import renamed_scope
 from zarr_metadata.v3._hierarchy import NodeName, NodePath
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -113,3 +116,11 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
 ]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> ZarrV3Context:
+        """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name)

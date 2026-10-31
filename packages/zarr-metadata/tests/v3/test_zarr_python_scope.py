@@ -96,10 +96,14 @@ def test_zarr_python_is_core_and_extensions_with_zarr_python_s_own_data_types() 
     [
         (_UTF32, "", ""),
         (_UTF32, "abc", "abc"),
+        # Trailing U+0000 code points are padding, so they are the same value.
+        (_UTF32, "a\x00\x00", "a"),
         # A value is padded with null bytes, so trailing ones are the same value.
         (_NULL_TERMINATED, "QQAA", "QQ=="),
         (_NULL_TERMINATED, "QR==", "QQ=="),
         (_NULL_TERMINATED, "", ""),
+        # The padding does not count against the size: b"A\x00\x00" fits in 2 bytes.
+        ({"name": "null_terminated_bytes", "configuration": {"length_bytes": 2}}, "QQAA", "QQ=="),
         ("variable_length_bytes", "QR==", "QQ=="),
         ("variable_length_bytes", "QQAA", "QQAA"),
     ],
@@ -148,9 +152,21 @@ def test_error_a_fill_value_that_is_not_base64(data_type: object) -> None:
     ]
 
 
-@pytest.mark.parametrize("codec", ["vlen-utf8", "vlen-bytes"])
-def test_error_a_variable_length_codec_for_a_data_type_of_fixed_size(codec: str) -> None:
-    reading = read_array_metadata_v3(_document(_UTF32, "", [codec]), context=ZARR_PYTHON_CONTEXT)
+@pytest.mark.parametrize(
+    ("data_type", "codec"),
+    [
+        (_UTF32, "vlen-utf8"),
+        (_UTF32, "vlen-bytes"),
+        ("bytes", "vlen-utf8"),
+        ("variable_length_bytes", "vlen-utf8"),
+        ("string", "vlen-bytes"),
+    ],
+)
+def test_error_a_variable_length_codec_for_a_data_type_it_does_not_encode(
+    data_type: object, codec: str
+) -> None:
+    document = _document(data_type, "", [codec])
+    reading = read_array_metadata_v3(document, context=ZARR_PYTHON_CONTEXT)
     assert [(p.loc, p.kind) for p in reading.problems] == [(("codecs", 0), "invalid_value")]
 
 

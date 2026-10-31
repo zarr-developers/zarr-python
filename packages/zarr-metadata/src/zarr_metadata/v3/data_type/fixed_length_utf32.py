@@ -74,12 +74,27 @@ def _fill_value_rules(
         )
 
 
+def _fill_value_canonical(
+    configuration: FixedLengthUtf32Configuration, nested: Nested, value: FixedLengthUtf32FillValue
+) -> str:
+    """Return the string without its trailing `U+0000` code points.
+
+    A shorter string "decodes to the scalar whose remaining code points are
+    `U+0000` padding", and a scalar is encoded "with any trailing `U+0000`
+    padding code points removed"
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/data-types/fixed_length_utf32/README.md?plain=1#L107-L116),
+    so `"a"` and `"a\\u0000"` are the same value.
+    """
+    return value.rstrip("\x00")
+
+
 FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     name=FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
     configuration=FixedLengthUtf32Configuration,
     rules=_rules,
     fill_value=FixedLengthUtf32FillValue,
     fill_value_rules=_fill_value_rules,
+    fill_value_canonical=_fill_value_canonical,
     storage=multi_byte,
 )
 """The `fixed_length_utf32` data type: NumPy's `<U` / `>U`.
