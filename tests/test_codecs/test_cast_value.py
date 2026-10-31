@@ -8,8 +8,12 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
-from zarr.codecs import BytesCodec, TransposeCodec
+from zarr.codecs import BytesCodec, ScaleOffset, TransposeCodec
 from zarr.codecs.cast_value import CastValue
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.dtype import get_data_type_from_json
+from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
 
 try:
@@ -611,3 +615,222 @@ def test_enforce_contiguous_arrays() -> None:
 
     array[:] = data
     assert_array_equal(array[:], data)
+
+
+# ---------------------------------------------------------------------------
+# Fill value round trip
+# ---------------------------------------------------------------------------
+
+
+def _create_with_fill(
+    dtype: str,
+    fill_value: Any,
+    *filters: Any,
+    store: MemoryStore | None = None,
+    shards: tuple[int, ...] | None = None,
+) -> Any:
+    """Create a 4-element array with 2-element chunks, filtered through `filters`,
+    in `shards` if given."""
+    return zarr.create_array(
+        store=MemoryStore() if store is None else store,
+        shape=(4,),
+        chunks=(2,),
+        shards=shards,
+        dtype=dtype,
+        fill_value=fill_value,
+        filters=list(filters),
+        serializer=BytesCodec(endian="little"),
+        compressors=None,
+    )
+
+
+@requires_cast_value_rs
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(
+            input=(
+                "float32",
+                np.nan,
+                CastValue(
+                    data_type="int8", scalar_map={"encode": [("NaN", 0)], "decode": [(0, "NaN")]}
+                ),
+            ),
+            output=np.int8(0),
+            id="nan-through-scalar-map",
+        ),
+        Expect(
+            input=("float64", 5.0, CastValue(data_type="int8", out_of_range="clamp")),
+            output=np.int8(5),
+            id="clamp-in-range",
+        ),
+        Expect(
+            input=("float64", -3.0, CastValue(data_type="int8", out_of_range="wrap")),
+            output=np.int8(-3),
+            id="wrap-in-range",
+        ),
+        Expect(
+            input=("int16", 300, CastValue(data_type="float32")),
+            output=np.float32(300.0),
+            id="int-to-float",
+        ),
+        Expect(
+            input=("float64", 2.0, CastValue(data_type="int8", rounding="towards-zero")),
+            output=np.int8(2),
+            id="integral-float-to-int",
+        ),
+        Expect(
+            input=("float64", 1.5, CastValue(data_type="float32")),
+            output=np.float32(1.5),
+            id="exact-float-narrowing",
+        ),
+        Expect(
+            input=("float32", -0.0, CastValue(data_type="float16")),
+            output=np.float16(-0.0),
+            id="signed-zero-float-to-float",
+        ),
+    ],
+    ids=lambda c: c.id,
+)
+def test_fill_value_roundtrip_accepted(case: Expect[tuple[str, Any, CastValue], Any]) -> None:
+    """A fill value that survives encode then decode is accepted. The encoded
+    fill is stored for the unwritten part of a partly written chunk, and that
+    part reads back as the original fill value, bit for bit."""
+    dtype, fill_value, codec = case.input
+    arr = _create_with_fill(dtype, fill_value, codec)
+    arr[0] = 1
+
+    stored = arr.store._store_dict["c/0"].to_bytes()
+    expected_encoded = np.array([case.output], dtype=case.output.dtype)
+    assert stored[expected_encoded.itemsize :] == expected_encoded.tobytes()
+
+    read = arr[1:2]
+    assert read.tobytes() == np.array([fill_value], dtype=dtype).tobytes()
+
+
+@requires_cast_value_rs
+def test_fill_value_partial_chunk_without_check_reads_wrong_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a fill value that does not round-trip corrupts partly written chunks.
+
+    With the round-trip check disabled, float32 fill 1000.0 encodes to int8 127
+    under `out_of_range="clamp"`. The unwritten element of a partly written
+    chunk is stored as 127 and reads back as 127.0, not as the fill value.
+    Array creation refuses this metadata. The array already stored with it
+    still opens, with its fill value and a warning that says what its chunks
+    hold, so its data stays readable.
+    """
+    import zarr.codecs.cast_value as cast_value_module
+
+    codec = CastValue(data_type="int8", out_of_range="clamp")
+    store = MemoryStore()
+
+    with monkeypatch.context() as m:
+        m.setattr(cast_value_module, "_same_scalar", lambda a, b: True)
+        arr = _create_with_fill("float32", 1000.0, codec, store=store)
+        arr[0] = 5.0
+        assert_array_equal(arr[:], np.array([5.0, 127.0, 1000.0, 1000.0], dtype="float32"))
+
+    with pytest.raises(ValueError, match=r"decodes back to 127\.0 in float32"):
+        _create_with_fill("float32", 1000.0, codec)
+
+    with pytest.warns(
+        ZarrUserWarning,
+        match=r"decodes back to 127\.0 in float32.*Partly written chunks of this array",
+    ):
+        opened = zarr.open_array(store, mode="r")
+    assert opened.fill_value == np.float32(1000.0)
+    assert_array_equal(opened[:], np.array([5.0, 127.0, 1000.0, 1000.0], dtype="float32"))
+
+
+@requires_cast_value_rs
+def test_fill_value_checked_inside_shards() -> None:
+    """The codecs inside a shard are checked with the array's fill value, not with
+    the default scalar of the data type: a fill value the chain preserves is
+    accepted although the default scalar would be lost to clamping after scaling,
+    and a fill value the chain loses is refused."""
+    scale = ScaleOffset(scale=655.35, offset=100.0)
+    clamp = CastValue(data_type="uint16", out_of_range="clamp")
+    arr = _create_with_fill("float32", 100.0, scale, clamp, shards=(4,))
+    arr[0] = 150.0
+    assert_array_equal(arr[1:], np.full(3, 100.0, dtype="float32"))
+
+    with pytest.raises(ValueError, match=r"decodes back to 127\.0 in float32"):
+        _create_with_fill(
+            "float32", 1000.0, CastValue(data_type="int8", out_of_range="clamp"), shards=(4,)
+        )
+
+
+@requires_cast_value_rs
+def test_resolve_metadata_only_casts_forward() -> None:
+    """`resolve_metadata` runs for every chunk, so it casts the fill value forward
+    without checking the round trip, which metadata creation checks once."""
+    spec = ArraySpec(
+        shape=(2,),
+        dtype=get_data_type_from_json("float32", zarr_format=3),
+        fill_value=np.float32(1000.0),
+        config=ArrayConfig.from_dict({}),
+        prototype=default_buffer_prototype(),
+    )
+    resolved = CastValue(data_type="int8", out_of_range="clamp").resolve_metadata(spec)
+    assert resolved.fill_value == np.int8(127)
+
+
+@requires_cast_value_rs
+def test_fill_value_clamp_out_of_range_rejected() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fill value 1000\.0 .* from float32 to 127 in int8, which decodes back to 127\.0",
+    ):
+        _create_with_fill("float32", 1000.0, CastValue(data_type="int8", out_of_range="clamp"))
+
+
+@requires_cast_value_rs
+def test_fill_value_wrap_out_of_range_rejected() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fill value 300 .* from int16 to 44 in int8, which decodes back to 44 in int16",
+    ):
+        _create_with_fill("int16", 300, CastValue(data_type="int8", out_of_range="wrap"))
+
+
+@requires_cast_value_rs
+def test_fill_value_lost_to_rounding_rejected() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fill value 1\.5 .* from float64 to 2 in int8, which decodes back to 2\.0",
+    ):
+        _create_with_fill("float64", 1.5, CastValue(data_type="int8"))
+
+
+@requires_cast_value_rs
+def test_fill_value_signed_zero_lost_rejected() -> None:
+    """The spec requires signed zero to be preserved; an integer target cannot."""
+    with pytest.raises(
+        ValueError,
+        match=r"fill value -0\.0 .* from float32 to 0 in int8, which decodes back to 0\.0",
+    ):
+        _create_with_fill("float32", -0.0, CastValue(data_type="int8"))
+
+
+@requires_cast_value_rs
+def test_fill_value_nan_to_int_without_scalar_map_rejected() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fill value nan cannot be cast from float32 to int8 .*without scalar_map",
+    ):
+        _create_with_fill("float32", np.nan, CastValue(data_type="int8"))
+
+
+@requires_cast_value_rs
+def test_fill_value_cannot_decode_rejected() -> None:
+    """The fill encodes to NaN through the encode map, but with no decode map
+    NaN cannot be cast back to the integer source."""
+    with pytest.raises(
+        ValueError,
+        match=r"encoded fill value nan cannot be cast from float64 to int32",
+    ):
+        _create_with_fill(
+            "int32", 0, CastValue(data_type="float64", scalar_map={"encode": [(0, "NaN")]})
+        )
