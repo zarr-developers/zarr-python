@@ -13,6 +13,7 @@ __all__ = [
     "NegativeStepError",
     "NodeTypeValidationError",
     "PickleCodecDisabledError",
+    "URLPipelineError",
     "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
@@ -108,6 +109,12 @@ class PickleCodecDisabledError(BaseZarrError):
 
     Unpickling can execute arbitrary code, so decoding with the pickle codec is
     disabled unless the ``array.allow_unsafe_pickle_decode`` configuration option is set to ``True``.
+    """
+
+
+class URLPipelineError(BaseZarrError):
+    """
+    Raised when a URL pipeline cannot be parsed or resolved.
     """
 
 
