@@ -201,6 +201,27 @@ jobs:
       run: |
         HATCH_ENV=test.py3.13-minimal just benchmark
 
+  examples:
+    name: Example scripts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0 # required for hatch version discovery when uv builds zarr
+        persist-credentials: false
+    - name: Install uv
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
+    - name: Run Examples
+      env:
+        UV_PYTHON: '3.13'
+      run: |
+        just examples
+
   test-complete:
     name: Test complete
 
@@ -209,7 +230,8 @@ jobs:
         test,
         test-upstream-and-min-deps,
         doctests,
-        benchmarks
+        benchmarks,
+        examples
       ]
     if: always()
     runs-on: ubuntu-latest
