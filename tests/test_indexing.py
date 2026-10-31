@@ -2627,3 +2627,231 @@ def test_sparse_indexer_projection_reconstructs_coordinates(
         assert_array_equal(reconstructed, coords)
         assert_array_equal(covered, np.ones_like(coords))
         assert len(indexer.chunk_run_ends) == len(expected_chunks)
+
+
+def _assert_iter_matches_getitem(z: Array) -> None:
+    """Iterating over `z` yields the same arrays as `z[i]` for each `i`."""
+    rows = list(z)
+    assert len(rows) == z.shape[0]
+    for i, row in enumerate(rows):
+        expected = z[i]
+        assert isinstance(row, np.ndarray)
+        assert isinstance(expected, np.ndarray)
+        assert row.dtype == expected.dtype
+        assert row.shape == expected.shape
+        assert row.flags.c_contiguous == expected.flags.c_contiguous
+        assert row.flags.f_contiguous == expected.flags.f_contiguous
+        assert_array_equal(row, expected)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("order", ["C", "F"])
+@pytest.mark.parametrize(
+    ("shape", "chunks"),
+    [
+        ((20,), (5,)),
+        ((23,), (5,)),
+        ((23,), (23,)),
+        ((23,), (100,)),
+        ((11, 7), (3, 4)),
+        ((11, 7, 5), (4, 3, 5)),
+        ((4, 0), (2, 1)),
+    ],
+)
+def test_iter(
+    shape: tuple[int, ...], chunks: tuple[int, ...], order: str, zarr_format: ZarrFormat
+) -> None:
+    """Iterating over an array yields `z[i]` for each `i`, matching NumPy iteration."""
+    a = np.arange(np.prod(shape), dtype="int32").reshape(shape)
+    z = zarr.create_array(
+        MemoryStore(),
+        shape=shape,
+        chunks=chunks,
+        dtype=a.dtype,
+        zarr_format=zarr_format,
+        config={"order": order},
+    )
+    z[...] = a
+    _assert_iter_matches_getitem(z)
+    for row, expected in zip(z, a, strict=True):
+        assert_array_equal(row, expected)
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunks", "shards"),
+    [
+        ((40, 6), (5, 3), (20, 6)),
+        ((47, 6), (5, 3), (20, 6)),
+        ((40,), (4,), (8,)),
+    ],
+)
+def test_iter_sharded(
+    shape: tuple[int, ...], chunks: tuple[int, ...], shards: tuple[int, ...]
+) -> None:
+    """Iteration over a sharded array, including a partial last shard, yields `z[i]`."""
+    a = np.arange(np.prod(shape), dtype="float64").reshape(shape)
+    z = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, shards=shards, dtype=a.dtype)
+    z[...] = a
+    _assert_iter_matches_getitem(z)
+    assert_array_equal(np.stack(list(z)), a)
+
+
+def test_iter_rectilinear() -> None:
+    """Iteration follows the chunk edges of a rectilinear chunk grid, including after a resize."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        z = zarr.create_array(MemoryStore(), shape=(10, 4), chunks=[[3, 5, 2], [4]], dtype="i4")
+        z[...] = np.arange(40).reshape(10, 4)
+        assert list(z._iter_row_blocks()) == [(0, 3), (3, 8), (8, 10)]
+        _assert_iter_matches_getitem(z)
+        z.resize((7, 4))
+        assert list(z._iter_row_blocks()) == [(0, 3), (3, 7)]
+        _assert_iter_matches_getitem(z)
+
+        sharded = zarr.create_array(
+            MemoryStore(), shape=(10,), chunks=(2,), shards=[[4, 6]], dtype="i4"
+        )
+        sharded[...] = np.arange(10)
+        assert list(sharded._iter_row_blocks()) == [(0, 4), (4, 10)]
+        _assert_iter_matches_getitem(sharded)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    ["bool", "uint8", "complex128", "<U3", [("a", "i4"), ("b", "f8")], "str"],
+    ids=str,
+)
+def test_iter_dtypes(dtype: Any) -> None:
+    """Iteration yields rows of the array's dtype, for fixed-size, structured and string dtypes."""
+    z = zarr.create_array(MemoryStore(), shape=(7, 2), chunks=(3, 2), dtype=dtype)
+    if np.dtype(dtype).fields is None:
+        z[...] = np.arange(14).reshape(7, 2).astype(dtype)
+    _assert_iter_matches_getitem(z)
+
+
+@pytest.mark.parametrize("fill_value", [0, 7])
+def test_iter_missing_chunks(fill_value: int) -> None:
+    """Rows in chunks that were never written are filled with the fill value."""
+    z = zarr.create_array(
+        MemoryStore(), shape=(10, 4), chunks=(3, 2), dtype="i2", fill_value=fill_value
+    )
+    z[3:6, 2:] = 1
+    expected = np.full((10, 4), fill_value, dtype="i2")
+    expected[3:6, 2:] = 1
+    _assert_iter_matches_getitem(z)
+    assert_array_equal(np.stack(list(z)), expected)
+
+
+def test_iter_0d() -> None:
+    """Iterating over a 0-d array raises `TypeError`, as for NumPy arrays."""
+    z = zarr.create_array(MemoryStore(), shape=(), dtype="i4")
+    with pytest.raises(TypeError, match="iteration over a 0-d array"):
+        iter(z)
+    with pytest.raises(TypeError):
+        iter(np.zeros(()))
+
+
+def test_iter_empty() -> None:
+    """Iterating over an array with an empty first dimension yields nothing."""
+    z = zarr.create_array(MemoryStore(), shape=(0, 3), chunks=(2, 2), dtype="i4")
+    assert list(z) == []
+
+
+def test_iter_rows_are_independent() -> None:
+    """Each row is its own array, as `z[i]` is: changing one row changes no other row."""
+    z = zarr.create_array(MemoryStore(), shape=(4, 3), chunks=(4, 3), dtype="i4")
+    rows = list(z)
+    rows[0][...] = 1
+    assert all(r.base is None for r in rows)
+    assert_array_equal(np.stack(rows[1:]), np.zeros((3, 3), dtype="i4"))
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunks", "shards"),
+    [
+        ((95, 30), (10, 10), None),
+        ((80, 30), (10, 10), (40, 30)),
+        ((80, 30), (10, 10), (20, 10)),
+    ],
+)
+async def test_iter_reads_each_chunk_once(
+    shape: tuple[int, ...], chunks: tuple[int, ...], shards: tuple[int, ...] | None
+) -> None:
+    """A full pass of iteration reads each chunk (or shard) from the store exactly once."""
+    store = await CountingDict.open()
+    z = zarr.create_array(
+        StorePath(store) / "arr", shape=shape, chunks=chunks, shards=shards, dtype="f8"
+    )
+    z[...] = np.arange(np.prod(shape)).reshape(shape)
+    counts_before = store.counter.copy()
+    rows = list(z)
+    reads = store.counter - counts_before
+    grid_shape = tuple(ceildiv_int(s, c) for s, c in zip(shape, shards or chunks, strict=True))
+    expected_keys = {
+        ("__getitem__", "c/" + "/".join(map(str, ix))) for ix in np.ndindex(*grid_shape)
+    }
+    assert set(reads) == expected_keys
+    assert all(count == 1 for count in reads.values())
+    assert_array_equal(np.stack(rows), z[...])
+
+
+async def test_iter_reads_lazily() -> None:
+    """Iteration reads one row of chunks at a time, as the rows are consumed."""
+    store = await CountingDict.open()
+    z = zarr.create_array(StorePath(store) / "arr", shape=(30, 4), chunks=(10, 2), dtype="f8")
+    z[...] = 1
+    counts_before = store.counter.copy()
+    it = iter(z)
+    assert store.counter == counts_before
+    for _ in range(10):
+        next(it)
+    reads = store.counter - counts_before
+    assert reads == {("__getitem__", "c/0/0"): 1, ("__getitem__", "c/0/1"): 1}
+
+
+def test_iter_block_max_bytes() -> None:
+    """A row of chunks larger than `array.iter_block_max_bytes` is read in smaller blocks."""
+    a = np.arange(23 * 4, dtype="int64").reshape(23, 4)  # 32 bytes per row
+    z = zarr.create_array(MemoryStore(), shape=a.shape, chunks=(10, 2), dtype=a.dtype)
+    z[...] = a
+    assert list(z._iter_row_blocks()) == [(0, 10), (10, 20), (20, 23)]
+    with zarr.config.set({"array.iter_block_max_bytes": 100}):
+        assert list(z._iter_row_blocks()) == [
+            (0, 3),
+            (3, 6),
+            (6, 9),
+            (9, 10),
+            (10, 13),
+            (13, 16),
+            (16, 19),
+            (19, 20),
+            (20, 23),
+        ]
+        _assert_iter_matches_getitem(z)
+    with zarr.config.set({"array.iter_block_max_bytes": 1}):
+        assert list(z._iter_row_blocks()) == [(i, i + 1) for i in range(23)]
+        _assert_iter_matches_getitem(z)
+
+
+def test_iter_block_max_bytes_sharded() -> None:
+    """Blocks of a sharded array that are smaller than a shard row hold whole inner chunk rows."""
+    a = np.arange(40 * 4, dtype="int64").reshape(40, 4)  # 32 bytes per row
+    z = zarr.create_array(
+        MemoryStore(), shape=a.shape, chunks=(4, 2), shards=(20, 4), dtype=a.dtype
+    )
+    z[...] = a
+    assert list(z._iter_row_blocks()) == [(0, 20), (20, 40)]
+    # 10 rows fit, which is rounded down to 2 inner chunk rows of 4 rows each.
+    with zarr.config.set({"array.iter_block_max_bytes": 10 * 32}):
+        assert list(z._iter_row_blocks()) == [
+            (0, 8),
+            (8, 16),
+            (16, 20),
+            (20, 28),
+            (28, 36),
+            (36, 40),
+        ]
+        _assert_iter_matches_getitem(z)
+    # Fewer rows than an inner chunk row fit.
+    with zarr.config.set({"array.iter_block_max_bytes": 3 * 32}):
+        assert list(z._iter_row_blocks())[:3] == [(0, 3), (3, 6), (6, 9)]
+        _assert_iter_matches_getitem(z)

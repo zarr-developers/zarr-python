@@ -2764,6 +2764,69 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             return self.get_basic_selection(cast("BasicSelection", pure_selection), fields=fields)
 
+    def __iter__(self) -> Iterator[NDArrayLikeOrScalar]:
+        """Iterate over the array along its first dimension.
+
+        Step `i` yields the same value as `self[i]`. Rather than reading
+        `self[i]` for every `i`, which reads and decodes each chunk once for
+        every row it holds, the array is read one block of rows at a time and
+        the rows of each block are yielded in turn. A block is one row of
+        chunks along the first dimension (of shards, for a sharded array), so
+        a full pass reads each chunk once.
+
+        At most one block is held in memory at a time. A row of chunks larger
+        than the `array.iter_block_max_bytes` config value is read in smaller
+        blocks instead, and its chunks are then read once per block (for a
+        sharded array, blocks are kept to whole rows of inner chunks where
+        possible, so each inner chunk is still read once).
+
+        Raises
+        ------
+        TypeError
+            If the array is 0-dimensional, as for NumPy arrays.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> import numpy as np
+        >>> z = zarr.create_array({}, shape=(4, 2), chunks=(2, 2), dtype="int32")
+        >>> z[:] = np.arange(8).reshape(4, 2)
+        >>> [row.tolist() for row in z]
+        [[0, 1], [2, 3], [4, 5], [6, 7]]
+        """
+        if self.ndim == 0:
+            raise TypeError("iteration over a 0-d array")
+        return self._iter_rows()
+
+    def _iter_rows(self) -> Iterator[NDArrayLikeOrScalar]:
+        for start, stop in self._iter_row_blocks():
+            block: Any = self[start:stop]
+            for i in range(stop - start):
+                # Copy, so that each row is an independent array like `self[i]`
+                # and does not keep the whole block alive.
+                yield block[i, ...].copy(order="K")
+
+    def _iter_row_blocks(self) -> Iterator[tuple[int, int]]:
+        """The `(start, stop)` bounds along the first dimension of the blocks read by `__iter__`.
+
+        Each block lies within one row of storage chunks (shards, for a sharded
+        array). A row of storage chunks larger than `array.iter_block_max_bytes`
+        is split into smaller blocks, which for a sharded array are kept to
+        whole rows of inner chunks where possible.
+        """
+        row_nbytes = math.prod(self.shape[1:]) * self.dtype.itemsize
+        max_rows = max(1, zarr_config.get("array.iter_block_max_bytes") // max(1, row_nbytes))
+        if (sharding_codec := _sharding_codec(self.metadata)) is not None:
+            inner_rows = sharding_codec.chunk_shape[0]
+            if max_rows > inner_rows:
+                max_rows -= max_rows % inner_rows
+        dim = self._chunk_grid.dimensions[0]
+        for i in range(dim.nchunks):
+            start = dim.chunk_offset(i)
+            stop = start + dim.data_size(i)
+            for block_start in range(start, stop, max_rows):
+                yield block_start, min(block_start + max_rows, stop)
+
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
 
