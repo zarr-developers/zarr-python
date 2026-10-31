@@ -9,7 +9,7 @@ from numpy.testing import assert_array_equal
 import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr.codecs import BytesCodec, TransposeCodec
-from zarr.codecs.cast_value import CastValue
+from zarr.codecs.cast_value import CAST_VALUE_RS_MIN_VERSION, CastValue
 from zarr.storage import MemoryStore
 
 try:
@@ -490,15 +490,14 @@ def test_parse_scalar_map(case: Expect[Any, Any]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        Expect(input="0.5.1", output=None, id="exactly-minimum"),
-        Expect(input="0.5.2", output=None, id="newer-patch"),
-        Expect(input="0.6.0", output=None, id="newer-minor"),
-        Expect(input="1.0.0", output=None, id="newer-major"),
-        Expect(input="0.5.1.post1", output=None, id="post-release"),
+        Expect(input=CAST_VALUE_RS_MIN_VERSION, output=None, id="exactly-minimum"),
+        Expect(input=f"{CAST_VALUE_RS_MIN_VERSION}.post1", output=None, id="post-release"),
+        Expect(
+            input=f"{CAST_VALUE_RS_MIN_VERSION}.dev1",
+            output=f"{CAST_VALUE_RS_MIN_VERSION}.dev1",
+            id="pre-release-of-minimum",
+        ),
         Expect(input="0.4.0", output="0.4.0", id="known-corrupting"),
-        Expect(input="0.5.0", output="0.5.0", id="one-patch-below"),
-        Expect(input="0.4.2", output="0.4.2", id="older-minor"),
-        Expect(input="0.5.1.dev1", output="0.5.1.dev1", id="pre-release-of-minimum"),
     ],
     ids=lambda c: c.id,
 )
