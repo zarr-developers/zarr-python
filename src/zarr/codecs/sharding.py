@@ -627,8 +627,9 @@ class ShardingCodec(
         if isinstance(chunk_grid, RegularChunkGridMetadata):
             edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
         elif isinstance(chunk_grid, RectilinearChunkGridMetadata):
+            # One size per run of equal edges, not one per chunk.
             edges_per_dim = tuple(
-                (s,) if isinstance(s, int) else s for s in chunk_grid.chunk_shapes
+                (s,) if isinstance(s, int) else s.sizes for s in chunk_grid.chunk_shapes
             )
         else:
             raise TypeError(
