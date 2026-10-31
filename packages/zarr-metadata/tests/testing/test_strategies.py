@@ -24,6 +24,7 @@ from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
     AcceptedField,
     Definition,
+    EmptyConfiguration,
     fill_value_problems,
     resolve,
 )
@@ -63,6 +64,7 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     CodecDefinition,
     DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -309,6 +311,25 @@ def test_a_refused_draw_is_a_value_error(spellings: Spellings) -> None:
     refused = fields(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
     with pytest.raises(ValueError, match="which is refused"):
         find(refused, lambda _field: True, settings=settings(database=None))
+
+
+_BFLOAT16 = DataTypeDefinition(name="bfloat16", configuration=EmptyConfiguration)
+"""A number type this package does not define, as an extension author would."""
+
+
+@given(data=st.data())
+def test_scale_offset_takes_a_data_type_the_package_does_not_define(data: st.DataObject) -> None:
+    """Values of a type the package does not define cannot be drawn, so the configuration is the identity, which its rules take."""
+    data_type, problems = resolve(
+        "bfloat16", DataTypeDefinition, ZarrV3Context(data_types=[_BFLOAT16])
+    )
+    assert problems == ()
+    chunk = Chunk(None, data_type)
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    configuration = data.draw(configurations)
+    assert configuration == {}
+    assert list(SCALE_OFFSET_CODEC.chunk_rules(configuration, {}, chunk)) == []
 
 
 def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:

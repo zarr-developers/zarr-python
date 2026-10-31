@@ -70,7 +70,6 @@ COMPLEX_WIDTHS: Final[Mapping[DataTypeDefinition[Any], FloatWidth]] = {
 }
 """The width in bits of each part of each complex data type."""
 
-
 _MAX_RAW_BYTES: Final = 32
 """The widest raw bits drawn, in bytes: `r256`."""
 

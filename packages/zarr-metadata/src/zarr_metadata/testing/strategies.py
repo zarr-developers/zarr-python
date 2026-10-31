@@ -218,7 +218,10 @@ def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
     for slot, kind in ZarrV3Context.kinds.items():
         if isinstance(definition, kind):
             return ZarrV3Context(**cast("ZarrV3ContextSlots", {slot: (definition,)}))
-    msg = f"{definition.name!r} is a {type(definition).__name__}, which no slot of a Zarr v3 scope holds"
+    msg = (
+        f"{definition.name!r} is a {type(definition).__name__}, "
+        "which no slot of a Zarr v3 scope holds"
+    )
     raise TypeError(msg)
 
 
