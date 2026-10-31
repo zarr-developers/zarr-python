@@ -64,24 +64,9 @@ hypothesis *args:
 doctest *args:
     hatch run doctest:pytest tests/test_docs.py -v "$@"
 
-# Run each example script against the local checkout. Each script's PEP 723 header
-# defines its environment, so this needs uv, not a hatch environment.
-examples:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    shopt -s failglob
-    tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
-    for script in examples/*/*.py; do
-        mkdir -p "$tmp/$(dirname "$script")"
-        dest="$tmp/$script"
-        cp "$script" "$dest"
-        # Point the header's zarr requirement at this checkout. `uv add` also resolves
-        # the header, so a header that cannot be satisfied fails here.
-        uv add --quiet --script "$dest" "$PWD"
-        echo "Running $script"
-        uv run --reinstall-package zarr "$dest"
-    done
+# Run each example script against the local checkout, in its PEP 723 environment
+examples *args:
+    hatch run {{ quote(hatch_env) }}:pytest --run-examples tests/test_examples.py -v "$@"
 
 # Run the benchmark suite
 benchmark *args:
