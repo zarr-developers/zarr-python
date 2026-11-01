@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkabl
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
+from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
-    from zarr.core.array_spec import ArraySpec
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
@@ -27,6 +27,7 @@ __all__ = [
     "ArrayBytesCodec",
     "ArrayBytesCodecPartialDecodeMixin",
     "ArrayBytesCodecPartialEncodeMixin",
+    "ArraySpec",
     "BaseCodec",
     "BytesBytesCodec",
     "CodecInput",
