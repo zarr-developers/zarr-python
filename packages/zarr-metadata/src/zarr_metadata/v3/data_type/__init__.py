@@ -4,8 +4,10 @@ Each v3 data type has its own submodule:
 
 - Core primitives: `bool`, `int8`/`16`/`32`/`64`, `uint8`/`16`/`32`/`64`,
   `float16`/`32`/`64`, `complex64`/`128`, `raw` (for `r<N>`)
-- zarr-extensions: `bytes`, `string`, `numpy_datetime64`, `numpy_timedelta64`,
-  `struct`
+- zarr-extensions: `bytes`, `string`, `fixed_length_utf32`,
+  `numpy_datetime64`, `numpy_timedelta64`, `struct`
+- zarr-python, registered by no specification: `null_terminated_bytes`,
+  `variable_length_bytes`, `zarr_python_raw_bytes` (for `raw_bytes`)
 
 Import a data type's types and its definition from its submodule, or from
 this package, which re-exports every name its submodules export:
@@ -14,7 +16,8 @@ this package, which re-exports every name its submodules export:
   (or, for named-config dtypes, the literal value of their `name` field)
 - `<X>FillValue` -- the permitted JSON shape of the `fill_value` field
 - the envelope and configuration TypedDicts of named-config dtypes
-  (`numpy_datetime64`, `numpy_timedelta64`, `struct`), the branded
+  (`fixed_length_utf32`, `null_terminated_bytes`, `numpy_datetime64`,
+  `numpy_timedelta64`, `struct`, `raw_bytes`), the branded
   `HexFloat<N>` / `Base64Bytes` types, and their validator functions
 - `<X>_DATA_TYPE`, the definition
 
@@ -48,6 +51,14 @@ from zarr_metadata.v3.data_type.complex128 import (
     Complex128Component,
     Complex128DataTypeName,
     Complex128FillValue,
+)
+from zarr_metadata.v3.data_type.fixed_length_utf32 import (
+    FIXED_LENGTH_UTF32_DATA_TYPE,
+    FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
+    FixedLengthUtf32,
+    FixedLengthUtf32Configuration,
+    FixedLengthUtf32DataTypeName,
+    FixedLengthUtf32FillValue,
 )
 from zarr_metadata.v3.data_type.float16 import (
     CANONICAL_NAN_HEX_FLOAT16,
@@ -108,6 +119,14 @@ from zarr_metadata.v3.data_type.int64 import (
     INT64_DATA_TYPE_NAME,
     Int64DataTypeName,
     Int64FillValue,
+)
+from zarr_metadata.v3.data_type.null_terminated_bytes import (
+    NULL_TERMINATED_BYTES_DATA_TYPE,
+    NULL_TERMINATED_BYTES_DATA_TYPE_NAME,
+    NullTerminatedBytes,
+    NullTerminatedBytesConfiguration,
+    NullTerminatedBytesDataTypeName,
+    NullTerminatedBytesFillValue,
 )
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
     NUMPY_DATETIME64_DATA_TYPE,
@@ -173,6 +192,20 @@ from zarr_metadata.v3.data_type.uint64 import (
     Uint64DataTypeName,
     Uint64FillValue,
 )
+from zarr_metadata.v3.data_type.variable_length_bytes import (
+    VARIABLE_LENGTH_BYTES_DATA_TYPE,
+    VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
+    VariableLengthBytesDataTypeName,
+    VariableLengthBytesFillValue,
+)
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import (
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME,
+    ZarrPythonRawBytes,
+    ZarrPythonRawBytesConfiguration,
+    ZarrPythonRawBytesDataTypeName,
+    ZarrPythonRawBytesFillValue,
+)
 
 __all__ = [
     "BOOL_DATA_TYPE",
@@ -192,6 +225,8 @@ __all__ = [
     "COMPLEX64_DATA_TYPE_NAME",
     "COMPLEX128_DATA_TYPE",
     "COMPLEX128_DATA_TYPE_NAME",
+    "FIXED_LENGTH_UTF32_DATA_TYPE",
+    "FIXED_LENGTH_UTF32_DATA_TYPE_NAME",
     "FLOAT16_DATA_TYPE",
     "FLOAT16_DATA_TYPE_NAME",
     "FLOAT32_DATA_TYPE",
@@ -206,6 +241,8 @@ __all__ = [
     "INT32_DATA_TYPE_NAME",
     "INT64_DATA_TYPE",
     "INT64_DATA_TYPE_NAME",
+    "NULL_TERMINATED_BYTES_DATA_TYPE",
+    "NULL_TERMINATED_BYTES_DATA_TYPE_NAME",
     "NUMPY_DATETIME64_DATA_TYPE",
     "NUMPY_DATETIME64_DATA_TYPE_NAME",
     "NUMPY_TIMEDELTA64_DATA_TYPE",
@@ -224,6 +261,10 @@ __all__ = [
     "UINT32_DATA_TYPE_NAME",
     "UINT64_DATA_TYPE",
     "UINT64_DATA_TYPE_NAME",
+    "VARIABLE_LENGTH_BYTES_DATA_TYPE",
+    "VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME",
+    "ZARR_PYTHON_RAW_BYTES_DATA_TYPE",
+    "ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME",
     "Base64Bytes",
     "BoolDataTypeName",
     "BoolFillValue",
@@ -235,6 +276,10 @@ __all__ = [
     "Complex128Component",
     "Complex128DataTypeName",
     "Complex128FillValue",
+    "FixedLengthUtf32",
+    "FixedLengthUtf32Configuration",
+    "FixedLengthUtf32DataTypeName",
+    "FixedLengthUtf32FillValue",
     "Float16DataTypeName",
     "Float16FillValue",
     "Float16SpecialFillValue",
@@ -255,6 +300,10 @@ __all__ = [
     "Int32FillValue",
     "Int64DataTypeName",
     "Int64FillValue",
+    "NullTerminatedBytes",
+    "NullTerminatedBytesConfiguration",
+    "NullTerminatedBytesDataTypeName",
+    "NullTerminatedBytesFillValue",
     "NumpyDatetime64",
     "NumpyDatetime64Configuration",
     "NumpyDatetime64DataTypeName",
@@ -282,6 +331,12 @@ __all__ = [
     "Uint32FillValue",
     "Uint64DataTypeName",
     "Uint64FillValue",
+    "VariableLengthBytesDataTypeName",
+    "VariableLengthBytesFillValue",
+    "ZarrPythonRawBytes",
+    "ZarrPythonRawBytesConfiguration",
+    "ZarrPythonRawBytesDataTypeName",
+    "ZarrPythonRawBytesFillValue",
     "base64_bytes",
     "hex_float16",
     "hex_float32",

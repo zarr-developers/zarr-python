@@ -16,7 +16,7 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadata,
     ZarrV3NodeMetadata,
 )
-from zarr_metadata.v3 import CORE
+from zarr_metadata.v3 import CORE_CONTEXT
 from zarr_metadata.v3.definition import (
     ArrayExtraFieldDefinition,
     GroupExtraFieldDefinition,
@@ -36,21 +36,21 @@ class _MirrorConfiguration(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-MIRRORING = CORE.update(
+MIRRORING = CORE_CONTEXT.update(
     array_extra_fields=[
-        *CORE.array_extra_fields.values(),
+        *CORE_CONTEXT.array_extra_fields.values(),
         ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
     ]
 )
-"""`CORE`, with a definition of an `acme.mirror` member that holds a codec."""
+"""`CORE_CONTEXT`, with a definition of an `acme.mirror` member that holds a codec."""
 
-GROUP_MIRRORING = CORE.update(
+GROUP_MIRRORING = CORE_CONTEXT.update(
     group_extra_fields=[
-        *CORE.group_extra_fields.values(),
+        *CORE_CONTEXT.group_extra_fields.values(),
         GroupExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
     ]
 )
-"""`CORE`, with a definition of an `acme.mirror` member of a group that holds a codec."""
+"""`CORE_CONTEXT`, with a definition of an `acme.mirror` member of a group that holds a codec."""
 
 SHARD = {
     "name": "sharding_indexed",
@@ -65,15 +65,23 @@ SHARD = {
 @pytest.mark.parametrize(
     ("model", "unclaimed"),
     [
-        (ZarrV3ArrayMetadata(ARRAY, context=CORE), set()),
-        (ZarrV3ArrayMetadata({**ARRAY, "codecs": ("bytes", ZSTD)}, context=CORE), {("codecs", 1)}),
+        (ZarrV3ArrayMetadata(ARRAY, context=CORE_CONTEXT), set()),
         (
-            ZarrV3ArrayMetadata({**ARRAY, "codecs": (SHARD,)}, context=CORE),
+            ZarrV3ArrayMetadata({**ARRAY, "codecs": ("bytes", ZSTD)}, context=CORE_CONTEXT),
+            {("codecs", 1)},
+        ),
+        (
+            ZarrV3ArrayMetadata({**ARRAY, "codecs": (SHARD,)}, context=CORE_CONTEXT),
             {("codecs", 0, "configuration", "codecs", 1)},
         ),
-        (ZarrV3ArrayMetadata({**ARRAY, "acme": {"x": 1}}, context=CORE), {("acme",)}),
-        (ZarrV3ArrayMetadata({**ARRAY, "acme": {"must_understand": False}}, context=CORE), set()),
-        (ZarrV3GroupMetadata({**GROUP, "acme": 1}, context=CORE), {("acme",)}),
+        (ZarrV3ArrayMetadata({**ARRAY, "acme": {"x": 1}}, context=CORE_CONTEXT), {("acme",)}),
+        (
+            ZarrV3ArrayMetadata(
+                {**ARRAY, "acme": {"must_understand": False}}, context=CORE_CONTEXT
+            ),
+            set(),
+        ),
+        (ZarrV3GroupMetadata({**GROUP, "acme": 1}, context=CORE_CONTEXT), {("acme",)}),
         (ZarrV2ArrayMetadata({**V2_ARRAY, "compressor": {"id": "acme"}}), {("compressor",)}),
         (ZarrV2GroupMetadata.create_default(), set()),
         (
@@ -154,8 +162,8 @@ def test_a_model_that_refines_another_has_no_more_to_understand(
     wider: set[tuple[str | int, ...]],
     narrower: set[tuple[str | int, ...]],
 ) -> None:
-    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, which lies inside the member, and a waived member is left out by both."""
-    claimed_less = kind({**document, "acme.mirror": member}, context=CORE)
+    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_fields` lie at or inside those of the model it refines, for an array and for a group. Here `CORE_CONTEXT` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, which lies inside the member, and a waived member is left out by both."""
+    claimed_less = kind({**document, "acme.mirror": member}, context=CORE_CONTEXT)
     claimed_more = kind({**document, "acme.mirror": member}, context=context)
     assert claimed_more.refines(claimed_less)
     assert set(claimed_less.unclaimed_fields) == wider

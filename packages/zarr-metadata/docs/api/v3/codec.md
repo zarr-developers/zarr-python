@@ -22,4 +22,8 @@ title: codec
 
 ::: zarr_metadata.v3.codec.transpose
 
+::: zarr_metadata.v3.codec.vlen_bytes
+
+::: zarr_metadata.v3.codec.vlen_utf8
+
 ::: zarr_metadata.v3.codec.zstd

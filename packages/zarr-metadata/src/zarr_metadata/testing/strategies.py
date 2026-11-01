@@ -60,7 +60,7 @@ from zarr_metadata.testing._strategy import (
     Strategies,
 )
 from zarr_metadata.v3._context import ZarrV3Context
-from zarr_metadata.v3._core import CORE
+from zarr_metadata.v3._core import CORE_CONTEXT
 from zarr_metadata.v3._definition import Chunk, DataTypeDefinition
 
 if TYPE_CHECKING:
@@ -181,7 +181,7 @@ def _written_bare(definition: Definition[Any]) -> bool:
     """
     if not isinstance(definition, DataTypeDefinition):
         return False
-    return CORE.claimant(DataTypeDefinition, definition.name) is definition
+    return CORE_CONTEXT.claimant(DataTypeDefinition, definition.name) is definition
 
 
 @st.composite

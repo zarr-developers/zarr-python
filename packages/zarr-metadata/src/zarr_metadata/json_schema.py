@@ -30,7 +30,7 @@ configuration.
 
 **A whole `zarr.json`.** `node_metadata_json_schema_v3(context=None)`
 writes a whole v3 `zarr.json`, array or group, as the scope reads it
-(`CORE_AND_EXTENSIONS` when none is given). Its fields are written
+(`CORE_AND_EXTENSIONS_CONTEXT` when none is given). Its fields are written
 as the scope reads them. For each definition, the schema accepts its
 field (its name, its configuration as its TypedDict declares it,
 including bounds, a `must_understand` of `true`, and its bare name when

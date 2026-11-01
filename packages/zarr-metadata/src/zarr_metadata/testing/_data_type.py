@@ -21,6 +21,10 @@ from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
 from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
+from zarr_metadata.v3.data_type.fixed_length_utf32 import (
+    FIXED_LENGTH_UTF32_DATA_TYPE,
+    FixedLengthUtf32Configuration,
+)
 from zarr_metadata.v3.data_type.float16 import FLOAT16_DATA_TYPE
 from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE
 from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE
@@ -28,6 +32,10 @@ from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.data_type.int16 import INT16_DATA_TYPE
 from zarr_metadata.v3.data_type.int32 import INT32_DATA_TYPE
 from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
+from zarr_metadata.v3.data_type.null_terminated_bytes import (
+    NULL_TERMINATED_BYTES_DATA_TYPE,
+    NullTerminatedBytesConfiguration,
+)
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
@@ -36,6 +44,11 @@ from zarr_metadata.v3.data_type.uint8 import UINT8_DATA_TYPE
 from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
 from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
+from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.zarr_python_raw_bytes import (
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
+    ZarrPythonRawBytesConfiguration,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -148,8 +161,32 @@ _BYTES_FILL_VALUES: Final = st.integers(0, _MAX_BYTES).flatmap(_byte_values) | s
 ).map(_base64)
 """A `bytes` fill value: byte values, or the bytes in standard-alphabet base64."""
 
+_LENGTH_BYTES: Final = st.integers(1, _MAX_BYTES)
+"""The `length_bytes` of zarr-python's fixed-length byte types."""
+
+
+def _base64_fill_values(
+    configuration: Mapping[str, JSONValue],
+) -> st.SearchStrategy[JSONValue]:
+    """At most `length_bytes` bytes in standard-alphabet base64, as zarr-python's fixed-length byte types take them."""
+    length_bytes = cast("ZarrPythonRawBytesConfiguration", configuration)["length_bytes"]
+    return st.binary(max_size=length_bytes).map(_base64)
+
+
 _TEXT: Final = st.text(st.characters(exclude_categories=("Cs",)), max_size=16)
 """Text a JSON document can hold: no lone surrogate, which is no Unicode scalar value."""
+
+_MAX_CODE_POINTS: Final = 16
+"""The most code points a drawn `fixed_length_utf32` value holds."""
+
+
+def _fixed_length_utf32_fill_values(
+    configuration: Mapping[str, JSONValue],
+) -> st.SearchStrategy[JSONValue]:
+    """Text of at most one code point for each 4 bytes of the size, some of them trailing `U+0000` padding."""
+    capacity = cast("FixedLengthUtf32Configuration", configuration)["length_bytes"] // 4
+    return st.text(st.characters(exclude_categories=("Cs",)) | st.just("\x00"), max_size=capacity)
+
 
 _NUMPY_TIME: Final = DataTypeStrategy(
     configurations=st.fixed_dictionaries(
@@ -184,6 +221,25 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
     ),
     BYTES_DATA_TYPE: _fill_values_of(_BYTES_FILL_VALUES),
     STRING_DATA_TYPE: _fill_values_of(_TEXT),
+    NULL_TERMINATED_BYTES_DATA_TYPE: DataTypeStrategy(
+        configurations=_LENGTH_BYTES.map(
+            lambda length_bytes: NullTerminatedBytesConfiguration(length_bytes=length_bytes)
+        ),
+        fill_values=_base64_fill_values,
+    ),
+    VARIABLE_LENGTH_BYTES_DATA_TYPE: _fill_values_of(st.binary(max_size=_MAX_BYTES).map(_base64)),
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE: DataTypeStrategy(
+        configurations=_LENGTH_BYTES.map(
+            lambda length_bytes: ZarrPythonRawBytesConfiguration(length_bytes=length_bytes)
+        ),
+        fill_values=_base64_fill_values,
+    ),
+    FIXED_LENGTH_UTF32_DATA_TYPE: DataTypeStrategy(
+        configurations=st.integers(1, _MAX_CODE_POINTS).map(
+            lambda count: FixedLengthUtf32Configuration(length_bytes=4 * count)
+        ),
+        fill_values=_fixed_length_utf32_fill_values,
+    ),
     NUMPY_DATETIME64_DATA_TYPE: _NUMPY_TIME,
     NUMPY_TIMEDELTA64_DATA_TYPE: _NUMPY_TIME,
 }

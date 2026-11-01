@@ -40,7 +40,7 @@ can be used on its own by a caller that has only JSON:
    configuration, checks the envelope of each nested field (an extra
    member, a `must_understand` of `false`), and then runs the rules, for
    one configuration: `GZIP_CODEC.read_configuration({"level": 12})`.
-3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
+3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)` reads a whole
    field in a scope. It checks the envelope, maps the name to a
    definition, checks the configuration, and reads each nested field the
    same way. It returns the result of the reading and every problem. The
@@ -70,17 +70,17 @@ can be used on its own by a caller that has only JSON:
 
     from zarr_metadata.definition import resolve
     from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
-                                 CodecDefinition, CORE_AND_EXTENSIONS)
+                                 CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     resolved                # RefusedField(..., definition=CodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 5}},
-                                 CodecDefinition, CORE_AND_EXTENSIONS)
+                                 CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     resolved.definition is GZIP_CODEC        # True
     resolved.configuration                   # {'level': 5}
 
@@ -124,7 +124,7 @@ but does not compare equal to its loaded copy.
 
     from zarr_metadata import ValidationProblem
     from zarr_metadata.definition import Nested
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
 
     class AcmeLz4Configuration(TypedDict, closed=True):
@@ -149,7 +149,7 @@ but does not compare equal to its loaded copy.
         size="dynamic",
         rules=acme_lz4_rules,
     )
-    CONTEXT = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_LZ4])
+    CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_LZ4])
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,

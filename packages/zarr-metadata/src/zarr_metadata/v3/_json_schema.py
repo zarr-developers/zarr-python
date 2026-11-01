@@ -15,7 +15,7 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._context import ZarrV3Context, ZarrV3Kind, is_v3_kind
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
@@ -52,7 +52,7 @@ valid name, would be read as raw bits.
 def field_json_schema_v3(
     kind: type[ZarrV3Kind], *, context: ZarrV3Context | None = None
 ) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
+    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS_CONTEXT` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
 
     The schema accepts a field that one of the definitions in scope reads
     (its name, its configuration as the TypedDict declares it, an optional
@@ -75,7 +75,7 @@ def field_json_schema_v3(
             "Zarr v3 fields only"
         )
         raise TypeError(msg)
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     schemas = Schemas(field_schemas(context))
     if issubclass(asked, (ArrayExtraFieldDefinition, GroupExtraFieldDefinition)):
         return schemas.document(_extra_field_schema(asked, context, schemas))
@@ -207,7 +207,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     definition declares, or a name that no definition claims. When the
     document names a data type in scope, the fill value must have the
     JSON shape that the data type's definition declares (for `int8`, an
-    integer in [-128, 127]). In a scope that claims it, as `CORE` does,
+    integer in [-128, 127]). In a scope that claims it, as `CORE_CONTEXT` does,
     a group's `consolidated_metadata` is the envelope the core spec
     fixes, with any JSON as the documents it lists, because the reader
     does not read them, and a `null` value, which zarr-python 3.0 and 3.1
@@ -226,7 +226,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     arrays as lists. A model's `to_json` returns tuples, and a Python
     validator does not accept tuples as arrays.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     schemas = Schemas(_documents(context))
     array = schemas.of(ZarrV3ArrayMetadataJSON)
     group = schemas.of(ZarrV3GroupMetadataJSON)

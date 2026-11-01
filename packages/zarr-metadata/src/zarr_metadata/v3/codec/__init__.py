@@ -2,12 +2,13 @@
 
 Each codec defined by the spec or by zarr-extensions has its own submodule
 (`blosc`, `bytes`, `cast_value`, `crc32c`, `gzip`, `scale_offset`,
-`sharding_indexed`, `transpose`, `zstd`). Import a codec's types and its
-definition from its submodule, or from this package, which re-exports every
-name its submodules export: `<X>CodecMetadata`, the canonical type for
-the codec's permitted JSON shapes (object form plus, where the spec allows,
-a bare-string short-hand form), `<X>CodecObject`, `<X>_CODEC`, and, for a
-codec that has a configuration, `<X>CodecConfiguration`.
+`sharding_indexed`, `transpose`, `vlen_bytes`, `vlen_utf8`, `zstd`). Import a
+codec's types and its definition from its submodule, or from this package,
+which re-exports every name its submodules export: `<X>CodecMetadata`, the
+canonical type for the codec's permitted JSON shapes (object form plus,
+where the spec allows, a bare-string short-hand form), `<X>CodecObject`,
+`<X>_CODEC`, and, for a codec that has a configuration,
+`<X>CodecConfiguration`.
 
 For the JSON of any codec entry (one of the entries in array metadata's
 `codecs`), import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`. A
@@ -101,6 +102,20 @@ from zarr_metadata.v3.codec.transpose import (
     TransposeCodecName,
     TransposeCodecObject,
 )
+from zarr_metadata.v3.codec.vlen_bytes import (
+    VLEN_BYTES_CODEC,
+    VLEN_BYTES_CODEC_NAME,
+    VlenBytesCodecMetadata,
+    VlenBytesCodecName,
+    VlenBytesCodecObject,
+)
+from zarr_metadata.v3.codec.vlen_utf8 import (
+    VLEN_UTF8_CODEC,
+    VLEN_UTF8_CODEC_NAME,
+    VlenUtf8CodecMetadata,
+    VlenUtf8CodecName,
+    VlenUtf8CodecObject,
+)
 from zarr_metadata.v3.codec.zstd import (
     ZSTD_CODEC,
     ZSTD_CODEC_NAME,
@@ -136,6 +151,10 @@ __all__ = [
     "SHARDING_INDEX_LOCATION",
     "TRANSPOSE_CODEC",
     "TRANSPOSE_CODEC_NAME",
+    "VLEN_BYTES_CODEC",
+    "VLEN_BYTES_CODEC_NAME",
+    "VLEN_UTF8_CODEC",
+    "VLEN_UTF8_CODEC_NAME",
     "ZSTD_CODEC",
     "ZSTD_CODEC_NAME",
     "ZSTD_MAX_LEVEL",
@@ -179,6 +198,12 @@ __all__ = [
     "TransposeCodecMetadata",
     "TransposeCodecName",
     "TransposeCodecObject",
+    "VlenBytesCodecMetadata",
+    "VlenBytesCodecName",
+    "VlenBytesCodecObject",
+    "VlenUtf8CodecMetadata",
+    "VlenUtf8CodecName",
+    "VlenUtf8CodecObject",
     "ZstdCodecConfiguration",
     "ZstdCodecMetadata",
     "ZstdCodecName",

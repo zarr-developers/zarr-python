@@ -63,7 +63,7 @@ from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY, ZarrV2GroupMetadataJSON
 
 if TYPE_CHECKING:
@@ -136,8 +136,8 @@ class ZarrV2GroupMetadataReading:
 def read_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataReading:
-    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem, and the model when there are none. A group has no fields for a scope to read; `context` is taken for consistency with every other v2 reader."""
-    context = scoped(context, CORE_V2)
+    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem, and the model when there are none. A group has no fields for a scope to read; `context` is taken for consistency with every other v2 reader."""
+    context = scoped(context, CORE_V2_CONTEXT)
     problems = _group_problems_v2(value)
     if len(problems) != 0:
         return ZarrV2GroupMetadataReading(problems=problems)
@@ -173,7 +173,7 @@ ZarrV2NodeMetadataReading = TypeAliasType(
 def read_node_metadata_v2(
     files: Mapping[str, object], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadataReading:
-    """Read the v2 node described by `files`, in `context` (`CORE_V2` when none is given), as the node type its files declare.
+    """Read the v2 node described by `files`, in `context` (`CORE_V2_CONTEXT` when none is given), as the node type its files declare.
 
     `files` maps each of the node's files to its decoded JSON: `.zarray`
     or `.zgroup`, and `.zattrs` when there is one. They can come from a
@@ -194,7 +194,7 @@ def read_node_metadata_v2(
     v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
     and its `node_type`.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     is_array = ZARR_V2_ARRAY_METADATA_STORE_KEY in files
     is_group = ZARR_V2_GROUP_METADATA_STORE_KEY in files
     if is_array and is_group:
@@ -234,7 +234,7 @@ def node_metadata_from_key_value_v2(
     mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadata:
     """Return the model of the v2 node whose files are in `mapping`, a store's keys and bytes: each file is decoded, then read as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem, including a file whose bytes are not JSON, and `TypeError` for a scope of another format before any bytes are decoded."""
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     files, problems = decoded_node_files_v2(mapping)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
@@ -278,7 +278,7 @@ class ZarrV2GroupMetadata(Keyed):
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         problems = _group_problems_v2(document)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
@@ -368,7 +368,7 @@ class ZarrV2GroupMetadata(Keyed):
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         return self._of(self._document, context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
@@ -406,7 +406,7 @@ class ZarrV2GroupMetadata(Keyed):
         valid, with every problem the read finds. Raises `TypeError` for a
         scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_GROUP_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )
@@ -449,8 +449,8 @@ class ZarrV2ConsolidatedMetadataReading:
 def read_consolidated_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ConsolidatedMetadataReading:
-    """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
-    context = scoped(context, CORE_V2)
+    """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
+    context = scoped(context, CORE_V2_CONTEXT)
     document, nodes, files, problems = _read_consolidated_v2(value, context)
     if len(problems) != 0:
         return ZarrV2ConsolidatedMetadataReading(problems=problems)
@@ -487,7 +487,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     zarr_consolidated_format: Final = 1
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         read, nodes, files, problems = _read_consolidated_v2(document, context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
@@ -576,7 +576,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`, whatever that changes. Raises `MetadataValidationError` when a node has a problem in `context`."""
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
@@ -586,7 +586,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         node's entry. Raises `MetadataValidationError` when a gain exposes
         a problem.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         conflicts: list[Conflict] = []
         for path, node in self._metadata.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
@@ -633,7 +633,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         are not JSON, or the document is not valid. Raises `TypeError` for
         a scope of another format before the bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         return cls(
             load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY), context=context
         )
