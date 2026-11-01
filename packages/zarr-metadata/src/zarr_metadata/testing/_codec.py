@@ -8,6 +8,7 @@ of the chunk, and what is drawn is what the codec's rules accept.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
@@ -30,9 +31,14 @@ from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
+from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC
+from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC, ZSTD_MAX_LEVEL, ZSTD_MIN_LEVEL
+from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE_NAME
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
+from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE_NAME
+from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -63,6 +69,16 @@ def _bytes(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
     if storage == "multi_byte":
         return st.fixed_dictionaries({"endian": _ENDIAN})
     return st.fixed_dictionaries({}, optional={"endian": _ENDIAN})
+
+
+def _vlen(
+    compatible: frozenset[str], chunk: Chunk
+) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
+    """Nothing to configure; None for a data type the codec does not read, named other than `compatible` names it."""
+    data_type = chunk.data_type
+    if isinstance(data_type, AcceptedField) and data_type.definition.name not in compatible:
+        return None
+    return EMPTY_CONFIGURATIONS
 
 
 @st.composite
@@ -167,6 +183,14 @@ CODEC_STRATEGIES: Final[Mapping[CodecDefinition[Any], CodecStrategy]] = {
     GZIP_CODEC: _unchunked(st.fixed_dictionaries({"level": st.integers(0, 9)})),
     SCALE_OFFSET_CODEC: CodecStrategy(configurations=_scale_offset),
     TRANSPOSE_CODEC: CodecStrategy(configurations=_transpose),
+    VLEN_BYTES_CODEC: CodecStrategy(
+        configurations=partial(
+            _vlen, frozenset({BYTES_DATA_TYPE_NAME, VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME})
+        )
+    ),
+    VLEN_UTF8_CODEC: CodecStrategy(
+        configurations=partial(_vlen, frozenset({STRING_DATA_TYPE_NAME}))
+    ),
     ZSTD_CODEC: _unchunked(
         st.fixed_dictionaries(
             {"level": st.integers(ZSTD_MIN_LEVEL, ZSTD_MAX_LEVEL)},

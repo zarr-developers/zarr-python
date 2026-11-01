@@ -21,6 +21,10 @@ from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
 from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
+from zarr_metadata.v3.data_type.fixed_length_utf32 import (
+    FIXED_LENGTH_UTF32_DATA_TYPE,
+    FixedLengthUtf32Configuration,
+)
 from zarr_metadata.v3.data_type.float16 import FLOAT16_DATA_TYPE
 from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE
 from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE
@@ -151,6 +155,18 @@ _BYTES_FILL_VALUES: Final = st.integers(0, _MAX_BYTES).flatmap(_byte_values) | s
 _TEXT: Final = st.text(st.characters(exclude_categories=("Cs",)), max_size=16)
 """Text a JSON document can hold: no lone surrogate, which is no Unicode scalar value."""
 
+_MAX_CODE_POINTS: Final = 16
+"""The most code points a drawn `fixed_length_utf32` value holds."""
+
+
+def _fixed_length_utf32_fill_values(
+    configuration: Mapping[str, JSONValue],
+) -> st.SearchStrategy[JSONValue]:
+    """Text of at most one code point for each 4 bytes of the size."""
+    capacity = cast("FixedLengthUtf32Configuration", configuration)["length_bytes"] // 4
+    return st.text(st.characters(exclude_categories=("Cs",)), max_size=capacity)
+
+
 _NUMPY_TIME: Final = DataTypeStrategy(
     configurations=st.fixed_dictionaries(
         {
@@ -184,6 +200,12 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
     ),
     BYTES_DATA_TYPE: _fill_values_of(_BYTES_FILL_VALUES),
     STRING_DATA_TYPE: _fill_values_of(_TEXT),
+    FIXED_LENGTH_UTF32_DATA_TYPE: DataTypeStrategy(
+        configurations=st.integers(1, _MAX_CODE_POINTS).map(
+            lambda count: FixedLengthUtf32Configuration(length_bytes=4 * count)
+        ),
+        fill_values=_fixed_length_utf32_fill_values,
+    ),
     NUMPY_DATETIME64_DATA_TYPE: _NUMPY_TIME,
     NUMPY_TIMEDELTA64_DATA_TYPE: _NUMPY_TIME,
 }
