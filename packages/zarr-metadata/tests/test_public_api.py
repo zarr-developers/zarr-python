@@ -287,6 +287,9 @@ _EXTENSION_ROLES = (
     # example, `ZarrV3CodecField`, read in the same scope as the field that
     # contains it.
     "Field",
+    # How to draw one kind of definition's configurations, in
+    # `zarr_metadata.testing.strategies`: `CodecStrategy`.
+    "Strategy",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
 
@@ -304,6 +307,9 @@ _STANDALONE_VOCAB = frozenset(
         # two definitions of one name.
         "ClaimKey",
         "Conflict",
+        # What one definition's configurations are drawn from, in
+        # `zarr_metadata.testing.strategies`.
+        "Configurations",
         "ScopeConflictError",
         # A reader's problems, as the signatures of every reader name them.
         "Problems",
@@ -352,6 +358,8 @@ _STANDALONE_VOCAB = frozenset(
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",
+        "Spellings",
+        "Strategies",
         "Struct",
         "StructField",
         "ValidationProblem",
