@@ -36,6 +36,7 @@ from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.core.dtype import Int32
 from zarr.core.indexing import lexicographic_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -1492,13 +1493,21 @@ def test_nested_sharding_rejects_indivisible_inner_chunk_shape(
     assert store._store_dict == {}
 
 
-@pytest.mark.parametrize("chunk_shape", [(0, 5), (5, 0), (False, 5), [0], 0])
+@pytest.mark.parametrize("chunk_shape", [(0, 5), (5, 0), [0], 0])
 def test_sharding_codec_rejects_inner_chunk_size_zero(chunk_shape: Any) -> None:
-    """`ShardingCodec` rejects an inner chunk size of 0 (or `False`) when it is
+    """`ShardingCodec` rejects an inner chunk size of 0 when it is
     constructed, with a `ValueError` naming the dimension, so no array metadata, nested
     codec or stored document can hold one."""
     with pytest.raises(ValueError, match=r"Dimension \d: chunk edge length must be >= 1, got"):
         ShardingCodec(chunk_shape=chunk_shape)
+
+
+def test_sharding_codec_rejects_inner_chunk_size_false() -> None:
+    """`False` in an inner chunk shape warns (booleans in shape-like fields are
+    deprecated) and is still rejected as a zero edge length."""
+    with pytest.warns(ZarrDeprecationWarning, match="Boolean values in shape-like"):
+        with pytest.raises(ValueError, match=r"Dimension \d: chunk edge length must be >= 1, got"):
+            ShardingCodec(chunk_shape=(False, 5))
 
 
 @pytest.mark.filterwarnings(
