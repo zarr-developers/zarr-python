@@ -70,7 +70,7 @@ docs = [
     # Bump them together with the root.
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.6",
+    "mkdocstrings==1.0.8",
     # pymdown-extensions 12.3 changed the Highlight extension API; mkdocstrings 1.0.6
     # cannot drive it (Highlight.__init__() missing argument "md"). Match the
     # version in the repo-root uv.lock until mkdocstrings is bumped everywhere.
