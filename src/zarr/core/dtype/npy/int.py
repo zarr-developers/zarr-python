@@ -205,6 +205,7 @@ class BaseInt[
         """
         if check_json_int(data):
             return self._cast_scalar_unchecked(data)
+        # NON-CONFORMANT: numeric-fill-value-spellings
         if check_json_intish_float(data):
             return self._cast_scalar_unchecked(int(data))
 
