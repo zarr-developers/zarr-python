@@ -231,9 +231,9 @@ The following functions / methods have not been ported to Zarr-Python 3:
 - `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 - `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 
-The following features (corresponding to function arguments to functions in
-  `zarr`) have not been ported to Zarr-Python 3. Using these features
-  will raise a warning or a `NotImplementedError`:
+The following function arguments from Zarr-Python 2 are accepted but ignored by
+  Zarr-Python 3. Passing them emits a `ZarrDeprecationWarning`, and they will be
+  removed in a release after April 2027:
 
 - `cache_attrs`
 - `cache_metadata`
