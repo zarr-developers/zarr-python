@@ -275,7 +275,7 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
         "resolve",
         "fill-value-problems",
         "validate-json",
-        "resolve-a-field-that-is-not-json",
+        "resolve-a-declaration-that-is-not-json",
         "validate-node-name",
         "validate-node-path",
         "read-array",
@@ -292,7 +292,7 @@ def test_every_problem_a_reader_finds_holds_what_the_value_handed_in_holds_there
     read: Callable[[object], Sequence[ValidationProblem]], value: object
 ) -> None:
     # Each problem holds part of the input value itself, not of a copy the
-    # reader made along the way. This holds for problems in a field, a
+    # reader made along the way. This holds for problems in a declaration, a
     # pipeline, a chunk grid checked against the shape, and a document held
     # by a group. A missing key holds no input, and neither does a value
     # that is not JSON, such as a store's bytes.
@@ -311,9 +311,9 @@ class WideBits(TypedDict, closed=True):
     bits: Annotated[int, Le(16)]
 
 
-def test_a_problem_with_what_a_name_carries_is_the_field_s() -> None:
+def test_a_problem_with_what_a_name_carries_is_the_declaration_s() -> None:
     # `r24` carries `{"bits": 24}`, which this scope's raw-bits definition
-    # refuses. The problem is located at the field, because the name is what
+    # refuses. The problem is located at the declaration, because the name is what
     # the document wrote there. The bound on `bits` is not a bound on the
     # name, so the problem's `ctx` is empty.
     context = CORE_AND_EXTENSIONS.update(

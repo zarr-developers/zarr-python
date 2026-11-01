@@ -14,7 +14,7 @@ import pytest
 
 from zarr_metadata import JSONValue
 from zarr_metadata.definition import (
-    ResolvedField,
+    ResolvedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -41,7 +41,7 @@ LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
 INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
-def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
+def _dt(name: JSONValue) -> ResolvedDeclaration[DataTypeDefinition[Any]]:
     return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
 
 
@@ -50,7 +50,7 @@ UINT64 = _dt("uint64")
 
 
 def _chunk(
-    *axes: set[int] | None, data_type: ResolvedField[DataTypeDefinition[Any]] = FLOAT32
+    *axes: set[int] | None, data_type: ResolvedDeclaration[DataTypeDefinition[Any]] = FLOAT32
 ) -> Chunk:
     return Chunk(tuple(None if axis is None else frozenset(axis) for axis in axes), data_type)
 
@@ -96,9 +96,9 @@ def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | No
     """The chunk each codec receives, for every pipeline held by the codecs, keyed by the codec's location."""
     found: dict[Where, Chunk | None] = {}
     for index, stage in enumerate(stages):
-        for member, held in stage.inner.items():
-            found |= {(*at, index, member, place): s.incoming for place, s in enumerate(held)}
-            found |= _handed(held, (*at, index, member))
+        for field, held in stage.inner.items():
+            found |= {(*at, index, field, place): s.incoming for place, s in enumerate(held)}
+            found |= _handed(held, (*at, index, field))
     return found
 
 

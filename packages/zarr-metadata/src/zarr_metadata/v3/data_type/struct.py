@@ -16,7 +16,7 @@ from zarr_metadata.definition._definition import (
     fill_value_problems,
     spelled_canonically,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeField
+from zarr_metadata.v3._common import ZarrV3DataTypeDeclaration
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     StorageClass,
@@ -44,7 +44,7 @@ class StructField(TypedDict, closed=True):
     """
 
     name: ReadOnly[str]
-    data_type: ReadOnly[ZarrV3DataTypeField]
+    data_type: ReadOnly[ZarrV3DataTypeDeclaration]
 
 
 class StructConfiguration(TypedDict, closed=True):
@@ -84,8 +84,8 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
     if len(fields) == 0:
         yield ValidationProblem(("fields",), "expected at least one struct field", "invalid_value")
     seen: dict[str, int] = {}
-    for index, member in enumerate(fields):
-        name = member["name"]
+    for index, field in enumerate(fields):
+        name = field["name"]
         if name == "":
             yield ValidationProblem(
                 ("fields", index, "name"), "expected a non-empty field name", "invalid_value"
@@ -118,7 +118,7 @@ def _fill_value_rules(
     does not hold a reading of that field type, the fill value of that
     field is not checked.
     """
-    names = [member["name"] for member in configuration["fields"]]
+    names = [field["name"] for field in configuration["fields"]]
     declared = set(names)
     for index, name in enumerate(names):
         if name not in value:
@@ -144,8 +144,8 @@ def _fill_value_canonical(
     field is kept as written.
     """
     spelled: dict[str, JSONValue] = {}
-    for index, member in enumerate(configuration["fields"]):
-        name = member["name"]
+    for index, field in enumerate(configuration["fields"]):
+        name = field["name"]
         field_type = nested.get(("fields", index, "data_type"))
         held = value[name]
         spelled[name] = held if field_type is None else spelled_canonically(field_type, held)
@@ -188,7 +188,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=_fill_value_canonical,
     storage=_storage,
 )
-"""The `struct` data type: a record of named fields. The type of each field is a nested field."""
+"""The `struct` data type: a record of named fields. The type of each field is a nested declaration."""
 
 
 __all__ = [

@@ -3,7 +3,7 @@
 Each grid's definition declares two things: what the spec disallows for
 a grid with its configuration over an array of a given shape, and, for a
 shape the grid fits, the lengths its chunks take along each axis.
-`chunk_grid_lengths` reports both for a grid field that a scope read. The
+`chunk_grid_lengths` reports both for a grid declaration that a scope read. The
 v3 array validators check a document's `chunk_grid` against its `shape`.
 """
 
@@ -111,7 +111,7 @@ def test_a_grid_that_says_nothing_of_the_shape_fits_every_one_its_lengths_unknow
 
 
 def test_error_a_grid_whose_chunk_lengths_have_another_number_of_axes() -> None:
-    # This is a bug in the definition, not in the field, so it raises.
+    # This is a bug in the definition, not in the declaration, so it raises.
     flat = ChunkGridDefinition(
         name="acme.grid",
         configuration=EmptyConfiguration,

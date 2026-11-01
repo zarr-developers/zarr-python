@@ -40,7 +40,7 @@ class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
 
     The type is closed: `.zgroup` holds no other keys ("Other keys MUST NOT be present",
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313),
-    and `attributes` is the only member folded in.
+    and `attributes` is the only field folded in.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """

@@ -1,4 +1,4 @@
-"""The default field envelope: how a field is written as a name or as an object with `name`, `configuration` and `must_understand`, and which names are valid extension names.
+"""The default declaration envelope: how a declaration is written as a name or as an object with `name`, `configuration` and `must_understand`, and which names are valid extension names.
 
 This is the envelope Zarr v3 uses. `Definition` uses it by default, and a
 kind of another format (the v2 kinds) overrides each method that uses it.
@@ -11,7 +11,7 @@ from typing import Final
 from zarr_metadata._json import ValidationProblem, is_object, shown, shown_key
 
 ENVELOPE_KEYS: frozenset[str] = frozenset({"name", "configuration", "must_understand"})
-"""The keys a metadata field's envelope declares. Any other key is an unknown key."""
+"""The keys a declaration's envelope declares. Any other key is an unknown key."""
 
 
 _EXTENSION_NAME: Final = re.compile(r"[a-z][a-z0-9_.-]+")
@@ -61,12 +61,12 @@ def name_problem(name: str, at: tuple[str | int, ...]) -> ValidationProblem | No
 def envelope_problems(
     value: object, *, allow_must_understand_false: bool
 ) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a valid v3 metadata field envelope. The contents of the configuration are not checked.
+    """Every reason `value` is not a valid v3 declaration envelope. The contents of the configuration are not checked.
 
     The envelope is the part around the configuration: a `name` that is a
     valid extension name under the spec, a `configuration` that is an
     object with string keys, a boolean `must_understand`, and no other
-    keys. `resolve` calls this on a field it has already narrowed to JSON,
+    keys. `resolve` calls this on a declaration it has already narrowed to JSON,
     so the configuration is walked only once.
     """
     if isinstance(value, str):
@@ -76,29 +76,27 @@ def envelope_problems(
         return (
             ValidationProblem(
                 (),
-                f"expected a metadata field (string or extension object), got {shown(value)}",
+                f"expected a declaration (string or extension object), got {shown(value)}",
                 "invalid_type",
             ),
         )
-    field = value
+    declaration = value
     problems: list[ValidationProblem] = []
-    for key in field:
+    for key in declaration:
         if not isinstance(key, str):
             problems.append(
-                ValidationProblem(
-                    (), f"non-string metadata field key {shown_key(key)}", "invalid_type"
-                )
+                ValidationProblem((), f"non-string field key {shown_key(key)}", "invalid_type")
             )
         elif key not in ENVELOPE_KEYS:
             problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
-    if "name" not in field:
+    if "name" not in declaration:
         problems.append(ValidationProblem(("name",), "missing required key", "missing_key"))
-    elif not isinstance(field["name"], str):
+    elif not isinstance(declaration["name"], str):
         problems.append(ValidationProblem(("name",), "expected a string name", "invalid_type"))
-    elif (bad := name_problem(field["name"], ("name",))) is not None:
+    elif (bad := name_problem(declaration["name"], ("name",))) is not None:
         problems.append(bad)
-    if "configuration" in field:
-        configuration = field["configuration"]
+    if "configuration" in declaration:
+        configuration = declaration["configuration"]
         if not is_object(configuration):
             problems.append(
                 ValidationProblem(("configuration",), "expected an object", "invalid_type")
@@ -107,8 +105,8 @@ def envelope_problems(
             problems.append(
                 ValidationProblem(("configuration",), "expected string keys", "invalid_type")
             )
-    if "must_understand" in field:
-        must_understand = field["must_understand"]
+    if "must_understand" in declaration:
+        must_understand = declaration["must_understand"]
         if not isinstance(must_understand, bool):
             problems.append(
                 ValidationProblem(("must_understand",), "expected a boolean", "invalid_type")

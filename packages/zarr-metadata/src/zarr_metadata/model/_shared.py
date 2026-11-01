@@ -1,4 +1,4 @@
-"""Helpers that the v2 and v3 readers share: checking the keys of a document, refining its members and attributes, and reading and writing store JSON."""
+"""Helpers that the v2 and v3 readers share: checking the keys of a document, refining its fields and attributes, and reading and writing store JSON."""
 
 from __future__ import annotations
 
@@ -19,7 +19,11 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._typed_json import typeddict_keys
-from zarr_metadata.definition._definition import RefusedField, UnclaimedField, is_field
+from zarr_metadata.definition._definition import (
+    RefusedDeclaration,
+    UnclaimedDeclaration,
+    is_declaration,
+)
 from zarr_metadata.definition._scope import Conflict, claim_key
 from zarr_metadata.v3._definition import ExtraFieldDefinition
 
@@ -28,7 +32,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import ResolvedField
+    from zarr_metadata.definition._definition import ResolvedDeclaration
 
 
 def missing_keys(
@@ -44,7 +48,7 @@ def missing_keys(
 def unexpected_keys(
     allowed: frozenset[str], doc: Mapping[object, object]
 ) -> tuple[ValidationProblem, ...]:
-    """One problem per member outside a closed document's declared shape. The kind is `unknown_key`, as a closed TypedDict's checker reports it, so a caller who tolerates a member another writer added can tell it apart from a wrong value."""
+    """One problem per field outside a closed document's declared shape. The kind is `unknown_key`, as a closed TypedDict's checker reports it, so a caller who tolerates a field another writer added can tell it apart from a wrong value."""
     problems: list[ValidationProblem] = []
     for key in doc:
         if not isinstance(key, str):
@@ -68,20 +72,20 @@ def check_literal(
     return ()
 
 
-def other_members(
+def other_fields(
     doc: Mapping[object, object],
     standard_keys: frozenset[str],
     *,
     additional_reserved_keys: frozenset[str] = frozenset(),
     at: Loc = (),
 ) -> tuple[dict[str, JSONValue], tuple[ValidationProblem, ...]]:
-    """Each member outside `standard_keys`, refined as user data, and every problem found in them. A member that is not JSON is left out of the result.
+    """Each field outside `standard_keys`, refined as user data, and every problem found in them. A field that is not JSON is left out of the result.
 
-    The spec does not interpret such a member, so like attributes, and
-    like a v3 member that nothing claims, it may hold `NaN`, `Infinity`
+    The spec does not interpret such a field, so like attributes, and
+    like a v3 field that nothing claims, it may hold `NaN`, `Infinity`
     and `-Infinity`.
     """
-    members: dict[str, JSONValue] = {}
+    fields: dict[str, JSONValue] = {}
     problems: list[ValidationProblem] = []
     reserved_keys = standard_keys | additional_reserved_keys
     for key, value in doc.items():
@@ -95,84 +99,83 @@ def other_members(
         refined, found = refine_user_data(value, (*at, key))
         problems.extend(within(found, at))
         if len(found) == 0:
-            members[key] = refined
-    return members, tuple(problems)
+            fields[key] = refined
+    return fields, tuple(problems)
 
 
-def member_changes(
-    members: Mapping[str, object], update: type, spec_members: frozenset[str]
+def field_changes(
+    fields: Mapping[str, object], update: type, spec_fields: frozenset[str]
 ) -> dict[str, object]:
-    """The document members that `members`, given to a model's `update` or `create_default`, set: each member that `update` (the model's update TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
+    """The document fields that `fields`, given to a model's `update` or `create_default`, set: each field that `update` (the model's update TypedDict) declares, and each field in its `extra_fields`. A value of `UNSET` removes its field.
 
-    Raises `TypeError` for a member that `update` does not declare, and
-    for a member of `extra_fields` that the spec defines (one of
-    `spec_members`) or that `update` takes by name. So a misspelled
-    member is never written as a member the spec does not define, which a
-    reader that must understand every such member would refuse. Also
-    raises `TypeError` for a field given where a member's JSON goes.
+    Raises `TypeError` for a field that `update` does not declare, and
+    for a field of `extra_fields` that the spec defines (one of
+    `spec_fields`) or that `update` takes by name. So a misspelled
+    field is never written as a field the spec does not define, which a
+    reader that must understand every such field would refuse. Also
+    raises `TypeError` for a declaration given where a field's JSON goes.
     """
-    declared = typeddict_keys(update).members
-    unknown = [key for key in members if key not in declared]
+    declared = typeddict_keys(update).fields
+    unknown = [key for key in fields if key not in declared]
     if len(unknown) != 0:
         names = ", ".join(map(repr, unknown))
         msg = (
-            f"unknown member {names}: give each member the spec defines by its name, and any "
-            "other member in extra_fields"
+            f"unknown field {names}: give each field the spec defines by its name, and any "
+            "other field in extra_fields"
             if "extra_fields" in declared
-            else f"unknown member {names}"
+            else f"unknown field {names}"
         )
         raise TypeError(msg)
-    changes = {key: value for key, value in members.items() if key != "extra_fields"}
+    changes = {key: value for key, value in fields.items() if key != "extra_fields"}
     for key, value in changes.items():
-        _refuse_fields(key, value)
-    extra = members.get("extra_fields", {})
+        _refuse_declarations(key, value)
+    extra = fields.get("extra_fields", {})
     if not is_object(extra):
-        msg = f"extra_fields maps members to their values, got {extra!r}"
+        msg = f"extra_fields maps fields to their values, got {extra!r}"
         raise TypeError(msg)
     for key, value in extra.items():
         if not isinstance(key, str):
-            msg = (
-                f"extra_fields maps each member's key, a string, to its value, got the key {key!r}"
-            )
+            msg = f"extra_fields maps each field's key, a string, to its value, got the key {key!r}"
             raise TypeError(msg)
-        # `extra_fields` itself is the mapping, so a member of that name is
-        # given in it like any other member the spec does not define.
+        # `extra_fields` itself is the mapping, so a field of that name is
+        # given in it like any other field the spec does not define.
         if key in declared and key != "extra_fields":
-            msg = f"{key!r} is a member that update takes by name; give it by name, not in extra_fields"
+            msg = f"{key!r} is a field that update takes by name; give it by name, not in extra_fields"
             raise TypeError(msg)
-        if key in spec_members:
-            msg = f"{key!r} is a member the spec defines, which extra_fields does not hold"
+        if key in spec_fields:
+            msg = f"{key!r} is a field the spec defines, which extra_fields does not hold"
             raise TypeError(msg)
-        _refuse_fields(key, value)
+        _refuse_declarations(key, value)
         changes[key] = value
     return changes
 
 
-def unclaimed_fields_of(
-    fields: Iterable[tuple[Loc, ResolvedField[Any]]], waived: Iterable[str]
-) -> dict[Loc, UnclaimedField]:
-    """Each of `fields` (a reading's fields, at every depth) that nothing in scope claims, by its location, except one inside an extra member whose key is in `waived`: a member that says `"must_understand": false`, which a reader may ignore whole, whether or not a definition claims it."""
+def unclaimed_declarations_of(
+    declarations: Iterable[tuple[Loc, ResolvedDeclaration[Any]]], waived: Iterable[str]
+) -> dict[Loc, UnclaimedDeclaration]:
+    """Each of `declarations` (a reading's declarations, at every depth) that nothing in scope claims, by its location, except one inside an extra field whose key is in `waived`: a field that says `"must_understand": false`, which a reader may ignore whole, whether or not a definition claims it."""
     ignored = frozenset(waived)
     return {
-        loc: field
-        for loc, field in fields
-        if isinstance(field, UnclaimedField) and not (len(loc) != 0 and loc[0] in ignored)
+        loc: declaration
+        for loc, declaration in declarations
+        if isinstance(declaration, UnclaimedDeclaration)
+        and not (len(loc) != 0 and loc[0] in ignored)
     }
 
 
-def _refuse_fields(key: str, value: object) -> None:
-    """Raise `TypeError` when `value`, given as the member at `key`, is a field or holds fields, rather than the JSON a document writes, with the JSON to give instead."""
+def _refuse_declarations(key: str, value: object) -> None:
+    """Raise `TypeError` when `value`, given as the field at `key`, is a declaration or holds declarations, rather than the JSON a document writes, with the JSON to give instead."""
     for item in value if is_array(value) else (value,):
-        if not is_field(item):
+        if not is_declaration(item):
             continue
-        if isinstance(item, RefusedField):
-            advice = "a refused field has no JSON to write; give the member as JSON"
+        if isinstance(item, RefusedDeclaration):
+            advice = "a refused declaration has no JSON to write; give the field as JSON"
         elif issubclass(item.read_as, ExtraFieldDefinition):
-            # An extra field is read as the member alone, `{key: value}`.
-            advice = f"give the member's value, field.to_json()[{item.name!r}]"
+            # An extra field is read as the field alone, `{key: value}`.
+            advice = f"give the field's value, declaration.to_json()[{item.name!r}]"
         else:
-            advice = "give the field as JSON, field.to_json()"
-        msg = f"{key}: a member is given as a document writes it, got a field; {advice}"
+            advice = "give the declaration as JSON, declaration.to_json()"
+        msg = f"{key}: a field is given as a document writes it, got a declaration; {advice}"
         raise TypeError(msg)
 
 
@@ -317,16 +320,21 @@ def dump_store_json(value: object, *, indent: int | str | None = None) -> bytes:
 
 
 def located_conflicts(
-    fields: Iterable[tuple[Loc, ResolvedField[Any]]], conflicts: Sequence[Conflict]
+    declarations: Iterable[tuple[Loc, ResolvedDeclaration[Any]]], conflicts: Sequence[Conflict]
 ) -> tuple[Conflict, ...]:
-    """Locate each of `conflicts` (found against a reading's claims) in the document, as a problem is located. A conflict appears once for each place in `fields` where its name occurs."""
+    """Locate each of `conflicts` (found against a reading's claims) in the document, as a problem is located. A conflict appears once for each place in `declarations` where its name occurs."""
     located: list[Conflict] = []
-    placed = list(fields)
+    placed = list(declarations)
     for conflict in conflicts:
-        places = [(loc, field) for loc, field in placed if claim_key(field) == conflict.key]
+        places = [
+            (loc, declaration)
+            for loc, declaration in placed
+            if claim_key(declaration) == conflict.key
+        ]
         if len(places) == 0:
             located.append(conflict)
         located.extend(
-            dataclasses.replace(conflict, loc=loc, written=field.name) for loc, field in places
+            dataclasses.replace(conflict, loc=loc, written=declaration.name)
+            for loc, declaration in places
         )
     return tuple(located)

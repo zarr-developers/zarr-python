@@ -23,13 +23,14 @@ fraction, such as `1.0`, as the integer it equals.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import itertools
 import json
 import sys
 import types
 import typing
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal, NewType, NotRequired, Required, TypeAlias, Union, cast
 
 import pytest
@@ -84,7 +85,7 @@ class Named:
 
 @dataclass(frozen=True)
 class Itself:
-    """The TypedDict that contains the member: a class that contains itself."""
+    """The TypedDict that contains the field: a class that contains itself."""
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ Says: TypeAlias = Literal["unsaid", "closed", "open"] | ExtraItems
 
 
 @dataclass(frozen=True)
-class Member:
+class Field:
     key: str
     spec: Spec
     wrappers: tuple[str, ...]
@@ -109,7 +110,7 @@ class Layer:
     """One class in a TypedDict's ancestry: its own keys and keywords, and how its module writes its annotations."""
 
     total: bool
-    members: tuple[Member, ...]
+    fields: tuple[Field, ...]
     says: Says
     postponed: bool = False
     """In a mixed build, whether the class's annotations are left as strings."""
@@ -128,7 +129,7 @@ class Object:
 Spec: TypeAlias = Leaf | OneOf | ArrayOf | Fixed | AnyOf | MappingOf | Named | Itself | Object
 
 
-def members_of(spec: Object) -> dict[str, tuple[Spec, bool]]:
+def fields_of(spec: Object) -> dict[str, tuple[Spec, bool]]:
     """Each key the TypedDict declares, its spec, and whether it is required, by the typing spec.
 
     A `Required` or `NotRequired` qualifier decides; otherwise the `total`
@@ -136,15 +137,15 @@ def members_of(spec: Object) -> dict[str, tuple[Spec, bool]]:
     """
     found: dict[str, tuple[Spec, bool]] = {}
     for layer in spec.layers:
-        for member in layer.members:
-            found[member.key] = (member.spec, _required(member, layer.total))
+        for field in layer.fields:
+            found[field.key] = (field.spec, _required(field, layer.total))
     return found
 
 
-def _required(member: Member, total: bool) -> bool:
-    if "Required" in member.wrappers:
+def _required(field: Field, total: bool) -> bool:
+    if "Required" in field.wrappers:
         return True
-    if "NotRequired" in member.wrappers:
+    if "NotRequired" in field.wrappers:
         return False
     return total
 
@@ -197,14 +198,14 @@ def conforms(value: object, spec: Spec, itself: Object | None = None) -> bool:
         return conforms(value, itself, itself)
     if not isinstance(value, dict):
         return False
-    members = members_of(spec)
-    for key, (member, required) in members.items():
+    fields = fields_of(spec)
+    for key, (field, required) in fields.items():
         if key in value:
-            if not conforms(value[key], member, spec):
+            if not conforms(value[key], field, spec):
                 return False
         elif required:
             return False
-    others = [key for key in value if key not in members]
+    others = [key for key in value if key not in fields]
     said = says_of(spec)
     if said == "closed":
         return len(others) == 0
@@ -262,7 +263,7 @@ class Build:
     """A spec built from source text, with each class in its own module and the names it uses imported there."""
 
     mode: Mode
-    source: list[str] = field(default_factory=list)
+    source: list[str] = dataclasses.field(default_factory=list)
     """The source text of what was built, for the notes of a failing example."""
 
     def annotation(self, spec: Spec) -> object:
@@ -306,9 +307,9 @@ class Build:
         name, built = self.typeddict(spec)
         return self._named(name, built, home, quoted=quoted)
 
-    def member(self, member: Member, itself: str, home: types.ModuleType, *, quoted: bool) -> str:
-        text = self.text(member.spec, itself, home, quoted=quoted)
-        for wrapper in member.wrappers:
+    def field(self, field: Field, itself: str, home: types.ModuleType, *, quoted: bool) -> str:
+        text = self.text(field.spec, itself, home, quoted=quoted)
+        for wrapper in field.wrappers:
             text = f"Annotated[{text}, 'meta']" if wrapper == "Annotated" else f"{wrapper}[{text}]"
         return text
 
@@ -323,8 +324,8 @@ class Build:
             postponed = self.mode == "postponed" or (self.mode == "mixed" and layer.postponed)
             quoted = not postponed and layer.quoted
             texts = {
-                member.key: self.member(member, names[-1], home, quoted=quoted)
-                for member in layer.members
+                field.key: self.field(field, names[-1], home, quoted=quoted)
+                for field in layer.fields
             }
             annotations = (
                 texts if postponed else {key: _evaluated(text, home) for key, text in texts.items()}
@@ -393,7 +394,7 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
     owners = [draw(st.integers(0, count - 1)) for _ in keys]
     layers: list[Layer] = []
     said: Says = "unsaid"
-    declared: dict[str, tuple[Member, bool]] = {}
+    declared: dict[str, tuple[Field, bool]] = {}
     for index in range(count):
         # A subclass of a closed TypedDict, or of one with extra items, is
         # limited to what the typing spec allows: it may repeat the same
@@ -404,26 +405,26 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
             choices.append(ExtraItems(draw(inner)))
         says = draw(st.sampled_from(choices))
         total = draw(st.booleans())
-        members = [
-            Member(key, draw(inner), draw(_wrappers()))
+        fields = [
+            Field(key, draw(inner), draw(_wrappers()))
             for key, owner in zip(keys, owners, strict=True)
             if owner == index and not restricted
         ]
         if not restricted:
-            members += draw(_redeclared(declared, total))
+            fields += draw(_redeclared(declared, total))
         if index == count - 1 and not restricted and draw(st.booleans()):
-            members.append(Member("self", ArrayOf(Itself()), draw(_wrappers())))
+            fields.append(Field("self", ArrayOf(Itself()), draw(_wrappers())))
         postponed, quoted = draw(st.booleans()), draw(st.booleans())
-        layers.append(Layer(total, tuple(members), says, postponed, quoted))
-        declared.update({member.key: (member, _required(member, total)) for member in members})
+        layers.append(Layer(total, tuple(fields), says, postponed, quoted))
+        declared.update({field.key: (field, _required(field, total)) for field in fields})
         said = says if says != "unsaid" else said
     speaks = any(layer.says != "unsaid" for layer in layers)
     # From 3.13, `typing.TypedDict` rejects a read-only key that redeclares a
     # key it thinks is mutable, and it cannot see `ReadOnly` in a postponed
     # base. So it would not build some classes the spec allows, and no key is
     # declared twice when it is used.
-    redeclares = sum(len(layer.members) for layer in layers) > len(
-        {member.key for layer in layers for member in layer.members}
+    redeclares = sum(len(layer.fields) for layer in layers) > len(
+        {field.key for layer in layers for field in layer.fields}
     )
     stdlib = (_TYPING_TAKES_PEP_728 or not speaks) and not redeclares and draw(st.booleans())
     return Object(tuple(layers), stdlib)
@@ -431,16 +432,14 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
 
 @st.composite
 def _redeclared(
-    draw: st.DrawFn, declared: dict[str, tuple[Member, bool]], total: bool
-) -> list[Member]:
+    draw: st.DrawFn, declared: dict[str, tuple[Field, bool]], total: bool
+) -> list[Field]:
     """No key, or one read-only key declared by a base, narrowed as the typing spec allows a subclass to.
 
     Its type may narrow (a union to some of its branches), and a key that
     was not required may become required. The reverse is not allowed.
     """
-    candidates = sorted(
-        key for key, (member, _) in declared.items() if "ReadOnly" in member.wrappers
-    )
+    candidates = sorted(key for key, (field, _) in declared.items() if "ReadOnly" in field.wrappers)
     if len(candidates) == 0 or not draw(st.booleans()):
         return []
     key = draw(st.sampled_from(candidates))
@@ -451,9 +450,9 @@ def _redeclared(
         branches = tuple(spec.branches[index] for index in kept)
         spec = branches[0] if len(branches) == 1 else AnyOf(branches)
     wrappers = draw(_wrappers())
-    if was_required and not _required(Member(key, spec, wrappers), total):
+    if was_required and not _required(Field(key, spec, wrappers), total):
         wrappers = ("Required", *(wrapper for wrapper in wrappers if wrapper != "NotRequired"))
-    return [Member(key, spec, wrappers)]
+    return [Field(key, spec, wrappers)]
 
 
 def specs(depth: int) -> st.SearchStrategy[Spec]:
@@ -520,13 +519,13 @@ def conforming(spec: Spec, depth: int, itself: Object | None = None) -> st.Searc
 
 @st.composite
 def _object_values(draw: st.DrawFn, spec: Object, depth: int) -> dict[str, object]:
-    members = members_of(spec)
+    fields = fields_of(spec)
     value: dict[str, object] = {}
-    for key, (member, required) in members.items():
+    for key, (field, required) in fields.items():
         if required or draw(st.booleans()):
-            value[key] = draw(conforming(member, depth - 1, spec))
+            value[key] = draw(conforming(field, depth - 1, spec))
     said = says_of(spec)
-    others = st.text(max_size=3).filter(lambda key: key not in members)
+    others = st.text(max_size=3).filter(lambda key: key not in fields)
     if said in ("unsaid", "open"):
         value.update(draw(st.dictionaries(others, json_values(depth - 1), max_size=2)))
     elif isinstance(said, ExtraItems):
@@ -727,7 +726,7 @@ def test_typeddict_keys_follow_the_typing_spec(data: st.DataObject) -> None:
     # not state it. The result follows the typing spec, whether the
     # annotations are evaluated or not.
     spec = data.draw(_objects(specs(_DEPTH - 1)), label="spec")
-    members = members_of(spec)
+    fields = fields_of(spec)
     said = says_of(spec)
     event(f"{len(spec.layers)} classes")
     event(f"says {said if isinstance(said, str) else 'extra_items'}")
@@ -735,8 +734,8 @@ def test_typeddict_keys_follow_the_typing_spec(data: st.DataObject) -> None:
         build = Build(mode)
         keys = typeddict_keys(cast("type", build.annotation(spec)))
         note(build.text_of())
-        assert set(keys.members) == set(members)
-        assert keys.required == {key for key, (_, required) in members.items() if required}
+        assert set(keys.fields) == set(fields)
+        assert keys.required == {key for key, (_, required) in fields.items() if required}
         assert keys.closed == (said == "closed")
         assert keys.open == (said in ("unsaid", "open"))
         assert keys.declared == (said != "unsaid")
@@ -752,7 +751,7 @@ def test_a_key_a_closed_typeddict_does_not_declare_is_reported_and_left_out(
     spec = data.draw(
         _objects(specs(_DEPTH - 1)).filter(lambda drawn: says_of(drawn) == "closed"), label="spec"
     )
-    declared = members_of(spec)
+    declared = fields_of(spec)
     value = data.draw(_object_values(spec, _DEPTH), label="value")
     key = data.draw(st.text(max_size=3).filter(lambda drawn: drawn not in declared), label="key")
     build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
@@ -786,9 +785,9 @@ def _hides_a_qualifier(spec: Object) -> bool:
     return any(
         layer.postponed
         and any(
-            ("NotRequired" in member.wrappers and layer.total)
-            or ("Required" in member.wrappers and not layer.total)
-            for member in layer.members
+            ("NotRequired" in field.wrappers and layer.total)
+            or ("Required" in field.wrappers and not layer.total)
+            for field in layer.fields
         )
         for layer in spec.layers
     )
@@ -796,9 +795,9 @@ def _hides_a_qualifier(spec: Object) -> bool:
 
 _REACHES = {
     "a-key-redeclared": lambda spec: any(
-        member.key in {earlier.key for layer in spec.layers[:index] for earlier in layer.members}
+        field.key in {earlier.key for layer in spec.layers[:index] for earlier in layer.fields}
         for index, later in enumerate(spec.layers)
-        for member in later.members
+        for field in later.fields
     ),
     "openness-inherited": lambda spec: (
         spec.layers[-1].says == "unsaid" and any(layer.says != "unsaid" for layer in spec.layers)
@@ -811,12 +810,12 @@ _REACHES = {
     "a-quoted-name-a-subclass-inherits": lambda spec: (
         len(spec.layers) > 1
         and any(
-            layer.quoted and any(_nests_a_name(member.spec) for member in layer.members)
+            layer.quoted and any(_nests_a_name(field.spec) for field in layer.fields)
             for layer in spec.layers[:-1]
         )
     ),
     "a-class-that-holds-itself": lambda spec: any(
-        member.key == "self" for layer in spec.layers for member in layer.members
+        field.key == "self" for layer in spec.layers for field in layer.fields
     ),
 }
 

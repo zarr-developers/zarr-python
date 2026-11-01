@@ -5,7 +5,7 @@ document read in it uses nothing that an implementation could reject as
 optional. `CORE_AND_EXTENSIONS` adds the extensions that `zarr-extensions`
 registers and this package defines. A name in neither scope is not
 rejected, because that is what keeps the format open. Instead it is read
-as an `UnclaimedField` and not checked.
+as an `UnclaimedDeclaration` and not checked.
 """
 
 from __future__ import annotations

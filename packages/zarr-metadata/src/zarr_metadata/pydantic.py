@@ -8,7 +8,7 @@ model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
-field-level coercion can never bypass it). A field type reads the fields
+field-level coercion can never bypass it). A field type reads the declarations
 of its document in the scope given by pydantic's validation context
 (pydantic passes this context to every validator). The scope is chosen
 as follows:
@@ -247,7 +247,7 @@ def _read_in(
 
 
 def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
-    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
+    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the declaration it is in."""
     try:
         return refine(value, context)
     except MetadataValidationError as error:

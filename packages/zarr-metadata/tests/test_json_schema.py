@@ -1,4 +1,4 @@
-"""JSON Schemas for what the package reads: a TypedDict, a field in a scope, and a `zarr.json`.
+"""JSON Schemas for what the package reads: a TypedDict, a declaration in a scope, and a `zarr.json`.
 
 Each schema is tested against the reader it is generated from. The schema
 accepts every value the reader finds no problem with. The schema also
@@ -28,7 +28,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.json_schema import (
-    field_json_schema_v3,
+    declaration_json_schema_v3,
     json_schema,
     node_metadata_json_schema_v3,
 )
@@ -98,12 +98,12 @@ def _holding(annotation: object) -> type:
 Both = _closed("Both", {"first": Inner, "second": _closed("Inner", {"y": str})})
 
 
-def _held(member: dict[str, Any], defs: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The schema of `_holding(annotation)`, where `member` is the schema of `annotation`."""
+def _held(field: dict[str, Any], defs: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The schema of `_holding(annotation)`, where `field` is the schema of `annotation`."""
     schema: dict[str, Any] = {
         "$schema": DIALECT,
         "type": "object",
-        "properties": {"value": member},
+        "properties": {"value": field},
         "required": ["value"],
         "additionalProperties": False,
     }
@@ -413,7 +413,7 @@ _VALUES = st.recursive(
 
 
 def _places(value: object, path: tuple[str | int, ...] = ()) -> list[tuple[str | int, ...]]:
-    """Every place in `value`: itself, and each member or entry inside it, depth first."""
+    """Every place in `value`: itself, and each field or entry inside it, depth first."""
     found = [path]
     if isinstance(value, dict):
         for key, entry in cast("dict[str, object]", value).items():
@@ -449,7 +449,7 @@ def _put(value: object, path: tuple[str | int, ...], new: object) -> object:
 
 @st.composite
 def _changed(draw: st.DrawFn, value: object) -> object:
-    """`value` changed in one or two places: an item replaced, dropped or added, a string extended by one character, or a field renamed."""
+    """`value` changed in one or two places: an item replaced, dropped or added, a string extended by one character, or a declaration renamed."""
     for _ in range(draw(st.integers(1, 2))):
         path = draw(st.sampled_from(_places(value)))
         here = _at(value, path)
@@ -457,8 +457,8 @@ def _changed(draw: st.DrawFn, value: object) -> object:
         if how == "drop" and len(path) != 0:
             value = _put(value, path, _GONE)
         elif how == "add" and isinstance(here, dict):
-            members = cast("dict[str, object]", here)
-            value = _put(value, path, {**members, draw(st.sampled_from(_KEYS)): draw(_VALUES)})
+            fields = cast("dict[str, object]", here)
+            value = _put(value, path, {**fields, draw(st.sampled_from(_KEYS)): draw(_VALUES)})
         elif how == "add" and isinstance(here, list):
             value = _put(value, path, [*cast("list[object]", here), draw(_VALUES)])
         elif how == "extend" and isinstance(here, str):
@@ -473,31 +473,31 @@ def _changed(draw: st.DrawFn, value: object) -> object:
 
 
 _CONTEXTS = (CORE, CORE_AND_EXTENSIONS, ZarrV3Context())
-_FIELD_BASES: tuple[tuple[str, object], ...] = (
+_DECLARATION_BASES: tuple[tuple[str, object], ...] = (
     *CASES,
     # Names that nothing claims, so nothing checks their configuration.
     ("codecs:acme.x", {"name": "acme.x", "configuration": {"x": [1]}}),
     ("data_type:acme.t", {"name": "acme.t", "configuration": {"bits": 8}}),
     ("chunk_grid:acme.g", {"name": "acme.g", "configuration": {"chunk_shape": [0]}}),
 )
-_FIELD_SCHEMAS: dict[tuple[type[ZarrV3Kind], int], Draft202012Validator] = {}
+_DECLARATION_SCHEMAS: dict[tuple[type[ZarrV3Kind], int], Draft202012Validator] = {}
 
 
-def _field_validator(kind: type[ZarrV3Kind], context: int) -> Draft202012Validator:
-    if (kind, context) not in _FIELD_SCHEMAS:
-        schema = field_json_schema_v3(kind, context=_CONTEXTS[context])
-        _FIELD_SCHEMAS[(kind, context)] = Draft202012Validator(schema)
-    return _FIELD_SCHEMAS[(kind, context)]
+def _declaration_validator(kind: type[ZarrV3Kind], context: int) -> Draft202012Validator:
+    if (kind, context) not in _DECLARATION_SCHEMAS:
+        schema = declaration_json_schema_v3(kind, context=_CONTEXTS[context])
+        _DECLARATION_SCHEMAS[(kind, context)] = Draft202012Validator(schema)
+    return _DECLARATION_SCHEMAS[(kind, context)]
 
 
-# --- a field in a scope -----------------------------------------------------
+# --- a declaration in a scope -----------------------------------------------
 
 _INDEXED = {"chunk_shape": [2], "codecs": ["bytes"]}
 
-# Each field, the kind and scope it is read in, whether the schema accepts
+# Each declaration, the kind and scope it is read in, whether the schema accepts
 # it, and whether the scope reads it without a problem. Where the two
 # differ, a rule found a problem that the schema cannot express.
-FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = [
+DECLARATIONS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = [
     ("object", {"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CORE, True, True),
     (
         "out-of-bounds",
@@ -534,7 +534,7 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
         False,
     ),
     (
-        "stray-member",
+        "stray-field",
         {"name": "gzip", "configuration": {"level": 5}, "version": 2},
         CodecDefinition,
         CORE,
@@ -697,51 +697,53 @@ FIELDS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, bool]] = 
 
 
 @pytest.mark.parametrize(
-    ("field", "kind", "context", "accepted", "clean"),
-    [case[1:] for case in FIELDS],
-    ids=[case[0] for case in FIELDS],
+    ("declaration", "kind", "context", "accepted", "clean"),
+    [case[1:] for case in DECLARATIONS],
+    ids=[case[0] for case in DECLARATIONS],
 )
-def test_field_json_schema_says_what_the_scope_reads(
-    field: object, kind: type[ZarrV3Kind], context: ZarrV3Context, accepted: bool, clean: bool
+def test_declaration_json_schema_says_what_the_scope_reads(
+    declaration: object, kind: type[ZarrV3Kind], context: ZarrV3Context, accepted: bool, clean: bool
 ) -> None:
-    schema = field_json_schema_v3(kind, context=context)
+    schema = declaration_json_schema_v3(kind, context=context)
     Draft202012Validator.check_schema(schema)
-    assert Draft202012Validator(schema).is_valid(cast("Any", field)) == accepted
-    assert (resolve(field, kind, context)[1] == ()) == clean
+    assert Draft202012Validator(schema).is_valid(cast("Any", declaration)) == accepted
+    assert (resolve(declaration, kind, context)[1] == ()) == clean
 
 
 @pytest.mark.parametrize(
-    ("key", "field"), CASES, ids=[f"{key}:{index}" for index, (key, _) in enumerate(CASES)]
+    ("key", "declaration"), CASES, ids=[f"{key}:{index}" for index, (key, _) in enumerate(CASES)]
 )
-def test_every_example_field_is_one_its_schema_accepts(key: str, field: object) -> None:
-    schema = field_json_schema_v3(KINDS[key.split(":")[0]], context=CORE_AND_EXTENSIONS)
-    assert Draft202012Validator(schema).is_valid(cast("Any", field))
+def test_every_example_declaration_is_one_its_schema_accepts(key: str, declaration: object) -> None:
+    schema = declaration_json_schema_v3(KINDS[key.split(":")[0]], context=CORE_AND_EXTENSIONS)
+    assert Draft202012Validator(schema).is_valid(cast("Any", declaration))
 
 
 @_PROPERTY
 @given(st.data())
-def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
+def test_a_declaration_read_without_a_problem_is_one_its_schema_accepts(
+    data: st.DataObject,
+) -> None:
     # Each example is changed in one place and read in one of three scopes.
     # If the scope still reads it without a problem, the schema accepts it.
-    key, example = data.draw(st.sampled_from(_FIELD_BASES), label="example")
+    key, example = data.draw(st.sampled_from(_DECLARATION_BASES), label="example")
     kind = KINDS[key.split(":")[0]]
     context = data.draw(st.sampled_from(range(len(_CONTEXTS))), label="context")
-    field = data.draw(_changed(json.loads(json.dumps(example))), label="field")
-    read = resolve(field, kind, _CONTEXTS[context])[1] == ()
+    declaration = data.draw(_changed(json.loads(json.dumps(example))), label="declaration")
+    read = resolve(declaration, kind, _CONTEXTS[context])[1] == ()
     event("read without a problem" if read else "a problem")
     if read:
-        assert _field_validator(kind, context).is_valid(cast("Any", field))
+        assert _declaration_validator(kind, context).is_valid(cast("Any", declaration))
 
 
-def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
-    """A v2 scope cannot read a v3 field, so `field_json_schema_v3` raises `TypeError` for one, as every v3 reader does."""
+def test_error_declaration_json_schema_v3_refuses_a_scope_of_another_format() -> None:
+    """A v2 scope cannot read a v3 declaration, so `declaration_json_schema_v3` raises `TypeError` for one, as every v3 reader does."""
     with pytest.raises(TypeError, match="v3 document is read in a scope of that format"):
-        field_json_schema_v3(CodecDefinition, context=CORE_V2)  # pyright: ignore[reportArgumentType]
+        declaration_json_schema_v3(CodecDefinition, context=CORE_V2)  # pyright: ignore[reportArgumentType]
 
 
-def test_field_json_schema_refuses_what_is_not_a_kind() -> None:
+def test_declaration_json_schema_refuses_what_is_not_a_kind() -> None:
     with pytest.raises(TypeError, match="is not a kind of metadata"):
-        field_json_schema_v3(Definition, context=CORE)  # pyright: ignore[reportArgumentType]
+        declaration_json_schema_v3(Definition, context=CORE)  # pyright: ignore[reportArgumentType]
 
 
 # --- a zarr.json ------------------------------------------------------------
@@ -817,7 +819,7 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
         False,
     ),
     ("an-extension-field", {**ARRAY, "acme": {"must_understand": False}}, True, True),
-    # Constraints across several members are checked by the rules, not the schema.
+    # Constraints across several fields are checked by the rules, not the schema.
     ("names-for-another-rank", {**ARRAY, "dimension_names": ["x"]}, True, False),
     (
         "codecs-out-of-order",
@@ -919,7 +921,7 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(context: ZarrV
         ChunkKeyEncodingDefinition,
         StorageTransformerDefinition,
     ):
-        Draft202012Validator.check_schema(field_json_schema_v3(kind, context=context))
+        Draft202012Validator.check_schema(declaration_json_schema_v3(kind, context=context))
 
 
 @pytest.mark.parametrize(
@@ -955,16 +957,16 @@ def test_the_stricter_of_two_bounds_of_one_keyword_is_kept(
     assert json_schema(_holding(_annotated[Bounded, outer])) == _held(expected)
 
 
-def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
+def test_a_stray_field_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
     # The schema rejects it, as the reader does: the envelope of an
     # unclaimed name holds only the name and its configuration.
-    field = {"name": "zfpy", "version": 2}
-    assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE)[1]] == [
+    declaration = {"name": "zfpy", "version": 2}
+    assert [(p.loc, p.kind) for p in resolve(declaration, CodecDefinition, CORE)[1]] == [
         (("version",), "unknown_key")
     ]
-    assert not Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(
-        field
-    )
+    assert not Draft202012Validator(
+        declaration_json_schema_v3(CodecDefinition, context=CORE)
+    ).is_valid(declaration)
 
 
 @pytest.mark.parametrize(
@@ -999,11 +1001,13 @@ def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> N
 def test_the_schema_names_an_extension_as_the_reader_does(name: str) -> None:
     # A name matches the spec's regex or is a URI. The schema's `pattern`
     # accepts exactly the names that `well_named` accepts.
-    field = {"name": name}
-    _, problems = resolve(field, CodecDefinition, CORE)
+    declaration = {"name": name}
+    _, problems = resolve(declaration, CodecDefinition, CORE)
     accepted = len(problems) == 0
     assert (
-        Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(field)
+        Draft202012Validator(declaration_json_schema_v3(CodecDefinition, context=CORE)).is_valid(
+            declaration
+        )
         is accepted
     )
     assert accepted is (

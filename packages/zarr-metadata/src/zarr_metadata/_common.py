@@ -2,8 +2,8 @@
 JSON types that the shared reading code needs.
 
 `JSONValue` is the type of any JSON value. `ZarrV3NamedConfigJSON` is the
-`{name, configuration, must_understand}` envelope of a v3 field. It is v3's,
-but it lives here because the shared field reader in
+`{name, configuration, must_understand}` envelope of a v3 declaration. It is v3's,
+but it lives here because the shared declaration reader in
 `zarr_metadata.definition` uses the envelope as its default. Public homes:
 `zarr_metadata.typed_json` for `JSONValue`, `zarr_metadata.v3` for the
 envelope.
@@ -38,15 +38,15 @@ UserJSONValue = TypeAliasType("UserJSONValue", JSONValue)
 
 The spec only requires attributes to be JSON values, and zarr-python
 writes these numbers as bare tokens, so a reader accepts them where a
-document holds user data. A configuration member annotated with this
-alias is checked that way; a member annotated `JSONValue` must hold
+document holds user data. A configuration field annotated with this
+alias is checked that way; a field annotated `JSONValue` must hold
 finite numbers, as RFC 8259 requires.
 """
 
 
 class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """
-    Externally-tagged union member for a metadata field.
+    Externally-tagged union member for a declaration.
 
     The optional `configuration` mapping holds arbitrary JSON-encodable
     values. `must_understand` is implicitly true when absent.
@@ -54,7 +54,7 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     `name` and `configuration` are `ReadOnly` (PEP 705) so that concrete
     entity types — `BloscCodecObject`, `RegularChunkGridObject`, and the
     rest — are assignable to this type, and therefore to
-    `ZarrV3MetadataFieldJSON`. Without `ReadOnly` both items are invariant,
+    `ZarrV3DeclarationJSON`. Without `ReadOnly` both items are invariant,
     so a concrete `name: Literal["blosc"]` does not satisfy `name: str`, and
     a required `configuration` does not satisfy a `NotRequired` one. That
     made the package's own codec types unusable in the very fields they
@@ -63,10 +63,10 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     requires the narrowed type to be assignable to the input type.
 
     `must_understand` stays writable: nothing needs to narrow it, and
-    keeping it mutable lets writers set it on an already-constructed field.
+    keeping it mutable lets writers set it on an already-constructed declaration.
 
     The type is `closed` (PEP 728): the spec's named-configuration envelope
-    has exactly these three members, and closing it is also what makes this
+    has exactly these three fields, and closing it is also what makes this
     type — and every concrete entity type embedding it, e.g. the
     `sharding_indexed` configuration's inner `codecs` list — assignable to
     `Mapping[str, JSONValue]` (i.e. usable as a `JSONValue`).

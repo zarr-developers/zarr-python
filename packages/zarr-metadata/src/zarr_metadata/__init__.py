@@ -7,7 +7,7 @@ documentation lives:
 - `zarr_metadata.v3` and `zarr_metadata.v2`: the JSON types of each
   document, extension and data type;
 - `zarr_metadata.model`: the document models and their readers;
-- `zarr_metadata.definition`: definitions, scopes and the field reader
+- `zarr_metadata.definition`: definitions, scopes and the declaration reader
   that both formats share;
 - `zarr_metadata.problems`: the problems every reader reports;
 - `zarr_metadata.typed_json`: `check`, the type checker for JSON;
@@ -62,7 +62,7 @@ from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
+from zarr_metadata.v3 import ZarrV3DeclarationJSON, ZarrV3ExtensionField, ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
@@ -405,12 +405,12 @@ __all__ = [
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3DeclarationJSON",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3GroupMetadataStoreKey",
     "ZarrV3GroupMetadataUpdate",
-    "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
     "ZarrV3NodeMetadataInput",
     "ZstdCodecMetadata",

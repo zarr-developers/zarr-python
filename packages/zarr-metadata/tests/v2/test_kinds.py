@@ -1,4 +1,4 @@
-"""The two kinds of field in a v2 array document: a dtype in NumPy's spelling, and a numcodecs configuration."""
+"""The two kinds of declaration in a v2 array document: a dtype in NumPy's spelling, and a numcodecs configuration."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def test_a_v2_dtype_name_is_filed_under_its_family(
 def test_a_v2_dtype_is_a_string_or_records(
     value: object, name: str | None, configuration: object
 ) -> None:
-    """A dtype field is either a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records. Any other value has no name, and so has the string `struct`: it is not a typestr, and only records read as a struct."""
+    """A dtype declaration is either a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records. Any other value has no name, and so has the string `struct`: it is not a typestr, and only records read as a struct."""
     assert ZarrV2DataTypeDefinition._named_configuration(value) == (name, configuration, ())
 
 
@@ -115,7 +115,7 @@ def test_a_v2_dtype_is_a_string_or_records(
 def test_a_v2_dtype_envelope_is_a_typestr_or_records(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """The envelope of a dtype field is valid when it is a typestr or an array of records. A string that is neither, `struct` included, is reported as an invalid value, and the message names the typestr form. Any other value is reported as an invalid type."""
+    """The envelope of a dtype declaration is valid when it is a typestr or an array of records. A string that is neither, `struct` included, is reported as an invalid value, and the message names the typestr form. Any other value is reported as an invalid type."""
     found = ZarrV2DataTypeDefinition._envelope_problems(value)
     assert [(p.loc, p.kind) for p in found] == problems
     if value == "float32":
@@ -123,7 +123,7 @@ def test_a_v2_dtype_envelope_is_a_typestr_or_records(
 
 
 def test_a_v2_dtype_writes_back_as_a_string_or_records() -> None:
-    """`envelope_json` writes a dtype as its string, and a struct as its records. The name is located at the field, and so is each record: a place under the struct's `fields` is located without `fields`."""
+    """`envelope_json` writes a dtype as its string, and a struct as its records. The name is located at the declaration, and so is each record: a place under the struct's `fields` is located without `fields`."""
     assert ZarrV2DataTypeDefinition._envelope_json("<f4", {}) == "<f4"
     records = (("x", "<f4"),)
     assert ZarrV2DataTypeDefinition._envelope_json("struct", {"fields": records}) == records
@@ -154,13 +154,13 @@ def test_a_v2_codec_is_an_object_with_a_string_id(
     configuration: dict[str, Any] | None,
     problems: list[tuple[Loc, str]],
 ) -> None:
-    """A codec field is an object. Its `id` is its name and its other members are its parameters. A value that is not an object, or has no string `id`, has no name, and the envelope problems say why."""
+    """A codec declaration is an object. Its `id` is its name and its other fields are its parameters. A value that is not an object, or has no string `id`, has no name, and the envelope problems say why."""
     assert ZarrV2CodecDefinition._named_configuration(value) == (name, configuration, ())
     assert [(p.loc, p.kind) for p in ZarrV2CodecDefinition._envelope_problems(value)] == problems
 
 
 def test_a_v2_codec_writes_back_with_its_id_beside_its_parameters() -> None:
-    """`envelope_json` writes a codec as `{"id": name, **parameters}`. The parameters are located at the field and the name is located under `id`."""
+    """`envelope_json` writes a codec as `{"id": name, **parameters}`. The parameters are located at the declaration and the name is located under `id`."""
     assert ZarrV2CodecDefinition._envelope_json("zlib", {"level": 1}) == {"id": "zlib", "level": 1}
     assert ZarrV2CodecDefinition._in_configuration(("compressor",), ("level",)) == (
         "compressor",

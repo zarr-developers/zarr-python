@@ -8,12 +8,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import (
-    ZarrV3ChunkGridField,
-    ZarrV3ChunkKeyEncodingField,
-    ZarrV3CodecField,
-    ZarrV3DataTypeField,
+    ZarrV3ChunkGridDeclaration,
+    ZarrV3ChunkKeyEncodingDeclaration,
+    ZarrV3CodecDeclaration,
+    ZarrV3DataTypeDeclaration,
     ZarrV3ExtensionField,
-    ZarrV3StorageTransformerField,
+    ZarrV3StorageTransformerDeclaration,
 )
 
 
@@ -22,24 +22,24 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
     Extra keys may contain arbitrary JSON values. Each extension point is
-    annotated with the field alias of its kind. For example, `data_type` is
-    a `ZarrV3DataTypeField`, and each entry of `codecs` is a
-    `ZarrV3CodecField`. The alias describes the JSON of the metadata field,
-    and it tells a scope which kind to read the field as.
+    annotated with the declaration alias of its kind. For example, `data_type` is
+    a `ZarrV3DataTypeDeclaration`, and each entry of `codecs` is a
+    `ZarrV3CodecDeclaration`. The alias describes the JSON of the declaration,
+    and it tells a scope which kind to read the declaration as.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: ZarrV3DataTypeField
+    data_type: ZarrV3DataTypeDeclaration
     shape: tuple[Annotated[int, Ge(0)], ...]
-    chunk_grid: ZarrV3ChunkGridField
-    chunk_key_encoding: ZarrV3ChunkKeyEncodingField
+    chunk_grid: ZarrV3ChunkGridDeclaration
+    chunk_key_encoding: ZarrV3ChunkKeyEncodingDeclaration
     fill_value: JSONValue
-    codecs: tuple[ZarrV3CodecField, ...]
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[ZarrV3StorageTransformerField, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3StorageTransformerDeclaration, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 

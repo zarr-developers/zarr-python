@@ -82,7 +82,7 @@ def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_sc
     beside: dict[str, Any],
     gained: bool,
 ) -> None:
-    """A node model can be given wherever consolidated metadata lists a document. The model is accepted in two cases. If the scope of the consolidated metadata reads every claim of the model identically, the model's reading is kept and not read again. If that scope claims something that the model's scope left unclaimed, the model's document is read again in that scope. In both cases the consolidated metadata holds the model in its own scope, equals the one built from the documents, and a group it is given to writes plain JSON. A group model's fields are its extra fields: read in a scope that claims nothing, its `consolidated_metadata` is unclaimed, and the scope of the consolidated metadata gains it. A listed group's own listing is listed flat next to it, as the convention asks."""
+    """A node model can be given wherever consolidated metadata lists a document. The model is accepted in two cases. If the scope of the consolidated metadata reads every claim of the model identically, the model's reading is kept and not read again. If that scope claims something that the model's scope left unclaimed, the model's document is read again in that scope. In both cases the consolidated metadata holds the model in its own scope, equals the one built from the documents, and a group it is given to writes plain JSON. A group model's declarations are its extra fields: read in a scope that claims nothing, its `consolidated_metadata` is unclaimed, and the scope of the consolidated metadata gains it. A listed group's own listing is listed flat next to it, as the convention asks."""
     held = _consolidated(context, a=child, **beside)
     node = held.metadata["a"]
     assert node.context is held.context
@@ -156,7 +156,7 @@ def test_error_a_gain_that_surfaces_a_problem_is_reported_at_the_problem() -> No
 
 
 def test_the_reader_sees_models_as_the_constructor_does() -> None:
-    """Given a member that lists models, `read_consolidated_metadata_v3` reads them the same way the constructor does, and holds the adopted model."""
+    """Given a field that lists models, `read_consolidated_metadata_v3` reads them the same way the constructor does, and holds the adopted model."""
     reading = read_consolidated_metadata_v3(
         {**INLINE, "metadata": {"a": ZarrV3ArrayMetadata(ARRAY)}}
     )
@@ -166,15 +166,15 @@ def test_the_reader_sees_models_as_the_constructor_does() -> None:
 
 
 def test_error_the_reader_reports_a_conflicting_model_as_the_constructor_does() -> None:
-    """Given a member that lists a model which conflicts with the scope, `read_consolidated_metadata_v3` reports the conflict at the entry's path, as the constructor refuses it."""
-    member = {**INLINE, "metadata": {"a": ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)}}
-    reading = read_consolidated_metadata_v3(member)
+    """Given a field that lists a model which conflicts with the scope, `read_consolidated_metadata_v3` reports the conflict at the entry's path, as the constructor refuses it."""
+    field = {**INLINE, "metadata": {"a": ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)}}
+    reading = read_consolidated_metadata_v3(field)
     assert [problem.loc for problem in reading.problems] == [("metadata", "a", "codecs", 0)]
     assert reading.metadata is None
 
 
 def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document. It does not bring its own scope into the group: the group's `context` stays its own, and reading the written member in that scope gives the models in it."""
+    """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document. It does not bring its own scope into the group: the group's `context` stays its own, and reading the written field in that scope gives the models in it."""
     held = _consolidated(CORE_AND_EXTENSIONS, a=ZarrV3ArrayMetadata(ARRAY))
     group = ZarrV3GroupMetadata.create_default(context=CORE, attributes={"t": 1})
     updated = group.update(consolidated_metadata=held)
@@ -224,7 +224,7 @@ def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning()
 def test_a_listed_group_s_listing_is_read_only_where_the_scope_claims_it(
     context: ZarrV3Context, found: list[tuple[str | int, ...]]
 ) -> None:
-    """A listed group's own `consolidated_metadata` is a listing only in a scope that claims the member. In a scope that leaves it unclaimed, the listed group keeps it as written, so the reader does not read it either, whatever it holds."""
+    """A listed group's own `consolidated_metadata` is a listing only in a scope that claims the field. In a scope that leaves it unclaimed, the listed group keeps it as written, so the reader does not read it either, whatever it holds."""
     group = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": {"garbage": 1}}
     reading = read_consolidated_metadata_v3({**INLINE, "metadata": {"g": group}}, context=context)
     assert [problem.loc for problem in reading.problems if problem.kind == "unknown_key"] == found
@@ -253,7 +253,7 @@ def test_error_a_group_s_listing_with_a_problem_is_located_in_the_group() -> Non
 
 @pytest.mark.parametrize("listing", [5, None], ids=["a-number", "null"])
 def test_error_a_group_s_listing_that_is_not_an_object(listing: object) -> None:
-    """In a scope that leaves `consolidated_metadata` unclaimed, a group holding one that is not an object, a number or null, opens. The group still writes a listing, so `consolidated()` refuses it with an `invalid_type` problem located at the member, rather than answering that the group lists none."""
+    """In a scope that leaves `consolidated_metadata` unclaimed, a group holding one that is not an object, a number or null, opens. The group still writes a listing, so `consolidated()` refuses it with an `invalid_type` problem located at the field, rather than answering that the group lists none."""
     group = ZarrV3GroupMetadata(
         {"zarr_format": 3, "node_type": "group", "consolidated_metadata": listing},
         context=ZarrV3Context(),
@@ -291,12 +291,12 @@ def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
     for _ in range(JSON_DEPTH - 3):
         deep = [deep]
     child = ZarrV3ArrayMetadata({**ARRAY, "attributes": {"x": deep}})
-    member = {**INLINE, "metadata": {"a": child}}
-    reading = read_consolidated_metadata_v3(member)
+    field = {**INLINE, "metadata": {"a": child}}
+    reading = read_consolidated_metadata_v3(field)
     assert [problem.loc[:3] for problem in reading.problems] == [("metadata", "a", "attributes")]
     assert reading.metadata is None
     with pytest.raises(MetadataValidationError):
-        ZarrV3ConsolidatedMetadata(member)
+        ZarrV3ConsolidatedMetadata(field)
     assert [
         problem.loc[:4]
         for problem in read_group_metadata_v3(_group_document(a=child.to_json())).problems
@@ -343,11 +343,11 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
 def test_the_input_types_are_types_a_signature_can_hold() -> None:
     """`ZarrV3NodeMetadataInput` and `ZarrV3ConsolidatedMetadataInput` resolve to types, not strings, when a caller's `get_type_hints` reads them as annotations at run time."""
 
-    def take(entry: ZarrV3NodeMetadataInput, member: ZarrV3ConsolidatedMetadataInput) -> None:
+    def take(entry: ZarrV3NodeMetadataInput, field: ZarrV3ConsolidatedMetadataInput) -> None:
         pass
 
     hints = get_type_hints(take)
-    assert {"entry", "member"} <= set(hints)
+    assert {"entry", "field"} <= set(hints)
     assert not isinstance(hints["entry"], str)
 
 

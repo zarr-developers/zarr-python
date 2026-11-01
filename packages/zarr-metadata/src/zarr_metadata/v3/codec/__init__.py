@@ -9,9 +9,9 @@ a bare-string short-hand form), `<X>CodecObject`, `<X>_CODEC`, and, for a
 codec that has a configuration, `<X>CodecConfiguration`.
 
 For the JSON of any codec entry (one of the entries in array metadata's
-`codecs`), import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`. A
-configuration member that holds a codec, such as sharding's inner
-pipelines, is annotated `ZarrV3CodecField` from
+`codecs`), import `ZarrV3DeclarationJSON` from `zarr_metadata.v3`. A
+configuration field that holds a codec, such as sharding's inner
+pipelines, is annotated `ZarrV3CodecDeclaration` from
 `zarr_metadata.v3.definition` instead, so that the reader reads it as a
 codec.
 

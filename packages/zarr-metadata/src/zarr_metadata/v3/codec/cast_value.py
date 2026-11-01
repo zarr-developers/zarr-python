@@ -12,11 +12,11 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
     fill_value_problems,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeField
+from zarr_metadata.v3._common import ZarrV3DataTypeDeclaration
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -84,7 +84,7 @@ class CastValueCodecConfiguration(TypedDict, closed=True):
     bare-string primitive name or a `{name, configuration}` envelope.
     """
 
-    data_type: ZarrV3DataTypeField
+    data_type: ZarrV3DataTypeDeclaration
     rounding: NotRequired[CastRoundingMode]
     out_of_range: NotRequired[CastOutOfRangeMode]
     scalar_map: NotRequired[ScalarMap]
@@ -150,7 +150,7 @@ def _rules(
     not model real numbers, that is the only problem reported for it.
     """
     target = nested.get(("data_type",))
-    if not isinstance(target, AcceptedField):
+    if not isinstance(target, AcceptedDeclaration):
         return
     name, written = target.definition.name, target.name
     if name in _NO_REAL_NUMBERS:
@@ -182,7 +182,7 @@ def _chunk_rules(
     data type.
     """
     source = chunk.data_type
-    if not isinstance(source, AcceptedField):
+    if not isinstance(source, AcceptedDeclaration):
         return
     if source.definition.name in _NO_REAL_NUMBERS:
         yield ValidationProblem(
@@ -201,8 +201,8 @@ def _transition(configuration: CastValueCodecConfiguration, nested: Nested, chun
     It "converts (casts) the values of the input array to a new data
     type ... and it leaves all other array properties intact"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L3).
-    The output data type is the data type field as the scope read it. If
-    the scope did not read that field, the output data type is unknown.
+    The output data type is the data type declaration as the scope read it. If
+    the scope did not read that declaration, the output data type is unknown.
     """
     return Chunk(chunk.lengths, nested.get(("data_type",)))
 
@@ -218,7 +218,7 @@ CAST_VALUE_CODEC: Final = CodecDefinition(
 )
 """The `cast_value` codec.
 
-The target data type is a nested field. It is read in the same scope as
+The target data type is a nested declaration. It is read in the same scope as
 the codec, and it becomes the data type of the output chunk.
 """
 

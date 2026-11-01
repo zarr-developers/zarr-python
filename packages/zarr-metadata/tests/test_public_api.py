@@ -41,7 +41,7 @@ EXPECTED = [
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3NamedConfigJSON",
-    "ZarrV3MetadataFieldJSON",
+    "ZarrV3DeclarationJSON",
     "JSONValue",
     # Category A' — metadata models (in-memory dataclasses over the documents)
     "ZarrV2ArrayMetadata",
@@ -273,10 +273,6 @@ _EXTENSION_ROLES = (
     # `CodecDefinition`, which holds a codec's name, configuration TypedDict
     # and rules.
     "Definition",
-    # A configuration member that holds a metadata field of that kind: for
-    # example, `ZarrV3CodecField`, read in the same scope as the field that
-    # contains it.
-    "Field",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
 
@@ -306,15 +302,15 @@ _STANDALONE_VOCAB = frozenset(
         "Nested",
         "NodeName",
         "NodePath",
-        # The result of reading a field in a scope: `AcceptedField` (read by the
-        # definition that claims its name), `UnclaimedField`, or `RefusedField`.
-        # `ResolvedField` is the union of the three.
-        "AcceptedField",
-        "RefusedField",
-        "ResolvedField",
+        # The result of reading a declaration in a scope: `AcceptedDeclaration` (read by the
+        # definition that claims its name), `UnclaimedDeclaration`, or `RefusedDeclaration`.
+        # `ResolvedDeclaration` is the union of the three.
+        "AcceptedDeclaration",
+        "RefusedDeclaration",
+        "ResolvedDeclaration",
         "Stage",
         "StorageClass",
-        "UnclaimedField",
+        "UnclaimedDeclaration",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",

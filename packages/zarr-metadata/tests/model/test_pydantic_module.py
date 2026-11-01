@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 from pydantic.json_schema import JsonSchemaMode
 
 import zarr_metadata.pydantic as zmp
-from zarr_metadata.definition import AcceptedField, UnclaimedField
+from zarr_metadata.definition import AcceptedDeclaration, UnclaimedDeclaration
 from zarr_metadata.json_schema import json_schema, node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -221,7 +221,7 @@ def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> N
     _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadataField, doc)
 
 
-def test_metadata_field_schema_rejects_unknown_members() -> None:
+def test_declaration_schema_rejects_unknown_fields() -> None:
     """Named-configuration envelopes are closed in both runtime and schema validation."""
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
     doc["codecs"] = [{"name": "bytes", "unexpected": 1}]
@@ -236,7 +236,7 @@ def test_metadata_field_schema_rejects_unknown_members() -> None:
         (zmp.ZarrV2ConsolidatedMetadataField, V2_CONSOLIDATED_DOC),
     ],
 )
-def test_v2_schema_rejects_unknown_document_members(
+def test_v2_schema_rejects_unknown_document_fields(
     field_type: object, source: dict[str, object]
 ) -> None:
     """Closed v2 merged documents expose their runtime boundary in JSON Schema."""
@@ -246,8 +246,8 @@ def test_v2_schema_rejects_unknown_document_members(
     _assert_runtime_and_schema_reject(field_type, doc)
 
 
-def test_v2_array_schema_allows_unknown_document_members() -> None:
-    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) in both runtime and schema validation. An unknown member is kept as written."""
+def test_v2_array_schema_allows_unknown_document_fields() -> None:
+    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) in both runtime and schema validation. An unknown field is kept as written."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["unexpected"] = 1
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
@@ -325,7 +325,7 @@ def test_a_v3_field_type_reads_in_the_scope_the_validation_context_holds(
 ) -> None:
     """The field type reads in the scope from the validation context, which pydantic passes to every validator. `zstd` is an extension, so `CORE` leaves it unclaimed."""
     model = TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(_WITH_ZSTD, context=context)
-    assert isinstance(model.codecs[1], AcceptedField) is read
+    assert isinstance(model.codecs[1], AcceptedDeclaration) is read
 
 
 class _Bound(BaseModel):
@@ -339,7 +339,7 @@ def test_a_field_bound_to_a_scope_reads_in_that_scope() -> None:
     for context in (None, CORE_AND_EXTENSIONS, {zmp.CONTEXT_KEY: CORE_AND_EXTENSIONS}):
         read = _Bound.model_validate({"metadata": _WITH_ZSTD}, context=context).metadata
         assert read.context == CORE
-        assert isinstance(read.codecs[1], UnclaimedField)
+        assert isinstance(read.codecs[1], UnclaimedDeclaration)
     held = ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE)
     assert _Bound(metadata=held).metadata == held
     assert _Bound(metadata=held).model_dump()["metadata"] == held.to_json()
@@ -439,7 +439,7 @@ def test_error_an_instance_a_scope_finds_problems_in_reports_each_one(validate: 
 
 @pytest.mark.parametrize("validate", _READ_IN_SCOPE)
 def test_error_an_instance_a_scope_reads_differently_reports_each_conflict(validate: Any) -> None:  # noqa: ANN401 - a validating function
-    """An instance read where `zstd` is claimed would lose that meaning in `CORE`. pydantic gets one `scope_conflict` line error per conflict, at the field it is in, with that field as written as its input, and a message that names the codec."""
+    """An instance read where `zstd` is claimed would lose that meaning in `CORE`. pydantic gets one `scope_conflict` line error per conflict, at the declaration it is in, with that declaration as written as its input, and a message that names the codec."""
     instance = ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE_AND_EXTENSIONS)
     with pytest.raises(ValidationError) as raised:
         validate(instance, CORE)
@@ -520,7 +520,7 @@ def test_error_a_consolidated_instance_a_scope_reads_differently_reports_each_co
     found: object,
     named: str,
 ) -> None:
-    """A consolidated instance read again in a scope that claims less would lose the meaning of a listed node's field, through a validation context or a field bound with `InScope`. pydantic gets one `scope_conflict` line error, located at the field inside the listed node, a node's path for v3 and its file for v2, with that field as written as its input, and a message that names the codec."""
+    """A consolidated instance read again in a scope that claims less would lose the meaning of a listed node's declaration, through a validation context or a field bound with `InScope`. pydantic gets one `scope_conflict` line error, located at the declaration inside the listed node, a node's path for v3 and its file for v2, with that declaration as written as its input, and a message that names the codec."""
     with pytest.raises(ValidationError) as raised:
         validate(instance)
     (line,) = raised.value.errors()
@@ -608,10 +608,10 @@ def test_a_message_holding_a_ctx_placeholder_is_reported_as_it_is() -> None:
     assert error.get("ctx") == {"expected": (3,), "message": 'expected 3, got "{expected}"'}
 
 
-def test_a_ctx_member_named_message_yields_to_a_message_holding_a_placeholder() -> None:
+def test_a_ctx_key_named_message_yields_to_a_message_holding_a_placeholder() -> None:
     # The `message` key that carries the message goes last in the ctx, so no
     # ctx key after it is substituted into the carried text. When no message
-    # needs to be carried, a ctx member named `message` is kept.
+    # needs to be carried, a ctx key named `message` is kept.
     ctx = {"message": "theirs", "expected": 3}
     problem = ValidationProblem(("a",), 'got "{expected}"', "invalid_value", ctx=ctx)
     error = ValidationError.from_exception_data("T", [zmp._line_error(problem, {"a": 1})]).errors()[
@@ -627,10 +627,10 @@ def test_a_ctx_member_named_message_yields_to_a_message_holding_a_placeholder() 
 
 def test_a_line_error_for_what_a_problem_could_not_hold_reports_what_sits_there() -> None:
     # A problem holds no input when the value is not JSON that a reader walks
-    # (here, an `AcceptedField` built by hand and placed among the codecs). The
+    # (here, an `AcceptedDeclaration` built by hand and placed among the codecs). The
     # line error then reports that object. For a missing key, the line error
     # reports the object that lacks the key.
-    smuggled = AcceptedField(
+    smuggled = AcceptedDeclaration(
         json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 1}
     )
     doc = {
@@ -670,14 +670,14 @@ def test_a_line_error_for_a_document_past_the_cap_renders() -> None:
     assert json.loads(raised.value.json())[0]["type"] == "invalid_value"
 
 
-@pytest.mark.parametrize("field", ["Foo/bar", "", "r*", {"name": "Int8"}])
-def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object) -> None:
+@pytest.mark.parametrize("declaration", ["Foo/bar", "", "r*", {"name": "Int8"}])
+def test_the_pydantic_schema_names_an_extension_as_the_reader_does(declaration: object) -> None:
     # The schema that pydantic generates checks a name the same way the reader does.
     schema = TypeAdapter(zmp.ZarrV3ArrayMetadataField).json_schema()
     # Use arrays as lists, as JSON parses them, because `jsonschema` does not accept a tuple.
     document: dict[str, Any] = json.loads(json.dumps(V3_ARRAY_DOC))
     assert Draft202012Validator(schema).is_valid(document)
-    named: dict[str, Any] = {**document, "data_type": field}
+    named: dict[str, Any] = {**document, "data_type": declaration}
     assert not Draft202012Validator(schema).is_valid(named)
     with pytest.raises(ValidationError):
         TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(named)
@@ -685,7 +685,7 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
 
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context_v2` item. When it holds none, they read in `CORE_V2`. The v3 field types work the same way."""
-    from zarr_metadata.definition import UnclaimedField
+    from zarr_metadata.definition import UnclaimedDeclaration
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
     from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 
@@ -695,7 +695,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     small = ZarrV2Context(data_types=[UINT_DATA_TYPE_V2])
     read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert read.context is small
-    assert isinstance(read.compressor, UnclaimedField)
+    assert isinstance(read.compressor, UnclaimedDeclaration)
     held = adapter.validate_python(doc, context={"zarr_metadata_context_v2": small})
     assert held.context is small
     group = TypeAdapter(zmp.ZarrV2GroupMetadataField).validate_python(V2_GROUP_DOC, context=small)
@@ -704,7 +704,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
 
 def test_each_format_reads_in_its_own_context_key() -> None:
     """A mapping context gives each format's scope under its own key: `zarr_metadata_context` for v3 and `zarr_metadata_context_v2` for v2. So a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2`. A bare `Context` is the scope for every field type."""
-    from zarr_metadata.definition import UnclaimedField
+    from zarr_metadata.definition import UnclaimedDeclaration
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
     from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
@@ -722,7 +722,7 @@ def test_each_format_reads_in_its_own_context_key() -> None:
     assert own.context is small
     bare = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert bare.context is small
-    assert isinstance(bare.compressor, UnclaimedField)
+    assert isinstance(bare.compressor, UnclaimedDeclaration)
     assert zmp.CONTEXT_KEY_V2 == "zarr_metadata_context_v2"
 
 

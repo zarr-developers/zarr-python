@@ -1,8 +1,8 @@
 """How a format's scope files its definitions.
 
-No global registry files definitions. Reading a field means
+No global registry files definitions. Reading a declaration means
 deciding which definition its name refers to. That decision depends on
-the *scope* the field is read in, not on the definitions themselves. A
+the *scope* the declaration is read in, not on the definitions themselves. A
 scope is a value built from definitions. `Context` is the protocol a
 reader needs from one. `ZarrV3Context` and `ZarrV2Context`, in each
 format's `definition` module, are the scopes of each format. They are
@@ -56,7 +56,7 @@ def slot_kinds(
 ) -> Mapping[str, type[K]]:
     """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K] | Mapping[str, K]`, in that order and with `Mapping` from `collections.abc`, for a kind `K` that `accepts`, the check for a kind of the scope's format. A scope class derives its slots from it, so they are declared once.
 
-    Raises `TypeError`, when the scope class is defined, for a member
+    Raises `TypeError`, when the scope class is defined, for a field
     annotated any other way, or with a kind that is not of the format.
     """
     kinds: dict[str, type[K]] = {}

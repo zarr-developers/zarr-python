@@ -20,13 +20,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Definition,
-    RefusedField,
-    UnclaimedField,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
     as_kind,
-    field_key,
-    fields_of,
+    declaration_key,
+    declarations_of,
     filed_under,
     format_of,
     own_key,
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import D, ResolvedField
+    from zarr_metadata.definition._definition import D, ResolvedDeclaration
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under. A scope's `claimant` looks up definitions by this key."""
@@ -101,31 +101,31 @@ class ScopeConflictError(ValueError):
         return type(self), (self.conflicts,), dict(self.__dict__)
 
 
-def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
-    """The key `field` is claimed under: its kind and the name its definition is filed under (for example `r*` for `r16`). Returns None for a field with no name."""
-    if field.name is None:
+def claim_key(declaration: ResolvedDeclaration[Any]) -> ClaimKey | None:
+    """The key `declaration` is claimed under: its kind and the name its definition is filed under (for example `r*` for `r16`). Returns None for a declaration with no name."""
+    if declaration.name is None:
         return None
-    filed, _ = filed_under(field.read_as, field.name)
-    return None if filed is None else (field.read_as, filed)
+    filed, _ = filed_under(declaration.read_as, declaration.name)
+    return None if filed is None else (declaration.read_as, filed)
 
 
 def claims_of(
-    fields: Iterable[tuple[Loc, ResolvedField[Any]]],
+    declarations: Iterable[tuple[Loc, ResolvedDeclaration[Any]]],
 ) -> dict[ClaimKey, Definition[Any] | None]:
-    """The claims that `fields` (each paired with its location) record for each name: the definition that read the name, or None if the name was unclaimed.
+    """The claims that `declarations` (each paired with its location) record for each name: the definition that read the name, or None if the name was unclaimed.
 
-    `fields` must come from one reading, as returned by `fields_of` or a
-    reading's `fields()`. If two fields claim the same name with different
+    `declarations` must come from one reading, as returned by `declarations_of` or a
+    reading's `declarations()`. If two declarations claim the same name with different
     definitions, this raises `ScopeConflictError`, because no single scope
     could have read them both.
     """
     claims: dict[ClaimKey, Definition[Any] | None] = {}
     conflicts: list[Conflict] = []
-    for loc, field in fields:
-        key = claim_key(field)
+    for loc, declaration in declarations:
+        key = claim_key(declaration)
         if key is None:
             continue
-        definition = field.definition
+        definition = declaration.definition
         if key in claims and claims[key] != definition:
             conflicts.append(Conflict(key, claims[key], definition, loc))
             continue
@@ -135,54 +135,54 @@ def claims_of(
     return claims
 
 
-def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
-    """Whether `field` contains everything `other` contains: it reads the same where both read, and it may also read what `other` left unclaimed.
+def refines(declaration: ResolvedDeclaration[Any], other: ResolvedDeclaration[Any]) -> bool:
+    """Whether `declaration` contains everything `other` contains: it reads the same where both read, and it may also read what `other` left unclaimed.
 
     This is the order in which one reading of a document refines another.
-    Suppose `other` is unclaimed and `field` is accepted. This counts as a
-    gain when re-reading the unclaimed field's JSON, with `field`'s
-    definition and the definitions of the fields nested in `field`,
-    produces `field`. Two spellings of one configuration count as one gain,
-    because `==` treats them as one field, so the order is transitive
+    Suppose `other` is unclaimed and `declaration` is accepted. This counts as a
+    gain when re-reading the unclaimed declaration's JSON, with `declaration`'s
+    definition and the definitions of the declarations nested in `declaration`,
+    produces `declaration`. Two spellings of one configuration count as one gain,
+    because `==` treats them as one declaration, so the order is transitive
     through equality. The reverse direction (accepted to unclaimed) is a
     loss. One name read by two different definitions is a conflict. A
-    refused field refines only itself. Two fields that refine each other
+    refused declaration refines only itself. Two declarations that refine each other
     are equal.
     """
-    if isinstance(field, RefusedField) or isinstance(other, RefusedField):
-        return field == other
-    if isinstance(other, UnclaimedField):
-        if isinstance(field, UnclaimedField):
-            return field_key(field) == field_key(other)
-        return claim_key(field) == claim_key(other) and _gained(field, other)
-    if isinstance(field, UnclaimedField):
+    if isinstance(declaration, RefusedDeclaration) or isinstance(other, RefusedDeclaration):
+        return declaration == other
+    if isinstance(other, UnclaimedDeclaration):
+        if isinstance(declaration, UnclaimedDeclaration):
+            return declaration_key(declaration) == declaration_key(other)
+        return claim_key(declaration) == claim_key(other) and _gained(declaration, other)
+    if isinstance(declaration, UnclaimedDeclaration):
         return False
-    if field.definition != other.definition or own_key(field) != own_key(other):
+    if declaration.definition != other.definition or own_key(declaration) != own_key(other):
         return False
-    if set(field.nested) != set(other.nested):
+    if set(declaration.nested) != set(other.nested):
         return False
-    return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
+    return all(refines(declaration.nested[loc], other.nested[loc]) for loc in declaration.nested)
 
 
-def _gained(field: AcceptedField[Any], other: UnclaimedField) -> bool:
-    """Whether reading `other` in the scope formed by `field`'s own claims produces `field`. This is the test for a gain."""
-    again, _ = resolve(other.json, field.read_as, _Claimed.of(field))
-    return again == field
+def _gained(declaration: AcceptedDeclaration[Any], other: UnclaimedDeclaration) -> bool:
+    """Whether reading `other` in the scope formed by `declaration`'s own claims produces `declaration`. This is the test for a gain."""
+    again, _ = resolve(other.json, declaration.read_as, _Claimed.of(declaration))
+    return again == declaration
 
 
 @dataclass(frozen=True, slots=True)
 class _Claimed:
-    """The scope formed by a field's own claims: its definition and the definitions of its nested fields, keyed by kind and filed name. `_gained` re-reads a field in this scope."""
+    """The scope formed by a declaration's own claims: its definition and the definitions of its nested declarations, keyed by kind and filed name. `_gained` re-reads a declaration in this scope."""
 
     filed: Mapping[ClaimKey, Definition[Any]]
     zarr_format: Literal[2, 3]
 
     @classmethod
-    def of(cls, field: AcceptedField[Any]) -> _Claimed:
-        claimed = claims_of(fields_of(field))
+    def of(cls, declaration: AcceptedDeclaration[Any]) -> _Claimed:
+        claimed = claims_of(declarations_of(declaration))
         return cls(
             {key: definition for key, definition in claimed.items() if definition is not None},
-            format_of(field.read_as),
+            format_of(declaration.read_as),
         )
 
     def claimant(self, kind: type[D], name: str) -> D | None:

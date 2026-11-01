@@ -32,7 +32,7 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
-    # The bounds a TypedDict's members carry -- `Gt`, `Ge`, `Lt`, `Le`,
+    # The bounds a TypedDict's fields carry -- `Gt`, `Ge`, `Lt`, `Le`,
     # `Interval` -- which the checker enforces, in the vocabulary pydantic
     # and Hypothesis read as well.
     "annotated-types>=0.6",

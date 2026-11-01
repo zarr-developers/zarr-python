@@ -116,7 +116,7 @@ def test_every_entry_point_reads_in_the_scope_it_is_given(read: Callable[..., ob
 
 @pytest.mark.parametrize("read", GROUP_ENTRY_POINTS.values(), ids=GROUP_ENTRY_POINTS.keys())
 def test_a_group_reads_the_same_in_every_scope(read: Callable[..., object]) -> None:
-    """A group document has no fields, and a group does not read the documents its consolidated metadata lists. So each group entry point accepts a group that lists `BAD`, in every scope."""
+    """A group document has no declarations, and a group does not read the documents its consolidated metadata lists. So each group entry point accepts a group that lists `BAD`, in every scope."""
     accepted = _accepts(read)
     assert accepted(EMPTY) is True
     assert accepted(CORE_AND_EXTENSIONS) is True

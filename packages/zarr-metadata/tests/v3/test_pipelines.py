@@ -16,7 +16,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
-    ResolvedField,
+    ResolvedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -31,8 +31,8 @@ from zarr_metadata.v3.definition import (
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
-    ZarrV3CodecField,
-    ZarrV3DataTypeField,
+    ZarrV3CodecDeclaration,
+    ZarrV3DataTypeDeclaration,
 )
 
 if TYPE_CHECKING:
@@ -82,12 +82,12 @@ def _transpose(*order: int) -> JSONValue:
     return {"name": "transpose", "configuration": {"order": list(order)}}
 
 
-def _cast(data_type: JSONValue, **members: JSONValue) -> JSONValue:
-    return {"name": "cast_value", "configuration": {"data_type": data_type, **members}}
+def _cast(data_type: JSONValue, **fields: JSONValue) -> JSONValue:
+    return {"name": "cast_value", "configuration": {"data_type": data_type, **fields}}
 
 
-def _scale(**members: JSONValue) -> JSONValue:
-    return {"name": "scale_offset", "configuration": members}
+def _scale(**fields: JSONValue) -> JSONValue:
+    return {"name": "scale_offset", "configuration": fields}
 
 
 def _of(data_type: JSONValue) -> Chunk:
@@ -177,7 +177,7 @@ def _lengths(*axes: set[int]) -> tuple[frozenset[int], ...]:
             [_of("float32"), _of("uint8")],
         ),
         # A cast to a data type that nothing in scope claims outputs that
-        # field, which says nothing about the values.
+        # declaration, which says nothing about the values.
         ([_cast("acme.decimal"), "bytes"], _of("float32"), [_of("float32"), _of("acme.decimal")]),
         # After a codec that nothing in scope claims, a cast still declares the
         # data type it outputs. An arithmetic codec that receives an unknown
@@ -292,7 +292,7 @@ def test_error_a_bytes_codec_without_endian_handed_values_of_several_bytes(
 def test_error_a_bytes_codec_s_problems_are_located_where_its_document_writes(
     codec: JSONValue, no_endian: tuple[str | int, ...]
 ) -> None:
-    """A codec's chunk rules are located in its document. A missing `endian` is a member of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A codec handed values it cannot encode is the codec's problem, however it is spelled."""
+    """A codec's chunk rules are located in its document. A missing `endian` is a field of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A codec handed values it cannot encode is the codec's problem, however it is spelled."""
     assert _problems([codec], _of("int16")) == [(no_endian, "missing_key")]
     assert _problems([codec], _of("string")) == [((0,), "invalid_value")]
 
@@ -347,7 +347,7 @@ def test_error_a_cast_handed_complex_numbers() -> None:
 
 
 @pytest.mark.parametrize(
-    ("members", "data_type", "found"),
+    ("fields", "data_type", "found"),
     [
         ({"offset": 0.5}, "int16", [((0, "configuration", "offset"), "invalid_type")]),
         ({"scale": 70000}, "int16", [((0, "configuration", "scale"), "invalid_value")]),
@@ -355,9 +355,9 @@ def test_error_a_cast_handed_complex_numbers() -> None:
     ],
 )
 def test_error_a_scale_or_offset_that_is_not_a_value_of_the_data_type_it_is_handed(
-    members: dict[str, JSONValue], data_type: str, found: list[tuple[tuple[str | int, ...], str]]
+    fields: dict[str, JSONValue], data_type: str, found: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    assert _problems([_scale(**members), LITTLE], _of(data_type)) == found
+    assert _problems([_scale(**fields), LITTLE], _of(data_type)) == found
 
 
 def test_error_a_transition_that_gives_something_else() -> None:
@@ -401,7 +401,7 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
     [
         ((4, 2), None, "a chunk's lengths are"),
         (None, "float32", "a chunk's data type is"),
-        # A field read as a codec, though nothing claims it.
+        # A declaration read as a codec, though nothing claims it.
         (None, resolve("acme.t", CodecDefinition, CONTEXT)[0], "a chunk's data type is"),
     ],
 )
@@ -430,7 +430,7 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
 
 
 @pytest.mark.parametrize(
-    ("kind", "member"),
+    ("kind", "attribute"),
     [
         ("bytes_bytes", "chunk_rules"),
         ("bytes_bytes", "transition"),
@@ -438,11 +438,11 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
         ("array_bytes", "transition"),
     ],
 )
-def test_error_a_codec_hook_nothing_would_ask(kind: str, member: str) -> None:
+def test_error_a_codec_hook_nothing_would_ask(kind: str, attribute: str) -> None:
     # A bytes -> bytes codec receives bytes, and only an array -> array
     # codec outputs a chunk, so these hooks would never be called.
-    hook = {member: lambda configuration, nested, chunk: ()}
-    with pytest.raises(TypeError, match=f"'acme.x': {member}, "):
+    hook = {attribute: lambda configuration, nested, chunk: ()}
+    with pytest.raises(TypeError, match=f"'acme.x': {attribute}, "):
         CodecDefinition(
             name="acme.x",
             configuration=EmptyConfiguration,
@@ -486,13 +486,13 @@ def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks
 
 
 class AcmeHolderConfiguration(TypedDict, closed=True):
-    codecs: tuple[ZarrV3CodecField, ...]
-    types: tuple[ZarrV3DataTypeField, ...]
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    types: tuple[ZarrV3DataTypeDeclaration, ...]
 
 
 def _holder(
     pipelines: object, types: JSONValue = ("uint8",)
-) -> ResolvedField[CodecDefinition[Any]]:
+) -> ResolvedDeclaration[CodecDefinition[Any]]:
     """A codec that holds a pipeline of codecs and a list of data types, `types`, and whose `pipelines` hook is `pipelines`."""
     holder = CodecDefinition(
         name="acme.holder",
@@ -501,20 +501,20 @@ def _holder(
         size="dynamic",
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )
-    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
+    declaration = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
     return resolve(
-        field, CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), holder])
+        declaration, CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), holder])
     )[0]
 
 
 @pytest.mark.parametrize("given", ["a chunk", {"codecs": "a chunk"}, {("codecs",): Chunk()}])
 def test_error_pipelines_that_give_something_else(given: object) -> None:
-    with pytest.raises(TypeError, match="'acme.holder': its pipelines give a mapping of members"):
+    with pytest.raises(TypeError, match="'acme.holder': its pipelines give a mapping of fields"):
         read_pipeline([_holder(lambda configuration, nested, chunk: given)], CHUNK)
 
 
 @pytest.mark.parametrize(
-    ("member", "types"),
+    ("field", "types"),
     [
         ("nowhere", ("uint8",)),
         ("types", ("uint8",)),
@@ -522,11 +522,9 @@ def test_error_pipelines_that_give_something_else(given: object) -> None:
         ("types", ("acme.t",)),
     ],
 )
-def test_error_pipelines_that_name_a_member_holding_no_codecs(
-    member: str, types: JSONValue
-) -> None:
-    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()}, types)
-    with pytest.raises(TypeError, match=f"its pipelines name {member!r}, which holds no list"):
+def test_error_pipelines_that_name_a_field_holding_no_codecs(field: str, types: JSONValue) -> None:
+    holder = _holder(lambda configuration, nested, chunk: {field: Chunk()}, types)
+    with pytest.raises(TypeError, match=f"its pipelines name {field!r}, which holds no list"):
         read_pipeline([holder], CHUNK)
 
 

@@ -46,14 +46,14 @@ def _store(**files: object) -> dict[str, bytes]:
 
 
 def test_read_group_metadata_v2_reads_a_group() -> None:
-    """`read_group_metadata_v2` returns a reading with no problems, whose model equals the group read from the same document, and the model's `reading` is that reading. A group has no fields for a scope to read."""
+    """`read_group_metadata_v2` returns a reading with no problems, whose model equals the group read from the same document, and the model's `reading` is that reading. A group has no declarations for a scope to read."""
     document = {"zarr_format": 2, "attributes": {"a": 1}}
     reading = read_group_metadata_v2(document)
     assert reading.problems == ()
     assert reading.metadata == ZarrV2GroupMetadata(document)
     assert reading.metadata is not None
     assert reading.metadata.reading == reading
-    assert list(reading.fields()) == []
+    assert list(reading.declarations()) == []
 
 
 def test_error_read_group_metadata_v2_reports_the_problems_of_a_bad_group() -> None:
@@ -129,7 +129,7 @@ def test_error_files_with_both_node_files_are_no_node() -> None:
 def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and_a_zmetadata(
     name: str, document: dict[str, Any]
 ) -> None:
-    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the member in the file and in its entry. The kind is `invalid_value` for both files: the member is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
+    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the field in the file and in its entry. The kind is `invalid_value` for both files: the field is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
     held = {**document, "attributes": {}}
     from_files = read_node_metadata_v2({name: held}).problems
     from_entries = read_consolidated_metadata_v2(
@@ -219,19 +219,25 @@ def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> No
     assert [(p.loc, p.kind) for p in raised.value.problems] == [((".zarray",), "invalid_json")]
 
 
-def test_a_v2_node_reading_locates_its_fields_in_the_files_it_read() -> None:
-    """A node's reading is of its files, so each field is under `.zarray`, as each problem is, and `with_problems` pairs a field with the problems in it. The model reads the merged document, so its own reading locates the same field at `dtype`. A pickled node reading keeps where its fields are."""
+def test_a_v2_node_reading_locates_its_declarations_in_the_files_it_read() -> None:
+    """A node's reading is of its files, so each declaration is under `.zarray`, as each problem is, and `with_problems` pairs a declaration with the problems in it. The model reads the merged document, so its own reading locates the same declaration at `dtype`. A pickled node reading keeps where its declarations are."""
     struct = {**ZARRAY, "dtype": [["a", "<i4"]], "fill_value": None}
     valid = read_node_metadata_v2(_files(_zarray=struct))
     assert isinstance(valid, ZarrV2ArrayMetadataReading)
     assert valid.metadata is not None
-    assert [loc for loc, _ in valid.fields()] == [(".zarray", "dtype"), (".zarray", "dtype", 0, 1)]
-    assert [loc for loc, _ in valid.metadata.reading.fields()] == [("dtype",), ("dtype", 0, 1)]
+    assert [loc for loc, _ in valid.declarations()] == [
+        (".zarray", "dtype"),
+        (".zarray", "dtype", 0, 1),
+    ]
+    assert [loc for loc, _ in valid.metadata.reading.declarations()] == [
+        ("dtype",),
+        ("dtype", 0, 1),
+    ]
     assert pickle.loads(pickle.dumps(valid)) == valid
     refused = read_node_metadata_v2(_files(_zarray={**struct, "dtype": [["a", "float32"]]}))
     paired = {
         loc: [p.loc for p in problems]
-        for loc, _, problems in with_problems(refused.fields(), refused.problems)
+        for loc, _, problems in with_problems(refused.declarations(), refused.problems)
     }
     assert paired[(".zarray", "dtype", 0, 1)] == [(".zarray", "dtype", 0, 1)]
 
@@ -256,13 +262,13 @@ CONSOLIDATED: dict[str, Any] = {
 
 
 def test_read_consolidated_metadata_v2_reads_a_zmetadata() -> None:
-    """`read_consolidated_metadata_v2` returns a reading with no problems whose model equals the one the constructor builds, and the model's `reading` is that reading. `fields()` gives each node's fields located in the `.zmetadata`."""
+    """`read_consolidated_metadata_v2` returns a reading with no problems whose model equals the one the constructor builds, and the model's `reading` is that reading. `declarations()` gives each node's declarations located in the `.zmetadata`."""
     reading = read_consolidated_metadata_v2(CONSOLIDATED)
     assert reading.problems == ()
     assert reading.metadata == ZarrV2ConsolidatedMetadata(CONSOLIDATED)
     assert reading.metadata is not None
     assert reading.metadata.reading == reading
-    assert [loc for loc, _ in reading.fields()] == [("metadata", "a/.zarray", "dtype")]
+    assert [loc for loc, _ in reading.declarations()] == [("metadata", "a/.zarray", "dtype")]
 
 
 @pytest.mark.parametrize(
@@ -281,13 +287,13 @@ def test_read_consolidated_metadata_v2_reads_a_zmetadata() -> None:
     ],
     ids=["path", "nested-path", "root"],
 )
-def test_consolidated_fields_are_located_at_the_keys_the_document_writes(
+def test_consolidated_declarations_are_located_at_the_keys_the_document_writes(
     entries: dict[str, Any], key: str
 ) -> None:
-    """`fields()` locates each node's fields under the key that the `.zmetadata` writes for the node's `.zarray`, so each location leads into the document."""
+    """`declarations()` locates each node's declarations under the key that the `.zmetadata` writes for the node's `.zarray`, so each location leads into the document."""
     reading = read_consolidated_metadata_v2({"zarr_consolidated_format": 1, "metadata": entries})
     assert reading.problems == ()
-    assert [loc for loc, _ in reading.fields()] == [("metadata", key, "dtype")]
+    assert [loc for loc, _ in reading.declarations()] == [("metadata", key, "dtype")]
 
 
 def test_error_read_consolidated_metadata_v2_reports_problems_instead_of_raising() -> None:

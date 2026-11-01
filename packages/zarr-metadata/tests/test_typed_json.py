@@ -1,8 +1,8 @@
 """The checker: parsers compiled from annotations for the shapes that JSON values take.
 
-These tests use the checker on its own, without any metadata field. A
+These tests use the checker on its own, without any declaration. A
 leaf stands in for whatever a caller adds (the definition layer adds the
-shape of a member that holds another metadata field), and `no_leaf` adds
+shape of a field that holds another declaration), and `no_leaf` adds
 nothing.
 """
 
@@ -643,13 +643,13 @@ def _under_both_typeddicts(declarations: list[ParameterSet]) -> list[ParameterSe
 
 
 @pytest.mark.parametrize(
-    ("source", "members", "required", "extra_items", "declared", "typeddicts"),
+    ("source", "fields", "required", "extra_items", "declared", "typeddicts"),
     _under_both_typeddicts(_DECLARATIONS),
 )
 @pytest.mark.parametrize("postponed", [False, True], ids=["evaluated", "postponed"])
 def test_typeddict_keys_follow_the_typing_spec(
     source: str,
-    members: set[str],
+    fields: set[str],
     required: set[str],
     extra_items: str,
     declared: bool,
@@ -665,7 +665,7 @@ def test_typeddict_keys_follow_the_typing_spec(
     # runtime does not record that.
     module = _declared(source, postponed=postponed, monkeypatch=monkeypatch, typeddicts=typeddicts)
     keys = typeddict_keys(module.T)
-    assert set(keys.members) == members
+    assert set(keys.fields) == fields
     assert keys.required == required
     assert keys.extra_items == eval(extra_items, vars(module))
     assert keys.declared is declared
@@ -1079,9 +1079,9 @@ def test_a_key_s_type_keeps_the_metadata_its_annotation_carries() -> None:
     # The metadata is kept, inner layer first, as `Annotated` flattens
     # nested layers. A note on `object` leaves the type open.
     keys = typeddict_keys(Bounded)
-    assert keys.members["level"] == (Digit, True)
-    assert keys.members["shape"] == (tuple[Annotated[int, Ge(1)], ...], False)
-    assert keys.members["name"] == (
+    assert keys.fields["level"] == (Digit, True)
+    assert keys.fields["shape"] == (tuple[Annotated[int, Ge(1)], ...], False)
+    assert keys.fields["name"] == (
         Annotated[str, "the inner note", Doc("the outer note")],
         False,
     )
@@ -1144,19 +1144,19 @@ def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> Non
         parser(Annotated[str, constraint], no_leaf)
 
 
-class _ConstrainedMember(TypedDict, closed=True):
+class _ConstrainedField(TypedDict, closed=True):
     a: Annotated[int, MultipleOf(2)]
 
 
-class _HoldsAConstrainedMember(TypedDict, closed=True):
-    inner: _ConstrainedMember
+class _HoldsAConstrainedField(TypedDict, closed=True):
+    inner: _ConstrainedField
 
 
 class _NotAJSONShape(TypedDict, closed=True):
     a: set[int]
 
 
-class _HoldsAMemberNotAJSONShape(TypedDict, closed=True):
+class _HoldsAFieldNotAJSONShape(TypedDict, closed=True):
     inner: _NotAJSONShape
 
 
@@ -1173,12 +1173,12 @@ class _HoldsAnUnresolvableTypedDict(TypedDict, closed=True):
     inner: _Unresolvable
 
 
-class _ConstraintOnAReadableMember(TypedDict, closed=True):
+class _ConstraintOnAReadableField(TypedDict, closed=True):
     inner: Annotated[_Readable, MultipleOf(2)]
 
 
-class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
-    inner: Annotated[_ConstrainedMember, MultipleOf(2)]
+class _ConstraintOnAConstrainedField(TypedDict, closed=True):
+    inner: Annotated[_ConstrainedField, MultipleOf(2)]
 
 
 class _SelfReferentialWithAConstraint(TypedDict, closed=True):
@@ -1257,11 +1257,11 @@ class _HoldsAnOptionalNotAJSONShape(TypedDict, closed=True):
     inner: _NotAJSONShape | None
 
 
-class _HoldsATupleOfAConstrainedMember(TypedDict, closed=True):
-    inner: tuple[_ConstrainedMember, ...]
+class _HoldsATupleOfAConstrainedField(TypedDict, closed=True):
+    inner: tuple[_ConstrainedField, ...]
 
 
-class _ConstraintOnANotAJSONShapeMember(TypedDict, closed=True):
+class _ConstraintOnANotAJSONShapeField(TypedDict, closed=True):
     inner: Annotated[_NotAJSONShape, MultipleOf(2)]
 
 
@@ -1311,17 +1311,17 @@ class _SelfReferentialReadable(TypedDict, closed=True):
     ("typeddict", "unread"),
     [
         (
-            _ConstrainedMember,
+            _ConstrainedField,
             Unread(
-                "_ConstrainedMember.a: MultipleOf(multiple_of=2) is not a constraint the checker "
+                "_ConstrainedField.a: MultipleOf(multiple_of=2) is not a constraint the checker "
                 "reads, which are Gt, Ge, Lt and Le",
                 constraint=True,
             ),
         ),
         (
-            _HoldsAConstrainedMember,
+            _HoldsAConstrainedField,
             Unread(
-                "_HoldsAConstrainedMember.inner: _ConstrainedMember.a: MultipleOf(multiple_of=2) is "
+                "_HoldsAConstrainedField.inner: _ConstrainedField.a: MultipleOf(multiple_of=2) is "
                 "not a constraint the checker reads, which are Gt, Ge, Lt and Le",
                 constraint=True,
             ),
@@ -1335,9 +1335,9 @@ class _SelfReferentialReadable(TypedDict, closed=True):
             ),
         ),
         (
-            _HoldsAMemberNotAJSONShape,
+            _HoldsAFieldNotAJSONShape,
             Unread(
-                "_HoldsAMemberNotAJSONShape.inner: _NotAJSONShape: a is not a shape JSON takes; "
+                "_HoldsAFieldNotAJSONShape.inner: _NotAJSONShape: a is not a shape JSON takes; "
                 "write it as one -- a number, string, boolean, null, array, object, or an alias of "
                 "one",
                 constraint=False,
@@ -1352,17 +1352,17 @@ class _SelfReferentialReadable(TypedDict, closed=True):
             ),
         ),
         (
-            _ConstraintOnAReadableMember,
+            _ConstraintOnAReadableField,
             Unread(
-                "_ConstraintOnAReadableMember.inner: MultipleOf(multiple_of=2) is not a "
+                "_ConstraintOnAReadableField.inner: MultipleOf(multiple_of=2) is not a "
                 "constraint the checker reads, which are Gt, Ge, Lt and Le",
                 constraint=True,
             ),
         ),
         (
-            _ConstraintOnAConstrainedMember,
+            _ConstraintOnAConstrainedField,
             Unread(
-                "_ConstraintOnAConstrainedMember.inner: _ConstrainedMember.a: "
+                "_ConstraintOnAConstrainedField.inner: _ConstrainedField.a: "
                 "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
                 "Ge, Lt and Le",
                 constraint=True,
@@ -1459,18 +1459,18 @@ class _SelfReferentialReadable(TypedDict, closed=True):
             ),
         ),
         (
-            _HoldsATupleOfAConstrainedMember,
+            _HoldsATupleOfAConstrainedField,
             Unread(
-                "_HoldsATupleOfAConstrainedMember.inner: _ConstrainedMember.a: "
+                "_HoldsATupleOfAConstrainedField.inner: _ConstrainedField.a: "
                 "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
                 "Ge, Lt and Le",
                 constraint=True,
             ),
         ),
         (
-            _ConstraintOnANotAJSONShapeMember,
+            _ConstraintOnANotAJSONShapeField,
             Unread(
-                "_ConstraintOnANotAJSONShapeMember.inner: _NotAJSONShape: a is not a shape JSON "
+                "_ConstraintOnANotAJSONShapeField.inner: _NotAJSONShape: a is not a shape JSON "
                 "takes; write it as one -- a number, string, boolean, null, array, object, or an "
                 "alias of one",
                 constraint=False,
@@ -1525,24 +1525,24 @@ class _SelfReferentialReadable(TypedDict, closed=True):
         "not-a-json-shape",
         "not-a-json-shape-in-a-nested-typeddict",
         "a-nested-typeddict-that-cannot-be-read",
-        "a-constraint-on-a-member-that-is-a-typeddict",
-        "a-constraint-on-the-member-and-inside-its-typeddict",
+        "a-constraint-on-a-field-that-is-a-typeddict",
+        "a-constraint-on-the-field-and-inside-its-typeddict",
         "self-referential-with-a-constraint",
         "self-referential-not-a-json-shape",
         "self-referential-with-a-constraint-on-the-reference",
         "a-cycle-of-two-typeddicts",
-        "a-constraint-after-a-member-that-leads-back",
-        "not-a-json-shape-after-a-member-that-leads-back",
-        "a-constraint-on-a-member-that-leads-back",
-        "a-constraint-on-a-second-member-that-leads-back",
-        "a-documented-member-that-leads-back-before-a-constrained-one",
-        "a-constraint-after-a-member-that-leads-back-optionally",
+        "a-constraint-after-a-field-that-leads-back",
+        "not-a-json-shape-after-a-field-that-leads-back",
+        "a-constraint-on-a-field-that-leads-back",
+        "a-constraint-on-a-second-field-that-leads-back",
+        "a-documented-field-that-leads-back-before-a-constrained-one",
+        "a-constraint-after-a-field-that-leads-back-optionally",
         "a-typeddict-in-a-union",
         "a-typeddict-in-a-tuple",
-        "a-constraint-on-a-member-whose-typeddict-is-not-a-json-shape",
+        "a-constraint-on-a-field-whose-typeddict-is-not-a-json-shape",
         "self-referential-through-an-alias",
         "a-bound-on-a-tuple-that-leads-back",
-        "a-bound-on-a-tuple-that-leads-back-before-a-member-not-a-json-shape",
+        "a-bound-on-a-tuple-that-leads-back-before-a-field-not-a-json-shape",
         "self-referential-through-a-newtype",
         "an-alias-that-does-not-resolve",
         "self-referential-and-readable",
@@ -1552,7 +1552,7 @@ class _SelfReferentialReadable(TypedDict, closed=True):
 def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
     typeddict: type, unread: Unread | None
 ) -> None:
-    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, also through a union or a container, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first, as the checker meets it first. A TypedDict that holds itself, directly or through another, is named where its own members are unread, and a member that leads back, also through a union, is named only when nothing else is, unless metadata of its own, such as a constraint but not a `Doc`, is unread. A TypedDict the checker reads whole has no unread part."""
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, also through a union or a container, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A field that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a field and the TypedDict it holds have such a part, the one inside is named first, as the checker meets it first. A TypedDict that holds itself, directly or through another, is named where its own fields are unread, and a field that leads back, also through a union, is named only when nothing else is, unless metadata of its own, such as a constraint but not a `Doc`, is unread. A TypedDict the checker reads whole has no unread part."""
     assert unread_in(typeddict, no_leaf) == unread
 
 
@@ -1803,4 +1803,4 @@ class _Three(TypedDict, closed=True):
 
 
 def test_metadata_of_three_annotated_layers_is_kept_in_order() -> None:
-    assert typeddict_keys(_Three).members["x"] == (Annotated[int, "inner", "middle", "outer"], True)
+    assert typeddict_keys(_Three).fields["x"] == (Annotated[int, "inner", "middle", "outer"], True)

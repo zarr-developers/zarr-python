@@ -26,7 +26,7 @@ read a store that another writer made with a known writer bug, use
 They undo each bug with `repair_node_metadata_v3` or
 `repair_node_metadata_v2` before the strict read, and report what they
 changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
-readers read, except for the rules. One field on its own is read with
+readers read, except for the rules. One declaration on its own is read with
 `zarr_metadata.definition.resolve`.
 
 The model constructors `from_json` and `from_key_value` raise
@@ -36,7 +36,7 @@ store keys and undecodable bytes. The v3 constructors take the same
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
 scope and raises `MetadataValidationError` with every problem, so an
 invalid model is never built. `to_json` returns the document as written.
-`update` reads new members in the model's own scope. `with_context` and
+`update` reads new fields in the model's own scope. `with_context` and
 `refined_in` read the document in another scope. `to_key_value` writes
 the model as it is. A v3 group reads its `consolidated_metadata` as an
 envelope and does not read the documents it lists, because consolidated

@@ -13,11 +13,11 @@ import pytest
 
 from zarr_metadata._json import refine_json
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     EmptyConfiguration,
     Nested,
     ScopeConflictError,
-    UnclaimedField,
+    UnclaimedDeclaration,
 )
 from zarr_metadata.model import (
     UNSET,
@@ -97,15 +97,15 @@ def test_a_model_is_its_document_read_in_its_scope(
 def test_to_json_keeps_the_spelling_the_document_was_written_in(
     document: dict[str, Any], key: str, written: object
 ) -> None:
-    """`to_json` writes each field as the document wrote it, not in a reader's preferred spelling, because the model is the document."""
+    """`to_json` writes each declaration as the document wrote it, not in a reader's preferred spelling, because the model is the document."""
     assert ZarrV3ArrayMetadata(document).to_json()[key] == written
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """The typed members (fields as the scope read them, shape, fill value, attributes) are read-only views of the reading."""
+    """The typed attributes (declarations as the scope read them, shape, fill value, attributes) are read-only views of the reading."""
     model = ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": [1]}, "acme": 1})
-    assert isinstance(model.data_type, AcceptedField)
-    assert isinstance(model.codecs[0], AcceptedField)
+    assert isinstance(model.data_type, AcceptedDeclaration)
+    assert isinstance(model.codecs[0], AcceptedDeclaration)
     assert model.shape == (4,)
     assert model.fill_value == 0
     assert model.dimension_names is UNSET
@@ -117,7 +117,9 @@ def test_properties_are_what_the_reading_holds() -> None:
         model.attributes["b"] = 1  # pyright: ignore[reportIndexIssue]
     with pytest.raises(AttributeError):
         model.shape = (5,)  # pyright: ignore[reportAttributeAccessIssue]
-    assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()).data_type, UnclaimedField)
+    assert isinstance(
+        ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context()).data_type, UnclaimedDeclaration
+    )
 
 
 def test_a_reading_without_problems_builds_the_model_without_reading_again() -> None:
@@ -151,7 +153,7 @@ def test_error_a_document_with_a_problem_is_refused_at_construction() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: ZarrV3ArrayMetadata, right: ZarrV3ArrayMetadata, equal: bool
 ) -> None:
-    """Two models are equal when every field reads the same with the same definition and the rest is the same JSON. Spelling and unused definitions do not matter. A private definition under a core name does matter, and so does a name that one model reads and the other leaves unclaimed."""
+    """Two models are equal when every declaration reads the same with the same definition and the rest is the same JSON. Spelling and unused definitions do not matter. A private definition under a core name does matter, and so does a name that one model reads and the other leaves unclaimed."""
     assert (left == right) is equal
     if equal:
         assert hash(left) == hash(right)
@@ -214,7 +216,7 @@ SHARDED: dict[str, Any] = {
 
 
 @pytest.mark.parametrize(
-    ("model", "members", "expected"),
+    ("model", "fields", "expected"),
     [
         (
             ZarrV3ArrayMetadata(ARRAY),
@@ -246,19 +248,19 @@ SHARDED: dict[str, Any] = {
             ),
         ),
     ],
-    ids=["set", "unset", "update-keeps-scope", "members-together"],
+    ids=["set", "unset", "update-keeps-scope", "fields-together"],
 )
-def test_update_reads_new_members_in_the_models_own_scope(
-    model: ZarrV3ArrayMetadata, members: dict[str, Any], expected: ZarrV3ArrayMetadata
+def test_update_reads_new_fields_in_the_models_own_scope(
+    model: ZarrV3ArrayMetadata, fields: dict[str, Any], expected: ZarrV3ArrayMetadata
 ) -> None:
-    """`update` replaces the document's members with the given JSON members, removes a member given as `UNSET`, and reads the result in the model's own scope. So a model read in a private scope stays in that scope."""
-    updated = model.update(**members)
+    """`update` replaces the document's fields with the given JSON fields, removes a field given as `UNSET`, and reads the result in the model's own scope. So a model read in a private scope stays in that scope."""
+    updated = model.update(**fields)
     assert updated == expected
     assert updated.context == model.context
 
 
 def test_error_update_refuses_a_document_with_a_problem() -> None:
-    """`update` raises `MetadataValidationError` when the members make an invalid document, as the constructor does. Here the invalid document has two dimension names for one dimension."""
+    """`update` raises `MetadataValidationError` when the fields make an invalid document, as the constructor does. Here the invalid document has two dimension names for one dimension."""
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata(ARRAY).update(dimension_names=("x", "y"))
 
@@ -310,7 +312,7 @@ def test_with_context_reads_the_document_in_any_scope() -> None:
     private = model.with_context(PRIVATE)
     assert private.context == PRIVATE
     assert private.codecs[0].definition == MY_BYTES
-    assert isinstance(model.with_context(ZarrV3Context()).codecs[0], UnclaimedField)
+    assert isinstance(model.with_context(ZarrV3Context()).codecs[0], UnclaimedDeclaration)
     assert model.with_context(None).context == CORE_AND_EXTENSIONS
 
 
@@ -353,16 +355,16 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
         "loss",
         "equal",
         "conflict",
-        "other-members-differ",
+        "other-fields-differ",
         "fill-value-spelled-by-the-informed-side",
-        "gain-of-a-field-holding-fields",
+        "gain-of-a-declaration-holding-declarations",
         "fill-value-the-gained-definition-refuses",
     ],
 )
 def test_refines_orders_models_by_information(
     upper: ZarrV3ArrayMetadata, lower: ZarrV3ArrayMetadata, expected: bool
 ) -> None:
-    """A model refines another when every field refines its counterpart, and every other member is the same. Fields held inside a field count too, so gaining a shard's inner fields is a gain. The fill value is compared as the more informed data type spells it. A fill value that this data type's definition refuses is not a refinement, and does not raise an error."""
+    """A model refines another when every declaration refines its counterpart, and every other field is the same. Declarations held inside a declaration count too, so gaining a shard's inner declarations is a gain. The fill value is compared as the more informed data type spells it. A fill value that this data type's definition refuses is not a refinement, and does not raise an error."""
     assert upper.refines(lower) is expected
 
 
@@ -388,27 +390,27 @@ CONSOLIDATED: dict[str, Any] = {
 }
 
 
-MEMBER: dict[str, Any] = CONSOLIDATED["consolidated_metadata"]
+FIELD: dict[str, Any] = CONSOLIDATED["consolidated_metadata"]
 
 
 def test_a_group_holds_its_consolidated_metadata_as_written() -> None:
-    """A group model holds its `consolidated_metadata` member as written, refined and read-only, and does not read the documents it lists. `ZarrV3ConsolidatedMetadata` reads them: each becomes a model in its scope, and writes its document as written."""
+    """A group model holds its `consolidated_metadata` field as written, refined and read-only, and does not read the documents it lists. `ZarrV3ConsolidatedMetadata` reads them: each becomes a model in its scope, and writes its document as written."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
-    member = group.consolidated_metadata
-    assert member == refine_json(MEMBER)[0]
+    field = group.consolidated_metadata
+    assert field == refine_json(FIELD)[0]
     with pytest.raises(TypeError):
-        operator.setitem(cast("Any", member)["metadata"], "a", ARRAY)
+        operator.setitem(cast("Any", field)["metadata"], "a", ARRAY)
     assert group.to_json() == refine_json(CONSOLIDATED)[0]
     assert ZarrV3GroupMetadata(GROUP).consolidated_metadata is UNSET
-    held = ZarrV3ConsolidatedMetadata(member, context=group.context)
+    held = ZarrV3ConsolidatedMetadata(field, context=group.context)
     assert set(held.metadata) == {"a", "b", "b/c"}
     for node in held.metadata.values():
         assert node.context is held.context
     assert held.metadata["b/c"].to_json()["data_type"] == {"name": "uint8"}
 
 
-def test_consolidated_metadata_reads_each_nested_field_once() -> None:
-    """Reading a group calls no definition's rules for the documents its consolidated metadata lists. Reading the consolidated metadata calls them once per field, and builds the models from that read."""
+def test_consolidated_metadata_reads_each_nested_declaration_once() -> None:
+    """Reading a group calls no definition's rules for the documents its consolidated metadata lists. Reading the consolidated metadata calls them once per declaration, and builds the models from that read."""
     calls: list[int] = []
 
     def counted(configuration: object, nested: Nested) -> Iterator[ValidationProblem]:
@@ -420,13 +422,13 @@ def test_consolidated_metadata_reads_each_nested_field_once() -> None:
     )
     ZarrV3GroupMetadata(CONSOLIDATED, context=context)
     assert calls == []
-    ZarrV3ConsolidatedMetadata(MEMBER, context=context)
+    ZarrV3ConsolidatedMetadata(FIELD, context=context)
     assert len(calls) == 3  # `a`, `b/c`, and `c` in `b`'s own listing, each one bytes codec
 
 
 def _listing(a: dict[str, Any]) -> dict[str, Any]:
-    """`MEMBER` with `a` listed at `a`."""
-    return {**MEMBER, "metadata": {**MEMBER["metadata"], "a": a}}
+    """`FIELD` with `a` listed at `a`."""
+    return {**FIELD, "metadata": {**FIELD["metadata"], "a": a}}
 
 
 @pytest.mark.parametrize(
@@ -445,13 +447,13 @@ def _listing(a: dict[str, Any]) -> dict[str, Any]:
             False,
         ),
         (
-            ZarrV3ConsolidatedMetadata(MEMBER),
-            ZarrV3ConsolidatedMetadata(MEMBER, context=CORE),
+            ZarrV3ConsolidatedMetadata(FIELD),
+            ZarrV3ConsolidatedMetadata(FIELD, context=CORE),
             True,
         ),
         (
-            ZarrV3ConsolidatedMetadata(MEMBER),
-            ZarrV3ConsolidatedMetadata(MEMBER, context=PRIVATE),
+            ZarrV3ConsolidatedMetadata(FIELD),
+            ZarrV3ConsolidatedMetadata(FIELD, context=PRIVATE),
             False,
         ),
         (
@@ -475,7 +477,7 @@ def test_groups_and_consolidated_metadata_are_equal_by_what_they_read(
     right: ZarrV3GroupMetadata | ZarrV3ConsolidatedMetadata,
     equal: bool,
 ) -> None:
-    """A group is compared by its attributes, consolidated metadata and extra fields as JSON text, because it reads no field: no scope changes it, and a document listed in another spelling makes another group. Consolidated metadata is compared by what each document it lists means in its scope. Equal models have equal hashes."""
+    """A group is compared by its attributes, consolidated metadata and extra fields as JSON text, because it reads no declaration: no scope changes it, and a document listed in another spelling makes another group. Consolidated metadata is compared by what each document it lists means in its scope. Equal models have equal hashes."""
     assert (left == right) is equal
     if equal:
         assert hash(left) == hash(right)
@@ -490,12 +492,12 @@ def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[st
 
 
 def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
-    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group's fields are its extra fields: in a scope that claims nothing, `consolidated_metadata` is unclaimed, and `refined_in` and `with_context` move the group to a scope that reads it as the envelope, which is a gain."""
+    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group's declarations are its extra fields: in a scope that claims nothing, `consolidated_metadata` is unclaimed, and `refined_in` and `with_context` move the group to a scope that reads it as the envelope, which is a gain."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=ZarrV3Context())
     assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
-    assert isinstance(group.extra_fields["consolidated_metadata"], UnclaimedField)
+    assert isinstance(group.extra_fields["consolidated_metadata"], UnclaimedDeclaration)
     for moved in (group.refined_in(CORE), group.with_context(PRIVATE)):
-        assert isinstance(moved.extra_fields["consolidated_metadata"], AcceptedField)
+        assert isinstance(moved.extra_fields["consolidated_metadata"], AcceptedDeclaration)
         assert moved.consolidated_metadata == group.consolidated_metadata
         assert moved.refines(group)
         assert not group.refines(moved)
@@ -504,7 +506,7 @@ def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> N
 
 
 def test_error_group_refined_in_refuses_a_scope_that_loses_an_extra_field() -> None:
-    """A group read in `CORE` reads its `consolidated_metadata` as the envelope. A scope that leaves the member unclaimed would lose that reading, so `refined_in` raises `ScopeConflictError`, located at the member."""
+    """A group read in `CORE` reads its `consolidated_metadata` as the envelope. A scope that leaves the field unclaimed would lose that reading, so `refined_in` raises `ScopeConflictError`, located at the field."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
         group.refined_in(ZarrV3Context())
@@ -513,13 +515,13 @@ def test_error_group_refined_in_refuses_a_scope_that_loses_an_extra_field() -> N
 
 def test_consolidated_metadata_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
     """`refined_in` moves every document up the order. `with_context` reads every document in another scope."""
-    held = ZarrV3ConsolidatedMetadata(MEMBER, context=ZarrV3Context())
+    held = ZarrV3ConsolidatedMetadata(FIELD, context=ZarrV3Context())
     refined = held.refined_in(CORE)
     assert refined.refines(held)
     assert refined.context == CORE
     array = refined.metadata["a"]
     assert isinstance(array, ZarrV3ArrayMetadata)
-    assert isinstance(array.codecs[0], AcceptedField)
+    assert isinstance(array.codecs[0], AcceptedDeclaration)
     private_array = held.with_context(PRIVATE).metadata["a"]
     assert isinstance(private_array, ZarrV3ArrayMetadata)
     assert private_array.codecs[0].definition == MY_BYTES
@@ -527,7 +529,7 @@ def test_consolidated_metadata_with_context_and_refined_in_behave_as_the_arrays_
 
 def test_error_consolidated_metadata_refined_in_refuses_a_conflict() -> None:
     """`refined_in` raises `ScopeConflictError` for a scope that reads a name of a listed document by another definition, and locates each conflict under that document's path."""
-    held = ZarrV3ConsolidatedMetadata(MEMBER, context=CORE)
+    held = ZarrV3ConsolidatedMetadata(FIELD, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
         held.refined_in(PRIVATE)
     assert {conflict.loc for conflict in raised.value.conflicts} == {
@@ -537,13 +539,13 @@ def test_error_consolidated_metadata_refined_in_refuses_a_conflict() -> None:
 
 
 def test_consolidated_metadata_reads_on_its_own() -> None:
-    """`ZarrV3ConsolidatedMetadata(member, context)` reads a member as written, or as a group holds it, with each document as a model in that scope. `read_consolidated_metadata_v3` returns the reading of the same model."""
-    held = ZarrV3ConsolidatedMetadata(MEMBER, context=CORE)
+    """`ZarrV3ConsolidatedMetadata(field, context)` reads a field as written, or as a group holds it, with each document as a model in that scope. `read_consolidated_metadata_v3` returns the reading of the same model."""
+    held = ZarrV3ConsolidatedMetadata(FIELD, context=CORE)
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
     assert held == ZarrV3ConsolidatedMetadata(group.consolidated_metadata, context=CORE)
-    assert held.to_json() == refine_json(MEMBER)[0]
-    assert ZarrV3ConsolidatedMetadata.from_json(MEMBER) == ZarrV3ConsolidatedMetadata(MEMBER)
-    reading = read_consolidated_metadata_v3(MEMBER, context=CORE)
+    assert held.to_json() == refine_json(FIELD)[0]
+    assert ZarrV3ConsolidatedMetadata.from_json(FIELD) == ZarrV3ConsolidatedMetadata(FIELD)
+    reading = read_consolidated_metadata_v3(FIELD, context=CORE)
     assert reading.problems == ()
     assert reading.metadata == held
     assert held.reading.metadata is held
@@ -551,17 +553,17 @@ def test_consolidated_metadata_reads_on_its_own() -> None:
 
 def test_error_consolidated_metadata_with_a_problem_is_refused_at_the_documents_path() -> None:
     """A problem in a listed document is reported as a problem of the consolidated metadata, located under `metadata.<path>`. `read_consolidated_metadata_v3` returns the same problems and no model."""
-    member = {**MEMBER, "metadata": {"a": {**ARRAY, "shape": [-1]}}}
+    field = {**FIELD, "metadata": {"a": {**ARRAY, "shape": [-1]}}}
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3ConsolidatedMetadata(member)
+        ZarrV3ConsolidatedMetadata(field)
     assert [problem.loc for problem in raised.value.problems] == [("metadata", "a", "shape")]
-    reading = read_consolidated_metadata_v3(member)
+    reading = read_consolidated_metadata_v3(field)
     assert reading.problems == raised.value.problems
     assert reading.metadata is None
 
 
-def test_the_held_field_machinery_is_gone() -> None:
-    """A v3 model is built only by reading its document. So nothing in the package accepts fields that were already read, or re-reads a model in an empty scope. `NO_SCOPE`, `overlapping` and `held` are removed."""
+def test_the_held_declaration_machinery_is_gone() -> None:
+    """A v3 model is built only by reading its document. So nothing in the package accepts declarations that were already read, or re-reads a model in an empty scope. `NO_SCOPE`, `overlapping` and `held` are removed."""
     import inspect
 
     import zarr_metadata.model._array_v3 as validation
@@ -580,7 +582,7 @@ def test_error_refined_in_refuses_a_gain_that_surfaces_a_problem() -> None:
 
 
 def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
-    """`refined_in` reports each conflict with the field's location in the document, the same way a problem is located. For example, a loss of `bytes` is reported at `codecs.0`, including inside the shard."""
+    """`refined_in` reports each conflict with the declaration's location in the document, the same way a problem is located. For example, a loss of `bytes` is reported at `codecs.0`, including inside the shard."""
     model = ZarrV3ArrayMetadata(SHARDED, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
         model.refined_in(ZarrV3Context())
@@ -598,8 +600,8 @@ def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
 @pytest.mark.parametrize(
     "build",
     [
-        lambda: ZarrV3ConsolidatedMetadata(MEMBER, context=CORE_AND_EXTENSIONS),
-        lambda: read_consolidated_metadata_v3(MEMBER, context=CORE_AND_EXTENSIONS).metadata,
+        lambda: ZarrV3ConsolidatedMetadata(FIELD, context=CORE_AND_EXTENSIONS),
+        lambda: read_consolidated_metadata_v3(FIELD, context=CORE_AND_EXTENSIONS).metadata,
     ],
     ids=["constructor", "reader"],
 )
@@ -627,7 +629,7 @@ def test_with_context_moves_every_listed_model_without_reading_again(
 
 def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
     """`refines` on consolidated metadata returns False for an object that is not consolidated metadata, as it does for arrays and groups, rather than raising."""
-    held = ZarrV3ConsolidatedMetadata(MEMBER)
+    held = ZarrV3ConsolidatedMetadata(FIELD)
     assert held.refines(cast("Any", ZarrV3GroupMetadata(GROUP))) is False
 
 
@@ -675,10 +677,10 @@ def test_a_models_views_cannot_be_changed_in_place(
         read_group_metadata_v3(GROUP),
         read_group_metadata_v3(CONSOLIDATED),
         read_group_metadata_v3({**GROUP, "attributes": 5}),
-        read_consolidated_metadata_v3(MEMBER),
-        read_consolidated_metadata_v3({**MEMBER, "kind": "sidecar"}),
+        read_consolidated_metadata_v3(FIELD),
+        read_consolidated_metadata_v3({**FIELD, "kind": "sidecar"}),
     ],
-    ids=["group", "consolidated", "group-problem", "member", "member-problem"],
+    ids=["group", "consolidated", "group-problem", "field", "field-problem"],
 )
 def test_a_group_or_consolidated_reading_pickles_and_copies(
     reading: ZarrV3GroupMetadataReading | ZarrV3ConsolidatedMetadataReading,
@@ -700,12 +702,12 @@ def test_an_array_reading_pickles_through_its_model() -> None:
         assert again.metadata.reading is again
 
 
-def test_error_a_models_fields_cannot_be_changed_in_place() -> None:
-    """The fields a model returns (a codec's configuration, the fields a shard holds) are read-only, so `codecs ==` and `refines` cannot become inconsistent with `==`."""
+def test_error_a_models_declarations_cannot_be_changed_in_place() -> None:
+    """The declarations a model returns (a codec's configuration, the declarations a shard holds) are read-only, so `codecs ==` and `refines` cannot become inconsistent with `==`."""
     model = ZarrV3ArrayMetadata(ARRAY)
     same = ZarrV3ArrayMetadata(ARRAY)
     codec = model.codecs[0]
-    assert isinstance(codec, AcceptedField)
+    assert isinstance(codec, AcceptedDeclaration)
     with pytest.raises(TypeError):
         codec.configuration["endian"] = "big"  # pyright: ignore[reportIndexIssue]
     assert model.codecs == same.codecs

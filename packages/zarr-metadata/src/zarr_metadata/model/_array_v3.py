@@ -30,20 +30,20 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._context import disagreements, scoped
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Definition,
-    ResolvedField,
-    UnclaimedField,
-    field_key,
-    field_kind,
-    fields_of,
+    ResolvedDeclaration,
+    UnclaimedDeclaration,
+    declaration_key,
+    declaration_kind,
+    declarations_of,
     fill_value_problems,
     held,
     resolve_refined,
     spelled_canonically,
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
-from zarr_metadata.definition._scope import refines as refines_field
+from zarr_metadata.definition._scope import refines as refines_declaration
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
@@ -51,14 +51,14 @@ from zarr_metadata.model._shared import (
     check_literal,
     dimension_lengths,
     dump_store_json,
+    field_changes,
     load_store_json,
     located_conflicts,
-    member_changes,
     missing_keys,
     reading_of,
-    unclaimed_fields_of,
+    unclaimed_declarations_of,
 )
-from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import ZarrV3DeclarationJSON, ZarrV3ExtensionField
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
@@ -87,19 +87,19 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataStoreKey
 
 
-# The members a v3 array document must have. The members the spec defines
-# are `ArrayExtraFieldDefinition.spec_members`; any other is an extra field.
+# The fields a v3 array document must have. The fields the spec defines
+# are `ArrayExtraFieldDefinition.spec_fields`; any other is an extra field.
 _ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3ArrayMetadataJSON.__required_keys__
 )
 
 
-def members_past_the_levels(
+def fields_past_the_levels(
     doc: Mapping[object, object], at: Loc
 ) -> dict[object, ValidationProblem]:
-    """Each member of `doc` (a document located at `at`) that is a container nested deeper than a reader walks, mapped to its problem, located in the document.
+    """Each field of `doc` (a document located at `at`) that is a container nested deeper than a reader walks, mapped to its problem, located in the document.
 
-    A reader reports these members and does not walk into them. This
+    A reader reports these fields and does not walk into them. This
     matches what `refine_json` would report for the whole document: a
     document one level before the depth cap can hold scalars, and nothing
     else.
@@ -113,26 +113,27 @@ def members_past_the_levels(
     return past
 
 
-_MEMBERS_V3: Final = typeddict_keys(ZarrV3ArrayMetadataJSON).members
+_FIELDS_V3: Final = typeddict_keys(ZarrV3ArrayMetadataJSON).fields
 
 
 _EXTENSION_POINTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tuple(
     (key, kind)
-    for key, (annotation, _) in _MEMBERS_V3.items()
-    if (kind := field_kind(annotation)) is not None
+    for key, (annotation, _) in _FIELDS_V3.items()
+    if (kind := declaration_kind(annotation)) is not None
 )
-"""The single extension points of a v3 array document, and the kind each is read as: each member that the TypedDict annotates with a field alias."""
+"""The single extension points of a v3 array document, and the kind each is read as: each field that the TypedDict annotates with a declaration alias."""
 
 
 _EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tuple(
     (key, kind)
-    for key, (annotation, _) in _MEMBERS_V3.items()
-    if get_origin(annotation) is tuple and (kind := field_kind(get_args(annotation)[0])) is not None
+    for key, (annotation, _) in _FIELDS_V3.items()
+    if get_origin(annotation) is tuple
+    and (kind := declaration_kind(get_args(annotation)[0])) is not None
 )
-"""The lists of extension points of a v3 array document, and the kind each entry is read as: each member that the TypedDict annotates as a tuple of a field alias."""
+"""The lists of extension points of a v3 array document, and the kind each entry is read as: each field that the TypedDict annotates as a tuple of a declaration alias."""
 
 
-def no_extra_fields() -> Mapping[str, ResolvedField[Any]]:
+def no_extra_fields() -> Mapping[str, ResolvedDeclaration[Any]]:
     """The extra fields of a reading of a document that has none."""
     return MappingProxyType({})
 
@@ -141,30 +142,30 @@ def no_extra_fields() -> Mapping[str, ResolvedField[Any]]:
 class ZarrV3ArrayMetadataReading:
     """A v3 array document as a scope read it, whatever it holds: each extension point, its codecs as a pipeline, every problem, and the model when there are no problems.
 
-    A field the document does not have is `UNSET`. A list of fields that
+    A declaration the document does not have is `UNSET`. A list of declarations that
     the document does not have as a list is empty.
     """
 
-    data_type: ResolvedField[DataTypeDefinition[Any]] | UNSET = UNSET
+    data_type: ResolvedDeclaration[DataTypeDefinition[Any]] | UNSET = UNSET
     """The data type, as the scope read it."""
-    chunk_grid: ResolvedField[ChunkGridDefinition[Any]] | UNSET = UNSET
+    chunk_grid: ResolvedDeclaration[ChunkGridDefinition[Any]] | UNSET = UNSET
     """The chunk grid, as the scope read it."""
-    chunk_key_encoding: ResolvedField[ChunkKeyEncodingDefinition[Any]] | UNSET = UNSET
+    chunk_key_encoding: ResolvedDeclaration[ChunkKeyEncodingDefinition[Any]] | UNSET = UNSET
     """The chunk key encoding, as the scope read it."""
     chunk: Chunk = dataclasses.field(default_factory=Chunk)
     """The chunks the first codec receives: the length of the grid's chunks along each axis of the shape, and the data type."""
     pipeline: tuple[Stage, ...] = ()
     """The codecs, read as a pipeline: each as the scope read it, with the chunk it receives."""
-    storage_transformers: tuple[ResolvedField[StorageTransformerDefinition[Any]], ...] = ()
+    storage_transformers: tuple[ResolvedDeclaration[StorageTransformerDefinition[Any]], ...] = ()
     """The storage transformers, each as the scope read it."""
-    extra_fields: Mapping[str, ResolvedField[ArrayExtraFieldDefinition[Any]]] = dataclasses.field(
-        default_factory=no_extra_fields
+    extra_fields: Mapping[str, ResolvedDeclaration[ArrayExtraFieldDefinition[Any]]] = (
+        dataclasses.field(default_factory=no_extra_fields)
     )
-    """Each member the spec does not define, as the scope read it, by key: an `UnclaimedField` when no definition in scope claims the key."""
+    """Each field the spec does not define, as the scope read it, by key: an `UnclaimedDeclaration` when no definition in scope claims the key."""
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not valid."""
     metadata: ZarrV3ArrayMetadata | None = None
-    """The document's model, which holds these fields, when there is no problem; None otherwise."""
+    """The document's model, which holds these declarations, when there is no problem; None otherwise."""
 
     def __reduce__(self) -> str | tuple[object, ...]:
         # A reading that holds a model pickles and copies the same way the
@@ -177,29 +178,29 @@ class ZarrV3ArrayMetadataReading:
         values = {item.name: getattr(self, item.name) for item in dataclasses.fields(self)}
         return (_array_reading, ({**values, "extra_fields": dict(self.extra_fields)},))
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field in the document, as the scope read it, with its location in the document.
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Each declaration in the document, as the scope read it, with its location in the document.
 
         The order is: the extension points, then each codec and storage
         transformer at its index, then each extra field at its key. Each is
-        followed by the fields nested in it, as `fields_of` returns them: a
+        followed by the declarations nested in it, as `declarations_of` returns them: a
         shard's codecs, or a struct's field types. `with_problems` returns
-        each field with its problems.
+        each declaration with its problems.
         """
-        own: tuple[tuple[str, ResolvedField[Any] | UNSET], ...] = (
+        own: tuple[tuple[str, ResolvedDeclaration[Any] | UNSET], ...] = (
             ("data_type", self.data_type),
             ("chunk_grid", self.chunk_grid),
             ("chunk_key_encoding", self.chunk_key_encoding),
         )
-        for key, field in own:
-            if field is not UNSET:
-                yield from fields_of(field, (key,))
+        for key, declaration in own:
+            if declaration is not UNSET:
+                yield from declarations_of(declaration, (key,))
         for index, stage in enumerate(self.pipeline):
-            yield from fields_of(stage.codec, ("codecs", index))
+            yield from declarations_of(stage.codec, ("codecs", index))
         for index, transformer in enumerate(self.storage_transformers):
-            yield from fields_of(transformer, ("storage_transformers", index))
+            yield from declarations_of(transformer, ("storage_transformers", index))
         for key, extra in self.extra_fields.items():
-            yield from fields_of(extra, (key,))
+            yield from declarations_of(extra, (key,))
 
 
 def _array_reading(values: dict[str, Any]) -> ZarrV3ArrayMetadataReading:
@@ -209,8 +210,8 @@ def _array_reading(values: dict[str, Any]) -> ZarrV3ArrayMetadataReading:
 
 
 @dataclass(frozen=True, slots=True)
-class ArrayMembersV3:
-    """The members other than fields of a v3 array document that a read found no problems with, refined as the model holds them."""
+class ArrayFieldsV3:
+    """The fields other than declarations of a v3 array document that a read found no problems with, refined as the model holds them."""
 
     shape: tuple[int, ...]
     fill_value: JSONValue
@@ -218,16 +219,16 @@ class ArrayMembersV3:
     attributes: dict[str, JSONValue]
     extra_fields: dict[str, JSONValue]
     document: dict[str, JSONValue]
-    """The refined document that the model holds: each member as the read refined it, in the order the document writes them."""
+    """The refined document that the model holds: each field as the read refined it, in the order the document writes them."""
 
 
 def read_array_v3(
     value: object, context: ZarrV3Context, *, at: Loc = ()
-) -> tuple[ZarrV3ArrayMetadataReading, ArrayMembersV3 | None]:
-    """Read `value`, a v3 array document, in `context`, without building its model. Return the reading and the other members, refined; the members are None when the document has a problem.
+) -> tuple[ZarrV3ArrayMetadataReading, ArrayFieldsV3 | None]:
+    """Read `value`, a v3 array document, in `context`, without building its model. Return the reading and the other fields, refined; the fields are None when the document has a problem.
 
     `read_array_metadata_v3` builds the model from these two results. A
-    field object in the document (an `AcceptedField` built by hand) is
+    declaration object in the document (an `AcceptedDeclaration` built by hand) is
     not JSON, and is refused as such. `at` is the location of this
     document within the input document; a document in consolidated
     metadata is three levels below its group's document. Nesting depth
@@ -238,7 +239,7 @@ def read_array_v3(
         return ZarrV3ArrayMetadataReading(problems=not_an_object(value)), None
     doc = value
     problems: list[ValidationProblem] = list(missing_keys(_ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
-    past = members_past_the_levels(doc, at)
+    past = fields_past_the_levels(doc, at)
     problems.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
     extra_fields, extra, found = read_extra_fields_v3(doc, ArrayExtraFieldDefinition, context, at)
@@ -258,7 +259,7 @@ def read_array_v3(
     # `context` that claims the name. `must_understand: false` keeps its
     # meaning where it has one: on an unknown top-level extension *field*,
     # which a reader really can skip.
-    # Each member is refined once, here, and the refined value is kept.
+    # Each field is refined once, here, and the refined value is kept.
     # The document the model holds is built from these values, so nothing
     # is walked twice.
     refined: dict[str, JSONValue] = {
@@ -267,7 +268,7 @@ def read_array_v3(
         "node_type": "array",
         "shape": shape,
     }
-    read: dict[str, ResolvedField[Any]] = {}
+    read: dict[str, ResolvedDeclaration[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
             refined[key], found = refine_json(doc[key], (*at, key))
@@ -292,7 +293,7 @@ def read_array_v3(
     if "chunk_grid" in read and shape is not None:
         lengths, found = chunk_grid_lengths(read["chunk_grid"], shape, ("chunk_grid",))
         problems.extend(found)
-    listed: dict[str, list[ResolvedField[Any]]] = {}
+    listed: dict[str, list[ResolvedDeclaration[Any]]] = {}
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
@@ -327,7 +328,7 @@ def read_array_v3(
     if "dimension_names" in doc:
         # Simple typed sequences (dimension_names, shape, chunks) report a single
         # field-level loc, not per-bad-item locs; per-index locs are reserved for
-        # the metadata-field lists (codecs, storage_transformers).
+        # the declaration lists (codecs, storage_transformers).
         names = doc["dimension_names"]
         if not is_array(names):
             problems.append(
@@ -365,7 +366,7 @@ def read_array_v3(
         # each string is as JSON writes it.
         dimension_names = cast("tuple[str | None, ...]", refine_json(doc["dimension_names"])[0])
         refined["dimension_names"] = dimension_names
-    members = ArrayMembersV3(
+    fields = ArrayFieldsV3(
         shape=shape,
         fill_value=fill_value,
         dimension_names=dimension_names,
@@ -373,7 +374,7 @@ def read_array_v3(
         extra_fields=extra_fields,
         document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
     )
-    return reading, members
+    return reading, fields
 
 
 def read_extra_fields_v3(
@@ -381,19 +382,21 @@ def read_extra_fields_v3(
     kind: type[ExtraFieldDefinition[Any]],
     context: ZarrV3Context,
     at: Loc,
-) -> tuple[dict[str, JSONValue], dict[str, ResolvedField[Any]], tuple[ValidationProblem, ...]]:
-    """Read each member of `doc` (a document at `at`) that is not one of the `spec_members` of `kind` as an extra field of `kind`.
+) -> tuple[
+    dict[str, JSONValue], dict[str, ResolvedDeclaration[Any]], tuple[ValidationProblem, ...]
+]:
+    """Read each field of `doc` (a document at `at`) that is not one of the `spec_fields` of `kind` as an extra field of `kind`.
 
-    Returns three values: each member that is JSON, refined; each member
+    Returns three values: each field that is JSON, refined; each field
     as the scope read it, by key; and every problem, located in `doc`. A
-    member that a definition in `context` claims is read by that
+    field that a definition in `context` claims is read by that
     definition, and must be an object whose numbers are finite, unless the
-    definition reads user data. Any other member is not read: it is an
-    `UnclaimedField`, and, like attributes, need only be JSON as Python's
+    definition reads user data. Any other field is not read: it is an
+    `UnclaimedDeclaration`, and, like attributes, need only be JSON as Python's
     `json` module reads it.
     """
     values: dict[str, JSONValue] = {}
-    fields: dict[str, ResolvedField[Any]] = {}
+    declarations: dict[str, ResolvedDeclaration[Any]] = {}
     problems: list[ValidationProblem] = []
     for key, value in doc.items():
         if not isinstance(key, str):
@@ -401,23 +404,23 @@ def read_extra_fields_v3(
                 ValidationProblem((), f"non-string top-level key {shown_key(key)}", "invalid_type")
             )
             continue
-        if key in kind.spec_members:
+        if key in kind.spec_fields:
             continue
-        member = {key: value}
+        field = {key: value}
         definition = context.claimant(kind, key)
-        refined, found = kind._refined(member, (*at, key), definition)  # pyright: ignore[reportPrivateUsage]
+        refined, found = kind._refined(field, (*at, key), definition)  # pyright: ignore[reportPrivateUsage]
         if isinstance(refined, dict):
             values[key] = refined[key]
             if definition is None:
-                fields[key] = UnclaimedField(json=refined, name=key, read_as=kind)
+                declarations[key] = UnclaimedDeclaration(json=refined, name=key, read_as=kind)
                 continue
-        fields[key], found = resolve_refined(member, refined, found, kind, context, (*at, key))
+        declarations[key], found = resolve_refined(field, refined, found, kind, context, (*at, key))
         problems.extend(within(found, at))
-    return values, fields, tuple(problems)
+    return values, declarations, tuple(problems)
 
 
 def must_understand_subset(
-    fields: Mapping[str, AcceptedField[Any] | UnclaimedField],
+    declarations: Mapping[str, AcceptedDeclaration[Any] | UnclaimedDeclaration],
     values: Mapping[str, ZarrV3ExtensionField],
 ) -> dict[str, ZarrV3ExtensionField]:
     """The extra fields, by key and as written, that no definition in scope reads and that a reader is obligated to understand.
@@ -433,12 +436,12 @@ def must_understand_subset(
     """
     return {
         name: values[name]
-        for name, field in fields.items()
-        if isinstance(field, UnclaimedField) and not _waived(values[name])
+        for name, declaration in declarations.items()
+        if isinstance(declaration, UnclaimedDeclaration) and not _waived(values[name])
     }
 
 
-def waived_members(values: Mapping[str, ZarrV3ExtensionField]) -> list[str]:
+def waived_fields(values: Mapping[str, ZarrV3ExtensionField]) -> list[str]:
     """The keys of the extra fields in `values` (by key, as written) that say `"must_understand": false`, which a reader may ignore."""
     return [key for key, value in values.items() if _waived(value)]
 
@@ -449,23 +452,23 @@ def _waived(value: ZarrV3ExtensionField) -> bool:
 
 
 class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV3ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+    """The fields `ZarrV3ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a field that a document may omit.
 
-    The members a document may omit are `dimension_names`, `attributes`,
-    `storage_transformers`, and any member the spec does not define. Those
+    The fields a document may omit are `dimension_names`, `attributes`,
+    `storage_transformers`, and any field the spec does not define. Those
     go in `extra_fields`, by key: each one given is set, or removed when
-    given as `UNSET`, and the others are kept. A member is given by its own
+    given as `UNSET`, and the others are kept. A field is given by its own
     name only when the spec defines it, so a misspelled name is refused.
     """
 
     shape: tuple[int, ...]
-    data_type: ZarrV3MetadataFieldJSON
-    chunk_grid: ZarrV3MetadataFieldJSON
-    chunk_key_encoding: ZarrV3MetadataFieldJSON
+    data_type: ZarrV3DeclarationJSON
+    chunk_grid: ZarrV3DeclarationJSON
+    chunk_key_encoding: ZarrV3DeclarationJSON
     fill_value: JSONValue
-    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    codecs: tuple[ZarrV3DeclarationJSON, ...]
     attributes: Mapping[str, JSONValue] | UNSET
-    storage_transformers: tuple[ZarrV3MetadataFieldJSON, ...] | UNSET
+    storage_transformers: tuple[ZarrV3DeclarationJSON, ...] | UNSET
     dimension_names: tuple[str | None, ...] | UNSET
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
 
@@ -475,35 +478,35 @@ class ZarrV3ArrayMetadata(Keyed):
 
     The model is this pair. `to_json` returns the document as written,
     refined (arrays as tuples, string keys), and `context` is the scope.
-    Every typed member is a view of the reading of the document in the
+    Every typed attribute is a view of the reading of the document in the
     scope. `data_type`, `chunk_grid`, `chunk_key_encoding`, and each codec
-    and storage transformer are fields as the scope read them: an
-    `AcceptedField` (read by the definition that claims its name) or an
-    `UnclaimedField`, and so is each member in `extra_fields`, which the
+    and storage transformer are declarations as the scope read them: an
+    `AcceptedDeclaration` (read by the definition that claims its name) or an
+    `UnclaimedDeclaration`, and so is each field in `extra_fields`, which the
     spec does not define. `shape`, `fill_value`, `dimension_names` and
     `attributes` are the values the read refined. A
     model is only built by reading: the constructor reads `document` in
     `context` and raises `MetadataValidationError` with every problem, so
     no model is invalid. Two models are equal when their documents mean
     the same thing in their scopes, as the model key defines. The scope
-    itself is not compared. `update` reads new members in the model's own
+    itself is not compared. `update` reads new fields in the model's own
     scope. `with_context` and `refined_in` read the document in another
     scope. A model pickles as its pair, provided the definitions in its
     scope can be pickled, which requires their functions to be defined at
     the top level of a module.
     """
 
-    __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
+    __slots__ = ("_context", "_document", "_fields", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS)
-        reading, members = read_array_v3(document, context)
-        if members is None:
+        reading, fields = read_array_v3(document, context)
+        if fields is None:
             raise MetadataValidationError(reading.problems)
-        self._adopt(members.document, context, reading, members)
+        self._adopt(fields.document, context, reading, fields)
 
     @classmethod
     def _of(
@@ -511,11 +514,11 @@ class ZarrV3ArrayMetadata(Keyed):
         document: dict[str, JSONValue],
         context: ZarrV3Context,
         reading: ZarrV3ArrayMetadataReading,
-        members: ArrayMembersV3,
+        fields: ArrayFieldsV3,
     ) -> ZarrV3ArrayMetadata:
         """Build a model of a document that a read found no problems with, holding that reading, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
         model = object.__new__(cls)
-        model._adopt(document, context, reading, members)
+        model._adopt(document, context, reading, fields)
         return model
 
     def _adopt(
@@ -523,19 +526,19 @@ class ZarrV3ArrayMetadata(Keyed):
         document: dict[str, JSONValue],
         context: ZarrV3Context,
         reading: ZarrV3ArrayMetadataReading,
-        members: ArrayMembersV3,
+        fields: ArrayFieldsV3,
     ) -> None:
         self._document = document
         self._context = context
         # The reading holds this model, in the form `read_array_metadata_v3`
         # returns it, no matter how the model was built.
         self._reading = dataclasses.replace(reading, metadata=self)
-        self._members = members
-        # The members the model exposes, read-only at every level.
+        self._fields = fields
+        # The fields the model exposes, read-only at every level.
         self._shown = (
-            frozen(members.fill_value),
-            frozen(members.attributes),
-            frozen(members.extra_fields),
+            frozen(fields.fill_value),
+            frozen(fields.attributes),
+            frozen(fields.extra_fields),
             MappingProxyType({key: held(extra) for key, extra in reading.extra_fields.items()}),
         )
 
@@ -543,12 +546,12 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV3Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `update` reads new fields in this scope."""
         return self._context
 
     @property
     def reading(self) -> ZarrV3ArrayMetadataReading:
-        """The document as the scope read it: each field, the pipeline, and the chunk each codec receives."""
+        """The document as the scope read it: each declaration, the pipeline, and the chunk each codec receives."""
         return self._reading
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
@@ -571,18 +574,18 @@ class ZarrV3ArrayMetadata(Keyed):
 
     def _key_of(self) -> tuple[object, ...]:
         """The key `==` and `hash` compare for a v3 array model: what its document means, as computed by `array_key_of`."""
-        return array_key_of(self._reading, self._members)
+        return array_key_of(self._reading, self._fields)
 
     def _plain_key(
-        self, data_type: AcceptedField[DataTypeDefinition[Any]] | UnclaimedField
+        self, data_type: AcceptedDeclaration[DataTypeDefinition[Any]] | UnclaimedDeclaration
     ) -> tuple[object, ...]:
-        """The members other than fields that `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
-        members = self._members
+        """The fields other than declarations that `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
+        fields = self._fields
         return (
-            members.shape,
-            json_text(spelled_canonically(data_type, members.fill_value)),
-            members.dimension_names,
-            json_text(members.attributes),
+            fields.shape,
+            json_text(spelled_canonically(data_type, fields.fill_value)),
+            fields.dimension_names,
+            json_text(fields.attributes),
         )
 
     def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, ZarrV3Context]]:
@@ -595,7 +598,7 @@ class ZarrV3ArrayMetadata(Keyed):
     @property
     def shape(self) -> tuple[int, ...]:
         """The array's shape."""
-        return self._members.shape
+        return self._fields.shape
 
     @property
     def fill_value(self) -> JSONValue:
@@ -605,7 +608,7 @@ class ZarrV3ArrayMetadata(Keyed):
     @property
     def dimension_names(self) -> tuple[str | None, ...] | UNSET:
         """The dimension names; `UNSET` when the document writes none."""
-        return self._members.dimension_names
+        return self._fields.dimension_names
 
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
@@ -615,27 +618,29 @@ class ZarrV3ArrayMetadata(Keyed):
     @property
     def extra_fields(
         self,
-    ) -> Mapping[str, AcceptedField[ArrayExtraFieldDefinition[Any]] | UnclaimedField]:
-        """Each member the spec does not define, by key, as the scope read it: an `AcceptedField` when a definition in scope claims the key, and an `UnclaimedField` otherwise."""
+    ) -> Mapping[str, AcceptedDeclaration[ArrayExtraFieldDefinition[Any]] | UnclaimedDeclaration]:
+        """Each field the spec does not define, by key, as the scope read it: an `AcceptedDeclaration` when a definition in scope claims the key, and an `UnclaimedDeclaration` otherwise."""
         return self._shown[3]
 
     @property
-    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims, at any depth, by its location in the document, except an extra member that says `"must_understand": false` and every field inside it, claimed or not, since a reader may ignore such a member whole.
+    def unclaimed_declarations(self) -> dict[Loc, UnclaimedDeclaration]:
+        """Every declaration nothing in scope claims, at any depth, by its location in the document, except an extra field that says `"must_understand": false` and every declaration inside it, claimed or not, since a reader may ignore such a field whole.
 
         This answers whether a reader can open the array: the spec requires
-        a reader to refuse a node with a field it does not understand, and
+        a reader to refuse a node with a declaration it does not understand, and
         the scope is what the reader understands. A codec inside a shard is
         located inside the shard's configuration. The model only reports
-        these fields; refusing to open is up to the reader.
+        these declarations; refusing to open is up to the reader.
         """
-        return unclaimed_fields_of(self._reading.fields(), waived_members(self._shown[2]))
+        return unclaimed_declarations_of(
+            self._reading.declarations(), waived_fields(self._shown[2])
+        )
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
         """The extra fields, by key and as written, that no definition in scope reads and that a reader is obligated to understand.
 
-        Each unclaimed member of `extra_fields` not explicitly waived with
+        Each unclaimed field of `extra_fields` not explicitly waived with
         `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). The scope is what
         the reader recognizes, so a compliant reader MUST fail to open the
         array when this is not empty. The model only reports these fields;
@@ -644,44 +649,48 @@ class ZarrV3ArrayMetadata(Keyed):
         return must_understand_subset(self.extra_fields, self._shown[2])
 
     @property
-    def data_type(self) -> AcceptedField[DataTypeDefinition[Any]] | UnclaimedField:
+    def data_type(self) -> AcceptedDeclaration[DataTypeDefinition[Any]] | UnclaimedDeclaration:
         """The data type, as the scope read it."""
         return held(self._reading.data_type)
 
     @property
-    def chunk_grid(self) -> AcceptedField[ChunkGridDefinition[Any]] | UnclaimedField:
+    def chunk_grid(self) -> AcceptedDeclaration[ChunkGridDefinition[Any]] | UnclaimedDeclaration:
         """The chunk grid, as the scope read it."""
         return held(self._reading.chunk_grid)
 
     @property
-    def chunk_key_encoding(self) -> AcceptedField[ChunkKeyEncodingDefinition[Any]] | UnclaimedField:
+    def chunk_key_encoding(
+        self,
+    ) -> AcceptedDeclaration[ChunkKeyEncodingDefinition[Any]] | UnclaimedDeclaration:
         """The chunk key encoding, as the scope read it."""
         return held(self._reading.chunk_key_encoding)
 
     @property
-    def codecs(self) -> tuple[AcceptedField[CodecDefinition[Any]] | UnclaimedField, ...]:
+    def codecs(
+        self,
+    ) -> tuple[AcceptedDeclaration[CodecDefinition[Any]] | UnclaimedDeclaration, ...]:
         """The codecs, each as the scope read it, in pipeline order."""
         return tuple(held(stage.codec) for stage in self._reading.pipeline)
 
     @property
     def storage_transformers(
         self,
-    ) -> tuple[AcceptedField[StorageTransformerDefinition[Any]] | UnclaimedField, ...]:
+    ) -> tuple[AcceptedDeclaration[StorageTransformerDefinition[Any]] | UnclaimedDeclaration, ...]:
         """The storage transformers, each as the scope read it."""
         return tuple(held(entry) for entry in self._reading.storage_transformers)
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
-        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
+    def update(self, **fields: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        """Return this model with `fields` (as JSON) replacing the document's fields, read in this model's own scope. A field set to `UNSET` is removed. A field the spec does not define is given in `extra_fields`.
 
-        Raises `TypeError` for a member the update does not take. Raises
+        Raises `TypeError` for a field the update does not take. Raises
         `MetadataValidationError` when the resulting document has a
-        problem. So members that depend on each other must be passed
+        problem. So fields that depend on each other must be passed
         together, for example a `shape` with a grid that fits it.
         """
-        changes = member_changes(
-            members, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
+        changes = field_changes(
+            fields, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_fields
         )
         document: dict[str, object] = {**self._document, **changes}
         for key, value in changes.items():
@@ -697,8 +706,8 @@ class ZarrV3ArrayMetadata(Keyed):
         every claim identically.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
-        if disagreements(context, claims_of(self._reading.fields())).agrees:
-            return self._of(self._document, context, self._reading, self._members)
+        if disagreements(context, claims_of(self._reading.declarations())).agrees:
+            return self._of(self._document, context, self._reading, self._fields)
         return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
@@ -714,13 +723,15 @@ class ZarrV3ArrayMetadata(Keyed):
         any scope.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
-        found = disagreements(context, claims_of(self._reading.fields()))
+        found = disagreements(context, claims_of(self._reading.declarations()))
         if len(found.conflicts) != 0:
-            raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
+            raise ScopeConflictError(
+                located_conflicts(self._reading.declarations(), found.conflicts)
+            )
         return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each field must refine its counterpart, in the order `refines` defines for fields (including the fields nested in each field). Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every other field must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(
@@ -737,9 +748,9 @@ class ZarrV3ArrayMetadata(Keyed):
             *zip(self.storage_transformers, other.storage_transformers, strict=True),
             *((self.extra_fields[key], other.extra_fields[key]) for key in self.extra_fields),
         )
-        if not all(refines_field(mine, theirs) for mine, theirs in pairs):
+        if not all(refines_declaration(mine, theirs) for mine, theirs in pairs):
             return False
-        if len(fill_value_problems(self.data_type, other._members.fill_value)) != 0:
+        if len(fill_value_problems(self.data_type, other._fields.fill_value)) != 0:
             return False
         return self._plain_key(self.data_type) == other._plain_key(self.data_type)
 
@@ -752,10 +763,10 @@ class ZarrV3ArrayMetadata(Keyed):
         context: ZarrV3Context | None = None,
         **overrides: Unpack[ZarrV3ArrayMetadataUpdate],
     ) -> ZarrV3ArrayMetadata:
-        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
+        """Return a scalar `uint8` array, with any document fields in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a field.
 
         Raises `MetadataValidationError` when the resulting document has a
-        problem. So members that depend on each other must be passed
+        problem. So fields that depend on each other must be passed
         together: a data type with a fill value of that type, or a grid
         with the shape it fits. The default codec is `bytes` with little
         `endian`, which accepts a data type of any fixed size. Overriding
@@ -767,8 +778,8 @@ class ZarrV3ArrayMetadata(Keyed):
         """
         # The grid is derived only from a valid shape. An invalid shape
         # derives no grid, and the read reports it.
-        changes = member_changes(
-            overrides, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
+        changes = field_changes(
+            overrides, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_fields
         )
         lengths, _ = dimension_lengths(changes, "shape")
         document: dict[str, object] = {
@@ -815,40 +826,38 @@ class ZarrV3ArrayMetadata(Keyed):
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
-def array_key_of(
-    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
-) -> tuple[object, ...]:
-    """A key for what a v3 array document means, from its `reading` and refined `members`. `==` and `hash` compare this key for the model, and two listings of one node are compared by it.
+def array_key_of(reading: ZarrV3ArrayMetadataReading, fields: ArrayFieldsV3) -> tuple[object, ...]:
+    """A key for what a v3 array document means, from its `reading` and refined `fields`. `==` and `hash` compare this key for the model, and two listings of one node are compared by it.
 
-    The key holds each field's `field_key`, and the fill value as JSON
+    The key holds each declaration's `declaration_key`, and the fill value as JSON
     text: in its canonical spelling when a definition in scope read the
-    data type, and as written otherwise. Every other member is included
-    as it is, with JSON members as text.
+    data type, and as written otherwise. Every other field is included
+    as it is, with JSON fields as text.
     """
     data_type = held(reading.data_type)
     fill_value = (
-        spelled_canonically(data_type, members.fill_value)
-        if isinstance(data_type, AcceptedField)
-        else members.fill_value
+        spelled_canonically(data_type, fields.fill_value)
+        if isinstance(data_type, AcceptedDeclaration)
+        else fields.fill_value
     )
     return (
-        members.shape,
+        fields.shape,
         json_text(fill_value),
-        field_key(data_type),
-        field_key(held(reading.chunk_grid)),
-        tuple(field_key(held(stage.codec)) for stage in reading.pipeline),
-        field_key(held(reading.chunk_key_encoding)),
-        members.dimension_names,
-        json_text(members.attributes),
-        tuple(field_key(held(entry)) for entry in reading.storage_transformers),
+        declaration_key(data_type),
+        declaration_key(held(reading.chunk_grid)),
+        tuple(declaration_key(held(stage.codec)) for stage in reading.pipeline),
+        declaration_key(held(reading.chunk_key_encoding)),
+        fields.dimension_names,
+        json_text(fields.attributes),
+        tuple(declaration_key(held(entry)) for entry in reading.storage_transformers),
         extra_fields_key(reading.extra_fields),
     )
 
 
-def extra_fields_key(extra_fields: Mapping[str, ResolvedField[Any]]) -> tuple[object, ...]:
-    """A key for what a document's extra fields mean: each key with its field's `field_key`, sorted by key."""
+def extra_fields_key(extra_fields: Mapping[str, ResolvedDeclaration[Any]]) -> tuple[object, ...]:
+    """A key for what a document's extra fields mean: each key with its declaration's `declaration_key`, sorted by key."""
     return tuple(
-        (key, field_key(extra))
+        (key, declaration_key(extra))
         for key, extra in sorted(extra_fields.items(), key=lambda item: item[0])
     )
 
@@ -859,8 +868,8 @@ def read_array_metadata_v3(
     """Read `value`, a v3 array document, in `context`, whatever it holds.
 
     The result holds everything the read finds: each extension point as
-    `context` read it (an `AcceptedField` read by the definition that
-    claims its name, an `UnclaimedField`, or a `RefusedField`), the chunks
+    `context` read it (an `AcceptedDeclaration` read by the definition that
+    claims its name, an `UnclaimedDeclaration`, or a `RefusedDeclaration`), the chunks
     the codecs receive, each codec with the chunk it receives, every
     problem, and, when there are no problems, the document's model, which
     holds the same reading.
@@ -884,13 +893,13 @@ def read_array_metadata_v3(
     declare `must_understand: false`; the model reports these as
     `must_understand_fields`.
 
-    To apply a policy over the fields (for example, allow only the core
-    spec's fields), iterate over the reading's `fields()`. A value that
-    is not an object has no fields.
+    To apply a policy over the declarations (for example, allow only the core
+    spec's declarations), iterate over the reading's `declarations()`. A value that
+    is not an object has no declarations.
     """
     context = scoped(context, CORE_AND_EXTENSIONS)
-    reading, members = read_array_v3(value, context)
-    if members is None:
+    reading, fields = read_array_v3(value, context)
+    if fields is None:
         return reading
-    model = ZarrV3ArrayMetadata._of(members.document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV3ArrayMetadata._of(fields.document, context, reading, fields)  # pyright: ignore[reportPrivateUsage]
     return model.reading

@@ -12,12 +12,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
 )
 from zarr_metadata.v3._common import (
-    ZarrV3CodecField,
-    ZarrV3StaticCodecField,
+    ZarrV3CodecDeclaration,
+    ZarrV3StaticCodecDeclaration,
 )
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -60,8 +60,8 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
-    codecs: tuple[ZarrV3CodecField, ...]
-    index_codecs: tuple[ZarrV3StaticCodecField, ...]
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    index_codecs: tuple[ZarrV3StaticCodecDeclaration, ...]
     index_location: NotRequired[ShardingIndexLocation]
 
 
@@ -80,7 +80,7 @@ The configuration has multiple required keys (`chunk_shape`, `codecs`,
 `index_codecs`), so only the object form is valid; the short-hand-name
 form is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L129-L138 (`chunk_shape`)
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (`codecs` and `index_codecs`, the members the spec marks required)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (`codecs` and `index_codecs`, the fields the spec marks required)
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
@@ -122,7 +122,7 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = AcceptedField(
+_UINT64: Final = AcceptedDeclaration(
     json=UINT64_DATA_TYPE_NAME,
     name=UINT64_DATA_TYPE_NAME,
     definition=UINT64_DATA_TYPE,
@@ -200,7 +200,7 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
 )
 """The `sharding_indexed` codec.
 
-Its two pipelines are nested fields. Each codec in them is read in the
+Its two pipelines are nested declarations. Each codec in them is read in the
 same scope as the shard, and each pipeline is read as a pipeline: the
 inner codecs receive the inner chunks, and the index codecs receive the
 shard index.

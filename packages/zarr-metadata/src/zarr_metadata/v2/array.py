@@ -7,7 +7,7 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2._field_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
+from zarr_metadata.v2._declaration_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
 
 ZarrV2ArrayOrder = Literal["C", "F"]
 """Literal type of permitted values for the `order` field of v2 array metadata.
@@ -69,7 +69,7 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
 
     The type is open: other keys "SHOULD NOT be present ... and SHOULD be ignored by
     implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), and each
-    other member is a JSON value.
+    other field is a JSON value.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """

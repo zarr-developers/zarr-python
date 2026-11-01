@@ -1,7 +1,7 @@
 """How a data type's values are stored: in single bytes, in several bytes each, or each in as many bytes as it needs.
 
 Each data type's definition declares its storage. `storage_of` returns
-the storage of a data type field that a scope read. The `bytes` codec
+the storage of a data type declaration that a scope read. The `bytes` codec
 asks for the storage of the data type it receives, and a struct asks for
 the storage of each of its fields.
 """
