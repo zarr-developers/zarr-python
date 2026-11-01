@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import bisect
+import itertools
 import math
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
@@ -25,6 +27,8 @@ from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
+
+    import numpy.typing as npt
 
     from zarr.core.metadata.v3 import ChunkGridMetadata
 
@@ -370,15 +374,160 @@ def parse_chunk_shape(data: object) -> tuple[int, ...]:
     raise TypeError(f"A chunk shape must be an iterable of chunk edge lengths, got {data!r}")
 
 
-def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
-    """Expand a mixed array of bare integers and RLE pairs, the edges of dimension
-    `axis` (named in errors, when given).
+class RunLengthEdges:
+    """The chunk edge lengths of one dimension, stored run-length encoded.
 
-    Per the rectilinear chunk grid spec, each element can be:
-    - a bare integer (an explicit edge length)
-    - a two-element array ``[value, count]`` (run-length encoded)
+    The edges are held as `(size, count)` runs, with adjacent runs of the same size
+    merged, so construction, lookups and prefix sums cost time and memory in the number
+    of runs, not in the number of edges: `RunLengthEdges([(1, 2**40)])` is one run.
+
+    This is deliberately not a sequence: there is no `len`, indexing or iteration, so
+    nothing visits every edge by accident. `size_of`, `offset_of` and `index_at` answer
+    per-edge questions from the runs, and `expand` is the one method that yields every
+    edge.
+
+    Sizes are not checked here: what a valid edge length is, and how to report an invalid
+    one, is up to the caller (see `parse_chunk_edge`). Each count must be at least 1.
+
+    Two instances are equal if they encode the same edges.
     """
-    result: list[int] = []
+
+    __slots__ = ("_index_stops", "_lookup_tables", "_offset_stops", "counts", "sizes")
+
+    sizes: tuple[int, ...]
+    """The edge length of each run."""
+    counts: tuple[int, ...]
+    """The number of edges in each run."""
+
+    def __init__(self, runs: Iterable[tuple[int, int]] = ()) -> None:
+        sizes: list[int] = []
+        counts: list[int] = []
+        for size, count in runs:
+            if count < 1:
+                raise ValueError(f"Run counts must be >= 1, got {count!r}")
+            if sizes and sizes[-1] == size:
+                counts[-1] += count
+            else:
+                sizes.append(size)
+                counts.append(count)
+        self.sizes = tuple(sizes)
+        self.counts = tuple(counts)
+        # Per run, the number of edges and the sum of edges up to and including it.
+        self._index_stops = tuple(itertools.accumulate(counts))
+        self._offset_stops = tuple(
+            itertools.accumulate(size * count for size, count in zip(sizes, counts, strict=True))
+        )
+        self._lookup_tables: tuple[npt.NDArray[np.intp], ...] | None = None
+
+    @classmethod
+    def from_edges(cls, edges: Iterable[int] | RunLengthEdges) -> RunLengthEdges:
+        """Run-length encode `edges`, one entry per edge. A `RunLengthEdges` is returned
+        as it is."""
+        if isinstance(edges, RunLengthEdges):
+            return edges
+        return cls((size, sum(1 for _ in group)) for size, group in itertools.groupby(edges))
+
+    @property
+    def runs(self) -> tuple[tuple[int, int], ...]:
+        """The `(size, count)` runs, no two adjacent runs sharing a size."""
+        return tuple(zip(self.sizes, self.counts, strict=True))
+
+    @property
+    def num_edges(self) -> int:
+        """The number of edges."""
+        return self._index_stops[-1] if self._index_stops else 0
+
+    @property
+    def total(self) -> int:
+        """The sum of all edges."""
+        return self._offset_stops[-1] if self._offset_stops else 0
+
+    def __reduce__(self) -> tuple[type[RunLengthEdges], tuple[tuple[tuple[int, int], ...]]]:
+        return type(self), (self.runs,)
+
+    def expand(self) -> Iterator[int]:
+        """Every edge, in order: as many items as there are edges, however few the runs."""
+        return itertools.chain.from_iterable(map(itertools.repeat, self.sizes, self.counts))
+
+    def size_of(self, index: int) -> int:
+        """The length of edge `index`."""
+        if not 0 <= index < self.num_edges:
+            raise IndexError(f"Edge index {index} is out of range for {self.num_edges} edges")
+        return self.sizes[bisect.bisect_right(self._index_stops, index)]
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RunLengthEdges):
+            return self.sizes == other.sizes and self.counts == other.counts
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.sizes, self.counts))
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.to_rle()})"
+
+    def to_rle(self) -> list[int | list[int]]:
+        """The mixed run-length encoding of the rectilinear chunk grid spec: a run of
+        one edge is its bare size, a longer run is `[size, count]`."""
+        return [[size, count] if count > 1 else size for size, count in self.runs]
+
+    def with_edge(self, size: int) -> RunLengthEdges:
+        """A copy with one more edge of length `size` at the end."""
+        return RunLengthEdges((*self.runs, (size, 1)))
+
+    def offset_of(self, index: int) -> int:
+        """The sum of the first `index` edges: where edge `index` starts, or `total`
+        for `index == num_edges`."""
+        if not 0 <= index <= self.num_edges:
+            raise IndexError(f"Edge index {index} is out of range for {self.num_edges} edges")
+        if index == self.num_edges:
+            return self.total
+        run = bisect.bisect_right(self._index_stops, index)
+        if run == 0:
+            return index * self.sizes[0]
+        return self._offset_stops[run - 1] + (index - self._index_stops[run - 1]) * self.sizes[run]
+
+    def index_at(self, position: int) -> int:
+        """The index of the edge that covers `position`, a coordinate in `[0, total)`
+        along the axis the edges tile."""
+        if not 0 <= position < self.total:
+            raise IndexError(
+                f"Position {position} is out of range for edges summing to {self.total}"
+            )
+        run = bisect.bisect_right(self._offset_stops, position)
+        if run == 0:
+            return position // self.sizes[0]
+        return (
+            self._index_stops[run - 1] + (position - self._offset_stops[run - 1]) // self.sizes[run]
+        )
+
+    def indices_at(self, positions: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        """Vectorized `index_at`, without the bounds check: a negative position gives 0,
+        and a position of `total` or more gives `num_edges`."""
+        positions = np.asarray(positions)
+        if not self.sizes:
+            return np.zeros(positions.shape, dtype=np.intp)
+        if self._lookup_tables is None:
+            # No position reaches a run that starts past the largest intp, and a size
+            # that large is never exceeded, so the tables always fit intp.
+            intp_max = int(np.iinfo(np.intp).max)
+            offsets = [o for o in (0, *self._offset_stops[:-1]) if o <= intp_max]
+            n = len(offsets)
+            self._lookup_tables = (
+                np.array(offsets, dtype=np.intp),
+                np.array((0, *self._index_stops[: n - 1]), dtype=np.intp),
+                np.array([min(size, intp_max) for size in self.sizes[:n]], dtype=np.intp),
+                np.array(min(self.num_edges, intp_max), dtype=np.intp),
+            )
+        offsets_arr, indices_arr, sizes_arr, last = self._lookup_tables
+        run = np.searchsorted(offsets_arr[1:], positions, side="right")
+        found = indices_arr[run] + (positions - offsets_arr[run]) // sizes_arr[run]
+        return np.clip(found, 0, last).astype(np.intp, copy=False)
+
+
+def _iter_rle_runs(data: Iterable[object], axis: int | None) -> Iterator[tuple[int, int]]:
+    """The `(size, count)` runs of a mixed array of bare integers and RLE pairs, each
+    checked as it is read."""
     for item in data:
         if isinstance(item, list):
             if len(item) != 2:
@@ -386,9 +535,34 @@ def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
                 raise ValueError(f"{subject} must be an integer or [size, count], got {item}")
             size, count = item
             repeat = _parse_positive_int(count, "RLE repeat count", axis)
-            result.extend([parse_chunk_edge(size, axis)] * repeat)
+            yield parse_chunk_edge(size, axis), repeat
         else:
-            result.append(parse_chunk_edge(item, axis))
+            yield parse_chunk_edge(item, axis), 1
+
+
+def parse_rle(data: Sequence[object], axis: int | None = None) -> RunLengthEdges:
+    """Read a mixed array of bare integers and RLE pairs, the edges of dimension `axis`
+    (named in errors, when given), without expanding it.
+
+    Per the rectilinear chunk grid spec, each element can be:
+    - a bare integer (an explicit edge length)
+    - a two-element array ``[value, count]`` (run-length encoded)
+
+    The cost is in the number of elements, whatever the repeat counts.
+    """
+    return RunLengthEdges(_iter_rle_runs(data, axis))
+
+
+def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
+    """Expand a mixed array of bare integers and RLE pairs, the edges of dimension
+    `axis` (named in errors, when given), into one entry per edge.
+
+    The result is as long as the sum of the repeat counts; `parse_rle` reads the same
+    input without expanding it.
+    """
+    result: list[int] = []
+    for size, count in _iter_rle_runs(data, axis):
+        result.extend([size] * count)
     return result
 
 
@@ -400,20 +574,7 @@ def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
 
         [10, 10, 10, 5] -> [[10, 3], 5]
     """
-    if not sizes:
-        return []
-    result: list[int | list[int]] = []
-    current = sizes[0]
-    count = 1
-    for s in sizes[1:]:
-        if s == current:
-            count += 1
-        else:
-            result.append([current, count] if count > 1 else current)
-            current = s
-            count = 1
-    result.append([current, count] if count > 1 else current)
-    return result
+    return RunLengthEdges.from_edges(sizes).to_rle()
 
 
 def validate_rectilinear_kind(kind: str | None) -> None:
@@ -434,7 +595,7 @@ def validate_rectilinear_kind(kind: str | None) -> None:
 
 
 def validate_rectilinear_edges(
-    chunk_shapes: Sequence[int | Sequence[int]], array_shape: Sequence[int]
+    chunk_shapes: Sequence[int | Sequence[int] | RunLengthEdges], array_shape: Sequence[int]
 ) -> None:
     """Validate that rectilinear chunk edges cover the array extent per dimension.
 
@@ -444,7 +605,7 @@ def validate_rectilinear_edges(
     for i, (dim_spec, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
         if isinstance(dim_spec, int):
             continue
-        edge_sum = sum(dim_spec)
+        edge_sum = dim_spec.total if isinstance(dim_spec, RunLengthEdges) else sum(dim_spec)
         if edge_sum < extent:
             raise ValueError(
                 f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
