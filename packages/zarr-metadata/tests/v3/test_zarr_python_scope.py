@@ -21,6 +21,9 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.model import read_array_metadata_v3
+from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC
+from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC
+from zarr_metadata.v3.data_type.fixed_length_utf32 import FIXED_LENGTH_UTF32_DATA_TYPE
 from zarr_metadata.v3.data_type.null_terminated_bytes import NULL_TERMINATED_BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE
@@ -88,6 +91,16 @@ def test_what_zarr_python_writes_reads_without_a_problem_in_zarr_python(
     data_type = read_array_metadata_v3(document, context=CORE_AND_EXTENSIONS_CONTEXT).data_type
     assert isinstance(data_type, AcceptedField) is in_core_and_extensions
     assert isinstance(data_type, UnclaimedField) is not in_core_and_extensions
+
+
+def test_core_and_extensions_reads_the_registered_extensions() -> None:
+    """zarr-extensions registers `fixed_length_utf32`, `vlen-utf8` and `vlen-bytes`."""
+    assert (
+        CORE_AND_EXTENSIONS_CONTEXT.data_types[FIXED_LENGTH_UTF32_DATA_TYPE.name]
+        is FIXED_LENGTH_UTF32_DATA_TYPE
+    )
+    assert CORE_AND_EXTENSIONS_CONTEXT.codecs[VLEN_UTF8_CODEC.name] is VLEN_UTF8_CODEC
+    assert CORE_AND_EXTENSIONS_CONTEXT.codecs[VLEN_BYTES_CODEC.name] is VLEN_BYTES_CODEC
 
 
 def test_zarr_python_is_core_and_extensions_with_zarr_python_s_own_data_types() -> None:
