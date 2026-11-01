@@ -84,7 +84,7 @@ remote = [
 gpu = [
     "cupy-cuda12x; sys_platform != 'darwin'",
 ]
-cast-value-rs = ["cast-value-rs>=0.4.2"]
+cast-value-rs = ["cast-value-rs>=0.5.1"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -121,7 +121,6 @@ test = [
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
-    "tomlkit==0.15.2",
     "uv==0.13.5",
 ]
 remote-tests = [
@@ -463,6 +462,7 @@ markers = [
     "gpu: mark a test as requiring CuPy and GPU",
     "s3: mark a test as requiring a (mock) S3 backend via moto",
     "slow_hypothesis: slow hypothesis tests",
+    "examples: runs a script in examples/; skipped unless --run-examples is passed",
 ]
 
 [tool.repo-review]
