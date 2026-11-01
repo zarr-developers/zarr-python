@@ -183,9 +183,9 @@ _MAX_CODE_POINTS: Final = 16
 def _fixed_length_utf32_fill_values(
     configuration: Mapping[str, JSONValue],
 ) -> st.SearchStrategy[JSONValue]:
-    """Text of at most one code point for each 4 bytes of the size."""
+    """Text of at most one code point for each 4 bytes of the size, some of them trailing `U+0000` padding."""
     capacity = cast("FixedLengthUtf32Configuration", configuration)["length_bytes"] // 4
-    return st.text(st.characters(exclude_categories=("Cs",)), max_size=capacity)
+    return st.text(st.characters(exclude_categories=("Cs",)) | st.just("\x00"), max_size=capacity)
 
 
 _NUMPY_TIME: Final = DataTypeStrategy(
