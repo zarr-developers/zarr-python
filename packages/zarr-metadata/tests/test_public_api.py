@@ -355,10 +355,24 @@ def _iter_module_names() -> set[str]:
     return module_names
 
 
+_ALIAS_PACKAGES = (
+    "zarr_metadata.v3.chunk_grid",
+    "zarr_metadata.v3.chunk_key_encoding",
+    "zarr_metadata.v3.codec",
+    "zarr_metadata.v3.data_type",
+)
+"""The packages that re-export every name their public submodules export, as a convenience. Each name's home stays its submodule."""
+
+
+def _home_module_names() -> set[str]:
+    """Every public module except the alias packages, whose names are already checked in their submodules."""
+    return _iter_module_names() - set(_ALIAS_PACKAGES)
+
+
 def _public_type_names() -> set[tuple[str, str]]:
     """Every (module, CamelCase name) pair exported via a public `__all__`."""
     out: set[tuple[str, str]] = set()
-    for module_name in _iter_module_names():
+    for module_name in _home_module_names():
         module = importlib.import_module(module_name)
         for name in getattr(module, "__all__", ()):
             if name.startswith("_") or name.isupper() or name.islower():
@@ -438,7 +452,7 @@ def _literal_backed_constants() -> list[tuple[str, str, str]]:
     simply absent from the result.
     """
     out: list[tuple[str, str, str]] = []
-    for module_name in _iter_module_names():
+    for module_name in _home_module_names():
         module = importlib.import_module(module_name)
         literals = {
             name: frozenset(get_args(obj))
@@ -479,7 +493,7 @@ def _value_tied_constants() -> set[str]:
     These are invisible to the derivation check, so they are surfaced here and
     counted, rather than silently dropped inside the pairing helper."""
     tied: set[str] = set()
-    for module_name in _iter_module_names():
+    for module_name in _home_module_names():
         module = importlib.import_module(module_name)
         literals = [
             frozenset(get_args(obj))
@@ -564,7 +578,7 @@ def _builds_scopes(value: object) -> bool:
 def _homes() -> dict[str, list[str]]:
     """Each public name, and every public submodule that exports it, with a format's front door left out for a definition or scope it aliases."""
     homes: dict[str, list[str]] = {}
-    for module_name in sorted(_iter_module_names() - {"zarr_metadata"}):
+    for module_name in sorted(_home_module_names() - {"zarr_metadata"}):
         for name in getattr(importlib.import_module(module_name), "__all__", ()):
             homes.setdefault(name, []).append(module_name)
     for name, modules in homes.items():
@@ -575,7 +589,7 @@ def _homes() -> dict[str, list[str]]:
 
 
 def test_every_name_has_one_public_home() -> None:
-    """Each public name is exported by exactly one public submodule, its home. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object, and so may the front door of its format (`zarr_metadata.v2` or `zarr_metadata.v3`) when the name is a definition, a scope or the scope class of that format."""
+    """Each public name is exported by exactly one public submodule, its home. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object, and so may the front door of its format (`zarr_metadata.v2` or `zarr_metadata.v3`) when the name is a definition, a scope or the scope class of that format. An alias package also exports the names of its submodules; `test_an_alias_package_exports_its_submodules_names` pins those."""
     homes = _homes()
     duplicated = {name: modules for name, modules in homes.items() if len(modules) > 1}
     assert duplicated == {}
@@ -600,13 +614,31 @@ def test_every_name_has_one_public_home() -> None:
             assert getattr(module, name) is value, f"{door}.{name} is another object"
 
 
+@pytest.mark.parametrize("package", _ALIAS_PACKAGES)
+def test_an_alias_package_exports_its_submodules_names(package: str) -> None:
+    """An alias package exports every name its public submodules export, and nothing else, each the same object as in its submodule, so `from zarr_metadata.v3.data_type import BoolDataTypeName` reads the name that `zarr_metadata.v3.data_type.bool` defines."""
+    module = importlib.import_module(package)
+    submodules = [
+        importlib.import_module(info.name)
+        for info in pkgutil.iter_modules(module.__path__, prefix=f"{package}.")
+        if not info.name.rsplit(".", 1)[1].startswith("_")
+    ]
+    expected = {name: submodule for submodule in submodules for name in submodule.__all__}
+    assert sorted(module.__all__) == sorted(expected)
+    assert [
+        name
+        for name in module.__all__
+        if getattr(module, name) is not getattr(expected[name], name)
+    ] == []
+
+
 @pytest.mark.parametrize("door", _FRONT_DOORS)
 def test_a_front_door_exports_every_definition_and_scope_of_its_format(door: str) -> None:
     """`zarr_metadata.v2` and `zarr_metadata.v3` each export every definition, scope and scope class that a submodule of theirs exports, so one import builds or extends a scope of that format."""
     exported = set(importlib.import_module(door).__all__)
     missing = sorted(
         name
-        for module_name in _iter_module_names()
+        for module_name in _home_module_names()
         if module_name.startswith(f"{door}.")
         for name in getattr(importlib.import_module(module_name), "__all__", ())
         if _builds_scopes(getattr(importlib.import_module(module_name), name))
