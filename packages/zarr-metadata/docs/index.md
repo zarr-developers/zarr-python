@@ -274,12 +274,13 @@ string against those rules.
 A top-level field that the spec does not define is an extra field. A
 scope can hold a definition for one, by its key, in the
 `array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
-field whose key a definition claims is read by that definition, like any
-other declaration. Any other field is kept as written, as an `UnclaimedDeclaration`.
+field whose key a definition claims is read by that definition: an extra field is a declaration
+written as the field alone, `{key: value}`. Any other extra field is kept as
+written, as an `UnclaimedDeclaration`.
 The scope is what a reader recognizes, so the model's
 `must_understand_fields` lists each unclaimed field that does not say
 `"must_understand": false`: the spec requires a reader to fail to open a
-node with any such field. It covers fields only. A data type, chunk
+node with any such field. It covers extra fields only. A data type, chunk
 grid, chunk key encoding, codec or storage transformer that nothing in
 scope claims is an `UnclaimedDeclaration` too, also when it sits inside another
 declaration, such as a codec inside a shard. A model's `unclaimed_declarations` lists
@@ -300,7 +301,7 @@ built. `to_json` returns the document as it was written, and
 
 Every typed attribute is a view of that read: each declaration as the scope read
 it (an `AcceptedDeclaration` or an `UnclaimedDeclaration`), and `shape`, `attributes`
-and the other fields as the read refined them. These views are read-only
+and the fields that hold no declaration as the read refined them. These views are read-only
 at every level: a list in the document is shown as a tuple, and an object
 as a read-only mapping. `to_json` returns plain containers.
 

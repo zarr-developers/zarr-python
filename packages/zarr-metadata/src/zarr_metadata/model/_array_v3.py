@@ -211,7 +211,7 @@ def _array_reading(values: dict[str, Any]) -> ZarrV3ArrayMetadataReading:
 
 @dataclass(frozen=True, slots=True)
 class ArrayFieldsV3:
-    """The fields other than declarations of a v3 array document that a read found no problems with, refined as the model holds them."""
+    """The fields that hold no declaration in a v3 array document that a read found no problems with, refined as the model holds them."""
 
     shape: tuple[int, ...]
     fill_value: JSONValue
@@ -579,7 +579,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def _plain_key(
         self, data_type: AcceptedDeclaration[DataTypeDefinition[Any]] | UnclaimedDeclaration
     ) -> tuple[object, ...]:
-        """The fields other than declarations that `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
+        """The fields that hold no declaration, which `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
         fields = self._fields
         return (
             fields.shape,
@@ -731,7 +731,7 @@ class ZarrV3ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every other field must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every field that holds no declaration must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(

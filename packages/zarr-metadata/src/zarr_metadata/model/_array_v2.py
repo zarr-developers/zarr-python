@@ -119,7 +119,7 @@ def _is_canonical_dtype_v2(value: object) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class ArrayFieldsV2:
-    """The fields other than declarations of a v2 array document that a read found no problems with, refined as the model holds them."""
+    """The fields that hold no declaration in a v2 array document that a read found no problems with, refined as the model holds them."""
 
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
@@ -614,7 +614,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def _plain_key(
         self, dtype: AcceptedDeclaration[ZarrV2DataTypeDefinition[Any]] | UnclaimedDeclaration
     ) -> tuple[object, ...]:
-        """The fields other than declarations that `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
+        """The fields that hold no declaration, which `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
         fields = self._fields
         return (
             fields.shape,
@@ -756,7 +756,7 @@ class ZarrV2ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every other field must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every field that holds no declaration must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if (self.compressor is None) != (other.compressor is None):

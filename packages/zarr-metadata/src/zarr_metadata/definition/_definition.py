@@ -707,8 +707,8 @@ def _as_written(declaration: _NestedDeclaration) -> JSONValue:
     return declaration.json
 
 
-def _declared(declaration: _NestedDeclaration) -> JSONValue:
-    """A nested declaration restored as it was written, except for envelope fields that are not declared. Those are reported and left out, in the same way the checker leaves out a key that a closed TypedDict does not declare."""
+def _envelope_keys_only(declaration: _NestedDeclaration) -> JSONValue:
+    """A nested declaration restored as it was written, except for the fields its envelope TypedDict does not declare. Those are reported and left out, in the same way the checker leaves out a key that a closed TypedDict does not declare."""
     if not isinstance(declaration.json, Mapping):
         return declaration.json
     envelope = cast("Mapping[str, JSONValue]", declaration.json)
@@ -833,7 +833,7 @@ def _configuration_checked(
     problems = (*found, *(problem for declaration in nested for problem in _envelope(declaration)))
     if not _usable(problems):
         return None, problems
-    return cast("T", _put_back(typed, _declared, nested)), problems
+    return cast("T", _put_back(typed, _envelope_keys_only, nested)), problems
 
 
 def named_configuration(

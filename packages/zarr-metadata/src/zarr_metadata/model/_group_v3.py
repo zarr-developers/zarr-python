@@ -635,7 +635,7 @@ class ZarrV3GroupMetadataReading:
     """Each field the spec does not define, as the scope read it, by key: an `UnclaimedDeclaration` when no definition in scope claims the key."""
 
     def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
-        """Each declaration in the document, as the scope read it, with its location: the extra fields, each at its key."""
+        """Each declaration in the document, as the scope read it, with its location: each extra field, as a declaration at its key."""
         for key, extra in self.extra_fields.items():
             yield from declarations_of(extra, (key,))
 

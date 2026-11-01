@@ -6,7 +6,7 @@ Resolving metadata documents requires a context, a `Context`, that defines which
 
 The Zarr V3 spec defines the JSON structure of `zarr.json` for arrays and groups exactly, by defining the fields that must be present and the JSON types they must have. But the __interpretation__ of those fields as actual data types, codecs, chunk grids, etc is not strictly defined by the spec. Relating a JSON value like `"bytes"` to the `bytes` codec requires a mapping from names to codec types.
 
-`zarr-metadata` makes this explicit by validating JSON documents with a __context object__. That context object contains definitions of codecs, data types, etc, which can be matched to fields in the JSON document.
+`zarr-metadata` makes this explicit by validating JSON documents with a __context object__. That context object contains definitions of codecs, data types, etc, which can be matched to the declarations in the JSON document.
 
 ### Context example
 
