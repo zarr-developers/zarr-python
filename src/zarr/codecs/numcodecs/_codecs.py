@@ -164,12 +164,12 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         # would be encoded in transposed element order (gh-3558)
         chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
         out = self._codec.encode(chunk_ndarray)
-        if out.ndim == 1 and out.size == np.prod(chunk_spec.shape):
-            # most numcodecs filters return a flattened array; reshape it so
-            # downstream codecs receive a chunk of the shape the pipeline
-            # promised them. Shape-changing codecs (e.g. PackBits) keep out.
-            out = out.reshape(chunk_spec.shape)
-        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
+        # numcodecs filters return a flattened array; reshape it to the
+        # output shape so downstream codecs receive the chunk shape that
+        # resolve_metadata promised them (gh-4553)
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(
+            out.reshape(self.resolve_metadata(chunk_spec).shape)
+        )
 
     async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         return await asyncio.to_thread(self._encode_sync, chunk_data, chunk_spec)

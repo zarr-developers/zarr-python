@@ -214,9 +214,9 @@ def test_generic_filter_flattened_output_reshaped() -> None:
     np.testing.assert_array_equal(data, b[:, :])
 
 
-def test_generic_filter_packedbits_output_not_reshaped() -> None:
-    # PackBits drives the size of the chunk, so `_encode_sync` must not reshape
-    # its output
+def test_generic_filter_packedbits_output_shape() -> None:
+    # PackBits changes the size of the chunk, so `_encode_sync` must reshape its
+    # output to the shape from `resolve_metadata`, not the input chunk shape
     data = np.tril(np.ones((16, 16), dtype=bool))
 
     a = create_array(
