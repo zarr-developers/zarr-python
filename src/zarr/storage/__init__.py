@@ -1,5 +1,7 @@
+import importlib
 import sys
 import warnings
+from collections.abc import Callable
 from types import ModuleType
 from typing import Any
 
@@ -10,6 +12,7 @@ from zarr.storage._local import LocalStore
 from zarr.storage._logging import LoggingStore
 from zarr.storage._memory import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.storage._obstore import ObjectStore
+from zarr.storage._url_pipeline import PipelineContext, PipelineSegment, URLPipeline
 from zarr.storage._wrapper import WrapperStore
 from zarr.storage._zip import ZipStore
 
@@ -21,8 +24,11 @@ __all__ = [
     "ManagedMemoryStore",
     "MemoryStore",
     "ObjectStore",
+    "PipelineContext",
+    "PipelineSegment",
     "StoreLike",
     "StorePath",
+    "URLPipeline",
     "WrapperStore",
     "ZipStore",
 ]
@@ -40,6 +46,11 @@ class VerboseModule(ModuleType):
             )
         else:
             super().__setattr__(attr, value)
+
+    def __reduce__(self) -> tuple[Callable[[str], ModuleType], tuple[str]]:
+        # Serializers such as cloudpickle dispatch on the exact type, so they have no
+        # reduce for this subclass. Pickle the module by name instead.
+        return importlib.import_module, (self.__name__,)
 
 
 sys.modules[__name__].__class__ = VerboseModule

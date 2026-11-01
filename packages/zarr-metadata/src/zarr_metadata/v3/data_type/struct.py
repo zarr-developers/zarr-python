@@ -10,14 +10,16 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata.definition._definition import (
+    Nested,
+    fill_value_problems,
+    spelled_canonically,
+)
+from zarr_metadata.v3._common import ZarrV3DataTypeField
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
-    DataTypeField,
-    Nested,
     StorageClass,
-    fill_value_problems,
-    named_configuration,
     storage_of,
 )
 
@@ -42,7 +44,7 @@ class StructField(TypedDict, closed=True):
     """
 
     name: ReadOnly[str]
-    data_type: ReadOnly[DataTypeField]
+    data_type: ReadOnly[ZarrV3DataTypeField]
 
 
 class StructConfiguration(TypedDict, closed=True):
@@ -68,14 +70,15 @@ fill values are themselves shaped per the field's `data_type`, recursively.
 
 
 def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """Fields exist, their names are non-empty and distinct, and their types of fixed size.
+    """Check that there is at least one field, that field names are non-empty and distinct, and that field types have a fixed size.
 
-    A fill value addresses fields by name. "Variable-length data types
+    Names must be distinct because a fill value addresses fields by name.
+    "Variable-length data types
     (e.g. "string") MUST NOT be used as field types, as they do not have a
     fixed encoded size"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md?plain=1#L42-L49):
-    judged of each field type the scope read, and one whose storage is
-    unknown is left be.
+    this is checked for each field type that the scope read. A field type
+    whose storage is unknown is not checked.
     """
     fields = configuration["fields"]
     if len(fields) == 0:
@@ -96,10 +99,10 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
             )
         field_type = nested.get(("fields", index, "data_type"))
         if field_type is not None and storage_of(field_type) == "variable_length":
-            written, _, _ = named_configuration(field_type.json)
             yield ValidationProblem(
                 ("fields", index, "data_type"),
-                f"expected a data type of fixed size, got {written!r}, whose values vary in size",
+                f"expected a data type of fixed size, got {shown(field_type.name)}, whose values "
+                "vary in size",
                 "invalid_value",
             )
 
@@ -107,14 +110,16 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
 def _fill_value_rules(
     configuration: StructConfiguration, nested: Nested, value: StructFillValue
 ) -> Iterator[ValidationProblem]:
-    """A fill value for every field, each one judged by that field's own type, and for nothing else.
+    """Check that the fill value has an entry for every field and for nothing else, and that each entry is valid for its field's type.
 
-    Every field needs one, valid for its type
+    Every field needs a fill value that is valid for its type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md?plain=1#L221-L224).
-    A field type the scope did not read, or whose reading the struct's does
-    not hold, leaves its fill value unjudged.
+    If the scope did not read a field type, or the reading of the struct
+    does not hold a reading of that field type, the fill value of that
+    field is not checked.
     """
     names = [member["name"] for member in configuration["fields"]]
+    declared = set(names)
     for index, name in enumerate(names):
         if name not in value:
             yield ValidationProblem(
@@ -125,23 +130,42 @@ def _fill_value_rules(
         if field_type is not None:
             yield from fill_value_problems(field_type, value[name], (name,))
     for key in value:
-        if key not in names:
+        if key not in declared:
             yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")
 
 
+def _fill_value_canonical(
+    configuration: StructConfiguration, nested: Nested, value: StructFillValue
+) -> dict[str, JSONValue]:
+    """Return each field's fill value in the canonical spelling of that field's type, in the order the fields are declared.
+
+    If the scope did not read a field type, or the reading of the struct
+    does not hold a reading of that field type, the fill value of that
+    field is kept as written.
+    """
+    spelled: dict[str, JSONValue] = {}
+    for index, member in enumerate(configuration["fields"]):
+        name = member["name"]
+        field_type = nested.get(("fields", index, "data_type"))
+        held = value[name]
+        spelled[name] = held if field_type is None else spelled_canonically(field_type, held)
+    return spelled
+
+
 def _storage(configuration: StructConfiguration, nested: Nested) -> StorageClass | None:
-    """Its fields' values, packed together: numbers of several bytes if any field holds them, single bytes if every field is made of them.
+    """Return the storage of the packed field values: multi-byte if any field holds multi-byte numbers, and single-byte if every field is single-byte.
 
     A nested struct "is encoded as the packed concatenation of its own
     sub-fields, recursively"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md?plain=1#L142-L144),
     and the `bytes` codec "MUST be configured with an explicit endian"
-    for a struct that "contains multi-byte numeric fields", while one
-    "composed entirely of single-byte fields" may go without
+    for a struct that "contains multi-byte numeric fields", while a struct
+    "composed entirely of single-byte fields" may omit it
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md?plain=1#L211-L217).
-    A field whose storage is unknown leaves the struct's unknown, unless
-    another field's settles it. A struct with a field whose values vary in
-    size is refused by its rules, so is never asked.
+    If a field's storage is unknown, the struct's storage is unknown too,
+    unless the storage of another field decides it. The rules reject a
+    struct with a field whose values vary in size, so this function is
+    never called for such a struct.
     """
     found = {
         None if field_type is None else storage_of(field_type)
@@ -161,9 +185,10 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     rules=_rules,
     fill_value=StructFillValue,
     fill_value_rules=_fill_value_rules,
+    fill_value_canonical=_fill_value_canonical,
     storage=_storage,
 )
-"""The `struct` data type: a record of named fields, each field's type a nested field."""
+"""The `struct` data type: a record of named fields. The type of each field is a nested field."""
 
 
 __all__ = [
