@@ -70,7 +70,7 @@ from zarr_metadata.v2.array import (
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import (
-    CORE_V2,
+    CORE_V2_CONTEXT,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
 )
@@ -437,7 +437,7 @@ ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
 def read_array_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ArrayMetadataReading:
-    """Read `value`, a v2 array document, in `context` (`CORE_V2` when none is given), whatever it holds.
+    """Read `value`, a v2 array document, in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds.
 
     The result holds everything the read finds: the dtype, the compressor
     and each filter as the scope read them (an `AcceptedField` read by
@@ -447,7 +447,7 @@ def read_array_metadata_v2(
     problem. One that the scope does not claim is not a problem.
     `fill_value` is checked against the dtype the scope read.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     reading, members = read_array_v2(value, context)
     if members is None:
         return reading
@@ -510,7 +510,7 @@ class ZarrV2ArrayMetadata(Keyed):
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         reading, members = read_array_v2(document, context)
         if members is None:
             raise MetadataValidationError(reading.problems)
@@ -731,7 +731,7 @@ class ZarrV2ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         if disagreements(context, claims_of(self._reading.fields())).agrees:
             return self._of(self._document, context, self._reading, self._members)
         return type(self)(self._document, context=context)
@@ -745,7 +745,7 @@ class ZarrV2ArrayMetadata(Keyed):
         in the document. Raises `MetadataValidationError` when a definition
         that `context` claims rejects what was written.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         found = disagreements(context, claims_of(self._reading.fields()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
@@ -807,7 +807,9 @@ class ZarrV2ArrayMetadata(Keyed):
             if lengths is not None:
                 given["chunks"] = lengths
         if "dtype" in given and "fill_value" not in given:
-            dtype, _ = resolve(given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2))
+            dtype, _ = resolve(
+                given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2_CONTEXT)
+            )
             if len(fill_value_problems(dtype, 0)) != 0:
                 given["fill_value"] = None
         merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}
@@ -836,7 +838,7 @@ class ZarrV2ArrayMetadata(Keyed):
         valid, with every problem the read finds. Raises `TypeError` for a
         scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_ARRAY_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )

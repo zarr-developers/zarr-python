@@ -41,7 +41,7 @@ closely model the content of the Zarr specifications, such as:
   `TypedDict` with its rules, and the scope that decides which definitions
   read a document. `zarr_metadata.v3` and `zarr_metadata.v2` export every
   definition and scope of their format, such as `BYTES_CODEC` and
-  `CORE_AND_EXTENSIONS`.
+  `CORE_AND_EXTENSIONS_CONTEXT`.
 - **JSON type checking** ([`zarr_metadata.typed_json`](https://zarr-metadata.readthedocs.io/en/latest/api/typed_json/)):
   `check` checks a JSON value against any `TypedDict` and reports every
   problem with its location.
@@ -104,7 +104,9 @@ of context-free consistency rules, e.g.:
 In a v3 document, validation also checks each extension point: the data
 type, the chunk grid, the chunk key encoding, each codec, and each storage
 transformer. Each one is checked by the definition that claims its name in
-a scope. The scope is `CORE_AND_EXTENSIONS` unless a `context` is passed.
+a scope. The scope is `CORE_AND_EXTENSIONS_CONTEXT` unless a `context` is passed.
+`ZARR_PYTHON_CONTEXT` adds the data types that zarr-python writes but no
+specification registers.
 If the definition rejects a configuration, the reader rejects it too,
 and a configuration key the definition does not declare is reported as
 `unknown_key`. If no definition in the scope claims a name, the reader
@@ -232,13 +234,13 @@ each field:
 ```python test="true" session="readme"
 from zarr_metadata.model import read_array_metadata_v3
 from zarr_metadata.definition import canonical_of, with_problems
-from zarr_metadata.v3.definition import CORE
+from zarr_metadata.v3.definition import CORE_CONTEXT
 
 reading = read_array_metadata_v3(raw)
 beyond_core = [
     loc
     for loc, field in reading.fields()
-    if field.name is not None and CORE.claimant(field.read_as, field.name) is None
+    if field.name is not None and CORE_CONTEXT.claimant(field.read_as, field.name) is None
 ]
 simplest = {
     loc: canonical_of(field, problems)
@@ -283,7 +285,7 @@ scope claims is an `UnclaimedField` too, also when it sits inside another
 field, such as a codec inside a shard. A model's `unclaimed_fields` lists
 every field nothing in scope claims, at any depth, by its location, and
 leaves out the members that waive `must_understand`: a reader can open
-the node when it is empty. `CORE` holds
+the node when it is empty. `CORE_CONTEXT` holds
 `CONSOLIDATED_METADATA_EXTRA_FIELD`, which reads a group's
 `consolidated_metadata` as the envelope the spec fixes. A group's
 `consolidated()` reads the documents that member lists, in the group's
@@ -291,7 +293,7 @@ own scope.
 
 A v3 model consists of its document and the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
-scope (`CORE_AND_EXTENSIONS` when none is given) and raises
+scope (`CORE_AND_EXTENSIONS_CONTEXT` when none is given) and raises
 `MetadataValidationError` with every problem, so an invalid model is never
 built. `to_json` returns the document as it was written, and
 `to_key_value` writes that same document to store bytes.
@@ -322,7 +324,7 @@ all of them with `ZarrV3ConsolidatedMetadata`, or with
 `read_consolidated_metadata_v3`, which returns problems instead of
 raising them. A document with a problem then fails only when it is read.
 Pass `context=group.context` to read the documents in the group's own
-scope; with no `context`, they are read in `CORE_AND_EXTENSIONS`.
+scope; with no `context`, they are read in `CORE_AND_EXTENSIONS_CONTEXT`.
 
 To write consolidated metadata, build a `ZarrV3ConsolidatedMetadata` and
 pass it to the group's `update`. The group reads the listed models in its
@@ -332,7 +334,7 @@ models as entries. Such an entry is accepted when its claims refine into
 the model's scope, and refused at its path otherwise. To consolidate
 children that were read in several scopes, consolidate them in the
 `union` of those scopes. Every reader takes `context=None` for the
-default scope, `CORE_AND_EXTENSIONS`.
+default scope, `CORE_AND_EXTENSIONS_CONTEXT`.
 
 Two models are equal when they represent the same document, even if each
 is spelled differently. Values the package interprets (each field, and the

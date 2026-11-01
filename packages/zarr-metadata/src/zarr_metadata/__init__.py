@@ -136,6 +136,16 @@ from zarr_metadata.v3.codec.transpose import (
     TransposeCodecMetadata,
     TransposeCodecName,
 )
+from zarr_metadata.v3.codec.vlen_bytes import (
+    VLEN_BYTES_CODEC_NAME,
+    VlenBytesCodecMetadata,
+    VlenBytesCodecName,
+)
+from zarr_metadata.v3.codec.vlen_utf8 import (
+    VLEN_UTF8_CODEC_NAME,
+    VlenUtf8CodecMetadata,
+    VlenUtf8CodecName,
+)
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME, ZstdCodecMetadata, ZstdCodecName
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
@@ -161,6 +171,11 @@ from zarr_metadata.v3.data_type.complex128 import (
     COMPLEX128_DATA_TYPE_NAME,
     Complex128DataTypeName,
     Complex128FillValue,
+)
+from zarr_metadata.v3.data_type.fixed_length_utf32 import (
+    FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
+    FixedLengthUtf32DataTypeName,
+    FixedLengthUtf32FillValue,
 )
 from zarr_metadata.v3.data_type.float16 import (
     FLOAT16_DATA_TYPE_NAME,
@@ -265,6 +280,7 @@ __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "ENDIANNESS",
+    "FIXED_LENGTH_UTF32_DATA_TYPE_NAME",
     "FLOAT16_DATA_TYPE_NAME",
     "FLOAT32_DATA_TYPE_NAME",
     "FLOAT64_DATA_TYPE_NAME",
@@ -291,6 +307,8 @@ __all__ = [
     "UNSET",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
+    "VLEN_BYTES_CODEC_NAME",
+    "VLEN_UTF8_CODEC_NAME",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
     "ZARR_V2_ARRAY_ORDER",
@@ -325,6 +343,8 @@ __all__ = [
     "DefaultChunkKeyEncodingName",
     "DefaultChunkKeyEncodingSeparator",
     "Endianness",
+    "FixedLengthUtf32DataTypeName",
+    "FixedLengthUtf32FillValue",
     "Float16DataTypeName",
     "Float16FillValue",
     "Float32DataTypeName",
@@ -378,6 +398,10 @@ __all__ = [
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingSeparator",
     "ValidationProblem",
+    "VlenBytesCodecMetadata",
+    "VlenBytesCodecName",
+    "VlenUtf8CodecMetadata",
+    "VlenUtf8CodecName",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataJSON",

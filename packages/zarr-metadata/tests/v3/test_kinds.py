@@ -17,9 +17,9 @@ from zarr_metadata.definition import (
 from zarr_metadata.definition._definition import as_kind, kind_of
 from zarr_metadata.definition._scope import kind_name
 from zarr_metadata.json_schema import field_json_schema_v3
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context, ZarrV2DataTypeDefinition
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context, ZarrV2DataTypeDefinition
 from zarr_metadata.v3.definition import (
-    CORE,
+    CORE_CONTEXT,
     CodecDefinition,
     DataTypeDefinition,
     ZarrV3Context,
@@ -68,7 +68,7 @@ def test_error_a_class_that_declares_no_kind_is_of_none() -> None:
 def test_error_the_json_schema_writer_writes_v3_fields_only() -> None:
     """`field_json_schema_v3` writes only the v3 envelope. For a kind of another format, it raises a `TypeError` that names this limit instead of writing a wrong schema."""
     with pytest.raises(TypeError, match="Zarr v3"):
-        field_json_schema_v3(ZarrV2DataTypeDefinition, context=CORE_V2)  # pyright: ignore[reportArgumentType]
+        field_json_schema_v3(ZarrV2DataTypeDefinition, context=CORE_V2_CONTEXT)  # pyright: ignore[reportArgumentType]
 
 
 def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
@@ -76,7 +76,7 @@ def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
     _, problems = resolve(
         {"name": "sharding_indexed", "configuration": {"chunk_shape": [1], "codecs": [3]}},
         CodecDefinition,
-        CORE,
+        CORE_CONTEXT,
     )
     assert any(p.message.endswith("got 3") for p in problems), [p.message for p in problems]
 
@@ -93,8 +93,8 @@ def test_error_a_kind_declares_its_format() -> None:
 
 def test_a_scope_has_the_format_of_its_class() -> None:
     """A scope's `zarr_format` is the format of every kind its class holds: 3 for a `ZarrV3Context` and 2 for a `ZarrV2Context`, including one that files nothing."""
-    assert CORE.zarr_format == 3
-    assert CORE_V2.zarr_format == 2
+    assert CORE_CONTEXT.zarr_format == 3
+    assert CORE_V2_CONTEXT.zarr_format == 2
     assert ZarrV3Context().zarr_format == 3
     assert ZarrV2Context().zarr_format == 2
 
@@ -106,17 +106,17 @@ def test_error_a_scope_files_one_format() -> None:
     with pytest.raises(TypeError, match="v2 data type"):
         ZarrV3Context(data_types=[UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="v2 data type"):
-        CORE.update(data_types=[*CORE.data_types.values(), UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
+        CORE_CONTEXT.update(data_types=[*CORE_CONTEXT.data_types.values(), UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="format"):
-        CORE.union(CORE_V2)  # pyright: ignore[reportArgumentType]
+        CORE_CONTEXT.union(CORE_V2_CONTEXT)  # pyright: ignore[reportArgumentType]
 
 
 def test_error_a_field_is_read_in_a_scope_of_its_format() -> None:
     """`resolve` raises `TypeError` for a scope whose format differs from the kind's. In an empty scope of its format, it reads a field as unclaimed."""
     with pytest.raises(TypeError, match="format"):
-        resolve("<u1", ZarrV2DataTypeDefinition, CORE)
+        resolve("<u1", ZarrV2DataTypeDefinition, CORE_CONTEXT)
     with pytest.raises(TypeError, match="format"):
-        resolve("int32", DataTypeDefinition, CORE_V2)
+        resolve("int32", DataTypeDefinition, CORE_V2_CONTEXT)
     field, _ = resolve("<u1", ZarrV2DataTypeDefinition, ZarrV2Context())
     assert isinstance(field, UnclaimedField)
 

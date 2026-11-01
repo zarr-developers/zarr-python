@@ -4,10 +4,10 @@ A v2 array document has two kinds of field: its `dtype`, and the codecs
 in `compressor` and `filters`. Zarr v2 has no extension registry, but it
 still has a scope: the data types that zarr-python 2.x writes (one
 definition per NumPy family), and the codecs that numcodecs 0.16
-configures (one per id that this package models). `CORE_V2` is that
+configures (one per id that this package models). `CORE_V2_CONTEXT` is that
 scope. To read one field in it, call `zarr_metadata.definition.resolve`
 with the field's kind, as for a v3 field:
-`resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2)` returns an
+`resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2_CONTEXT)` returns an
 `AcceptedField`, `UnclaimedField` or `RefusedField`, and every problem.
 `ZarrV2Context` is the class of a v2 scope. It has a slot for each kind
 of v2 field, `data_types` and `codecs`, and shares `update`,
@@ -26,23 +26,19 @@ an `UnclaimedField`.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import TYPE_CHECKING
 
+from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v2._context import ZarrV2Context, ZarrV2ContextSlots, ZarrV2Kind
+from zarr_metadata.v2._core import CORE_V2_CONTEXT, RENAMED_SCOPES_V2
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     ZarrV2DataTypeField,
 )
-from zarr_metadata.v2.codec import CODECS_V2
-from zarr_metadata.v2.data_type import DATA_TYPES_V2
-
-CORE_V2: Final = ZarrV2Context(data_types=DATA_TYPES_V2, codecs=CODECS_V2)
-"""The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
-
 
 __all__ = [
-    "CORE_V2",
+    "CORE_V2_CONTEXT",
     "ZarrV2CodecDefinition",
     "ZarrV2Context",
     "ZarrV2ContextSlots",
@@ -50,3 +46,11 @@ __all__ = [
     "ZarrV2DataTypeField",
     "ZarrV2Kind",
 ]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> object:
+        """`CORE_V2`, the scope's name before it ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name, RENAMED_SCOPES_V2)

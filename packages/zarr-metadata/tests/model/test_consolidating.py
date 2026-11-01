@@ -23,8 +23,8 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     CodecDefinition,
     ZarrV3Context,
 )
@@ -41,7 +41,7 @@ WITH_LOOSE_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], LOOSE_ZSTD)}
 MY_BYTES = CodecDefinition(
     name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
 )
-PRIVATE = CORE.update(codecs={**CORE.codecs, "bytes": MY_BYTES})
+PRIVATE = CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "bytes": MY_BYTES})
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
 
@@ -64,11 +64,16 @@ def _group_document(**entries: object) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("context", "child", "beside", "gained"),
     [
-        (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(ARRAY), {}, False),
-        (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(ARRAY, context=CORE), {}, False),
-        (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE), {}, True),
+        (CORE_AND_EXTENSIONS_CONTEXT, ZarrV3ArrayMetadata(ARRAY), {}, False),
+        (CORE_AND_EXTENSIONS_CONTEXT, ZarrV3ArrayMetadata(ARRAY, context=CORE_CONTEXT), {}, False),
         (
-            CORE,
+            CORE_AND_EXTENSIONS_CONTEXT,
+            ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_CONTEXT),
+            {},
+            True,
+        ),
+        (
+            CORE_CONTEXT,
             ZarrV3GroupMetadata(_group_document(x=ARRAY), context=ZarrV3Context()),
             {"a/x": ZarrV3ArrayMetadata(ARRAY, context=ZarrV3Context())},
             True,
@@ -124,7 +129,7 @@ def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() ->
     """A model read with a private `bytes`, given to consolidated metadata whose scope reads the core `bytes`, is a conflict. The problem is at the entry's path, names the kind and the name, and tells the two definitions apart. The model is not silently read again."""
     child = ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)
     with pytest.raises(MetadataValidationError) as raised:
-        _consolidated(CORE_AND_EXTENSIONS, a=child)
+        _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=child)
     (problem,) = raised.value.problems
     assert problem.loc == ("metadata", "a", "codecs", 0)
     assert problem.kind == "invalid_value"
@@ -137,9 +142,9 @@ def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() ->
 
 def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> None:
     """A model read in a scope that claims `zstd`, given to consolidated metadata whose scope leaves `zstd` unclaimed, would lose information. It is refused, the same way a conflict is."""
-    child = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
+    child = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS_CONTEXT)
     with pytest.raises(MetadataValidationError) as raised:
-        _consolidated(CORE, a=child)
+        _consolidated(CORE_CONTEXT, a=child)
     (problem,) = raised.value.problems
     assert problem.loc == ("metadata", "a", "codecs", 1)
     assert problem.message.endswith("which that scope leaves unclaimed")
@@ -147,9 +152,9 @@ def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> Non
 
 def test_error_a_gain_that_surfaces_a_problem_is_reported_at_the_problem() -> None:
     """A model whose scope left `zstd` unclaimed, given to consolidated metadata whose scope claims it, is read again in that scope. A level that the `zstd` definition refuses is reported as a problem at its location."""
-    child = ZarrV3ArrayMetadata(WITH_LOOSE_ZSTD, context=CORE)
+    child = ZarrV3ArrayMetadata(WITH_LOOSE_ZSTD, context=CORE_CONTEXT)
     with pytest.raises(MetadataValidationError) as raised:
-        _consolidated(CORE_AND_EXTENSIONS, a=child)
+        _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=child)
     assert [problem.loc for problem in raised.value.problems] == [
         ("metadata", "a", "codecs", 1, "configuration", "level")
     ]
@@ -175,25 +180,25 @@ def test_error_the_reader_reports_a_conflicting_model_as_the_constructor_does() 
 
 def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope() -> None:
     """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document. It does not bring its own scope into the group: the group's `context` stays its own, and reading the written member in that scope gives the models in it."""
-    held = _consolidated(CORE_AND_EXTENSIONS, a=ZarrV3ArrayMetadata(ARRAY))
-    group = ZarrV3GroupMetadata.create_default(context=CORE, attributes={"t": 1})
+    held = _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=ZarrV3ArrayMetadata(ARRAY))
+    group = ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT, attributes={"t": 1})
     updated = group.update(consolidated_metadata=held)
-    assert updated.context == CORE
+    assert updated.context == CORE_CONTEXT
     assert updated.attributes == {"t": 1}
     assert updated.consolidated_metadata == held.to_json()
     again = ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=updated.context)
-    assert again.metadata["a"].context == CORE
+    assert again.metadata["a"].context == CORE_CONTEXT
     assert again == held
 
 
 def test_error_a_group_refuses_consolidated_metadata_that_conflicts_with_its_scope() -> None:
     """A `ZarrV3ConsolidatedMetadata` read in another scope is read again in the group's scope before the group writes it, as a listing of node models is. A model read with a private `bytes` conflicts with the core `bytes` the group reads, so `update` and `create_default` refuse it at the child's path."""
     held = _consolidated(PRIVATE, a=ZarrV3ArrayMetadata(ARRAY, context=PRIVATE))
-    group = ZarrV3GroupMetadata.create_default(context=CORE_AND_EXTENSIONS)
+    group = ZarrV3GroupMetadata.create_default(context=CORE_AND_EXTENSIONS_CONTEXT)
     for write in (
         lambda: group.update(consolidated_metadata=held),
         lambda: ZarrV3GroupMetadata.create_default(
-            context=CORE_AND_EXTENSIONS, consolidated_metadata=held
+            context=CORE_AND_EXTENSIONS_CONTEXT, consolidated_metadata=held
         ),
     ):
         with pytest.raises(MetadataValidationError) as raised:
@@ -205,9 +210,9 @@ def test_error_a_group_refuses_consolidated_metadata_that_conflicts_with_its_sco
 
 def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning() -> None:
     """A listing read in a scope that claims `zstd`, given to a group whose scope leaves `zstd` unclaimed, would lose information when the group's scope reads it, so the group refuses it at the child's path."""
-    held = _consolidated(CORE_AND_EXTENSIONS, a=ZarrV3ArrayMetadata(WITH_ZSTD))
+    held = _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=ZarrV3ArrayMetadata(WITH_ZSTD))
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=held)
+        ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT).update(consolidated_metadata=held)
     assert [problem.loc for problem in raised.value.problems] == [
         ("consolidated_metadata", "metadata", "a", "codecs", 1)
     ]
@@ -217,7 +222,7 @@ def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning()
     ("context", "found"),
     [
         (ZarrV3Context(), []),
-        (CORE, [("metadata", "g", "consolidated_metadata", "garbage")]),
+        (CORE_CONTEXT, [("metadata", "g", "consolidated_metadata", "garbage")]),
     ],
     ids=["unclaimed", "claimed"],
 )
@@ -232,12 +237,12 @@ def test_a_listed_group_s_listing_is_read_only_where_the_scope_claims_it(
 
 def test_a_group_reads_its_listing_in_its_own_scope() -> None:
     """`consolidated()` reads the documents a group's `consolidated_metadata` lists in the group's own scope, so a child reads as the group's reader would read it, and returns None for a group that lists none."""
-    group = ZarrV3GroupMetadata(_group_document(a=WITH_ZSTD), context=CORE)
+    group = ZarrV3GroupMetadata(_group_document(a=WITH_ZSTD), context=CORE_CONTEXT)
     listing = group.consolidated()
     assert listing is not None
-    assert listing.context == CORE
-    assert listing.metadata["a"].context == CORE
-    assert listing == ZarrV3ConsolidatedMetadata(group.consolidated_metadata, context=CORE)
+    assert listing.context == CORE_CONTEXT
+    assert listing.metadata["a"].context == CORE_CONTEXT
+    assert listing == ZarrV3ConsolidatedMetadata(group.consolidated_metadata, context=CORE_CONTEXT)
     assert ZarrV3GroupMetadata.create_default().consolidated() is None
 
 
@@ -267,11 +272,11 @@ def test_error_a_group_s_listing_that_is_not_an_object(listing: object) -> None:
 
 def test_children_of_different_scopes_consolidate_in_their_union() -> None:
     """Children read in different scopes are consolidated in the union of their scopes. Each child refines into that scope, and the consolidated metadata reads in it."""
-    a = ZarrV3ArrayMetadata(ARRAY, context=CORE)
-    b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
+    a = ZarrV3ArrayMetadata(ARRAY, context=CORE_CONTEXT)
+    b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS_CONTEXT)
     context = a.context.union(b.context)
     held = _consolidated(context, a=a, b=b)
-    assert held.context == CORE_AND_EXTENSIONS
+    assert held.context == CORE_AND_EXTENSIONS_CONTEXT
     assert held.metadata["a"] == a
     assert held.metadata["b"] == b
 
@@ -310,10 +315,10 @@ def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> Non
     )
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "data_type": "r16", "fill_value": [0, 0], "codecs": ("bytes",)},
-        context=CORE.update(data_types={**CORE.data_types, "r*": strict}),
+        context=CORE_CONTEXT.update(data_types={**CORE_CONTEXT.data_types, "r*": strict}),
     )
     with pytest.raises(MetadataValidationError) as raised:
-        _consolidated(CORE, a=child)
+        _consolidated(CORE_CONTEXT, a=child)
     (problem,) = raised.value.problems
     assert problem.loc == ("metadata", "a", "data_type")
     assert problem.message == (
@@ -328,10 +333,10 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
     strict = dataclasses.replace(GZIP_CODEC, rules=lambda configuration, nested: iter(()))
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1}})},
-        context=CORE.update(codecs={**CORE.codecs, "gzip": strict}),
+        context=CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "gzip": strict}),
     )
     with pytest.raises(MetadataValidationError) as raised:
-        _consolidated(CORE, a=child)
+        _consolidated(CORE_CONTEXT, a=child)
     (problem,) = raised.value.problems
     assert problem.message == (
         "expected a document read in the scope of the consolidated metadata, got a model that "

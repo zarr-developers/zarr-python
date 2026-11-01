@@ -161,7 +161,7 @@ This procedure yields one of two values:
 
 `zarr-metadata` does not run each stage as a separate function. Instead, a single read of the document collects the problems from every stage, so a caller gets the full list of problems at once.
 
-The **registry** from the resolve-and-validate stage is called a **scope** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of field (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE` holds only the definitions from the Zarr V3 spec.
+The **registry** from the resolve-and-validate stage is called a **scope** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of field (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS_CONTEXT`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE_CONTEXT` holds only the definitions from the Zarr V3 spec. `ZARR_PYTHON_CONTEXT` adds to `CORE_AND_EXTENSIONS_CONTEXT` the data types that zarr-python writes but no specification registers (`null_terminated_bytes` for NumPy's `S`, `raw_bytes` for NumPy's `V`, and `variable_length_bytes`), so a strict check of what zarr-python writes passes it.
 
 `read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is a tuple of the problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
@@ -193,10 +193,10 @@ To read one field on its own, such as a codec, use `resolve` from `zarr_metadata
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import resolve
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
 field, problems = resolve(
-    {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_AND_EXTENSIONS
+    {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
 )
 for problem in problems:
     print(problem.loc, problem.kind)
@@ -214,17 +214,17 @@ To make an unknown data type or codec known, add its definition to the scope's s
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import EmptyConfiguration
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
 # The definition of the codec that was unknown: here, a codec named
 # `acme.codec` that takes no configuration.
 MY_CODEC = CodecDefinition(
     name="acme.codec", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
 )
-context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), MY_CODEC])
+context = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), MY_CODEC])
 reading = read_array_metadata_v3(raw, context=context)
 ```
 
-`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
+`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.update(codecs={**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
 
 [^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the field `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

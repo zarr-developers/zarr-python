@@ -28,8 +28,9 @@ from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -47,7 +48,8 @@ KINDS: dict[str, type[ZarrV3Kind]] = {
     "group_extra_field": GroupExtraFieldDefinition,
 }
 
-# Fields that read without problems, per extension: at least one per definition in scope.
+# Fields that read without problems, per extension: at least one per definition in
+# the widest scope the package provides.
 EXAMPLES: dict[str, tuple[object, ...]] = {
     "codecs:blosc": (
         {
@@ -89,6 +91,8 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
             },
         },
     ),
+    "codecs:vlen-bytes": ("vlen-bytes", {"name": "vlen-bytes"}),
+    "codecs:vlen-utf8": ("vlen-utf8", {"name": "vlen-utf8"}),
     "codecs:transpose": ({"name": "transpose", "configuration": {"order": [2, 1, 0]}},),
     "codecs:zstd": ({"name": "zstd", "configuration": {"level": 3, "checksum": False}},),
     "chunk_grid:regular": ({"name": "regular", "configuration": {"chunk_shape": [4, 4]}},),
@@ -143,6 +147,14 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
         },
     ),
     "data_type:string": ("string",),
+    "data_type:fixed_length_utf32": (
+        {"name": "fixed_length_utf32", "configuration": {"length_bytes": 48}},
+    ),
+    "data_type:null_terminated_bytes": (
+        {"name": "null_terminated_bytes", "configuration": {"length_bytes": 1}},
+    ),
+    "data_type:variable_length_bytes": ("variable_length_bytes",),
+    "data_type:raw_bytes": ({"name": "raw_bytes", "configuration": {"length_bytes": 1}},),
     "data_type:r*": ("r16", "r008"),
     "group_extra_field:consolidated_metadata": (
         {"consolidated_metadata": {"kind": "inline", "must_understand": False, "metadata": {}}},
@@ -161,7 +173,7 @@ CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
 
 def _read(key: str, field: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
     """The type of the result of reading `field` in the scope (`AcceptedField`, `UnclaimedField` or `RefusedField`), and the location of each problem."""
-    resolved, problems = resolve(field, KINDS[key.split(":")[0]], CORE_AND_EXTENSIONS)
+    resolved, problems = resolve(field, KINDS[key.split(":")[0]], ZARR_PYTHON_CONTEXT)
     return type(resolved), [(found.loc, found.kind) for found in problems]
 
 
@@ -171,7 +183,7 @@ def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]
 
 def test_a_scope_s_definitions_pickle() -> None:
     # This lets a scope be sent to another process and rebuilt there.
-    data_types = pickle.loads(pickle.dumps(tuple(CORE_AND_EXTENSIONS.data_types.values())))
+    data_types = pickle.loads(pickle.dumps(tuple(CORE_AND_EXTENSIONS_CONTEXT.data_types.values())))
     context = ZarrV3Context(data_types=data_types)
     resolved, _ = resolve("complex64", DataTypeDefinition, context)
     assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
@@ -189,9 +201,9 @@ def _every(context: ZarrV3Context) -> set[Definition[Any]]:
 
 
 def test_every_definition_in_scope_has_an_example() -> None:
-    names = {definition.name for definition in _every(CORE_AND_EXTENSIONS)}
+    names = {definition.name for definition in _every(ZARR_PYTHON_CONTEXT)}
     assert names == {key.split(":")[1] for key in EXAMPLES}
-    assert _every(CORE) < _every(CORE_AND_EXTENSIONS)
+    assert _every(CORE_CONTEXT) < _every(CORE_AND_EXTENSIONS_CONTEXT) < _every(ZARR_PYTHON_CONTEXT)
 
 
 @pytest.mark.parametrize(
@@ -202,12 +214,12 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
     # reads the same way, and is its own simplest spelling.
     assert _read(key, field) == (AcceptedField, [])
     kind = KINDS[key.split(":")[0]]
-    simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
+    simplest, problems = canonicalize(field, kind, ZARR_PYTHON_CONTEXT)
     assert problems == ()
     assert simplest is not None
-    assert canonicalize(simplest, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+    assert canonicalize(simplest, kind, ZARR_PYTHON_CONTEXT) == (simplest, ())
     # A field that was already read gives the same spelling as its JSON, without reading it again.
-    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
+    assert canonical_of(*resolve(field, kind, ZARR_PYTHON_CONTEXT)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -339,8 +351,8 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
         "v2": ChunkKeyEncodingDefinition,
     }
     kind = kinds.get(field["name"], CodecDefinition)
-    assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
-    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
+    assert canonicalize(field, kind, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -357,13 +369,13 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
 def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
     field: object, bits: int, simplest: str
 ) -> None:
-    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert problems == ()
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition is RAW_BYTES_DATA_TYPE
     assert resolved.json == field
     assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
-    assert canonicalize(field, DataTypeDefinition, CORE_AND_EXTENSIONS) == (simplest, ())
+    assert canonicalize(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
 
 
 def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
@@ -371,7 +383,9 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     # package's own, it reads every raw-bits name. Filed back, the package's
     # definition reads them again.
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
-    context = CORE_AND_EXTENSIONS.update(data_types={**CORE_AND_EXTENSIONS.data_types, "r*": mine})
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        data_types={**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}
+    )
     resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
     assert isinstance(resolved, AcceptedField)
@@ -394,7 +408,7 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
 def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]) -> None:
     # `r*` is how the specification's table writes raw bits, not a name a
     # document can use: `*` is not allowed in an extension name.
-    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert type(resolved) is RefusedField
     assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
@@ -423,7 +437,7 @@ def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]
 def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
     field: object, kind: type[Definition[Any]], simplest: object
 ) -> None:
-    assert canonicalize(field, kind, CORE) == (simplest, ())
+    assert canonicalize(field, kind, CORE_CONTEXT) == (simplest, ())
 
 
 def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object]:
@@ -492,10 +506,10 @@ def test_error_a_field_with_a_problem_has_no_simplest_spelling(
     # unknown key, the stray member or the `must_understand`, or would
     # write a value that is not valid. A field that was already read,
     # together with its problems, has no simplest spelling either.
-    simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
+    simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS_CONTEXT)
     assert simplest is None
     assert [(problem.loc, problem.kind) for problem in problems] == found
-    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) is None
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)) is None
 
 
 def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:
@@ -508,7 +522,9 @@ def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None
         canonicalize(
             {"name": "acme.lying", "configuration": {"level": 1}},
             CodecDefinition,
-            CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), lying]),
+            CORE_AND_EXTENSIONS_CONTEXT.update(
+                codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), lying]
+            ),
         )
 
 
@@ -671,21 +687,24 @@ def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
 ) -> None:
     # The bound is declared on the TypedDict, as pydantic reads a bound,
     # not in a rule. The problem holds the bound and the value found.
-    _, problems = resolve(field, kind, CORE_AND_EXTENSIONS)
+    _, problems = resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)
     assert [(p.loc, p.kind, p.input, dict(p.ctx)) for p in problems] == [
         (loc, "invalid_value", value_at(field, loc), ctx)
     ]
 
 
 STATIC_SIZE = ("bytes", "cast_value", "crc32c", "scale_offset", "transpose")
-DYNAMIC_SIZE = ("blosc", "gzip", "sharding_indexed", "zstd")
+DYNAMIC_SIZE = ("blosc", "gzip", "sharding_indexed", "vlen-bytes", "vlen-utf8", "zstd")
 
 
 def test_every_codec_says_whether_its_size_is_static() -> None:
     # This matches zarr-python's `is_fixed_size`. A compressor, and a shard
-    # (whose empty inner chunks take no bytes), output a size that depends
-    # on the values.
-    sizes = {definition.name: definition.size for definition in CORE_AND_EXTENSIONS.codecs.values()}
+    # (whose empty inner chunks take no bytes), and a variable-length
+    # codec output a size that depends on the values.
+    sizes = {
+        definition.name: definition.size
+        for definition in CORE_AND_EXTENSIONS_CONTEXT.codecs.values()
+    }
     assert sizes == dict.fromkeys(STATIC_SIZE, "static") | dict.fromkeys(DYNAMIC_SIZE, "dynamic")
 
 

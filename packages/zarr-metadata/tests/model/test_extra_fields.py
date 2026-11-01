@@ -23,7 +23,7 @@ from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3GroupMetadata
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.typed_json import UserJSONValue
 from zarr_metadata.v3.definition import (
-    CORE,
+    CORE_CONTEXT,
     ArrayExtraFieldDefinition,
     GroupExtraFieldDefinition,
     ZarrV3Context,
@@ -51,8 +51,8 @@ class AcmeNoteConfiguration(TypedDict, closed=True):
 ACME_NOTE = ArrayExtraFieldDefinition(name="acme.note", configuration=AcmeNoteConfiguration)
 """A reader's own definition of the `acme.note` member of an array, whose numbers must be finite."""
 
-CONTEXT = CORE.update(
-    array_extra_fields=[*CORE.array_extra_fields.values(), ACME_TILING, ACME_NOTE]
+CONTEXT = CORE_CONTEXT.update(
+    array_extra_fields=[*CORE_CONTEXT.array_extra_fields.values(), ACME_TILING, ACME_NOTE]
 )
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
@@ -66,10 +66,10 @@ NAN_LISTING = {**INLINE, "metadata": {"a": {**ARRAY, "attributes": {"x": math.na
     ("document", "context", "claimed", "must_understand"),
     [
         ({**ARRAY, "acme.tiling": TILING}, CONTEXT, {"acme.tiling"}, {}),
-        ({**ARRAY, "acme.tiling": TILING}, CORE, set(), {"acme.tiling": TILING}),
+        ({**ARRAY, "acme.tiling": TILING}, CORE_CONTEXT, set(), {"acme.tiling": TILING}),
         ({**ARRAY, "acme.other": {"must_understand": False}}, CONTEXT, set(), {}),
         ({**ARRAY, "acme.other": 5}, CONTEXT, set(), {"acme.other": 5}),
-        ({**GROUP, "consolidated_metadata": INLINE}, CORE, {"consolidated_metadata"}, {}),
+        ({**GROUP, "consolidated_metadata": INLINE}, CORE_CONTEXT, {"consolidated_metadata"}, {}),
         ({**GROUP, "consolidated_metadata": INLINE}, ZarrV3Context(), set(), {}),
         (
             {**GROUP, "consolidated_metadata": None},
@@ -77,8 +77,13 @@ NAN_LISTING = {**INLINE, "metadata": {"a": {**ARRAY, "attributes": {"x": math.na
             set(),
             {"consolidated_metadata": None},
         ),
-        ({**ARRAY, "consolidated_metadata": INLINE}, CORE, set(), {}),
-        ({**GROUP, "consolidated_metadata": NAN_LISTING}, CORE, {"consolidated_metadata"}, {}),
+        ({**ARRAY, "consolidated_metadata": INLINE}, CORE_CONTEXT, set(), {}),
+        (
+            {**GROUP, "consolidated_metadata": NAN_LISTING},
+            CORE_CONTEXT,
+            {"consolidated_metadata"},
+            {},
+        ),
         ({**GROUP, "consolidated_metadata": NAN_LISTING}, ZarrV3Context(), set(), {}),
         ({**ARRAY, "acme.other": {"x": math.inf}}, CONTEXT, set(), {"acme.other": {"x": math.inf}}),
     ],
@@ -102,7 +107,7 @@ def test_a_scope_reads_the_extra_fields_it_claims(
     claimed: set[str],
     must_understand: dict[str, object],
 ) -> None:
-    """Each member the spec does not define is an extra field. A member whose key a definition in scope claims is an `AcceptedField`, and a reader understands it. Any other member is an `UnclaimedField`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed member, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a member of an array, and `CORE` reads a group's `consolidated_metadata`. The document is written back as it was read."""
+    """Each member the spec does not define is an extra field. A member whose key a definition in scope claims is an `AcceptedField`, and a reader understands it. Any other member is an `UnclaimedField`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed member, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a member of an array, and `CORE_CONTEXT` reads a group's `consolidated_metadata`. The document is written back as it was read."""
     model: ZarrV3ArrayMetadata | ZarrV3GroupMetadata
     if document["node_type"] == "array":
         model = ZarrV3ArrayMetadata(document, context=context)
@@ -167,16 +172,16 @@ def test_an_extra_field_is_a_field_of_the_reading() -> None:
 
 
 def test_the_simplest_spelling_of_an_extra_field_is_plain_json() -> None:
-    """`canonical_of` returns plain JSON for an extra field, with no read-only views inside, so `json.dumps` writes it. `CORE` claims a group's `consolidated_metadata`, whose configuration holds objects with no nested field."""
-    model = ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": INLINE}, context=CORE)
+    """`canonical_of` returns plain JSON for an extra field, with no read-only views inside, so `json.dumps` writes it. `CORE_CONTEXT` claims a group's `consolidated_metadata`, whose configuration holds objects with no nested field."""
+    model = ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": INLINE}, context=CORE_CONTEXT)
     simplest = canonical_of(model.extra_fields["consolidated_metadata"], ())
     assert json.loads(json.dumps(simplest)) == {"consolidated_metadata": INLINE}
 
 
 def test_error_a_claimed_extra_field_that_is_not_an_object() -> None:
-    """A definition reads a member whose value is an object. Any other value of a claimed member is a problem at the member's key, as `CORE` refuses a `consolidated_metadata` of null."""
+    """A definition reads a member whose value is an object. Any other value of a claimed member is a problem at the member's key, as `CORE_CONTEXT` refuses a `consolidated_metadata` of null."""
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": None}, context=CORE)
+        ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": None}, context=CORE_CONTEXT)
     assert [(p.loc, p.kind) for p in raised.value.problems] == [
         (("consolidated_metadata",), "invalid_type")
     ]
@@ -230,7 +235,7 @@ def test_error_resolve_a_member_the_spec_defines_as_an_extra_field(
     member: dict[str, Any],
 ) -> None:
     """`resolve` reads a member the spec defines, read as an extra field, as a `RefusedField` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
-    read, problems = resolve(member, kind, CORE)
+    read, problems = resolve(member, kind, CORE_CONTEXT)
     assert isinstance(read, RefusedField)
     assert [(p.loc, p.kind) for p in problems] == [((), "invalid_value")]
     assert "the spec defines" in problems[0].message
