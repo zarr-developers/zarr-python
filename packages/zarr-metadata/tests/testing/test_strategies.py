@@ -1,6 +1,6 @@
 """The strategies against the definitions they draw for, and against what they ought to reach.
 
-Every draw is read in `CORE_AND_EXTENSIONS_CONTEXT` and must read without a
+Every draw is read in `ZARR_PYTHON_CONTEXT` and must read without a
 problem, by the definition it was drawn for: the field alone, a fill
 value beside its data type, a chunk grid over the shape it was drawn
 for, a codec handed the chunk it was drawn for. A strategy that only
@@ -58,8 +58,8 @@ from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TY
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
     Chunk,
     ChunkGridDefinition,
     CodecDefinition,
@@ -78,14 +78,14 @@ _HOLDING_FIELDS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DA
 
 _IN_SCOPE = frozenset(
     (
-        *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-        *CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(),
-        *CORE_AND_EXTENSIONS_CONTEXT.chunk_key_encodings.values(),
-        *CORE_AND_EXTENSIONS_CONTEXT.codecs.values(),
-        *CORE_AND_EXTENSIONS_CONTEXT.storage_transformers.values(),
+        *ZARR_PYTHON_CONTEXT.data_types.values(),
+        *ZARR_PYTHON_CONTEXT.chunk_grids.values(),
+        *ZARR_PYTHON_CONTEXT.chunk_key_encodings.values(),
+        *ZARR_PYTHON_CONTEXT.codecs.values(),
+        *ZARR_PYTHON_CONTEXT.storage_transformers.values(),
     )
 )
-"""The definitions at the spec's extension points that `CORE_AND_EXTENSIONS_CONTEXT` holds; members of a document it defines are not fields."""
+"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not fields."""
 _CORE_DATA_TYPES = frozenset(CORE_CONTEXT.data_types.values())
 
 _DEFINITIONS = sorted(DEFAULT_STRATEGIES, key=lambda definition: definition.name)
@@ -103,8 +103,8 @@ def _id(value: object) -> str:
 
 
 def _read(definition: Definition[Any], field: object) -> Any:  # noqa: ANN401
-    """`field` read in `CORE_AND_EXTENSIONS_CONTEXT`, asserted to read without a problem by `definition`."""
-    resolved, problems = resolve(field, as_kind(kind_of(definition)), CORE_AND_EXTENSIONS_CONTEXT)
+    """`field` read in `ZARR_PYTHON_CONTEXT`, asserted to read without a problem by `definition`."""
+    resolved, problems = resolve(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
     assert problems == ()
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition is definition
@@ -130,9 +130,7 @@ def test_fields_read(
     if definition in _CORE_DATA_TYPES:
         assert isinstance(field, str)
     if spellings == "canonical":
-        canonical, _ = canonicalize(
-            field, as_kind(kind_of(definition)), CORE_AND_EXTENSIONS_CONTEXT
-        )
+        canonical, _ = canonicalize(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
         assert canonical == field
 
 

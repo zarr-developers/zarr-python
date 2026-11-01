@@ -52,7 +52,8 @@ _NULL_TERMINATED = {"name": "null_terminated_bytes", "configuration": {"length_b
 _RAW = {"name": "raw_bytes", "configuration": {"length_bytes": 4}}
 
 
-# What zarr-python 3.4.2 writes for `<U3`, `S4`, `str`, `VariableLengthBytes()` and `V4` arrays.
+# The data type, fill value and serializer zarr-python 3.4.2 writes for `<U3`, `S4`, `str`,
+# `VariableLengthBytes()` and `V4` arrays; the compressors it adds are left out.
 @pytest.mark.parametrize(
     ("document", "in_core_and_extensions"),
     [
