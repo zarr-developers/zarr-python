@@ -1233,6 +1233,11 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 
+[package.optional-dependencies]
+testing = [
+    { name = "hypothesis" },
+]
+
 [package.dev-dependencies]
 docs = [
     { name = "griffe-inherited-docstrings" },
@@ -1254,8 +1259,10 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "annotated-types", specifier = ">=0.6" },
+    { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.85" },
     { name = "typing-extensions", specifier = ">=4.16" },
 ]
+provides-extras = ["testing"]
 
 [package.metadata.requires-dev]
 docs = [

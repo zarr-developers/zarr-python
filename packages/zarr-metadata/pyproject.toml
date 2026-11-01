@@ -43,6 +43,11 @@ dependencies = [
     "typing_extensions>=4.16",
 ]
 
+[project.optional-dependencies]
+# `zarr_metadata.testing.strategies`. 6.85: first release with
+# `characters(exclude_categories=...)`.
+testing = ["hypothesis>=6.85"]
+
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"

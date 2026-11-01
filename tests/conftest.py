@@ -262,15 +262,29 @@ def pytest_addoption(parser: Any) -> None:
         default=False,
         help="run slow hypothesis tests",
     )
+    parser.addoption(
+        "--run-examples",
+        action="store_true",
+        default=False,
+        help="run the scripts in examples/",
+    )
+
+
+# Tests with one of these markers are skipped unless the matching option is passed.
+_OPT_IN_MARKERS = {
+    "slow_hypothesis": "--run-slow-hypothesis",
+    "examples": "--run-examples",
+}
 
 
 def pytest_collection_modifyitems(config: Any, items: Any) -> None:
-    if config.getoption("--run-slow-hypothesis"):
-        return
-    skip_slow_hyp = pytest.mark.skip(reason="need --run-slow-hypothesis option to run")
-    for item in items:
-        if "slow_hypothesis" in item.keywords:
-            item.add_marker(skip_slow_hyp)
+    for marker, option in _OPT_IN_MARKERS.items():
+        if config.getoption(option):
+            continue
+        skip = pytest.mark.skip(reason=f"need {option} option to run")
+        for item in items:
+            if marker in item.keywords:
+                item.add_marker(skip)
 
 
 settings.register_profile(
