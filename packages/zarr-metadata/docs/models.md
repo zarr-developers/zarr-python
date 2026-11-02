@@ -104,10 +104,12 @@ field is a declaration written as the member alone, `{key: value}`. Any
 other extra field is kept as written, as an `UnclaimedDeclaration`.
 
 The spec calls these members [additional fields](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#additional-fields),
-the heading [PR 373](https://github.com/zarr-developers/zarr-specs/pull/373)
-gave the section that v3.1.0 calls "Unknown" (no tagged release carries it
-yet), and the names `extra_fields`, `ExtraFieldDefinition` and
-`must_understand_fields` follow it. Everywhere else this package says
+and the names `extra_fields`, `ExtraFieldDefinition` and
+`must_understand_fields` follow it. That heading comes from
+[PR 373](https://github.com/zarr-developers/zarr-specs/pull/373), which
+renamed the section v3.1.0 calls [Unknown](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown).
+As of v3.1.0 no tagged release carries the new heading, so the link points
+at the latest spec; pin it once a release does. Everywhere else this package says
 *member* for a name/value pair of a JSON object and *declaration* for the
 value at an extension point. It keeps *field* for the fields of a Python
 class, such as a dataclass or a pydantic model, and, after the spec and
