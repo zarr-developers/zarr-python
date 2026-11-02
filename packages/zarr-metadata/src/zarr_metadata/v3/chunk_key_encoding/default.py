@@ -37,14 +37,28 @@ class DefaultChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """
 
     separator: NotRequired[DefaultChunkKeyEncodingSeparator]
+    """The character between the parts of a chunk key: `c/1/23/45` or `c.1.23.45`.
+
+    Absent means `"/"`.
+    """
 
 
 class DefaultChunkKeyEncodingObject(TypedDict, closed=True):
     """Default chunk key encoding metadata in object form."""
 
     name: DefaultChunkKeyEncodingName
+    """The chunk key encoding's name, `"default"`."""
     configuration: NotRequired[DefaultChunkKeyEncodingConfiguration]
+    """The chunk key encoding's parameters.
+
+    Absent means every parameter takes its default: a `separator` of `"/"`.
+    """
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this chunk key encoding must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a chunk key encoding
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 DefaultChunkKeyEncodingMetadata = DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName

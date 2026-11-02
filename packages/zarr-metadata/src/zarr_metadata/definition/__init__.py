@@ -1,14 +1,14 @@
-"""Reading metadata fields against their definitions, in either Zarr format.
+"""Reading declarations against their definitions, in either Zarr format.
 
 Every extension point of a Zarr document (a v3 codec, data type, chunk
 grid, chunk key encoding or storage transformer; a v2 dtype or numcodecs
-codec) is a metadata field: a name, and a configuration whose JSON the
+codec) is a declaration: a name, and a configuration whose JSON the
 extension defines. A **definition** declares what that JSON is and what
 it may contain. A definition is a value, not a class to subclass. It has:
 
 - `name`, the name the metadata uses;
 - `configuration`, the TypedDict for the configuration's JSON. This is
-  the single declaration of the JSON: the type checker is compiled from
+  the single source of the JSON: the type checker is compiled from
   it, and a checked configuration has it as its static type. It is
   interpreted as the typing spec defines a TypedDict: `total`,
   `Required`, `NotRequired`, `closed` and `extra_items` mean what they
@@ -24,7 +24,7 @@ The kind of metadata a definition defines is its type. The v3 kinds are
 in `zarr_metadata.v3.definition`, and the v2 kinds are in
 `zarr_metadata.v2.definition`. This module holds what both formats share:
 `Definition` and `WithFillValue`, which the kinds derive from; `resolve`,
-which reads a field in a scope; the three results of a reading; and
+which reads a declaration in a scope; the three results of a reading; and
 `Context`, the protocol of a scope.
 
 **Reading JSON.** There are three steps. Each feeds the next, and each
@@ -34,62 +34,62 @@ can be used on its own by a caller that has only JSON:
    type-checks JSON against a TypedDict and needs nothing else. It
    returns a value of the TypedDict or None, and every problem, each
    with a location. The value contains only what the TypedDict admits. A
-   member typed with a field alias is checked as metadata field JSON.
+   member typed with a declaration alias is checked as declaration JSON.
 2. `definition.read_configuration(configuration)` returns the
    configuration as that definition reads it. It type-checks the
-   configuration, checks the envelope of each nested field (an extra
+   configuration, checks the envelope of each nested declaration (an extra
    member, a `must_understand` of `false`), and then runs the rules, for
    one configuration: `GZIP_CODEC.read_configuration({"level": 12})`.
-3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
-   field in a scope. It checks the envelope, maps the name to a
-   definition, checks the configuration, and reads each nested field the
+3. `resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)` reads a whole
+   declaration in a scope. It checks the envelope, maps the name to a
+   definition, checks the configuration, and reads each nested declaration the
    same way. It returns the result of the reading and every problem. The
-   result is one of three types. `AcceptedField` is a field read by the
+   result is one of three types. `AcceptedDeclaration` is a declaration read by the
    definition that claims its name, with the configuration it checked
-   and allowed, and its nested fields, each read the same way.
-   `UnclaimedField` is a name that nothing in scope claims. It is not
-   checked, which is what keeps the format open. `RefusedField` is a
-   field with problems that explain why it was rejected. Each type has the
-   field's JSON, the `name` it is written with, the kind it was read as
+   and allowed, and its nested declarations, each read the same way.
+   `UnclaimedDeclaration` is a name that nothing in scope claims. It is not
+   checked, which is what keeps the format open. `RefusedDeclaration` is a
+   declaration with problems that explain why it was rejected. Each type has the
+   declaration's JSON, the `name` it is written with, the kind it was read as
    (`read_as`), the `definition` that claims its name (None for
-   `UnclaimedField`), and its nested fields as the scope read them
-   (`nested`). The two types a model can hold, `AcceptedField` and
-   `UnclaimedField`, have a `configuration` and `to_json()`, which
-   returns the field as a document writes it. Two of them are equal when
-   they read the same, however each was spelled. `ResolvedField` is the
+   `UnclaimedDeclaration`), and its nested declarations as the scope read them
+   (`nested`). The two types a model can hold, `AcceptedDeclaration` and
+   `UnclaimedDeclaration`, have a `configuration` and `to_json()`, which
+   returns the declaration as a document writes it. Two of them are equal when
+   they read the same, however each was spelled. `ResolvedDeclaration` is the
    union of the three, for use with `match`.
-   `configuration_of(field, GZIP_CODEC)` returns the configuration of a
-   field that `GZIP_CODEC` accepted, typed as its TypedDict
-   (`GzipCodecConfiguration`), and None for any other field, including
-   one that `GZIP_CODEC` claimed and refused. A field is read as one of
+   `configuration_of(declaration, GZIP_CODEC)` returns the configuration of a
+   declaration that `GZIP_CODEC` accepted, typed as its TypedDict
+   (`GzipCodecConfiguration`), and None for any other declaration, including
+   one that `GZIP_CODEC` claimed and refused. A declaration is read as one of
    the kinds of its format, with or without type arguments.
-   `resolve(field, Definition, context)` raises `TypeError`, because
+   `resolve(declaration, Definition, context)` raises `TypeError`, because
    nothing is filed under `Definition`. A whole v3 array document is
    read by `read_array_metadata_v3`, in `zarr_metadata.model`. Its
-   reading returns each field with its location in the document.
+   reading returns each declaration with its location in the document.
 
     from zarr_metadata.definition import resolve
     from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
-                                 CodecDefinition, CORE_AND_EXTENSIONS)
-    resolved                # RefusedField(..., definition=CodecDefinition(name='gzip'), ...)
+                                 CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    resolved                # RefusedDeclaration(..., definition=CodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 5}},
-                                 CodecDefinition, CORE_AND_EXTENSIONS)
+                                 CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     resolved.definition is GZIP_CODEC        # True
     resolved.configuration                   # {'level': 5}
 
 Problems are values, not exceptions: `ValidationProblem(loc, message,
 kind)`, with `kind` one of `invalid_type`, `invalid_value`,
-`missing_key`, `unknown_key` and `invalid_json`. A field with an
+`missing_key`, `unknown_key` and `invalid_json`. A declaration with an
 unknown key is still read: the key is reported, and the configuration
 is checked without it. So a consumer that tolerates unknown keys can
-filter problems by kind and use the result. The field is valid only
+filter problems by kind and use the result. The declaration is valid only
 when there are no problems at all. Each problem stores the content of
 its message as data, as pydantic's errors and zod's issues do: `input`
 is the value found at `loc` (the `12` above), and `ctx` is what was
@@ -103,15 +103,15 @@ definition. The TypedDict must be a `typing_extensions.TypedDict`,
 because `closed` and `extra_items` come from PEP 728, and
 `typing.TypedDict` does not accept them on the Python versions this
 package supports. The rules receive the configuration and its nested
-fields as the scope read them. A field that is read stores its nested
-fields as `AcceptedField.nested`, a `Nested` mapping keyed by location,
+declarations as the scope read them. A declaration that is read stores its nested
+declarations as `AcceptedDeclaration.nested`, a `Nested` mapping keyed by location,
 so a struct's rules can access its field types. `read_configuration`
-reads in no scope, so it passes no nested fields. A rule's message
+reads in no scope, so it passes no nested declarations. A rule's message
 should show a value as JSON, as the package's own messages do, with
 `zarr_metadata.problems.shown`: `null`, `[1, 2]`, `"C"`. A rule reports the location of a
 problem. The value at that location becomes the problem's `input`
 automatically. Define each function at module top level. A model holds
-the definitions that read its fields, so the model can be pickled, and
+the definitions that read its declarations, so the model can be pickled, and
 compares equal after loading, only if its definitions can. A lambda or
 a closure cannot be pickled, and a `functools.partial` can be pickled
 but does not compare equal to its loaded copy.
@@ -124,7 +124,7 @@ but does not compare equal to its loaded copy.
 
     from zarr_metadata import ValidationProblem
     from zarr_metadata.definition import Nested
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
 
     class AcmeLz4Configuration(TypedDict, closed=True):
@@ -149,7 +149,7 @@ but does not compare equal to its loaded copy.
         size="dynamic",
         rules=acme_lz4_rules,
     )
-    CONTEXT = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_LZ4])
+    CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_LZ4])
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,
@@ -180,11 +180,11 @@ shape of a fill value, as an annotation the checker reads (for example
 function that yields the spec violations in a fill value of that shape
 that the type cannot express, such as a hex string of the wrong width,
 or a number of byte values that does not match the size. The rules
-receive the configuration, the nested fields as the scope read them,
+receive the configuration, the nested declarations as the scope read them,
 and the typed fill value, so a struct checks each field's fill value
 against that field's own type.
 `fill_value_problems(data_type, value)` checks a fill value against a
-data type field the scope read. If nothing in scope claims the data
+data type declaration the scope read. If nothing in scope claims the data
 type, the fill value is not checked. A data type that does not declare
 its fill value accepts any JSON.
 A fill value can have more than one spelling (`"NaN"` and `"0x7fc00000"`
@@ -199,16 +199,16 @@ distinct `float32`) as equal to `0.0`.
 or `UNSET` for a fill value with a problem. A data type that does not
 declare `fill_value_canonical` keeps each value as written.
 
-**The simplest spelling.** A field without problems has a simplest
-equivalent spelling, and fields are compared by it. Each nested field is
+**The simplest spelling.** A declaration without problems has a simplest
+equivalent spelling, and declarations are compared by it. Each nested declaration is
 written in its own simplest spelling, then the definition's `canonical`
 is applied (blosc drops a `typesize` that `noshuffle` ignores, and a
 rectilinear grid run-length encodes its chunk shapes). The envelope
 uses the shortest form every reader accepts: a data type with nothing to
-configure is its bare name, and any other field is an object,
+configure is its bare name, and any other declaration is an object,
 `{"name": ...}`, because a Zarr v3.0 reader does not accept a short-hand
 name in `codecs`. Raw bits write their size back into the name, in
-decimal, so `r008` becomes `r8`. A field with any problem, including an
+decimal, so `r008` becomes `r8`. A declaration with any problem, including an
 unknown key, has no simplest spelling, because a simpler spelling would
 erase what its author wrote. The result of `canonical` is checked again,
 and an invalid result raises `ValueError`, which indicates a bug in the
@@ -222,8 +222,8 @@ are separate classes, and `Context` is the protocol both implement: the
 Zarr format a scope reads, and `claimant`, which says which definition
 of a kind reads a name. That is all `resolve` needs, so any object that
 provides these two can be a scope. A scope has one slot for each kind of
-field its format has, named like the document member that holds such
-fields: `ZarrV3Context(codecs=[...], data_types=[...])` builds one, and
+declaration its format has, named like the document member that holds such
+declarations: `ZarrV3Context(codecs=[...], data_types=[...])` builds one, and
 `context.codecs["gzip"]` reads one slot. A type checker rejects a
 definition in the wrong slot, and a scope of one format given to a
 reader of the other. The constructor and the reader also reject them at
@@ -245,11 +245,11 @@ A definition checks itself when it is built. Each of these raises a
 `TypeError` that says what is wrong: a `configuration` that is not a
 TypedDict, that does not declare how undeclared keys are handled, or
 that has a member no checker reads (the error names the TypedDict that
-contains it); a `name` that is not a string; a member declared as a
+contains it); a `name` that is not a string; an attribute declared as a
 function (`rules`, `canonical`, `fill_value_rules`, `storage`,
 `shape_rules`, `chunk_lengths`, `chunk_rules`, `transition`,
 `pipelines`) that is not a function; a data type's `fill_value` that no
-checker reads, or that contains a metadata field, which a value of the
+checker reads, or that contains a declaration, which a value of the
 data type never does; a codec `kind` that is not one of the three, or a
 `size` that is not `"static"` or `"dynamic"`; a function that is never
 called for a codec of its kind (chunk rules or pipelines of a
@@ -262,14 +262,14 @@ built from it does.
 """
 
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Context,
     Definition,
     EmptyConfiguration,
     Nested,
-    RefusedField,
-    ResolvedField,
-    UnclaimedField,
+    RefusedDeclaration,
+    ResolvedDeclaration,
+    UnclaimedDeclaration,
     WithFillValue,
     canonical_fill_value,
     canonical_of,
@@ -285,17 +285,17 @@ from zarr_metadata.definition._scope import (
 )
 
 __all__ = [
-    "AcceptedField",
+    "AcceptedDeclaration",
     "ClaimKey",
     "Conflict",
     "Context",
     "Definition",
     "EmptyConfiguration",
     "Nested",
-    "RefusedField",
-    "ResolvedField",
+    "RefusedDeclaration",
+    "ResolvedDeclaration",
     "ScopeConflictError",
-    "UnclaimedField",
+    "UnclaimedDeclaration",
     "WithFillValue",
     "canonical_fill_value",
     "canonical_of",

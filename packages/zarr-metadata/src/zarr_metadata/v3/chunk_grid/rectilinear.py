@@ -38,15 +38,30 @@ class RectilinearChunkGridConfiguration(TypedDict, closed=True):
     """Configuration for the rectilinear chunk grid."""
 
     kind: Literal["inline"]
+    """How `chunk_shapes` is encoded; `"inline"` is the only kind the spec defines."""
     chunk_shapes: tuple[RectilinearDimSpec, ...]
+    """The chunk edge lengths along each dimension of the array, one entry per dimension.
+
+    An entry is a bare integer, a step repeated until it covers the
+    dimension, or a list of edge lengths and `[length, count]` runs, whose
+    lengths must sum to at least the dimension's length. Every length and
+    count is at least 1.
+    """
 
 
 class RectilinearChunkGridObject(TypedDict, closed=True):
     """Rectilinear chunk grid metadata in object form."""
 
     name: RectilinearChunkGridName
+    """The chunk grid's name, `"rectilinear"`."""
     configuration: RectilinearChunkGridConfiguration
+    """The chunk grid's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this chunk grid must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a chunk grid
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 RectilinearChunkGridMetadata = RectilinearChunkGridObject

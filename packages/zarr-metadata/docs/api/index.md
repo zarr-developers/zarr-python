@@ -7,7 +7,7 @@ title: API reference
 The package is organized to mirror the structure of the Zarr specifications:
 
 - [`zarr_metadata.json_schema`](json_schema.md) — JSON Schema output for
-  any `TypedDict`, one v3 field, or a whole v3 `zarr.json`
+  any `TypedDict`, one v3 declaration, or a whole v3 `zarr.json`
 - [`zarr_metadata.model`](model.md) — document models (each one a
   document and the scope it was read in), the readers that return
   problems instead of raising them, and the `UNSET` sentinel
@@ -22,7 +22,7 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
   (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`), and
   `zarr_metadata.v2.definition`: the v2 kinds of metadata, the scope
-  `CORE_V2`, and the readers of one `dtype` or codec. Each dtype family's
+  `CORE_V2_CONTEXT`, and the readers of one `dtype` or codec. Each dtype family's
   definition is in `zarr_metadata.v2.data_type`, and each codec's in
   `zarr_metadata.v2.codec`
 - [`zarr_metadata.v3`](v3/index.md) — `TypedDict` shapes for Zarr v3
@@ -30,12 +30,12 @@ The package is organized to mirror the structure of the Zarr specifications:
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),
   and [data types](v3/data_type.md)
 - [`zarr_metadata.definition`](definition.md) — what both formats share
-  for reading a field: `Definition`, `resolve`, the three results of a
-  reading (`AcceptedField`, `UnclaimedField`, `RefusedField`), and the
+  for reading a declaration: `Definition`, `resolve`, the three results of a
+  reading (`AcceptedDeclaration`, `UnclaimedDeclaration`, `RefusedDeclaration`), and the
   scope type `Context`. Its module docstring is the guide
 - [`zarr_metadata.v3.definition`](v3/definition.md) — the five v3 kinds
   of metadata (`CodecDefinition`, `DataTypeDefinition`, ...), the codec
-  pipeline types, and the v3 scopes `CORE` and `CORE_AND_EXTENSIONS`
+  pipeline types, and the v3 scopes `CORE_CONTEXT` and `CORE_AND_EXTENSIONS_CONTEXT`
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so
@@ -45,9 +45,13 @@ The model layer's readers are imported from
 [`zarr_metadata.model`](model.md) directly, and the problem types every
 reader reports from [`zarr_metadata.problems`](problems.md).
 
-## Common types
+## Top-level names
 
 Two cross-cutting types are also exported from the top-level
 `zarr_metadata` namespace: `JSONValue`, documented in
 [`zarr_metadata.typed_json`](typed_json.md), and `ZarrV3NamedConfigJSON`,
 documented in [`zarr_metadata.v3`](v3/index.md).
+
+The package version is exported only from the top level:
+
+::: zarr_metadata.__version__

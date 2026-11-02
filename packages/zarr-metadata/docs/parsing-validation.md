@@ -66,7 +66,7 @@ This procedure yields one of two values:
 1. A Zarr-metadata-shaped JSON object with consistent `shape` and `dimension_names` fields
 2. A problem localized to the `dimension_names` field. Strictly speaking, we can't say which of the two fields is wrong. But we treat `shape` as the reference for the number of axes in the array, so the problem goes on the field that disagrees with it. `shape` is required, and other fields like `chunk_grid` depend on it; `dimension_names` is optional, and only names the axes. This metadata has to be repaired; there's no other way to handle it.
 
-### Resolving and validating each field
+### Resolving and validating each declaration
 
 At this stage we check that each metadata object names a known type, given a registry of data types, codec types, etc., and that its configuration is valid for that type.
 
@@ -85,16 +85,16 @@ For example, the string `"float64"` should resolve to the 64-bit floating point 
 
 We say "should" because that's what the Zarr V3 spec says about this. There is not a hard requirement that all implementations resolve the string `"float64"` to the 64-bit floating point data type. Someone could write their own (deviant) Zarr implementation that gives the name `"float64"` to a boolean data type. The mapping from JSON identifier (a string) to metadata type (a definition) is held by the registry that entered scope at this stage of validation.
 
-For each field, we do two steps:
+For each declaration, we do two steps:
 
-1. **Resolve** the name. We look up the name of the field in the registry.
+1. **Resolve** the name. We look up the name of the declaration in the registry.
 2. **Validate** the configuration. If we found a match, we must then ensure that the configuration of the JSON value works for the type we resolved.
 
-What if a name isn't in the registry? This is **not** a problem with the document. The document might be perfectly valid, and written by a program with a bigger registry than ours. An unknown name tells us something about our registry, not about the document. So we don't report it as a problem. Instead we mark the field as **unknown**, skip the second step, and leave it to the program that reads the document to decide what to do with it. A program that only needs to list the arrays in a hierarchy might be fine with an unknown codec. A program that decodes chunks is not, and it can try again with a more comprehensive registry.
+What if a name isn't in the registry? This is **not** a problem with the document. The document might be perfectly valid, and written by a program with a bigger registry than ours. An unknown name tells us something about our registry, not about the document. So we don't report it as a problem. Instead we mark the declaration as **unknown**, skip the second step, and leave it to the program that reads the document to decide what to do with it. A program that only needs to list the arrays in a hierarchy might be fine with an unknown codec. A program that decodes chunks is not, and it can try again with a more comprehensive registry.
 
 If the name is in the registry, we validate the configuration. Suppose our metadata JSON had the following `chunk_grid` field: `"chunk_grid": {"name": "regular", "configuration": "error"}`. If we resolved the name of the chunk grid (`"regular"`) to the [regular chunk grid](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/chunk-grids/regular-grid/index.html) defined in the core spec, then we must do additional checks on the structure of the `configuration` field before we can interpret this chunk grid. In this case, the spec requires that the `configuration` field be a JSON object with a `chunk_shape` field, which is a JSON array of positive integers. Our `"configuration": "error"` field has the wrong type, so this is a problem localized to `/chunk_grid/configuration`.
 
-Validating a configuration might require resolving more fields. Consider this example:
+Validating a configuration might require resolving more declarations. Consider this example:
 
 ```json
 {
@@ -115,7 +115,7 @@ The name `"sharding_indexed"` should resolve to the [codec with the same name](h
 
 Repeating these steps, recursively if necessary, for all metadata objects, we yield one of two values:
 
-1. A Zarr metadata object where each field is either unknown, or resolved to a type and internally consistent with the definition of that type
+1. A Zarr metadata object where each declaration is either unknown, or resolved to a type and internally consistent with the definition of that type
 2. An enumeration of localized validation problems.
 
 ### Consistency checks between fields
@@ -150,18 +150,18 @@ Each codec in the pipeline is also handed a value produced by everything that ca
 
 To check these rules, we walk the pipeline in order, tracking the chunk that each codec is handed. For codecs that hold pipelines of their own, like `sharding_indexed`, we walk those inner pipelines too.
 
-What about fields marked as unknown? We know nothing about them, and so we can't check anything that depends on them. If the data type is unknown, we can't check the fill value, or whether the `bytes` codec needs an `endian`. If a codec is unknown, we can't say what kind of codec it is, or what it hands on to the next codec. In these cases we skip the check rather than guess. An unknown field limits what we can say about the rest of the document.
+What about declarations marked as unknown? We know nothing about them, and so we can't check anything that depends on them. If the data type is unknown, we can't check the fill value, or whether the `bytes` codec needs an `endian`. If a codec is unknown, we can't say what kind of codec it is, or what it hands on to the next codec. In these cases we skip the check rather than guess. An unknown declaration limits what we can say about the rest of the document.
 
 This procedure yields one of two values:
 
-1. A Zarr metadata object where every known field is valid on its own and consistent with every other known field. If no field is unknown, this is the metadata that a program can use to decode chunks. If some field is unknown, the program needs a registry that knows it before it can decode chunks.
+1. A Zarr metadata object where every known declaration is valid on its own and consistent with every other known declaration. If no declaration is unknown, this is the metadata that a program can use to decode chunks. If some declaration is unknown, the program needs a registry that knows it before it can decode chunks.
 2. An enumeration of localized consistency problems, e.g. "`/chunk_grid/configuration/chunk_shape`: expected one chunk length per dimension of `shape`".
 
 ## How `zarr-metadata` implements these stages
 
 `zarr-metadata` does not run each stage as a separate function. Instead, a single read of the document collects the problems from every stage, so a caller gets the full list of problems at once.
 
-The **registry** from the resolve-and-validate stage is called a **scope** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of field (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE` holds only the definitions from the Zarr V3 spec.
+The **registry** from the resolve-and-validate stage is called a **scope** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of declaration (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS_CONTEXT`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE_CONTEXT` holds only the definitions from the Zarr V3 spec. `ZARR_PYTHON_CONTEXT` adds to `CORE_AND_EXTENSIONS_CONTEXT` the data types that zarr-python writes but no specification registers (`null_terminated_bytes` for NumPy's `S`, `raw_bytes` for NumPy's `V`, and `variable_length_bytes`), so a strict check of what zarr-python writes passes it.
 
 `read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is a tuple of the problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
@@ -189,24 +189,24 @@ for problem in reading.problems:
 
 If you only want the model, `ZarrV3ArrayMetadata.from_json(raw)` returns it, or raises `MetadataValidationError` with every problem in `.problems`.
 
-To read one field on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the field, the kind of field, and the scope, and returns the field as read and its problems:
+To read one declaration on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the declaration, the kind of declaration, and the scope, and returns the declaration as read and its problems:
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import resolve
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
-field, problems = resolve(
-    {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_AND_EXTENSIONS
+declaration, problems = resolve(
+    {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
 )
 for problem in problems:
     print(problem.loc, problem.kind)
 # ('configuration', 'level') invalid_value
 ```
 
-A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed. A model's `unclaimed_fields` lists each one, at any depth, by its location, and leaves out an extra member that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
+A declaration with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedDeclaration`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every declaration is known. A program that decodes chunks should also check that no declaration is unclaimed. A model's `unclaimed_declarations` lists each one, at any depth, by its location, and leaves out an extra field that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
 
 ```python test="true" session="parsing-validation"
-unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_fields
+unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_declarations
 can_open = unclaimed is not None and len(unclaimed) == 0
 ```
 
@@ -214,17 +214,17 @@ To make an unknown data type or codec known, add its definition to the scope's s
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import EmptyConfiguration
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
 
 # The definition of the codec that was unknown: here, a codec named
 # `acme.codec` that takes no configuration.
 MY_CODEC = CodecDefinition(
     name="acme.codec", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
 )
-context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), MY_CODEC])
+context = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), MY_CODEC])
 reading = read_array_metadata_v3(raw, context=context)
 ```
 
-`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS.update(codecs={**CORE_AND_EXTENSIONS.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
+`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.update(codecs={**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
 
-[^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the field `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.
+[^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the declaration `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

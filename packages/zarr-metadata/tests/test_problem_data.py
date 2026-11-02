@@ -50,7 +50,7 @@ from zarr_metadata.typed_json import (
 )
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     CodecDefinition,
     DataTypeDefinition,
 )
@@ -219,18 +219,18 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
     (lambda value: check(value, GzipLevelOnly)[1], {"level": 12, "extra": [1]}),
     (lambda value: GZIP_CODEC.read_configuration(value)[1], {"level": 12, "extra": [1]}),
     (
-        lambda value: resolve(value, CodecDefinition, CORE_AND_EXTENSIONS)[1],
+        lambda value: resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1],
         {"name": "gzip", "configuration": {"level": 12}, "must_understand": "yes"},
     ),
     (
         lambda value: fill_value_problems(
-            resolve("uint8", DataTypeDefinition, CORE_AND_EXTENSIONS)[0], value
+            resolve("uint8", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0], value
         ),
         300,
     ),
     (validate_json, {"a": [math.inf]}),
     (
-        lambda value: resolve(value, CodecDefinition, CORE_AND_EXTENSIONS)[1],
+        lambda value: resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1],
         {"name": 1, "configuration": {"a": [math.nan]}, "extra": [1]},
     ),
     (validate_node_name_v3, "__/"),
@@ -275,7 +275,7 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
         "resolve",
         "fill-value-problems",
         "validate-json",
-        "resolve-a-field-that-is-not-json",
+        "resolve-a-declaration-that-is-not-json",
         "validate-node-name",
         "validate-node-path",
         "read-array",
@@ -292,7 +292,7 @@ def test_every_problem_a_reader_finds_holds_what_the_value_handed_in_holds_there
     read: Callable[[object], Sequence[ValidationProblem]], value: object
 ) -> None:
     # Each problem holds part of the input value itself, not of a copy the
-    # reader made along the way. This holds for problems in a field, a
+    # reader made along the way. This holds for problems in a declaration, a
     # pipeline, a chunk grid checked against the shape, and a document held
     # by a group. A missing key holds no input, and neither does a value
     # that is not JSON, such as a store's bytes.
@@ -311,14 +311,14 @@ class WideBits(TypedDict, closed=True):
     bits: Annotated[int, Le(16)]
 
 
-def test_a_problem_with_what_a_name_carries_is_the_field_s() -> None:
+def test_a_problem_with_what_a_name_carries_is_the_declaration_s() -> None:
     # `r24` carries `{"bits": 24}`, which this scope's raw-bits definition
-    # refuses. The problem is located at the field, because the name is what
+    # refuses. The problem is located at the declaration, because the name is what
     # the document wrote there. The bound on `bits` is not a bound on the
     # name, so the problem's `ctx` is empty.
-    context = CORE_AND_EXTENSIONS.update(
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
         data_types={
-            **CORE_AND_EXTENSIONS.data_types,
+            **CORE_AND_EXTENSIONS_CONTEXT.data_types,
             "r*": DataTypeDefinition(name="r*", configuration=WideBits),
         }
     )
@@ -391,7 +391,7 @@ def test_a_problem_at_the_first_element_holds_it() -> None:
     (problem,) = with_input([ValidationProblem(("a", 0), "bad", "invalid_value")], {"a": [7]})
     assert problem.input == 7
     assert value_at([5, 6], (0,)) == 5
-    read = resolve("bytes", DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
+    read = resolve("bytes", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0]
     (found,) = fill_value_problems(read, [-1])
     assert (found.loc, found.input) == ((0,), -1)
 

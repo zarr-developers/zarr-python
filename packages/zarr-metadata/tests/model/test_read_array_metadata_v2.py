@@ -1,4 +1,4 @@
-"""Tests for reading a v2 array document once. A reading holds each field as the scope read it, every problem, and the model."""
+"""Tests for reading a v2 array document once. A reading holds each declaration as the scope read it, every problem, and the model."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Any
 import pytest
 
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     EmptyConfiguration,
-    RefusedField,
-    UnclaimedField,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
 )
 from zarr_metadata.model import (
     UNSET,
@@ -21,7 +21,7 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_CODEC_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_DATA_TYPE_V2
 from zarr_metadata.v2.definition import (
-    CORE_V2,
+    CORE_V2_CONTEXT,
     ZarrV2CodecDefinition,
     ZarrV2Context,
 )
@@ -34,7 +34,7 @@ PRIVATE = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2], codecs=[ZLIB_CODEC_V2])
 @pytest.mark.parametrize(
     ("changes", "context", "dtype", "compressor", "filters", "locs"),
     [
-        ({}, None, AcceptedField, None, None, [("dtype",)]),
+        ({}, None, AcceptedDeclaration, None, None, [("dtype",)]),
         (
             {
                 "dtype": "<f4",
@@ -42,32 +42,32 @@ PRIVATE = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2], codecs=[ZLIB_CODEC_V2])
                 "filters": [{"id": "delta", "dtype": "<f4"}],
             },
             None,
-            AcceptedField,
-            AcceptedField,
-            (AcceptedField,),
+            AcceptedDeclaration,
+            AcceptedDeclaration,
+            (AcceptedDeclaration,),
             [("dtype",), ("compressor",), ("filters", 0)],
         ),
         (
             {"dtype": "<e2", "compressor": {"id": "x"}},
             None,
-            UnclaimedField,
-            UnclaimedField,
+            UnclaimedDeclaration,
+            UnclaimedDeclaration,
             None,
             [("dtype",), ("compressor",)],
         ),
-        ({"dtype": "|u1"}, PRIVATE, UnclaimedField, None, None, [("dtype",)]),
+        ({"dtype": "|u1"}, PRIVATE, UnclaimedDeclaration, None, None, [("dtype",)]),
         (
             {"dtype": [["a", "<f4"]], "filters": [], "fill_value": None},
             None,
-            AcceptedField,
+            AcceptedDeclaration,
             None,
             (),
-            [("dtype",), ("dtype", "fields", 0, 1)],
+            [("dtype",), ("dtype", 0, 1)],
         ),
     ],
     ids=["default", "all-read", "unclaimed", "private-scope", "struct"],
 )
-def test_a_reading_holds_each_field_as_the_scope_read_it(
+def test_a_reading_holds_each_declaration_as_the_scope_read_it(
     changes: dict[str, Any],
     context: ZarrV2Context | None,
     dtype: type,
@@ -75,7 +75,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     filters: object,
     locs: list[Loc],
 ) -> None:
-    """`read_array_metadata_v2` reads the document once in the given scope (`CORE_V2` by default). Each of `dtype`, `compressor` and `filters` is an `AcceptedField`, an `UnclaimedField`, or None, depending on what the document contains. `fields()` returns them in document order, with a struct's record types after the struct. A valid document produces no problems."""
+    """`read_array_metadata_v2` reads the document once in the given scope (`CORE_V2_CONTEXT` by default). Each of `dtype`, `compressor` and `filters` is an `AcceptedDeclaration`, an `UnclaimedDeclaration`, or None, depending on what the document contains. `declarations()` returns them in document order, with a struct's record types after the struct. A valid document produces no problems."""
     reading = read_array_metadata_v2({**BASE, **changes}, context=context)
     assert reading.problems == ()
     assert type(reading.dtype) is dtype
@@ -83,7 +83,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     assert reading.filters is not UNSET
     found = None if reading.filters is None else tuple(type(f) for f in reading.filters)
     assert found == filters
-    assert [loc for loc, _ in reading.fields()] == locs
+    assert [loc for loc, _ in reading.declarations()] == locs
 
 
 @pytest.mark.parametrize(
@@ -102,12 +102,12 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
 def test_error_a_reading_reports_every_problem(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """Reading an invalid document reports every problem. A refused field is held as a `RefusedField`, and the reading has no model."""
+    """Reading an invalid document reports every problem. A refused declaration is held as a `RefusedDeclaration`, and the reading has no model."""
     reading = read_array_metadata_v2(value)
     assert [(p.loc, p.kind) for p in reading.problems] == problems
     assert reading.metadata is None
     if isinstance(value, dict) and "dtype" in problems[0][0]:
-        assert isinstance(reading.dtype, RefusedField)
+        assert isinstance(reading.dtype, RefusedDeclaration)
 
 
 def test_error_filters_that_are_not_an_array_are_not_read_as_null() -> None:
@@ -125,7 +125,7 @@ def test_the_v2_readers_read_in_the_scope_given() -> None:
     doc = {**BASE, "compressor": {"id": "zlib", "level": 1}}
     assert read_array_metadata_v2(doc).problems == ()
     found = read_array_metadata_v2(
-        doc, context=CORE_V2.update(codecs={**CORE_V2.codecs, "zlib": bare})
+        doc, context=CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": bare})
     ).problems
     assert [p.loc for p in found] == [("compressor", "level")]
 
