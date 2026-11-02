@@ -34,14 +34,14 @@ At this stage we need to ensure that:
 - every **required** field is present
 - every **required** and **optional** field has the correct shape
 
-The correct shape varies per field. The Zarr V3 spec defines a **generic metadata element type** that is reused for data types, codecs, etc. Inhabitants of that type are:
+The correct shape varies per field. The Zarr V3 spec defines a [**generic metadata element type**](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#extension-definition) that is reused for data types, codecs, etc. Inhabitants of that type are:
 
 - strings
 - JSON objects with a `"name"` field and optionally `"configuration"` and `"must_understand"` fields
 
 The `data_type` field must comply with this shape. The `codecs` field must be a non-empty JSON array of values that comply with this shape.
 
-The spec does not define a shape for **extra** fields. Instead, the [relevant section of the spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown) says that a reader must refuse to open an array with an extra field, unless that field is a JSON object with `"must_understand": false`. Like an unknown name, which we will see later, an extra field is not a problem with the document. It's a field that some readers can't use. So at this stage we don't check extra fields; we just note which of them a reader must understand.
+The spec does not define a shape for **extra** fields. Instead, the [relevant section of the spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown) says that a reader must refuse to open an array with an extra field, unless that field is a JSON object with [`"must_understand": false`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand). Like an unknown name, which we will see later, an extra field is not a problem with the document. It's a field that some readers can't use. So at this stage we don't check extra fields; we just note which of them a reader must understand.
 
 !!! note
     At this stage we don't need to know **which** data type, or chunk grid, or codecs, are declared in the metadata document. We are only looking at **how** those fields are declared. We will resolve the raw JSON to a specific data type, chunk grid, etc. in a later validation pass.
@@ -79,11 +79,11 @@ In the previous stages, we just had two elements to work with:
 
 This stage introduces a third element to our process: a registry of data types, codecs, chunk grids, etc. We "resolve" anonymous JSON metadata into a data type or codec by finding a type matching that JSON in the registry.
 
-That registry is keyed by string identifiers, which almost all[^1] data types, codecs, etc. present. And the result of this stage is no longer context-free: it depends on the contents of the registry, i.e. which codec, data type, etc. definitions are in scope.
+That registry is keyed by string identifiers, which almost all[^1] data types, codecs, etc. present. And the result of this stage is no longer context-free: it depends on the contents of the registry, i.e. which codec, data type, etc. definitions are in the context.
 
 For example, the string `"float64"` should resolve to the 64-bit floating point data type with the same name defined in the [Zarr V3 spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/data-types/index.html#core-data-types).
 
-We say "should" because that's what the Zarr V3 spec says about this. There is not a hard requirement that all implementations resolve the string `"float64"` to the 64-bit floating point data type. Someone could write their own (deviant) Zarr implementation that gives the name `"float64"` to a boolean data type. The mapping from JSON identifier (a string) to metadata type (a definition) is held by the registry that entered scope at this stage of validation.
+We say "should" because that's what the Zarr V3 spec says about this. There is not a hard requirement that all implementations resolve the string `"float64"` to the 64-bit floating point data type. Someone could write their own (deviant) Zarr implementation that gives the name `"float64"` to a boolean data type. The mapping from JSON identifier (a string) to metadata type (a definition) is held by the registry that was brought in at this stage of validation.
 
 For each declaration, we do two steps:
 
@@ -135,7 +135,7 @@ is a snippet of an invalid metadata document because the `shape` field applies t
 
 The `fill_value` field is another example. The spec does not define a single shape for `fill_value`. Instead, each data type defines which JSON values it accepts as a fill value. So `"fill_value": "hello"` might be fine for a string data type, but it's a problem for `"float64"`. We can only check `fill_value` after we have resolved `data_type`.
 
-The `codecs` field has the most interactions of all, because a list of codecs is a **pipeline**. The spec divides codecs into three kinds:
+The `codecs` field has the most interactions of all, because a list of codecs is a **pipeline**. [The spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id22) divides codecs into three kinds:
 
 - array → array codecs, like `transpose`, which take an array and return an array
 - array → bytes codecs, like `bytes`, which take an array and return bytes
@@ -145,8 +145,8 @@ A valid pipeline is zero or more array → array codecs, then exactly one array 
 
 Each codec in the pipeline is also handed a value produced by everything that came before it. The first codec is handed a chunk with the data type of the array and the shape of the chunk grid's chunks. An array → array codec may change that shape or data type before handing it on. Some codecs have rules about what they are handed. For example:
 
-- The `bytes` codec requires an `endian` field in its configuration when the data type it is handed takes more than one byte per element. `{"name": "bytes"}` is valid for a `uint8` array, but a problem for a `float64` array.
-- The `sharding_indexed` codec requires that its inner `chunk_shape` evenly divides the shape of the chunk it is handed, which is the outer chunk (or shard) shape.
+- The [`bytes`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/bytes/index.html#configuration-parameters) codec requires an `endian` field in its configuration when the data type it is handed takes more than one byte per element. `{"name": "bytes"}` is valid for a `uint8` array, but a problem for a `float64` array.
+- The [`sharding_indexed`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/sharding-indexed/index.html#configuration-parameters) codec requires that its inner `chunk_shape` evenly divides the shape of the chunk it is handed, which is the outer chunk (or shard) shape.
 
 To check these rules, we walk the pipeline in order, tracking the chunk that each codec is handed. For codecs that hold pipelines of their own, like `sharding_indexed`, we walk those inner pipelines too.
 
@@ -161,7 +161,7 @@ This procedure yields one of two values:
 
 `zarr-metadata` does not run each stage as a separate function. Instead, a single read of the document collects the problems from every stage, so a caller gets the full list of problems at once.
 
-The **registry** from the resolve-and-validate stage is called a **scope** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of declaration (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS_CONTEXT`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE_CONTEXT` holds only the definitions from the Zarr V3 spec. `ZARR_PYTHON_CONTEXT` adds to `CORE_AND_EXTENSIONS_CONTEXT` the data types that zarr-python writes but no specification registers (`null_terminated_bytes` for NumPy's `S`, `raw_bytes` for NumPy's `V`, and `variable_length_bytes`), so a strict check of what zarr-python writes passes it.
+The **registry** from the resolve-and-validate stage is called a **context** in this library. For Zarr V3 it is a [`ZarrV3Context`](api/v3/definition.md) object, with one slot for each kind of declaration (`data_types`, `codecs`, `chunk_grids`, ...), and every reader takes a `context` argument. The default context is `CORE_AND_EXTENSIONS_CONTEXT`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE_CONTEXT` holds only the definitions from the Zarr V3 spec. `ZARR_PYTHON_CONTEXT` adds the data types that zarr-python writes but no specification registers.
 
 `read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is a tuple of the problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
@@ -189,7 +189,7 @@ for problem in reading.problems:
 
 If you only want the model, `ZarrV3ArrayMetadata.from_json(raw)` returns it, or raises `MetadataValidationError` with every problem in `.problems`.
 
-To read one declaration on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the declaration, the kind of declaration, and the scope, and returns the declaration as read and its problems:
+To read one declaration on its own, such as a codec, use `resolve` from `zarr_metadata.definition`. It takes the declaration, the kind of declaration, and the context, and returns the declaration as read and its problems:
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import resolve
@@ -203,14 +203,14 @@ for problem in problems:
 # ('configuration', 'level') invalid_value
 ```
 
-A declaration with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedDeclaration`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every declaration is known. A program that decodes chunks should also check that no declaration is unclaimed. A model's `unclaimed_declarations` lists each one, at any depth, by its location, and leaves out an extra field that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
+A declaration with an unknown name is called **unclaimed**, because no definition in the context claims that name. It is not reported as a problem: it is read as an `UnclaimedDeclaration`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every declaration is known. A program that decodes chunks should also check that no declaration is unclaimed. A model's `unclaimed_declarations` lists each one, at any depth, by its location, and leaves out an extra field that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
 
 ```python test="true" session="parsing-validation"
 unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_declarations
 can_open = unclaimed is not None and len(unclaimed) == 0
 ```
 
-To make an unknown data type or codec known, add its definition to the scope's slot and read the document again:
+To make an unknown data type or codec known, add its definition to the context's slot and read the document again:
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import EmptyConfiguration
@@ -227,4 +227,4 @@ reading = read_array_metadata_v3(raw, context=context)
 
 `union` keeps every definition the scope has, and raises `ScopeConflictError` if `MY_CODEC` has a name the scope already files with another definition. To replace a definition on purpose, use `copy`, which, like pydantic's `model_copy(update=...)`, replaces whole each slot it is given and keeps the others. A slot can be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.copy(update={"codecs": {**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP}})` replaces the gzip definition with your own. Passing `copy(update={"codecs": [MY_CODEC]})` instead would leave `MY_CODEC` as the only codec.
 
-[^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the declaration `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.
+[^1]: The one exception is the [`r*` data type](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#data-types), which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the declaration `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

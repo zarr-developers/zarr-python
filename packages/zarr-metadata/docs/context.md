@@ -101,7 +101,7 @@ These are the three scenarios:
 
 - `bytes` is parsed to an `AcceptedDeclaration`. A definition in the context claims the name `bytes`, and the configuration passes its checks.
 - The malformed `gzip` is parsed to a `RefusedDeclaration`. A definition claims the name `gzip`, but the configuration fails one of its checks: a `level` of 99 is outside the range gzip allows. The read reports the problem, with its location in the document, and builds no model, so `reading.metadata` is `None`. Building the model directly raises the same problem as a `MetadataValidationError`.
-- The `unknown` codec is parsed to an `UnclaimedDeclaration`. Nothing in the context claims the name, so it is kept as written and not checked. This is not a problem: the spec lets a document name codecs a reader does not know.
+- The `unknown` codec is parsed to an `UnclaimedDeclaration`. Nothing in the context claims the name, so it is kept as written and not checked. This is not a problem: the spec [lets a document name codecs](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#extension-codecs) defined outside it, which a reader may not know.
 
 So one JSON document can be valid in one context and invalid in another. This is why a model is a document _and_ the context it was read in: the context defines the interpretation of the document. A model keeps its context, and moving it to another context reads the document again. Our `small` model was valid in its original context, but it is not valid in the new one:
 
