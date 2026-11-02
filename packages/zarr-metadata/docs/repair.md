@@ -12,7 +12,7 @@ the result strictly, and return each change they made as a `Repair`.
   dimension, which zarr-python 3.0 and 3.1 wrote, is written as 1.
 - `consolidated_metadata: null` on a v3 group, which zarr-python 3.0 and
   3.1 wrote, is removed. The spec [requires an object](https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L802-L816).
-- The `consolidated_metadata` field that zarr-python 3 writes into each
+- The `consolidated_metadata` member that zarr-python 3 writes into each
   `.zgroup` entry of a `.zmetadata` below the root is removed. The
   [v2 spec](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#groups) allows no key but `zarr_format` in a `.zgroup`.
 - A non-finite v2 fill value that zarr-python 3.0.0 to 3.0.6 wrote as a

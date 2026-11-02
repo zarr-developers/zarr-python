@@ -17,7 +17,7 @@ bounds, and a name that nothing in the context claims may have any
 configuration. The fill value must be a valid fill value for the data type
 the document names.
 
-A schema describes each field on its own, not the rules that relate fields
+A schema describes each member on its own, not the rules that relate members
 to each other, so a document the schema accepts may still have a problem.
 Every JSON document the readers accept, the schema also accepts. A schema
 validator reads JSON as a parser produces it, with arrays as lists. A

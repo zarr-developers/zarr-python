@@ -54,7 +54,7 @@ metadata = reading.metadata  # None when reading.problems is not empty
 
 `read_group_metadata_v3` reads a group the same way. It checks the envelope
 of the group's `consolidated_metadata`, and does not read the documents the
-field lists (see [Consolidated metadata](consolidated-metadata.md)).
+member lists (see [Consolidated metadata](consolidated-metadata.md)).
 `read_node_metadata_v3` reads a `zarr.json` of either kind as the node type
 its [`node_type`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#node-type) names, the same way a discriminated union uses its tag. A
 document whose `node_type` is neither reads as
@@ -77,30 +77,30 @@ writes that same document to store bytes.
 
 Every typed attribute is a view of that read: each declaration as the
 context read it (an `AcceptedDeclaration` or an `UnclaimedDeclaration`),
-and `shape`, `attributes` and the fields that hold no declaration as the
+and `shape`, `attributes` and the members that hold no declaration as the
 read refined them. These views are read-only at every level: a list in the
 document is shown as a tuple, and an object as a read-only mapping.
 `to_json` returns plain containers. A model holds nothing that can be
 changed in place.
 
-To change a model, call `update`. It replaces fields of the document with
-the given JSON fields and reads the result in the model's own context, so
-you do not pass the context again. A field the spec defines is given by its
+To change a model, call `update`. It replaces members of the document with
+the given JSON members and reads the result in the model's own context, so
+you do not pass the context again. A member the spec defines is given by its
 name, and any other field in `extra_fields`, a mapping from its key to its
 value, or to `UNSET` to remove it. A name `update` does not take raises
-`TypeError`, so a misspelled field is never written. `with_context` reads
+`TypeError`, so a misspelled member is never written. `with_context` reads
 the document in another context. `refined_in` also reads the document in
 another context, but only one that claims what this context left unclaimed
 and contradicts nothing; otherwise it raises `ScopeConflictError`.
 
 ## Extra fields
 
-A top-level field that the spec does not define is an extra field. The
-core spec hands such a field to its [extension rules](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown). A
+A top-level member that the spec does not define is an extra field. The
+core spec hands such a member to its [extension rules](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown). A
 context can hold a definition for one, by its key, in the
 `array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
-field whose key a definition claims is read by that definition: an extra
-field is a declaration written as the field alone, `{key: value}`. Any
+member whose key a definition claims is read by that definition: an extra
+field is a declaration written as the member alone, `{key: value}`. Any
 other extra field is kept as written, as an `UnclaimedDeclaration`.
 
 The context is what a reader recognizes, so the model's
@@ -111,7 +111,7 @@ grid, chunk key encoding, codec or storage transformer that nothing in the
 context claims is an `UnclaimedDeclaration` too, also when it sits inside
 another declaration, such as a codec inside a shard. A model's
 `unclaimed_declarations` lists every declaration nothing in the context
-claims, at any depth, by its location, and leaves out the fields that waive
+claims, at any depth, by its location, and leaves out the members that waive
 `must_understand`: a reader can open the node when it is empty.
 
 ## Equality

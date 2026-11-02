@@ -17,10 +17,10 @@ before it describes the API.
   format, is open.
 - **Zarr v3.** zarr-specs [PR 309](https://github.com/zarr-developers/zarr-specs/pull/309), open since
   August 2024 and following [issue 136](https://github.com/zarr-developers/zarr-specs/issues/136), proposes the
-  `consolidated_metadata` field with the `kind: "inline"` envelope that
+  `consolidated_metadata` member with the `kind: "inline"` envelope that
   zarr-python 3 writes. It is not merged. The core spec does not define the
-  field's entries. Since [PR 373](https://github.com/zarr-developers/zarr-specs/pull/373), merged in July 2026,
-  it names the field "for historical reasons" and fixes its envelope: an
+  member's entries. Since [PR 373](https://github.com/zarr-developers/zarr-specs/pull/373), merged in July 2026,
+  it names the member "for historical reasons" and fixes its envelope: an
   object with `must_understand: false`, `kind: "inline"` and a `metadata`
   object ([spec text](https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L802-L816)). That change closed
   [issue 371](https://github.com/zarr-developers/zarr-specs/issues/371), which found that the v3.1.0 extension
@@ -49,12 +49,12 @@ the matching `node_path` functions, check a string against those rules.
 
 A group does not read the documents its `consolidated_metadata` lists.
 Consolidated metadata is a convention of the reference implementation, not
-core metadata, so a group holds the field as written, after it checks the
+core metadata, so a group holds the member as written, after it checks the
 [envelope that the core spec fixes](https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L802-L816). `CORE_CONTEXT` holds
 `CONSOLIDATED_METADATA_EXTRA_FIELD`, the definition that reads a group's
 `consolidated_metadata` as that envelope.
 
-A reader can use the field as a source of child documents in place of the
+A reader can use the member as a source of child documents in place of the
 store: read one document with `read_node_metadata_v3` when that node is
 opened, or read all of them with the group's `consolidated()`, with
 `ZarrV3ConsolidatedMetadata`, or with `read_consolidated_metadata_v3`,

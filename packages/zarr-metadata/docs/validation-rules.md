@@ -5,7 +5,7 @@ and a small set of context-free consistency rules, for example:
 
 - fixed format literals ([`zarr_format`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#zarr-format) and
   [`node_type`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#node-type)),
-- finite JSON numbers outside `attributes` and the fields nothing in the
+- finite JSON numbers outside `attributes` and the members nothing in the
   context reads,
 - non-negative [dimensions](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#array-metadata-shape),
 - one [`dimension_names`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#dimension-names) entry per array dimension.
@@ -40,7 +40,7 @@ Some choices that the spec text leaves open, or answers in two ways:
   [does not interpret attributes](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#attributes), and zarr-python and xarray write these
   numbers there (for example, a CF `_FillValue`). The models read them,
   and `to_key_value` writes them back as bare tokens, which a strict JSON
-  parser rejects. So may a field the spec does not define when no
+  parser rejects. So may a member the spec does not define when no
   definition in the context claims it: nothing reads it, so it is kept as
   written. `check`, from `zarr_metadata.typed_json`, rejects a non-finite
   number anywhere, including in attributes.
@@ -63,8 +63,8 @@ Some choices that the spec text leaves open, or answers in two ways:
   [core spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand) names only the data type, chunk grid and chunk
   key encoding. A reader that
   skips a codec reads wrong bytes, just as a reader that skips a data type
-  reads wrong values. On an unknown top-level field, `must_understand`
-  keeps its meaning: a reader can skip that field.
+  reads wrong values. On an unknown top-level member, `must_understand`
+  keeps its meaning: a reader can skip that member.
 - **A v3 `regular` chunk grid's chunk lengths must be at least 1**, even
   along a dimension of length 0. The [regular grid spec](https://zarr-specs.readthedocs.io/en/latest/v3/chunk-grids/regular-grid/index.html#description) says "Chunk
   sizes must be greater than zero", a sentence added after v3.1.0 in

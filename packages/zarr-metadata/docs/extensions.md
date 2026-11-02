@@ -60,7 +60,7 @@ Some rules for the pieces:
   how undeclared keys are handled: `closed=True`, `extra_items=`, or
   `closed=False`. An open-by-default `TypedDict` is refused, because it
   would accept a misspelled key silently.
-- Its fields must be JSON shapes: `int`, `float`, `bool`, `str`, `None`,
+- Its members must be JSON shapes: `int`, `float`, `bool`, `str`, `None`,
   `JSONValue`, a `Literal`, `tuple[T, ...]`, `tuple[T1, T2]`, a union, a
   `TypedDict`, `Mapping[str, V]`, a `NewType` or a type alias. A number
   may carry bounds from annotated-types (`Gt`, `Ge`, `Lt`, `Le`,
