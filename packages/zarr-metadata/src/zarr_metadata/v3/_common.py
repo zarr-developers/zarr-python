@@ -1,7 +1,7 @@
 """The v3 declaration: its JSON type, and the type aliases for members that hold a declaration.
 
 This module is private. It sits below both code paths that read a declaration:
-the model, which checks the fields of a document, and the definitions,
+the model, which checks the members of a document, and the definitions,
 which read a declaration's configuration. Public consumers import
 `ZarrV3DeclarationJSON` from `zarr_metadata.v3`, and the aliases from
 `zarr_metadata.v3.definition`. One declaration is read with
