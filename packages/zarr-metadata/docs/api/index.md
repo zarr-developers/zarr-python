@@ -45,9 +45,13 @@ The model layer's readers are imported from
 [`zarr_metadata.model`](model.md) directly, and the problem types every
 reader reports from [`zarr_metadata.problems`](problems.md).
 
-## Common types
+## Top-level names
 
 Two cross-cutting types are also exported from the top-level
 `zarr_metadata` namespace: `JSONValue`, documented in
 [`zarr_metadata.typed_json`](typed_json.md), and `ZarrV3NamedConfigJSON`,
 documented in [`zarr_metadata.v3`](v3/index.md).
+
+The package version is exported only from the top level:
+
+::: zarr_metadata.__version__

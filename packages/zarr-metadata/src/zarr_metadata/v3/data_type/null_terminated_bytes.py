@@ -28,24 +28,25 @@ NullTerminatedBytesDataTypeName = Literal["null_terminated_bytes"]
 
 
 class NullTerminatedBytesConfiguration(TypedDict, closed=True):
-    """
-    Configuration for the `null_terminated_bytes` data type.
-
-    Attributes
-    ----------
-    length_bytes
-        The size in bytes of every value, at least 1.
-    """
+    """Configuration for the `null_terminated_bytes` data type."""
 
     length_bytes: ReadOnly[int]
+    """The size in bytes of every value, at least 1."""
 
 
 class NullTerminatedBytes(TypedDict, closed=True):
     """`null_terminated_bytes` data type metadata."""
 
     name: NullTerminatedBytesDataTypeName
+    """The data type's name, `"null_terminated_bytes"`."""
     configuration: NullTerminatedBytesConfiguration
+    """The data type's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this data type must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 NullTerminatedBytesFillValue = Base64Bytes

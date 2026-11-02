@@ -60,17 +60,44 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
+    """The shape of the inner chunks a shard is divided into.
+
+    One length, at least 1, per axis of the shard the codec is handed, each
+    dividing the shard's length along that axis.
+    """
     codecs: tuple[ZarrV3CodecField, ...]
+    """The codec pipeline that encodes each inner chunk.
+
+    Like an array's `codecs`, it holds exactly one array -> bytes codec.
+    """
     index_codecs: tuple[ZarrV3StaticCodecField, ...]
+    """The codec pipeline that encodes the shard index.
+
+    It holds exactly one array -> bytes codec, and only codecs whose output
+    size is fixed by the size of their input, so no compressor. The spec
+    recommends a little-endian `bytes` codec followed by `crc32c`.
+    """
     index_location: NotRequired[ShardingIndexLocation]
+    """Whether the shard index sits at the `"start"` or the `"end"` of the encoded shard.
+
+    Absent means `"end"`.
+    """
 
 
 class ShardingIndexedCodecObject(TypedDict, closed=True):
     """`sharding_indexed` codec metadata in object form."""
 
     name: ShardingIndexedCodecName
+    """The codec's name, `"sharding_indexed"`."""
     configuration: ShardingIndexedCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 ShardingIndexedCodecMetadata = ShardingIndexedCodecObject

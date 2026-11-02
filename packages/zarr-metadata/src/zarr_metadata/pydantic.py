@@ -449,6 +449,7 @@ class InScope:
     """
 
     context: ZarrV3Context | ZarrV2Context
+    """The scope the field is read in, in place of any scope the validation context holds."""
 
     def __post_init__(self) -> None:
         if not _is_context(self.context):

@@ -31,16 +31,41 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
 
     zarr_format: Literal[3]
+    """The Zarr format version, `3`."""
     node_type: Literal["array"]
+    """The kind of node the document describes, `"array"`."""
     data_type: ZarrV3DataTypeField
+    """The data type of the array's elements, e.g. `"float64"`."""
     shape: tuple[Annotated[int, Ge(0)], ...]
+    """The length of each dimension of the array."""
     chunk_grid: ZarrV3ChunkGridField
+    """How the array is divided into chunks, e.g. a `"regular"` grid of one chunk shape."""
     chunk_key_encoding: ZarrV3ChunkKeyEncodingField
+    """How a chunk's grid coordinates become its key in the store."""
     fill_value: JSONValue
+    """The value of an element in a chunk that was never written.
+
+    Which JSON values it may take depends on `data_type`.
+    """
     codecs: tuple[ZarrV3CodecField, ...]
+    """The codecs that encode each chunk, in encoding order.
+
+    Zero or more array -> array codecs, then exactly one array -> bytes codec,
+    then zero or more bytes -> bytes codecs, so the list is never empty
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L974-L983).
+    """
     attributes: NotRequired[Mapping[str, JSONValue]]
+    """User attributes: arbitrary JSON values by string key."""
     storage_transformers: NotRequired[tuple[ZarrV3StorageTransformerField, ...]]
+    """The storage transformers between the array and its store.
+
+    Absent means none, as does an empty list.
+    """
     dimension_names: NotRequired[tuple[str | None, ...]]
+    """A name for each dimension, `null` for an unnamed one.
+
+    As long as `shape`; absent means every dimension is unnamed.
+    """
 
 
 ZarrV3ArrayMetadataStoreKey = Literal["zarr.json"]

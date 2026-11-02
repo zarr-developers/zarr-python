@@ -51,9 +51,13 @@ class Conflict:
     """One place where two readings of a name disagree: the key, the definition one reading claimed, the definition the other found, and the location in the document when known."""
 
     key: ClaimKey
+    """The kind, and the name the two definitions are filed under."""
     claimed: Definition[Any] | None
+    """The definition one reading or scope gives the name; None when it leaves the name unclaimed."""
     found: Definition[Any] | None
+    """The definition the other gives the name; None when it gives none, so the name would lose its meaning."""
     loc: Loc | None = None
+    """Where the name occurs in the document; None when no document is available."""
     written: str | None = None
     """The name the document uses at the conflict location, for example `r16` for a key of `r*`; None when no document is available."""
 
@@ -90,6 +94,7 @@ class ScopeConflictError(ValueError):
 
     def __init__(self, conflicts: Sequence[Conflict]) -> None:
         self.conflicts: tuple[Conflict, ...] = tuple(conflicts)
+        """Every conflict, in the order found; the message joins them."""
         super().__init__("; ".join(str(conflict) for conflict in self.conflicts))
 
     def __reduce__(

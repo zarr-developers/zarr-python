@@ -40,6 +40,7 @@ class ZarrV2CodecMetadata(TypedDict, extra_items=JSONValue):
     """
 
     id: str
+    """The numcodecs id that names the codec, such as `"blosc"`."""
 
 
 __all__ = ["ZarrV2CodecMetadata", "ZarrV2DataTypeMetadata"]

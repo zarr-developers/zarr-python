@@ -533,9 +533,13 @@ class Context(Protocol):
     """
 
     @property
-    def zarr_format(self) -> Literal[2, 3]: ...
+    def zarr_format(self) -> Literal[2, 3]:
+        """The Zarr format of the documents this scope reads."""
+        ...
 
-    def claimant(self, kind: type[D], name: str) -> D | None: ...
+    def claimant(self, kind: type[D], name: str) -> D | None:
+        """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
