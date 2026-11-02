@@ -81,14 +81,16 @@ the rest of the chain **chunk-local**. From then on, codecs are validated agains
 representative chunk: the one with the largest edge along each axis. This has the
 following consequences:
 
-- **Rejections are always correct.** The representative is a chunk the grid declares, so
-  a codec that rejects it would fail on that chunk.
+- **Rejections are about the grid.** The representative is a chunk the grid declares, so
+  a codec that rejects it would fail on that chunk. The chunk may lie past the array's
+  current extent, because a grid may declare edges beyond it.
 - **Acceptance is incomplete.** A chain that is invalid only for some *other* chunk
   shape is accepted when the array is created, and the error surfaces when a chunk of
-  that shape is first encoded or decoded. Suppose a sharding codec follows an undeclared
+  that shape is first encoded or decoded. A chunk holding only the fill value is not
+  stored, so it never reaches the codec. Suppose a sharding codec follows an undeclared
   filter on a grid with chunk edges `[4, 6]`. An inner chunk size of `3` divides the
-  representative edge `6`, so the array is created, but writing to a chunk with edge `4`
-  raises an error.
+  representative edge `6`, so the array is created, but writing data other than the fill
+  value to a chunk with edge `4` raises an error.
 - **Size-sensitive codecs must check at run time.** Any codec whose correctness depends on
   the chunk shape (for example, requiring it to divide evenly) must repeat that check
   when encoding and decoding, because metadata validation may have seen only the

@@ -631,6 +631,8 @@ class ShardingCodec(
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
     ) -> None:
+        # Checks this codec's own geometry only. The inner chain needs the fill value,
+        # which is not available here, so `evolve_from_array_spec` validates it.
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."

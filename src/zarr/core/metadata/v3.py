@@ -218,8 +218,8 @@ def evolve_and_validate_codecs(
        this and every later codec is validated against the representative
        chunk only, and the geometry stays chunk-local to the end of the chain.
 
-    Trade-off of chunk-local validation: a rejection is always correct, since
-    the representative is a chunk the grid declares, but an acceptance is
+    Trade-off of chunk-local validation: a rejection is correct for the grid,
+    since the representative is a chunk the grid declares, but an acceptance is
     incomplete. A chain that is invalid for some *other* chunk shape (for
     example, a sharding codec whose inner chunk size divides the largest chunk
     but not a smaller one) is accepted when the metadata is created and fails
