@@ -112,9 +112,9 @@ class, such as a dataclass or a pydantic model, and, after the spec and
 NumPy, for the parts of a structured data type (`StructField`).
 
 The context is what a reader recognizes, so the model's
-`must_understand_fields` lists each unclaimed field that does not say
+`must_understand_fields` lists each unclaimed member that does not say
 `"must_understand": false`: the spec [requires](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand) a reader to fail to open a
-node with any such field. It covers extra fields only. A data type, chunk
+node with any such member. It covers extra fields only. A data type, chunk
 grid, chunk key encoding, codec or storage transformer that nothing in the
 context claims is an `UnclaimedDeclaration` too, also when it sits inside
 another declaration, such as a codec inside a shard. A model's
