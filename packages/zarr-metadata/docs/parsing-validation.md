@@ -25,26 +25,26 @@ This procedure yields one of two values:
 
 ### JSON document shape
 
-At this stage we check that the document is a JSON object with per-field structure consistent with rules in the Zarr V3 spec.
+At this stage we check that the document is a JSON object with per-member structure consistent with rules in the Zarr V3 spec.
 
 After confirming that the object named `zarr.json` is indeed valid JSON, we now need to check that the structure of this object is consistent with the rules in the Zarr V3 spec, namely the rules about the [structure of array metadata](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#array-metadata).
 
 At this stage we need to ensure that:
 
-- every **required** field is present
-- every **required** and **optional** field has the correct shape
+- every **required** member is present
+- every **required** and **optional** member has the correct shape
 
-The correct shape varies per field. The Zarr V3 spec defines a [**generic metadata element type**](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#extension-definition) that is reused for data types, codecs, etc. Inhabitants of that type are:
+The correct shape varies per member. The Zarr V3 spec defines a [**generic metadata element type**](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#extension-definition) that is reused for data types, codecs, etc. Inhabitants of that type are:
 
 - strings
-- JSON objects with a `"name"` field and optionally `"configuration"` and `"must_understand"` fields
+- JSON objects with a `"name"` member and optionally `"configuration"` and `"must_understand"` members
 
-The `data_type` field must comply with this shape. The `codecs` field must be a non-empty JSON array of values that comply with this shape.
+The `data_type` member must comply with this shape. The `codecs` member must be a non-empty JSON array of values that comply with this shape.
 
 The spec does not define a shape for **extra** fields. Instead, the [relevant section of the spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown) says that a reader must refuse to open an array with an extra field, unless that field is a JSON object with [`"must_understand": false`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand). Like an unknown name, which we will see later, an extra field is not a problem with the document. It's a field that some readers can't use. So at this stage we don't check extra fields; we just note which of them a reader must understand.
 
 !!! note
-    At this stage we don't need to know **which** data type, or chunk grid, or codecs, are declared in the metadata document. We are only looking at **how** those fields are declared. We will resolve the raw JSON to a specific data type, chunk grid, etc. in a later validation pass.
+    At this stage we don't need to know **which** data type, or chunk grid, or codecs, are declared in the metadata document. We are only looking at **how** those members are declared. We will resolve the raw JSON to a specific data type, chunk grid, etc. in a later validation pass.
 
 This procedure yields one of two values:
 
@@ -55,22 +55,22 @@ For a program that repairs broken `zarr.json` documents, the list of problems is
 
 ### Context-free consistency checks
 
-At this stage we check if correlated fields in the document are consistent.
+At this stage we check if correlated members in the document are consistent.
 
-Some of the fields in the array metadata document are semantically coupled in a way that can be directly checked at the structural level. As of this writing, the only such fields are the `shape` field (a JSON array of non-negative integers), and the `dimension_names` field (an optional JSON array of strings or `null`s).
+Some of the members in the array metadata document are semantically coupled in a way that can be directly checked at the structural level. As of this writing, the only such members are the `shape` member (a JSON array of non-negative integers), and the `dimension_names` member (an optional JSON array of strings or `null`s).
 
-The length of the `shape` field must match the length of the `dimension_names` field, if that field is declared.
+The length of the `shape` member must match the length of the `dimension_names` member, if that member is declared.
 
 This procedure yields one of two values:
 
-1. A Zarr-metadata-shaped JSON object with consistent `shape` and `dimension_names` fields
-2. A problem localized to the `dimension_names` field. Strictly speaking, we can't say which of the two fields is wrong. But we treat `shape` as the reference for the number of axes in the array, so the problem goes on the field that disagrees with it. `shape` is required, and other fields like `chunk_grid` depend on it; `dimension_names` is optional, and only names the axes. This metadata has to be repaired; there's no other way to handle it.
+1. A Zarr-metadata-shaped JSON object with consistent `shape` and `dimension_names` members
+2. A problem localized to the `dimension_names` member. Strictly speaking, we can't say which of the two members is wrong. But we treat `shape` as the reference for the number of axes in the array, so the problem goes on the member that disagrees with it. `shape` is required, and other members like `chunk_grid` depend on it; `dimension_names` is optional, and only names the axes. This metadata has to be repaired; there's no other way to handle it.
 
 ### Resolving and validating each declaration
 
 At this stage we check that each metadata object names a known type, given a registry of data types, codec types, etc., and that its configuration is valid for that type.
 
-We take the JSON given for the `data_type`, elements of `codecs`, `chunk_grid`, `chunk_key_encoding`, and `storage_transformers` fields and attempt to **resolve** that JSON into a concrete data type, chunk grid, etc.
+We take the JSON given for the `data_type`, elements of `codecs`, `chunk_grid`, `chunk_key_encoding`, and `storage_transformers` members and attempt to **resolve** that JSON into a concrete data type, chunk grid, etc.
 
 In the previous stages, we just had two elements to work with:
 
@@ -92,7 +92,7 @@ For each declaration, we do two steps:
 
 What if a name isn't in the registry? This is **not** a problem with the document. The document might be perfectly valid, and written by a program with a bigger registry than ours. An unknown name tells us something about our registry, not about the document. So we don't report it as a problem. Instead we mark the declaration as **unknown**, skip the second step, and leave it to the program that reads the document to decide what to do with it. A program that only needs to list the arrays in a hierarchy might be fine with an unknown codec. A program that decodes chunks is not, and it can try again with a more comprehensive registry.
 
-If the name is in the registry, we validate the configuration. Suppose our metadata JSON had the following `chunk_grid` field: `"chunk_grid": {"name": "regular", "configuration": "error"}`. If we resolved the name of the chunk grid (`"regular"`) to the [regular chunk grid](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/chunk-grids/regular-grid/index.html) defined in the core spec, then we must do additional checks on the structure of the `configuration` field before we can interpret this chunk grid. In this case, the spec requires that the `configuration` field be a JSON object with a `chunk_shape` field, which is a JSON array of positive integers. Our `"configuration": "error"` field has the wrong type, so this is a problem localized to `/chunk_grid/configuration`.
+If the name is in the registry, we validate the configuration. Suppose our metadata JSON had the following `chunk_grid` member: `"chunk_grid": {"name": "regular", "configuration": "error"}`. If we resolved the name of the chunk grid (`"regular"`) to the [regular chunk grid](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/chunk-grids/regular-grid/index.html) defined in the core spec, then we must do additional checks on the structure of the `configuration` member before we can interpret this chunk grid. In this case, the spec requires that the `configuration` member be a JSON object with a `chunk_shape` member, which is a JSON array of positive integers. Our `"configuration": "error"` member has the wrong type, so this is a problem localized to `/chunk_grid/configuration`.
 
 Validating a configuration might require resolving more declarations. Consider this example:
 
@@ -111,18 +111,18 @@ Validating a configuration might require resolving more declarations. Consider t
 }
 ```
 
-The name `"sharding_indexed"` should resolve to the [codec with the same name](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/sharding-indexed/index.html), and the definition of that codec states that its `codecs` field contains more codec metadata. These JSON array elements go through the same two steps, recursively: `"not_a_codec"` is not in the registry, so it is marked as unknown, not reported as a problem.
+The name `"sharding_indexed"` should resolve to the [codec with the same name](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/sharding-indexed/index.html), and the definition of that codec states that its `codecs` member contains more codec metadata. These JSON array elements go through the same two steps, recursively: `"not_a_codec"` is not in the registry, so it is marked as unknown, not reported as a problem.
 
 Repeating these steps, recursively if necessary, for all metadata objects, we yield one of two values:
 
 1. A Zarr metadata object where each declaration is either unknown, or resolved to a type and internally consistent with the definition of that type
 2. An enumeration of localized validation problems.
 
-### Consistency checks between fields
+### Consistency checks between members
 
 At this stage we check that our resolved metadata is consistent across the entire metadata document.
 
-Here we are in the space of interactions between metadata objects. It's a big space. One key invariant that cuts across many fields is dimensionality, i.e. the number of array axes. The `chunk_grid` and `shape` fields must agree on the dimensionality of the array. That is,
+Here we are in the space of interactions between metadata objects. It's a big space. One key invariant that cuts across many members is dimensionality, i.e. the number of array axes. The `chunk_grid` and `shape` members must agree on the dimensionality of the array. That is,
 
 ```json
 {
@@ -131,11 +131,11 @@ Here we are in the space of interactions between metadata objects. It's a big sp
 }
 ```
 
-is a snippet of an invalid metadata document because the `shape` field applies to an array with three axes while the `chunk_grid` field applies to an array with just one. As with `dimension_names`, `shape` is the reference, so the problem is localized to `/chunk_grid/configuration/chunk_shape`. Dimensionality shows up in codecs too: the `order` of a [`transpose`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/transpose/index.html) codec must name each array axis exactly once.
+is a snippet of an invalid metadata document because the `shape` member applies to an array with three axes while the `chunk_grid` member applies to an array with just one. As with `dimension_names`, `shape` is the reference, so the problem is localized to `/chunk_grid/configuration/chunk_shape`. Dimensionality shows up in codecs too: the `order` of a [`transpose`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/transpose/index.html) codec must name each array axis exactly once.
 
-The `fill_value` field is another example. The spec does not define a single shape for `fill_value`. Instead, each data type defines which JSON values it accepts as a fill value. So `"fill_value": "hello"` might be fine for a string data type, but it's a problem for `"float64"`. We can only check `fill_value` after we have resolved `data_type`.
+The `fill_value` member is another example. The spec does not define a single shape for `fill_value`. Instead, each data type defines which JSON values it accepts as a fill value. So `"fill_value": "hello"` might be fine for a string data type, but it's a problem for `"float64"`. We can only check `fill_value` after we have resolved `data_type`.
 
-The `codecs` field has the most interactions of all, because a list of codecs is a **pipeline**. [The spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id22) divides codecs into three kinds:
+The `codecs` member has the most interactions of all, because a list of codecs is a **pipeline**. [The spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id22) divides codecs into three kinds:
 
 - array → array codecs, like `transpose`, which take an array and return an array
 - array → bytes codecs, like `bytes`, which take an array and return bytes
@@ -145,7 +145,7 @@ A valid pipeline is zero or more array → array codecs, then exactly one array 
 
 Each codec in the pipeline is also handed a value produced by everything that came before it. The first codec is handed a chunk with the data type of the array and the shape of the chunk grid's chunks. An array → array codec may change that shape or data type before handing it on. Some codecs have rules about what they are handed. For example:
 
-- The [`bytes`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/bytes/index.html#configuration-parameters) codec requires an `endian` field in its configuration when the data type it is handed takes more than one byte per element. `{"name": "bytes"}` is valid for a `uint8` array, but a problem for a `float64` array.
+- The [`bytes`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/bytes/index.html#configuration-parameters) codec requires an `endian` member in its configuration when the data type it is handed takes more than one byte per element. `{"name": "bytes"}` is valid for a `uint8` array, but a problem for a `float64` array.
 - The [`sharding_indexed`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/sharding-indexed/index.html#configuration-parameters) codec requires that its inner `chunk_shape` evenly divides the shape of the chunk it is handed, which is the outer chunk (or shard) shape.
 
 To check these rules, we walk the pipeline in order, tracking the chunk that each codec is handed. For codecs that hold pipelines of their own, like `sharding_indexed`, we walk those inner pipelines too.

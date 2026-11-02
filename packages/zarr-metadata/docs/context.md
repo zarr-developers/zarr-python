@@ -4,7 +4,7 @@ Resolving metadata documents requires a context, a `Context`, that defines which
 
 ## Why do we need a context
 
-The Zarr V3 spec defines the JSON structure of `zarr.json` for arrays and groups exactly, by defining the fields that must be present and the JSON types they must have. But the __interpretation__ of those fields as actual data types, codecs, chunk grids, etc is not strictly defined by the spec. Relating a JSON value like `"bytes"` to the `bytes` codec requires a mapping from names to codec types.
+The Zarr V3 spec defines the JSON structure of `zarr.json` for arrays and groups exactly, by defining the members that must be present and the JSON types they must have. But the __interpretation__ of those members as actual data types, codecs, chunk grids, etc is not strictly defined by the spec. Relating a JSON value like `"bytes"` to the `bytes` codec requires a mapping from names to codec types.
 
 `zarr-metadata` makes this explicit by validating JSON documents with a __context object__. That context object contains definitions of codecs, data types, etc, which can be matched to the declarations in the JSON document.
 
@@ -47,7 +47,7 @@ document: ZarrV3ArrayMetadataJSON = {
 }
 ```
 
-In the above code snippet we define a `zarr.json` document with three codec declarations (we will just call them codecs for brevity): one named `bytes`, another named `gzip`, and a third named `unknown`. The `bytes` codec here is correctly configured according to the `bytes` codec spec. The `gzip` declaration here violates the `gzip` codec spec because the `level` configuration field is too high. And the `unknown` codec is unknown, it has no specification and cannot be resolved.
+In the above code snippet we define a `zarr.json` document with three codec declarations (we will just call them codecs for brevity): one named `bytes`, another named `gzip`, and a third named `unknown`. The `bytes` codec here is correctly configured according to the `bytes` codec spec. The `gzip` declaration here violates the `gzip` codec spec because the `level` configuration member is too high. And the `unknown` codec is unknown, it has no specification and cannot be resolved.
 
 These three codecs represent three different scenarios that this library handles, two with distinct failure modes. We demonstrate how this works in the next code snippet.
 

@@ -103,6 +103,14 @@ member whose key a definition claims is read by that definition: an extra
 field is a declaration written as the member alone, `{key: value}`. Any
 other extra field is kept as written, as an `UnclaimedDeclaration`.
 
+The spec calls these members [additional fields](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#additional-fields),
+and the names `extra_fields`, `ExtraFieldDefinition` and
+`must_understand_fields` follow it. Everywhere else this package says
+*member* for a name/value pair of a JSON object and *declaration* for the
+value at an extension point. It keeps *field* for the fields of a Python
+class, such as a dataclass or a pydantic model, and, after the spec and
+NumPy, for the parts of a structured data type (`StructField`).
+
 The context is what a reader recognizes, so the model's
 `must_understand_fields` lists each unclaimed field that does not say
 `"must_understand": false`: the spec [requires](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand) a reader to fail to open a
