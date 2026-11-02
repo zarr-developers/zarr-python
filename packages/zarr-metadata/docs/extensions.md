@@ -48,10 +48,10 @@ ACME_LZ4 = CodecDefinition(
     size="dynamic",
     rules=acme_lz4_rules,
 )
-context = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_LZ4])
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_LZ4])
 ```
 
-Pass `context=context` to any reader or model constructor, and a document
+Pass `context=CONTEXT` to any reader or model constructor, and a document
 that names `acme.lz4` is checked against this definition.
 
 Some rules for the pieces:

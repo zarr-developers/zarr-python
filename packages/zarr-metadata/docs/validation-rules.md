@@ -25,7 +25,7 @@ Some checks relate one part of a v3 document to another:
 - The [fill value](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#fill-value) is checked against the data type the document names, by
   that data type's definition.
 - The [chunk grid](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#chunk-grids) is checked against the shape, by the grid's definition.
-- The codecs are checked as a [pipeline](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id22). In order, each codec's definition
+- The codecs are checked as a [pipeline](https://github.com/zarr-developers/zarr-specs/blob/v3.1.0/docs/v3/core/index.rst#L931-L1024). In order, each codec's definition
   checks the codec against the chunk it receives. This includes a
   [shard's](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/sharding-indexed/index.html#configuration-parameters) inner codecs and index codecs.
 
@@ -54,7 +54,7 @@ Some choices that the spec text leaves open, or answers in two ways:
 - **`consolidated_metadata: null` is a problem.** A zarr-python 3.0.x bug
   wrote it. The spec [requires an object](https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L802-L816), and the package accepts only an
   object. The [repair readers](repair.md) remove the key before reading.
-- **An extension name must follow the spec's [naming rule](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id31)**,
+- **An extension name must follow the spec's [naming rule](https://github.com/zarr-developers/zarr-specs/blob/v3.1.0/docs/v3/core/index.rst#L1571-L1607)**,
   `^[a-z][a-z0-9-_.]+$`, or be a URI, which earlier versions of the spec
   required. Any other name is rejected before any definition is
   consulted, so `""` and `"foo/bar"` are problems, not unknown extensions.

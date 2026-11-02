@@ -24,7 +24,7 @@ class ArrayManifest(BaseModel):
     metadata: zmp.ZarrV3ArrayMetadataField
 
 
-manifest = ArrayManifest(path="a/b", metadata=raw)
+manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": raw})
 ```
 
 A static type checker sees `manifest.metadata` as a

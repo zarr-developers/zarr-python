@@ -71,3 +71,28 @@ def test_every_python_block_says_whether_it_runs() -> None:
         )
     ]
     assert unmarked == []
+
+
+def test_the_extensions_page_example_is_the_definition_module_docstring_example() -> None:
+    """The acme.lz4 example on the extensions page is, character for character, the example in the `zarr_metadata.definition` module docstring. Only the page's copy runs under these tests, so this is what keeps the docstring's copy from drifting."""
+    import textwrap
+
+    import zarr_metadata.definition
+
+    page = next(
+        example
+        for example in _examples()
+        if example.path == PACKAGE_ROOT / "docs" / "extensions.md"
+        and example.prefix_settings().get("session") == "extensions"
+    )
+    docstring = zarr_metadata.definition.__doc__
+    assert docstring is not None
+    lines = docstring.splitlines()
+    start = next(
+        i for i, line in enumerate(lines) if line.strip() == "from collections.abc import Iterator"
+    )
+    end = start
+    while end < len(lines) and (lines[end].startswith("    ") or lines[end].strip() == ""):
+        end += 1
+    docstring_example = textwrap.dedent("\n".join(lines[start:end])).strip()
+    assert page.source.strip() == docstring_example

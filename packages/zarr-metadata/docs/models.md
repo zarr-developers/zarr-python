@@ -146,9 +146,11 @@ kept whatever the `shuffle`, unlike in v3: v2 codecs are defined by
 numcodecs, which writes it into each chunk's header, so two v2 blosc codecs
 that differ only in it encode different bytes, though they decode the same
 data. The [v3 blosc spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters) says `noshuffle` ignores `typesize`. A v2 node
-with no `.zattrs` equals one with an empty `.zattrs`, as the
-[v2 spec](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#attributes) reads a missing `.zattrs`,
-as a v3 document with and without an empty `attributes` are equal.
+with no `.zattrs` equals one with an empty `.zattrs`: the
+[v2 spec](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#attributes) says the key
+"does not have to be present, and if it is absent the attributes should be
+treated as empty". In the same way, a v3 document with no `attributes`
+equals one whose `attributes` is empty.
 
 Values the package does not interpret (attributes, extra fields, and the
 configuration of a declaration that nothing in the context claims) are

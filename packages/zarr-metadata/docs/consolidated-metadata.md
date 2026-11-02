@@ -60,7 +60,7 @@ opened, or read all of them with the group's `consolidated()`, with
 `ZarrV3ConsolidatedMetadata`, or with `read_consolidated_metadata_v3`,
 which returns problems instead of raising them. A document with a problem
 then fails only when it is read. `consolidated()` reads the documents in
-the group's own context. The other two take a `context`; pass
+the group's own context. The other three take a `context`; pass
 `context=group.context` to read the documents in the group's own context,
 and with no `context` they are read in `CORE_AND_EXTENSIONS_CONTEXT`.
 

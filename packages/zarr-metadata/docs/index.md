@@ -77,12 +77,11 @@ Zarr v2 and v3 specs, consolidated metadata, and a subset of the metadata
 defined in zarr-extensions. We are generally open to contributions that
 add types, models, or validation for Zarr metadata with a published spec.
 
-Runtime array behavior is out of the library's remit: nothing here encodes
-or decodes chunks, resolves codec or data type names to implementations,
-or performs store I/O. The models begin and end at the metadata documents
-themselves. `from_key_value` and `to_key_value` map documents to store keys
-and bytes, and everything past that belongs to consumer libraries. This
-rule limits how far some codec combinations can be validated. For example,
+The models begin and end at the metadata documents themselves:
+`from_key_value` and `to_key_value` map documents to store keys and bytes,
+and everything past that, including resolving a codec or data type name to
+an implementation, belongs to consumer libraries. This boundary limits how
+far some codec combinations can be validated. For example,
 the readers cannot check that a `cast_value` codec maps scalars one to one.
 
 ## Reference

@@ -135,7 +135,7 @@ is a snippet of an invalid metadata document because the `shape` member applies 
 
 The `fill_value` member is another example. The spec does not define a single shape for `fill_value`. Instead, each data type defines which JSON values it accepts as a fill value. So `"fill_value": "hello"` might be fine for a string data type, but it's a problem for `"float64"`. We can only check `fill_value` after we have resolved `data_type`.
 
-The `codecs` member has the most interactions of all, because a list of codecs is a **pipeline**. [The spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#id22) divides codecs into three kinds:
+The `codecs` member has the most interactions of all, because a list of codecs is a **pipeline**. [The spec](https://github.com/zarr-developers/zarr-specs/blob/v3.1.0/docs/v3/core/index.rst#L931-L1024) divides codecs into three kinds:
 
 - array → array codecs, like `transpose`, which take an array and return an array
 - array → bytes codecs, like `bytes`, which take an array and return bytes
