@@ -36,7 +36,7 @@ store keys and undecodable bytes. The v3 constructors take the same
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
 scope and raises `MetadataValidationError` with every problem, so an
 invalid model is never built. `to_json` returns the document as written.
-`update` reads new fields in the model's own scope. `with_context` and
+`update` reads new members in the model's own scope. `with_context` and
 `refined_in` read the document in another scope. `to_key_value` writes
 the model as it is. A v3 group reads its `consolidated_metadata` as an
 envelope and does not read the documents it lists, because consolidated

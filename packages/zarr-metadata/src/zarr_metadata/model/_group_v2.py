@@ -49,9 +49,9 @@ from zarr_metadata.model._shared import (
     StoreKey,
     check_literal,
     dump_store_json,
-    field_changes,
     load_store_json,
     located_conflicts,
+    member_changes,
     missing_keys,
     reading_of,
     unexpected_keys,
@@ -92,7 +92,7 @@ _GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 
 
 def _group_problems_v2(value: object) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` fields, plus an optional `attributes` object from `.zattrs`. A group has no declarations for a scope to read, so no scope is needed."""
+    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no declarations for a scope to read, so no scope is needed."""
     if not is_object(value):
         return not_an_object(value)
     doc = value
@@ -110,7 +110,7 @@ _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
     f"belong in {ZARR_V2_ATTRIBUTES_STORE_KEY}",
     "invalid_value",
 )
-"""The problem of a `.zgroup` that holds `attributes`, which belong in `.zattrs`. The kind is the one `.zarray` gives the same field: the key is not unknown, but taken by the attributes, and a caller who tolerates an unknown key would drop the attributes the field holds."""
+"""The problem of a `.zgroup` that holds `attributes`, which belong in `.zattrs`. The kind is the one `.zarray` gives the same member: the key is not unknown, but taken by the attributes, and a caller who tolerates an unknown key would drop the attributes the member holds."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,10 +245,10 @@ def node_metadata_from_key_value_v2(
 
 
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
-    """The fields `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
+    """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
-    """The `attributes` field: user attributes, which a store holds in `.zattrs`.
+    """The `attributes` member: user attributes, which a store holds in `.zattrs`.
 
     `UNSET` removes it, so the group has no `.zattrs`.
     """
@@ -283,7 +283,7 @@ class ZarrV2GroupMetadata(Keyed):
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
     """The kind of node, `"group"`. A class constant: comparing it narrows a union of models.
 
-    A v2 document does not write this field: its `.zgroup` key says the node is a group.
+    A v2 document does not write this member: its `.zgroup` key says the node is a group.
     """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
@@ -366,9 +366,9 @@ class ZarrV2GroupMetadata(Keyed):
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
-    def update(self, **fields: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+    def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
         """Return this model with `attributes` replacing the document's attributes, read in this model's own scope. `UNSET` removes them. Raises `MetadataValidationError` when the resulting document has a problem."""
-        changes = field_changes(fields, ZarrV2GroupMetadataUpdate, frozenset())
+        changes = member_changes(members, ZarrV2GroupMetadataUpdate, frozenset())
         document: dict[str, object] = {**self._document, **changes}
         for key, value in changes.items():
             if value is UNSET:
@@ -393,7 +393,7 @@ class ZarrV2GroupMetadata(Keyed):
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2GroupMetadataUpdate]
     ) -> ZarrV2GroupMetadata:
         """Return a group with no `.zattrs`, with `overrides` applied, read in `context`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        changes = field_changes(overrides, ZarrV2GroupMetadataUpdate, frozenset())
+        changes = member_changes(overrides, ZarrV2GroupMetadataUpdate, frozenset())
         given = {key: value for key, value in changes.items() if value is not UNSET}
         return cls({"zarr_format": 2, **given}, context=context)
 
@@ -720,7 +720,7 @@ def _read_consolidated_v2(
     Each entry is read as the kind of document its key names. An entry
     for a node's file is refined as user data, and its reader judges each
     value the spec interprets: a `.zattrs` entry is user data, and a
-    `.zarray` or `.zgroup` reader refuses a non-finite number in a field
+    `.zarray` or `.zgroup` reader refuses a non-finite number in a member
     the spec defines, as it does in a store. Any other entry must be JSON
     by RFC 8259. A `.zarray` or `.zgroup` entry is read as that document,
     merged with its sibling `.zattrs`. Its problems are located under its own entry,
@@ -771,9 +771,9 @@ def _read_consolidated_v2(
     if len(problems) != 0:
         nodes = {}
     files = {path: by_path[path] for path in nodes}
-    fields: dict[str, JSONValue] = {"zarr_consolidated_format": 1, "metadata": refined}
+    members: dict[str, JSONValue] = {"zarr_consolidated_format": 1, "metadata": refined}
     # The keys in the order the document writes them, as the v3 models keep them.
-    document = {key: fields[key] for key in doc if isinstance(key, str) and key in fields}
+    document = {key: members[key] for key in doc if isinstance(key, str) and key in members}
     return document, nodes, files, with_input(problems, doc)
 
 
@@ -843,10 +843,10 @@ def _read_node_v2(
         merged["attributes"] = entries[zattrs]
 
     if zarray is not None:
-        reading, fields = read_array_v2(merged, context)
-        if fields is None or len(beside) != 0:
+        reading, members = read_array_v2(merged, context)
+        if members is None or len(beside) != 0:
             return None, [*beside, *prefixed("metadata", in_files(reading.problems, key, entries))]
-        return ZarrV2ArrayMetadata._of(fields.document, context, reading, fields), []  # pyright: ignore[reportPrivateUsage]
+        return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = _group_problems_v2(merged)
     if len(found) != 0 or len(beside) != 0:
         return None, [*beside, *prefixed("metadata", in_files(found, key, entries))]

@@ -19,7 +19,7 @@ typestr are its configuration. For example, `<f4` is `float` with
 `{"byteorder": "<", "itemsize": 4}`, and its simplest spelling is the
 typestr again. A records array reads as `struct`, and the type of each
 record is a nested declaration. A codec is read by its id, and its other
-fields are its parameters. A typestr with a type code that the spec
+members are its parameters. A typestr with a type code that the spec
 does not list, or a codec id that the package does not model, reads as
 an `UnclaimedDeclaration`.
 """

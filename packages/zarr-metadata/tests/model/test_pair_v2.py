@@ -53,7 +53,7 @@ PRIVATE = CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": BARE_
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:
-    """Return `ARRAY` with `changes` applied, leaving out any field given as `UNSET`."""
+    """Return `ARRAY` with `changes` applied, leaving out any member given as `UNSET`."""
     return {key: value for key, value in {**ARRAY, **changes}.items() if value is not UNSET}
 
 
@@ -72,7 +72,7 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """`dtype`, `compressor` and `filters` are the declarations as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the fields as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`."""
+    """`dtype`, `compressor` and `filters` are the declarations as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
     assert isinstance(model.dtype, AcceptedDeclaration)
     assert model.dtype.definition is FLOAT_DATA_TYPE_V2
@@ -80,8 +80,8 @@ def test_properties_are_what_the_reading_holds() -> None:
     assert model.compressor.definition is ZLIB_CODEC_V2
     assert model.filters is not None
     assert isinstance(model.filters[0], UnclaimedDeclaration)
-    fields = (model.shape, model.chunks, model.fill_value, model.order, model.dimension_separator)
-    assert fields == ((4,), (2,), 0, "C", ".")
+    members = (model.shape, model.chunks, model.fill_value, model.order, model.dimension_separator)
+    assert members == ((4,), (2,), 0, "C", ".")
     assert model.attributes == {"a": (1, 2)}
     assert model.extra_fields == {"extra": (1,)}
     assert (model.zarr_format, model.node_type) == (2, "array")
@@ -187,10 +187,10 @@ def test_a_model_round_trips_through_its_document_pickle_and_copy(
     ],
     ids=["shape", "dtype", "unset-attributes", "null-compressor", "extra", "unset-extra"],
 )
-def test_update_reads_new_fields_in_the_models_own_scope(
+def test_update_reads_new_members_in_the_models_own_scope(
     changes: dict[str, Any], expect: dict[str, Any], absent: tuple[str, ...]
 ) -> None:
-    """`update` replaces the document's fields with the given JSON fields, takes a field the spec does not define in `extra_fields`, leaves out any field given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
+    """`update` replaces the document's members with the given JSON members, takes a member the spec does not define in `extra_fields`, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
     model = ZarrV2ArrayMetadata({**ARRAY, "extra": 0}, PRIVATE)
     changed = model.update(**changes)
     assert changed.context is PRIVATE
@@ -242,7 +242,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
 
 
 def test_refines_orders_models_by_information() -> None:
-    """`refines` is true when each declaration refines its counterpart and every other field is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
+    """`refines` is true when each declaration refines its counterpart and every other member is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
     core = ZarrV2ArrayMetadata(ARRAY)
     assert core.refines(ZarrV2ArrayMetadata({**ARRAY, "fill_value": 0.0}))
     filled = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib", "level": 1}})
@@ -318,7 +318,7 @@ def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
 
 
 def test_error_a_group_document_with_a_problem_is_refused_at_construction() -> None:
-    """A group document with a problem -- a field the spec does not define, an attribute key that is not a string -- is refused with every problem."""
+    """A group document with a problem -- a member the spec does not define, an attribute key that is not a string -- is refused with every problem."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {1: "a"}, "extra": 1})
     assert sorted((p.loc, p.kind) for p in raised.value.problems) == [

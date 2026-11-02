@@ -154,7 +154,7 @@ def test_a_v2_codec_is_an_object_with_a_string_id(
     configuration: dict[str, Any] | None,
     problems: list[tuple[Loc, str]],
 ) -> None:
-    """A codec declaration is an object. Its `id` is its name and its other fields are its parameters. A value that is not an object, or has no string `id`, has no name, and the envelope problems say why."""
+    """A codec declaration is an object. Its `id` is its name and its other members are its parameters. A value that is not an object, or has no string `id`, has no name, and the envelope problems say why."""
     assert ZarrV2CodecDefinition._named_configuration(value) == (name, configuration, ())
     assert [(p.loc, p.kind) for p in ZarrV2CodecDefinition._envelope_problems(value)] == problems
 

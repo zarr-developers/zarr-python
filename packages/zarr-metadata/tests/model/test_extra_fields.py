@@ -1,4 +1,4 @@
-"""Fields of a v3 document that the spec does not define: extra fields, read by the definitions a scope holds for them."""
+"""Members of a v3 document that the spec does not define: extra fields, read by the definitions a scope holds for them."""
 
 from __future__ import annotations
 
@@ -31,25 +31,25 @@ from zarr_metadata.v3.definition import (
 
 
 class AcmeTilingConfiguration(TypedDict, closed=True):
-    """The value of an `acme.tiling` field: a tile edge, and the waiver that lets other readers skip it."""
+    """The value of an `acme.tiling` member: a tile edge, and the waiver that lets other readers skip it."""
 
     edge: Annotated[int, Ge(1)]
     must_understand: bool
 
 
 ACME_TILING = ArrayExtraFieldDefinition(name="acme.tiling", configuration=AcmeTilingConfiguration)
-"""A reader's own definition of the `acme.tiling` field of an array."""
+"""A reader's own definition of the `acme.tiling` member of an array."""
 
 
 class AcmeNoteConfiguration(TypedDict, closed=True):
-    """The value of an `acme.note` field: any JSON, and the waiver."""
+    """The value of an `acme.note` member: any JSON, and the waiver."""
 
     note: UserJSONValue
     must_understand: NotRequired[bool]
 
 
 ACME_NOTE = ArrayExtraFieldDefinition(name="acme.note", configuration=AcmeNoteConfiguration)
-"""A reader's own definition of the `acme.note` field of an array, whose numbers must be finite."""
+"""A reader's own definition of the `acme.note` member of an array, whose numbers must be finite."""
 
 CONTEXT = CORE_CONTEXT.update(
     array_extra_fields=[*CORE_CONTEXT.array_extra_fields.values(), ACME_TILING, ACME_NOTE]
@@ -107,7 +107,7 @@ def test_a_scope_reads_the_extra_fields_it_claims(
     claimed: set[str],
     must_understand: dict[str, object],
 ) -> None:
-    """Each field the spec does not define is an extra field. A field whose key a definition in scope claims is an `AcceptedDeclaration`, and a reader understands it. Any other field is an `UnclaimedDeclaration`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed field, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a field of an array, and `CORE_CONTEXT` reads a group's `consolidated_metadata`. The document is written back as it was read."""
+    """Each member the spec does not define is an extra field. A member whose key a definition in scope claims is an `AcceptedDeclaration`, and a reader understands it. Any other member is an `UnclaimedDeclaration`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed member, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a member of an array, and `CORE_CONTEXT` reads a group's `consolidated_metadata`. The document is written back as it was read."""
     model: ZarrV3ArrayMetadata | ZarrV3GroupMetadata
     if document["node_type"] == "array":
         model = ZarrV3ArrayMetadata(document, context=context)
@@ -144,7 +144,7 @@ def _same_json(a: object, b: object) -> bool:
     ids=["numbers", "strings", "null", "arrays", "objects", "empty-object-or-null"],
 )
 def test_unclaimed_extra_fields_compare_as_written(first: object, second: object) -> None:
-    """Nothing reads an unclaimed field, so documents that write it differently are different documents: they compare unequal, and neither refines the other, whatever JSON the field holds."""
+    """Nothing reads an unclaimed member, so documents that write it differently are different documents: they compare unequal, and neither refines the other, whatever JSON the member holds."""
     a = ZarrV3ArrayMetadata({**ARRAY, "acme.flag": first})
     b = ZarrV3ArrayMetadata({**ARRAY, "acme.flag": second})
     assert a != b
@@ -154,7 +154,7 @@ def test_unclaimed_extra_fields_compare_as_written(first: object, second: object
 
 
 def test_an_extra_field_is_a_declaration_of_the_reading() -> None:
-    """A claimed extra field takes part in what the model's reading holds: it is a declaration at its key, read by the definition of its kind and name, and `resolve` reads it as the field alone, `{key: value}`. The JSON Schema of the kind accepts the field, and, like `resolve`, refuses a field the spec defines."""
+    """A claimed extra field takes part in what the model's reading holds: it is a declaration at its key, read by the definition of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
     model = ZarrV3ArrayMetadata({**ARRAY, "acme.tiling": TILING}, context=CONTEXT)
     assert dict(model.reading.declarations())[("acme.tiling",)] == model.extra_fields["acme.tiling"]
     tiling = model.extra_fields["acme.tiling"]
@@ -166,7 +166,7 @@ def test_an_extra_field_is_a_declaration_of_the_reading() -> None:
     schema = declaration_json_schema_v3(ArrayExtraFieldDefinition, context=CONTEXT)
     assert Draft202012Validator(schema).is_valid({"acme.tiling": TILING})
     assert not Draft202012Validator(schema).is_valid({"acme.tiling": {"edge": 0}})
-    # A field the spec defines is not an extra field, as `resolve` says.
+    # A member the spec defines is not an extra field, as `resolve` says.
     assert not Draft202012Validator(schema).is_valid({"shape": 5})
     assert resolve({"shape": 5}, ArrayExtraFieldDefinition, CONTEXT)[1] != ()
 
@@ -179,7 +179,7 @@ def test_the_simplest_spelling_of_an_extra_field_is_plain_json() -> None:
 
 
 def test_error_a_claimed_extra_field_that_is_not_an_object() -> None:
-    """A definition reads a field whose value is an object. Any other value of a claimed field is a problem at the field's key, as `CORE_CONTEXT` refuses a `consolidated_metadata` of null."""
+    """A definition reads a member whose value is an object. Any other value of a claimed member is a problem at the member's key, as `CORE_CONTEXT` refuses a `consolidated_metadata` of null."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": None}, context=CORE_CONTEXT)
     assert [(p.loc, p.kind) for p in raised.value.problems] == [
@@ -188,7 +188,7 @@ def test_error_a_claimed_extra_field_that_is_not_an_object() -> None:
 
 
 def test_error_a_claimed_extra_field_with_a_bad_configuration() -> None:
-    """A claimed field's value is checked against its definition's configuration, and each problem is located in the field, under its key."""
+    """A claimed member's value is checked against its definition's configuration, and each problem is located in the member, under its key."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ArrayMetadata(
             {**ARRAY, "acme.tiling": {"edge": 0, "must_understand": True}}, context=CONTEXT
@@ -217,13 +217,13 @@ def test_error_a_non_finite_number_in_an_extra_field_that_holds_no_user_data() -
     ],
 )
 def test_error_an_extra_field_named_after_a_field_the_spec_defines(kind: Any, name: str) -> None:  # noqa: ANN401 - either extra-field kind
-    """A field the spec defines is never an extra field, so a definition named after one would never read anything: it is refused when it is built, as a data type named like raw bits is."""
+    """A member the spec defines is never an extra field, so a definition named after one would never read anything: it is refused when it is built, as a data type named like raw bits is."""
     with pytest.raises(TypeError, match="the spec defines"):
         kind(name=name, configuration=AcmeTilingConfiguration)
 
 
 @pytest.mark.parametrize(
-    ("kind", "field"),
+    ("kind", "member"),
     [
         (ArrayExtraFieldDefinition, {"shape": (4,)}),
         (GroupExtraFieldDefinition, {"node_type": "group"}),
@@ -232,10 +232,10 @@ def test_error_an_extra_field_named_after_a_field_the_spec_defines(kind: Any, na
 )
 def test_error_resolve_a_field_the_spec_defines_as_an_extra_field(
     kind: Any,  # noqa: ANN401 - either extra-field kind
-    field: dict[str, Any],
+    member: dict[str, Any],
 ) -> None:
-    """`resolve` reads a field the spec defines, read as an extra field, as a `RefusedDeclaration` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
-    read, problems = resolve(field, kind, CORE_CONTEXT)
+    """`resolve` reads a member the spec defines, read as an extra field, as a `RefusedDeclaration` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
+    read, problems = resolve(member, kind, CORE_CONTEXT)
     assert isinstance(read, RefusedDeclaration)
     assert [(p.loc, p.kind) for p in problems] == [((), "invalid_value")]
     assert "the spec defines" in problems[0].message
@@ -313,13 +313,13 @@ class _ExtraItemsOfAnUndefinedAlias(TypedDict, extra_items=_UndefinedWaiver):
             r"'acme.x': _ExtraItemsOfAnUndefinedAlias.extra_items: _UndefinedWaiver: name '_Missing'",
         ),
     ],
-    ids=["field", "extra-items"],
+    ids=["member", "extra-items"],
 )
 def test_error_an_extra_field_waiver_typed_by_an_alias_that_does_not_resolve(
     configuration: Any,  # noqa: ANN401 - a TypedDict
     match: str,
 ) -> None:
-    """An alias that names what is not defined is refused when the definition is built, with a `TypeError` that names the definition, the TypedDict and where the alias sits, as for any other field the checker cannot read. The waiver may be typed by the `must_understand` field, or, when the TypedDict declares no such field, by its `extra_items`."""
+    """An alias that names what is not defined is refused when the definition is built, with a `TypeError` that names the definition, the TypedDict and where the alias sits, as for any other member the checker cannot read. The waiver may be typed by the `must_understand` member, or, when the TypedDict declares no such member, by its `extra_items`."""
     with pytest.raises(TypeError, match=match):
         ArrayExtraFieldDefinition(name="acme.x", configuration=configuration)
 
@@ -365,7 +365,7 @@ def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuratio
 
 
 def test_error_finite_is_a_boolean() -> None:
-    """`finite` decides whether a field may hold non-finite numbers, so it must be a boolean: anything else is refused when the definition is built."""
+    """`finite` decides whether a member may hold non-finite numbers, so it must be a boolean: anything else is refused when the definition is built."""
     with pytest.raises(TypeError, match="finite"):
         ArrayExtraFieldDefinition(
             name="acme.tiling",

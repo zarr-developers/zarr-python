@@ -30,7 +30,7 @@ ZSTD = {"name": "zstd", "configuration": {"level": 1, "checksum": False}}
 
 
 class _MirrorConfiguration(TypedDict, closed=True):
-    """The value of an `acme.mirror` field: a codec, and the waiver."""
+    """The value of an `acme.mirror` member: a codec, and the waiver."""
 
     codec: ZarrV3CodecDeclaration
     must_understand: NotRequired[bool]
@@ -42,7 +42,7 @@ MIRRORING = CORE_CONTEXT.update(
         ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
     ]
 )
-"""`CORE_CONTEXT`, with a definition of an `acme.mirror` field that holds a codec."""
+"""`CORE_CONTEXT`, with a definition of an `acme.mirror` member that holds a codec."""
 
 GROUP_MIRRORING = CORE_CONTEXT.update(
     group_extra_fields=[
@@ -50,7 +50,7 @@ GROUP_MIRRORING = CORE_CONTEXT.update(
         GroupExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
     ]
 )
-"""`CORE_CONTEXT`, with a definition of an `acme.mirror` field of a group that holds a codec."""
+"""`CORE_CONTEXT`, with a definition of an `acme.mirror` member of a group that holds a codec."""
 
 SHARD = {
     "name": "sharding_indexed",
@@ -115,15 +115,15 @@ SHARD = {
         "all-claimed",
         "a-codec",
         "a-codec-inside-a-shard",
-        "an-extra-field",
-        "a-waived-extra-field",
-        "a-group-field",
+        "an-extra-member",
+        "a-waived-extra-member",
+        "a-group-member",
         "a-v2-codec",
         "a-v2-group",
-        "a-codec-inside-a-claimed-field",
-        "a-codec-inside-a-claimed-field-that-waives",
-        "a-codec-inside-a-claimed-group-field",
-        "a-codec-inside-a-claimed-group-field-that-waives",
+        "a-codec-inside-a-claimed-member",
+        "a-codec-inside-a-claimed-member-that-waives",
+        "a-codec-inside-a-claimed-group-member",
+        "a-codec-inside-a-claimed-group-member-that-waives",
     ],
 )
 def test_unclaimed_declarations_are_what_a_reader_must_understand(
@@ -142,7 +142,7 @@ def test_unclaimed_declarations_are_what_a_reader_must_understand(
     ids=["array", "group"],
 )
 @pytest.mark.parametrize(
-    ("field", "wider", "narrower"),
+    ("member", "wider", "narrower"),
     [
         (
             {"codec": {"name": "gzip", "configuration": {"level": 1}}},
@@ -158,13 +158,13 @@ def test_a_model_that_refines_another_has_no_more_to_understand(
     kind: Any,  # noqa: ANN401 - a v3 node model class
     document: dict[str, Any],
     context: Any,  # noqa: ANN401 - a v3 scope
-    field: dict[str, Any],
+    member: dict[str, Any],
     wider: set[tuple[str | int, ...]],
     narrower: set[tuple[str | int, ...]],
 ) -> None:
-    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_declarations` lie at or inside those of the model it refines, for an array and for a group. Here `CORE_CONTEXT` leaves an unwaived `acme.mirror` field unclaimed as a whole; the scope that claims the field leaves at most the codec inside it, which lies inside the field, and a waived field is left out by both."""
-    claimed_less = kind({**document, "acme.mirror": field}, context=CORE_CONTEXT)
-    claimed_more = kind({**document, "acme.mirror": field}, context=context)
+    """A scope that claims more of a document reads a model that refines the model of a scope that claims less, and its `unclaimed_declarations` lie at or inside those of the model it refines, for an array and for a group. Here `CORE_CONTEXT` leaves an unwaived `acme.mirror` member unclaimed as a whole; the scope that claims the member leaves at most the codec inside it, which lies inside the member, and a waived member is left out by both."""
+    claimed_less = kind({**document, "acme.mirror": member}, context=CORE_CONTEXT)
+    claimed_more = kind({**document, "acme.mirror": member}, context=context)
     assert claimed_more.refines(claimed_less)
     assert set(claimed_less.unclaimed_declarations) == wider
     assert set(claimed_more.unclaimed_declarations) == narrower

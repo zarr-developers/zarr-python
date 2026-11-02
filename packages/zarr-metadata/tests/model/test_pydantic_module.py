@@ -236,7 +236,7 @@ def test_declaration_schema_rejects_unknown_fields() -> None:
         (zmp.ZarrV2ConsolidatedMetadataField, V2_CONSOLIDATED_DOC),
     ],
 )
-def test_v2_schema_rejects_unknown_document_fields(
+def test_v2_schema_rejects_unknown_document_members(
     field_type: object, source: dict[str, object]
 ) -> None:
     """Closed v2 merged documents expose their runtime boundary in JSON Schema."""
@@ -246,8 +246,8 @@ def test_v2_schema_rejects_unknown_document_fields(
     _assert_runtime_and_schema_reject(field_type, doc)
 
 
-def test_v2_array_schema_allows_unknown_document_fields() -> None:
-    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) in both runtime and schema validation. An unknown field is kept as written."""
+def test_v2_array_schema_allows_unknown_document_members() -> None:
+    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) in both runtime and schema validation. An unknown member is kept as written."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["unexpected"] = 1
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)

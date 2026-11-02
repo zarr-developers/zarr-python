@@ -92,7 +92,7 @@ class ZarrV3ZeroChunkRegularGridJSON(TypedDict):
 
 
 class ZarrV3ZeroChunkArrayMetadataJSON(TypedDict):
-    """The fields of an array document the `zero_chunk_length` repair reads.
+    """The members of an array document the `zero_chunk_length` repair reads.
 
     zarr-python 3.0 and 3.1 wrote a chunk length of 0 along a dimension of
     length 0, which the regular grid refuses: "Chunk sizes must be greater
@@ -107,11 +107,11 @@ class ZarrV3ZeroChunkArrayMetadataJSON(TypedDict):
 
 
 class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
-    """The fields of a group document the `null_consolidated_metadata` repair reads.
+    """The members of a group document the `null_consolidated_metadata` repair reads.
 
     zarr-python 3.0 and 3.1 wrote `"consolidated_metadata": null` on a group
-    they had not consolidated. The convention does not allow this: the field
-    is an object, or absent. The repair removes the field, which is what the
+    they had not consolidated. The convention does not allow this: the member
+    is an object, or absent. The repair removes the member, which is what the
     writer meant.
     """
 
@@ -120,7 +120,7 @@ class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
 
 
 class ZarrV3NonFiniteFillValueArrayMetadataJSON(TypedDict):
-    """The fields of an array document the v3 `non_finite_fill_value` repair reads.
+    """The members of an array document the v3 `non_finite_fill_value` repair reads.
 
     zarr-python 3.0.0 to 3.0.6 wrote the fill value of a float64 array, in
     the documents a group's consolidated metadata lists, as a bare `NaN`,
@@ -139,7 +139,7 @@ def repair_node_metadata_v3(value: object) -> tuple[object, tuple[Repair, ...]]:
 
     Each document in the consolidated metadata is repaired too. A group
     does not read those documents, but `ZarrV3ConsolidatedMetadata` reads
-    them from the repaired group's field. Content that no repair applies
+    them from the repaired group's member. Content that no repair applies
     to is left as it is. `value` is not modified: a repaired document is a
     new object, which shares its unchanged parts with `value`. A document
     with none of the bugs is returned as it is, with no repairs.
@@ -169,15 +169,15 @@ def _non_finite_fill_value_v3(
 ) -> Mapping[str, object]:
     """`document` with a non-finite fill value of a float data type, or complex fill value component, written by its name."""
     array, problems = check(
-        _fields(document, ("node_type", "data_type")), ZarrV3NonFiniteFillValueArrayMetadataJSON
+        _members(document, ("node_type", "data_type")), ZarrV3NonFiniteFillValueArrayMetadataJSON
     )
     if array is None or len(problems) != 0 or "fill_value" not in document:
         return document
     return _non_finite_named(document, array["data_type"].startswith("float"), at, repairs)
 
 
-def _fields(document: Mapping[str, object], keys: tuple[str, ...]) -> dict[str, object]:
-    """Only the fields of `document` that a repair reads, so the rest is not walked."""
+def _members(document: Mapping[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+    """Only the members of `document` that a repair reads, so the rest is not walked."""
     return {key: document[key] for key in keys if key in document}
 
 
@@ -185,7 +185,7 @@ def _zero_chunk_length(
     document: Mapping[str, object], at: Loc, repairs: list[Repair]
 ) -> Mapping[str, object]:
     array, problems = check(
-        _fields(document, ("node_type", "shape", "chunk_grid")), ZarrV3ZeroChunkArrayMetadataJSON
+        _members(document, ("node_type", "shape", "chunk_grid")), ZarrV3ZeroChunkArrayMetadataJSON
     )
     if array is None or len(problems) != 0:
         return document
@@ -218,7 +218,7 @@ def _null_consolidated_metadata(
     document: Mapping[str, object], at: Loc, repairs: list[Repair]
 ) -> Mapping[str, object]:
     group, problems = check(
-        _fields(document, ("node_type", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
+        _members(document, ("node_type", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
         ZarrV3NullConsolidatedGroupMetadataJSON,
     )
     if group is None or len(problems) != 0:
@@ -237,10 +237,10 @@ def _consolidated(
     document: Mapping[str, object], at: Loc, repairs: list[Repair]
 ) -> Mapping[str, object]:
     """`document` with each document in its consolidated metadata repaired, if it has any."""
-    field = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
-    if not is_object(field):
+    member = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
+    if not is_object(member):
         return document
-    envelope = field
+    envelope = member
     entries = envelope.get("metadata")
     if not is_object(entries):
         return document
@@ -286,7 +286,7 @@ def read_repaired_node_metadata_v3(
 
 
 class ZarrV2ZGroupWithConsolidatedMetadataJSON(TypedDict):
-    """A `.zgroup` entry of a `.zmetadata`, below the root, as zarr-python 3.x writes it: with a `consolidated_metadata` field, which a v2 group document does not allow."""
+    """A `.zgroup` entry of a `.zmetadata`, below the root, as zarr-python 3.x writes it: with a `consolidated_metadata` member, which a v2 group document does not allow."""
 
     zarr_format: Literal[2]
     consolidated_metadata: Mapping[str, JSONValue]
@@ -295,9 +295,9 @@ class ZarrV2ZGroupWithConsolidatedMetadataJSON(TypedDict):
 def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair, ...]]:
     """Undo each known writer bug in `value`, a v2 `.zmetadata`, and return the result with the list of changes.
 
-    zarr-python 3.x writes a `consolidated_metadata` field into each
+    zarr-python 3.x writes a `consolidated_metadata` member into each
     `.zgroup` entry below the root. This function removes it. The root's
-    entry is left alone, since no writer puts the field there. Each
+    entry is left alone, since no writer puts the member there. Each
     `.zarray` entry is repaired as `repair_node_metadata_v2` repairs a
     `.zarray`. Content that no repair applies to is left as it is, and
     `value` is not modified. A document with none of the bugs is returned
@@ -314,7 +314,7 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
     for key, entry in entries.items():
         if isinstance(key, str):
             path, _, name = key.rpartition("/")
-            # Below the root only: no writer puts the field in the root's .zgroup.
+            # Below the root only: no writer puts the member in the root's .zgroup.
             if name == ZARR_V2_GROUP_METADATA_STORE_KEY and path.strip("/") != "":
                 entry = _without_consolidated_metadata(entry, ("metadata", key), repairs)
             if name == ZARR_V2_ARRAY_METADATA_STORE_KEY:
@@ -326,12 +326,12 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
 
 
 def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]) -> object:
-    """`entry`, a `.zgroup` entry, without the field zarr-python 3.x writes into it, if the entry has that field."""
+    """`entry`, a `.zgroup` entry, without the member zarr-python 3.x writes into it, if the entry has that member."""
     if not is_json_object(entry):
         return entry
     group = entry
     shaped, problems = check(
-        _fields(group, ("zarr_format", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
+        _members(group, ("zarr_format", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
         ZarrV2ZGroupWithConsolidatedMetadataJSON,
     )
     if shaped is None or len(problems) != 0:
@@ -356,7 +356,7 @@ _ZarrV2FloatTypestr: TypeAlias = Literal[
 
 
 class ZarrV2NonFiniteFillValueArrayMetadataJSON(TypedDict):
-    """The fields of a `.zarray` that the `non_finite_fill_value` repair reads, other than the fill value: a float or complex `dtype`.
+    """The members of a `.zarray` that the `non_finite_fill_value` repair reads, other than the fill value: a float or complex `dtype`.
 
     zarr-python 3.0.0 to 3.0.6 wrote a non-finite fill value of a float
     array as a bare token, `"fill_value": NaN`, and each non-finite
@@ -366,7 +366,7 @@ class ZarrV2NonFiniteFillValueArrayMetadataJSON(TypedDict):
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L178-L190),
     and so does zarr-python since 3.0.7. Python's `json` module reads the
     tokens as floats, which `check` refuses, so the fill value is not a
-    field here: the repair reads a float, or a pair for a complex dtype.
+    member here: the repair reads a float, or a pair for a complex dtype.
     """
 
     zarr_format: Literal[2]
@@ -410,7 +410,7 @@ def _non_finite_fill_value(
 ) -> Mapping[str, object]:
     """`document` with a non-finite float fill value, or complex fill value component, written by its name."""
     array, problems = check(
-        _fields(document, ("zarr_format", "dtype")), ZarrV2NonFiniteFillValueArrayMetadataJSON
+        _members(document, ("zarr_format", "dtype")), ZarrV2NonFiniteFillValueArrayMetadataJSON
     )
     if array is None or len(problems) != 0 or "fill_value" not in document:
         return document

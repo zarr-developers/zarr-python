@@ -2,8 +2,8 @@
 
 Each function writes JSON Schema draft 2020-12, for a validator in
 another language or for an editor that checks a document while it is
-written. A schema describes each field on its own, so it does not
-contain the rules that relate fields to each other, and a document it
+written. A schema describes each member on its own, so it does not
+contain the rules that relate members to each other, and a document it
 accepts may still have a problem.
 
 **A TypedDict.** `json_schema(typed_dict)` writes the rules that
@@ -36,7 +36,7 @@ declaration (its name, its configuration as its TypedDict declares it,
 including bounds, a `must_understand` of `true`, and its bare name when
 it needs no configuration). It also accepts a name that nothing in scope
 claims, with any configuration. A nested declaration is written in the same
-scope, and a field that accepts only codecs of static size accepts
+scope, and a member that accepts only codecs of static size accepts
 only those. The rules are not in the schema, so a declaration it accepts may
 still have a problem. Any declaration that `resolve` reads without a problem
 is accepted by the schema, as JSON (arrays as lists, as a parser

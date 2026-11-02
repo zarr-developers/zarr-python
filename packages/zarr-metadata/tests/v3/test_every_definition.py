@@ -300,7 +300,7 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(
                 "configuration": {"kind": "inline", "chunk_shapes": (((32, 3), 16), 8)},
             },
         ),
-        # A field set to its spec default is left out: a key encoding's
+        # A member set to its spec default is left out: a key encoding's
         # separator, a shard's index location, and zstd's checksum.
         ({"name": "default", "configuration": {"separator": "/"}}, {"name": "default"}),
         ({"name": "v2", "configuration": {"separator": "."}}, {"name": "v2"}),
@@ -510,7 +510,7 @@ def test_error_a_declaration_with_a_problem_has_no_simplest_spelling(
     declaration: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
 ) -> None:
     # What the author wrote is kept. A simpler spelling would drop the
-    # unknown key, the stray field or the `must_understand`, or would
+    # unknown key, the stray member or the `must_understand`, or would
     # write a value that is not valid. A declaration that was already read,
     # together with its problems, has no simplest spelling either.
     simplest, problems = canonicalize(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
@@ -686,7 +686,7 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
         "numpy-time-scale-factor",
     ],
 )
-def test_a_bound_is_its_field_s_type_and_its_problem_holds_it(
+def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
     kind: type[Definition[Any]],
     declaration: dict[str, Any],
     loc: tuple[str | int, ...],
@@ -912,7 +912,7 @@ def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str) -> N
 
 def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
     # The name carries the configuration, so a configuration written next
-    # to it may hold nothing: each field is a key that nothing declares.
+    # to it may hold nothing: each member is a key that nothing declares.
     assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
         AcceptedDeclaration,
         [(("configuration", "bits"), "unknown_key")],

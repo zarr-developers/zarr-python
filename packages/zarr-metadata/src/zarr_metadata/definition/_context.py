@@ -56,7 +56,7 @@ def slot_kinds(
 ) -> Mapping[str, type[K]]:
     """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K] | Mapping[str, K]`, in that order and with `Mapping` from `collections.abc`, for a kind `K` that `accepts`, the check for a kind of the scope's format. A scope class derives its slots from it, so they are declared once.
 
-    Raises `TypeError`, when the scope class is defined, for a field
+    Raises `TypeError`, when the scope class is defined, for a member
     annotated any other way, or with a kind that is not of the format.
     """
     kinds: dict[str, type[K]] = {}

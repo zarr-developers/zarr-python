@@ -12,8 +12,8 @@ v3 `r16` reads as `r*` with `{"bits": 16}`. A records array reads as
 `struct`. The records are its configuration, and the type of each record
 is a nested declaration.
 
-A v2 codec is a numcodecs configuration: an object whose `id` field
-names the codec and whose other fields are its parameters
+A v2 codec is a numcodecs configuration: an object whose `id` member
+names the codec and whose other members are its parameters
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79).
 """
 
@@ -47,7 +47,7 @@ STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""
 
 _RECORDS: Final = "fields"
-"""The one field of a struct's configuration: the records, which the document writes as the dtype itself."""
+"""The one member of a struct's configuration: the records, which the document writes as the dtype itself."""
 
 FAMILIES: Final[Mapping[str, str]] = {
     "b": "bool",
@@ -114,7 +114,7 @@ _TYPESTR_PARTS: Final[Mapping[str, str]] = {
     "unit": "a unit",
     "scale_factor": "a unit",
 }
-"""How a message names the part of a typestr that each field of its configuration comes from."""
+"""How a message names the part of a typestr that each member of its configuration comes from."""
 
 
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
@@ -155,7 +155,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
     label: ClassVar[str] = "v2 data type"
     """The name of the kind in error messages, "v2 data type"."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeDeclaration,)
-    """The declaration alias that annotates a configuration field holding a v2 dtype, `ZarrV2DataTypeDeclaration`. The type of each struct record is one."""
+    """The declaration alias that annotates a configuration member holding a v2 dtype, `ZarrV2DataTypeDeclaration`. The type of each struct record is one."""
 
     def _refusal(self) -> str | None:
         if parse_typestr(self.name) is not None:

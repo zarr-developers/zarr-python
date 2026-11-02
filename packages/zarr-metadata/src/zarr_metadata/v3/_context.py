@@ -95,11 +95,11 @@ class ZarrV3ContextSlots(TypedDict, total=False, closed=True):
     array_extra_fields: (
         Iterable[ArrayExtraFieldDefinition[Any]] | Mapping[str, ArrayExtraFieldDefinition[Any]]
     )
-    """Fields of an array document that the spec does not define, by key."""
+    """Members of an array document that the spec does not define, by key."""
     group_extra_fields: (
         Iterable[GroupExtraFieldDefinition[Any]] | Mapping[str, GroupExtraFieldDefinition[Any]]
     )
-    """Fields of a group document that the spec does not define, by key."""
+    """Members of a group document that the spec does not define, by key."""
 
 
 @final
@@ -108,10 +108,10 @@ class ZarrV3Context:
 
     It implements `Context`, and has one slot for each kind of declaration a v3
     document holds, as `ZarrV3ContextSlots` declares them. The slots for
-    the spec's extension points are named like the document field that
+    the spec's extension points are named like the document member that
     holds such declarations: `data_types`, `chunk_grids`, `chunk_key_encodings`,
     `codecs` and `storage_transformers`. `array_extra_fields` and
-    `group_extra_fields` hold the definitions of fields the spec does not
+    `group_extra_fields` hold the definitions of members the spec does not
     define, by key. Each slot is a read-only mapping from the name each
     definition is filed under (`r*` for raw bits) to the definition. The
     constructor and `update` take, for each slot, an iterable of
@@ -180,12 +180,12 @@ class ZarrV3Context:
 
     @property
     def array_extra_fields(self) -> Mapping[str, ArrayExtraFieldDefinition[Any]]:
-        """The definitions of fields of an array document that the spec does not define, by key."""
+        """The definitions of members of an array document that the spec does not define, by key."""
         return self.definitions_of(ArrayExtraFieldDefinition)
 
     @property
     def group_extra_fields(self) -> Mapping[str, GroupExtraFieldDefinition[Any]]:
-        """The definitions of fields of a group document that the spec does not define, by key."""
+        """The definitions of members of a group document that the spec does not define, by key."""
         return self.definitions_of(GroupExtraFieldDefinition)
 
     def definitions_of(self, kind: type[_K]) -> Mapping[str, _K]:

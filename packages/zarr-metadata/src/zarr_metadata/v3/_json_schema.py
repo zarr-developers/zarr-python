@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 def kind_declaration(kind: type[Definition[Any]]) -> object:
-    """The declaration alias for a field that holds any declaration of `kind`: the first alias the kind declares that does not restrict the declaration. For example, `ZarrV3CodecDeclaration` instead of `ZarrV3StaticCodecDeclaration`."""
+    """The declaration alias for a member that holds any declaration of `kind`: the first alias the kind declares that does not restrict the declaration. For example, `ZarrV3CodecDeclaration` instead of `ZarrV3StaticCodecDeclaration`."""
     return next(alias for alias in kind.declaration_aliases if alias not in STATIC_SIZE_ALIASES)
 
 
@@ -52,7 +52,7 @@ valid name, would be read as raw bits.
 def declaration_json_schema_v3(
     kind: type[ZarrV3Kind], *, context: ZarrV3Context | None = None
 ) -> JSONSchema:
-    """The JSON Schema of one declaration read as `kind` in `context` (`CORE_AND_EXTENSIONS_CONTEXT` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the field alone, `{key: value}`.
+    """The JSON Schema of one declaration read as `kind` in `context` (`CORE_AND_EXTENSIONS_CONTEXT` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
 
     The schema accepts a declaration that one of the definitions in scope reads
     (its name, its configuration as the TypedDict declares it, an optional
@@ -60,7 +60,7 @@ def declaration_json_schema_v3(
     configuration). It also accepts a name that no definition claims, with
     any configuration, which is what keeps the format open. A declaration inside
     a configuration is written the same way, in the same scope, and a
-    field that accepts only codecs of static size accepts only those. The
+    member that accepts only codecs of static size accepts only those. The
     output is JSON Schema draft 2020-12, as `json_schema` writes it. The
     nested declarations and the configuration of each definition are in
     `$defs`, under the name of the declaration alias or TypedDict. Constraints
@@ -127,7 +127,7 @@ def _extra_field_schema(
     context: ZarrV3Context,
     schemas: Schemas,
 ) -> JSONSchema:
-    """The schema of an extra field of `kind` as `context` reads it, written as the field alone, `{key: value}`: a field whose key a definition in scope claims, with the value its configuration declares, or a field with any other key that the spec does not define, and any JSON value."""
+    """The schema of an extra field of `kind` as `context` reads it, written as the member alone, `{key: value}`: a member whose key a definition in scope claims, with the value its configuration declares, or a member with any other key that the spec does not define, and any JSON value."""
     claimed = list(context.definitions_of(kind).values())
     branches: list[JSONValue] = [
         {
@@ -139,8 +139,8 @@ def _extra_field_schema(
         for definition in claimed
     ]
     unclaimed: JSONSchema = {"type": "object", "minProperties": 1, "maxProperties": 1}
-    # Neither a claimed key nor a field the spec defines is an unclaimed field.
-    others = sorted({definition.name for definition in claimed} | kind.spec_fields)
+    # Neither a claimed key nor a member the spec defines is an unclaimed member.
+    others = sorted({definition.name for definition in claimed} | kind.spec_members)
     unclaimed["propertyNames"] = {"not": {"enum": [*others]}}
     branches.append(unclaimed)
     return {"anyOf": branches}
@@ -215,8 +215,8 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     is in `$defs` under the name of its TypedDict.
     `ZarrV3ArrayMetadataJSON` describes only an array.
 
-    A JSON Schema describes each field on its own. It does not contain
-    the rules that relate fields to each other: one dimension name per
+    A JSON Schema describes each member on its own. It does not contain
+    the rules that relate members to each other: one dimension name per
     dimension of the shape, a chunk grid that fits the shape, codecs in
     pipeline order with each codec checked against the chunk it
     receives, and the checks in a definition's `rules`. So a document
@@ -258,21 +258,21 @@ def _documents(context: ZarrV3Context) -> SchemaLeaf:
 def _with_extra_fields(
     schema: JSONSchema, definitions: Mapping[str, ExtraFieldDefinition[Any]], schemas: Schemas
 ) -> JSONSchema:
-    """`schema`, a node document's schema, with a property for each extra field in `definitions`: the field's value, as the configuration TypedDict of the definition that claims its key declares it."""
+    """`schema`, a node document's schema, with a property for each extra field in `definitions`: the member's value, as the configuration TypedDict of the definition that claims its key declares it."""
     if len(definitions) == 0:
         return schema
-    properties = _field_object(schema, "properties")
+    properties = _member_object(schema, "properties")
     extra: dict[str, JSONValue] = {
         key: schemas.of(definition.configuration) for key, definition in definitions.items()
     }
     return {**schema, "properties": {**properties, **extra}}
 
 
-def _field_object(schema: Mapping[str, JSONValue], key: str) -> Mapping[str, JSONValue]:
-    """The object at field `key` of `schema`, or an empty one when the field is absent. Raises `TypeError` for a field that is not an object, which is a bug in the schema this module built."""
+def _member_object(schema: Mapping[str, JSONValue], key: str) -> Mapping[str, JSONValue]:
+    """The object at member `key` of `schema`, or an empty one when the member is absent. Raises `TypeError` for a member that is not an object, which is a bug in the schema this module built."""
     found = schema.get(key, {})
     if not isinstance(found, Mapping):
-        msg = f"the schema field {key!r} is an object, got {found!r}"
+        msg = f"the schema member {key!r} is an object, got {found!r}"
         raise TypeError(msg)
     return found
 
@@ -285,8 +285,8 @@ def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
     empty `codecs`.
     """
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
-    properties = _field_object(schema, "properties")
-    codecs = _field_object(properties, "codecs")
+    properties = _member_object(schema, "properties")
+    codecs = _member_object(properties, "codecs")
     schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     schema = _with_extra_fields(schema, context.array_extra_fields, schemas)
     held: list[JSONValue] = []

@@ -82,12 +82,12 @@ def _transpose(*order: int) -> JSONValue:
     return {"name": "transpose", "configuration": {"order": list(order)}}
 
 
-def _cast(data_type: JSONValue, **fields: JSONValue) -> JSONValue:
-    return {"name": "cast_value", "configuration": {"data_type": data_type, **fields}}
+def _cast(data_type: JSONValue, **members: JSONValue) -> JSONValue:
+    return {"name": "cast_value", "configuration": {"data_type": data_type, **members}}
 
 
-def _scale(**fields: JSONValue) -> JSONValue:
-    return {"name": "scale_offset", "configuration": fields}
+def _scale(**members: JSONValue) -> JSONValue:
+    return {"name": "scale_offset", "configuration": members}
 
 
 def _of(data_type: JSONValue) -> Chunk:
@@ -292,7 +292,7 @@ def test_error_a_bytes_codec_without_endian_handed_values_of_several_bytes(
 def test_error_a_bytes_codec_s_problems_are_located_where_its_document_writes(
     codec: JSONValue, no_endian: tuple[str | int, ...]
 ) -> None:
-    """A codec's chunk rules are located in its document. A missing `endian` is a field of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A codec handed values it cannot encode is the codec's problem, however it is spelled."""
+    """A codec's chunk rules are located in its document. A missing `endian` is a member of the configuration the codec writes, or the configuration itself when it writes none, as for a codec that requires one. A codec handed values it cannot encode is the codec's problem, however it is spelled."""
     assert _problems([codec], _of("int16")) == [(no_endian, "missing_key")]
     assert _problems([codec], _of("string")) == [((0,), "invalid_value")]
 
@@ -347,7 +347,7 @@ def test_error_a_cast_handed_complex_numbers() -> None:
 
 
 @pytest.mark.parametrize(
-    ("fields", "data_type", "found"),
+    ("members", "data_type", "found"),
     [
         ({"offset": 0.5}, "int16", [((0, "configuration", "offset"), "invalid_type")]),
         ({"scale": 70000}, "int16", [((0, "configuration", "scale"), "invalid_value")]),
@@ -355,9 +355,9 @@ def test_error_a_cast_handed_complex_numbers() -> None:
     ],
 )
 def test_error_a_scale_or_offset_that_is_not_a_value_of_the_data_type_it_is_handed(
-    fields: dict[str, JSONValue], data_type: str, found: list[tuple[tuple[str | int, ...], str]]
+    members: dict[str, JSONValue], data_type: str, found: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    assert _problems([_scale(**fields), LITTLE], _of(data_type)) == found
+    assert _problems([_scale(**members), LITTLE], _of(data_type)) == found
 
 
 def test_error_a_transition_that_gives_something_else() -> None:
@@ -509,12 +509,12 @@ def _holder(
 
 @pytest.mark.parametrize("given", ["a chunk", {"codecs": "a chunk"}, {("codecs",): Chunk()}])
 def test_error_pipelines_that_give_something_else(given: object) -> None:
-    with pytest.raises(TypeError, match="'acme.holder': its pipelines give a mapping of fields"):
+    with pytest.raises(TypeError, match="'acme.holder': its pipelines give a mapping of members"):
         read_pipeline([_holder(lambda configuration, nested, chunk: given)], CHUNK)
 
 
 @pytest.mark.parametrize(
-    ("field", "types"),
+    ("member", "types"),
     [
         ("nowhere", ("uint8",)),
         ("types", ("uint8",)),
@@ -522,9 +522,11 @@ def test_error_pipelines_that_give_something_else(given: object) -> None:
         ("types", ("acme.t",)),
     ],
 )
-def test_error_pipelines_that_name_a_field_holding_no_codecs(field: str, types: JSONValue) -> None:
-    holder = _holder(lambda configuration, nested, chunk: {field: Chunk()}, types)
-    with pytest.raises(TypeError, match=f"its pipelines name {field!r}, which holds no list"):
+def test_error_pipelines_that_name_a_member_holding_no_codecs(
+    member: str, types: JSONValue
+) -> None:
+    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()}, types)
+    with pytest.raises(TypeError, match=f"its pipelines name {member!r}, which holds no list"):
         read_pipeline([holder], CHUNK)
 
 

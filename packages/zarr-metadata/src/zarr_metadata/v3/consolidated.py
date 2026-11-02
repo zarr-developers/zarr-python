@@ -8,7 +8,7 @@ an extension field on a group's `zarr.json`.
 This is a known non-core interoperability extension. The core spec fixes
 only its `{kind, must_understand, metadata}` envelope, which
 `ZarrV3ConsolidatedMetadataEnvelopeJSON` types with any JSON as the
-entries. `CONSOLIDATED_METADATA_EXTRA_FIELD` reads a group's field as
+entries. `CONSOLIDATED_METADATA_EXTRA_FIELD` reads a group's member as
 that envelope, and `CORE_CONTEXT` holds it. `ZarrV3ConsolidatedMetadataJSON` types
 the entries as the reference implementation writes them.
 """
@@ -26,7 +26,7 @@ from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 class ZarrV3ConsolidatedMetadataEnvelopeJSON(TypedDict, closed=True):
     """
-    The `consolidated_metadata` field of a v3 group document, as the core spec fixes it.
+    The `consolidated_metadata` member of a v3 group document, as the core spec fixes it.
 
     The spec allows this one additional field on a group, for historical
     reasons, and fixes its envelope: `kind` is `"inline"`,
@@ -92,7 +92,7 @@ CONSOLIDATED_METADATA_EXTRA_FIELD: Final[GroupExtraFieldDefinition[Any]] = (
         finite=False,
     )
 )
-"""A group's `consolidated_metadata` field, read as the envelope the core spec fixes. The documents it lists are not read: they may hold the non-finite numbers that node attributes may, and `ZarrV3ConsolidatedMetadata` reads them."""
+"""A group's `consolidated_metadata` member, read as the envelope the core spec fixes. The documents it lists are not read: they may hold the non-finite numbers that node attributes may, and `ZarrV3ConsolidatedMetadata` reads them."""
 
 
 __all__ = [

@@ -94,7 +94,7 @@ BLOSC_NO_SHUFFLE: Final = "noshuffle"
 
 The spec requires `typesize` "unless `shuffle` is `"noshuffle"`, in which
 case the value is ignored", so this is the one value that changes whether
-another field is required.
+another member is required.
 """
 
 

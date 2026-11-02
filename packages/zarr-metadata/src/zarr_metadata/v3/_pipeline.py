@@ -77,7 +77,7 @@ class Stage:
     when its input is not known to be an array.
     """
     inner: Mapping[str, tuple[Stage, ...]] = dataclasses.field(default_factory=_no_stages)
-    """The pipelines the codec contains, keyed by the configuration field that holds each one. Each pipeline pairs each codec with the chunk it receives."""
+    """The pipelines the codec contains, keyed by the configuration member that holds each one. Each pipeline pairs each codec with the chunk it receives."""
 
     def __post_init__(self) -> None:
         # Make this read-only, like everything else a reading returns.
@@ -111,7 +111,7 @@ def read_pipeline(
     array -> bytes codec, then bytes -> bytes codecs. Then each codec is
     processed in turn, with the chunk the previous codec passed on. Its
     chunk rules check it, and each problem is located where the document
-    writes it: a field of its configuration in the configuration (or at
+    writes it: a member of its configuration in the configuration (or at
     the configuration itself, missing, for a codec that writes none), and
     a problem with the codec as a whole at the codec, as `_codec_problems`
     says. Each pipeline it contains is read the same way, at its location
@@ -243,11 +243,11 @@ def _inner_pipelines(
 ) -> tuple[Mapping[str, tuple[Stage, ...]], Problems]:
     """Read each pipeline contained in a codec that receives `chunk`, starting from the chunk that the codec's `pipelines` returns.
 
-    A pipeline's codecs are the declarations in the configuration field that
+    A pipeline's codecs are the declarations in the configuration member that
     holds it, as the scope read them. Its problems are located at that
-    field, under `at`. `pipelines` is the extension author's code, so its
-    result is checked: it must map configuration fields to chunks, and
-    each field must be a list of codecs.
+    member, under `at`. `pipelines` is the extension author's code, so its
+    result is checked: it must map configuration members to chunks, and
+    each member must be a list of codecs.
     """
     given = asked(
         definition,
@@ -257,22 +257,22 @@ def _inner_pipelines(
     )
     if not _is_pipelines(given):
         msg = (
-            f"{definition.name!r}: its pipelines give a mapping of fields to chunks, got {given!r}"
+            f"{definition.name!r}: its pipelines give a mapping of members to chunks, got {given!r}"
         )
         raise TypeError(msg)
     read: dict[str, tuple[Stage, ...]] = {}
     problems: list[ValidationProblem] = []
-    for field, handed in given.items():
-        codecs = _held(definition, configuration, nested, field)
-        read[field], found = read_pipeline(codecs, handed, (*at, field))
+    for member, handed in given.items():
+        codecs = _held(definition, configuration, nested, member)
+        read[member], found = read_pipeline(codecs, handed, (*at, member))
         problems.extend(found)
     return read, tuple(problems)
 
 
 def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
-    """Whether `value` maps fields of a configuration to chunks."""
+    """Whether `value` maps members of a configuration to chunks."""
     return is_object(value) and all(
-        isinstance(field, str) and isinstance(chunk, Chunk) for field, chunk in value.items()
+        isinstance(member, str) and isinstance(chunk, Chunk) for member, chunk in value.items()
     )
 
 
@@ -280,20 +280,20 @@ def _held(
     definition: CodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
-    field: str,
+    member: str,
 ) -> tuple[ResolvedDeclaration[CodecDefinition[Any]], ...]:
-    """The codecs in configuration field `field`, as the scope read them.
+    """The codecs in configuration member `member`, as the scope read them.
 
-    If the field holds anything other than a list of declarations read as
+    If the member holds anything other than a list of declarations read as
     codecs, this raises `TypeError`, because the definition that names the
-    field has a bug.
+    member has a bug.
     """
-    entries: object = configuration.get(field)
-    places = [(field, index) for index in range(len(entries))] if is_tuple(entries) else None
+    entries: object = configuration.get(member)
+    places = [(member, index) for index in range(len(entries))] if is_tuple(entries) else None
     if places is None or not all(
         place in nested and nested[place].read_as is CodecDefinition for place in places
     ):
-        msg = f"{definition.name!r}: its pipelines name {field!r}, which holds no list of codecs"
+        msg = f"{definition.name!r}: its pipelines name {member!r}, which holds no list of codecs"
         raise TypeError(msg)
     return tuple(nested[place] for place in places)
 

@@ -111,7 +111,7 @@ def test_error_a_reading_reports_every_problem(
 
 
 def test_error_filters_that_are_not_an_array_are_not_read_as_null() -> None:
-    """A `filters` field that is neither null nor an array is a problem, and the reading holds no filters for it: `UNSET`, not None, because None means that the document writes `null`."""
+    """A `filters` member that is neither null nor an array is a problem, and the reading holds no filters for it: `UNSET`, not None, because None means that the document writes `null`."""
     reading = read_array_metadata_v2({**BASE, "filters": {"id": "crc32"}})
     assert [(p.loc, p.kind) for p in reading.problems] == [(("filters",), "invalid_type")]
     assert reading.filters is UNSET
@@ -147,7 +147,7 @@ class _EqualTo:
     [("order", _EqualTo("C")), ("dimension_separator", _EqualTo("."))],
     ids=["order", "dimension_separator"],
 )
-def test_error_a_v2_field_that_only_compares_equal_to_an_allowed_value_is_refused(
+def test_error_a_v2_member_that_only_compares_equal_to_an_allowed_value_is_refused(
     key: str, value: object
 ) -> None:
     """`order` and `dimension_separator` are checked after refinement. A value that is not a string, but compares equal to an allowed string, is outside the allowed set. It is reported as the wrong type, and no model accepts it."""

@@ -280,8 +280,8 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
     assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("fill_value",), "invalid_value")
     ]
-    field = {"kind": "inline", "must_understand": False, "metadata": {"a": document}}
-    assert [(p.loc, p.kind) for p in read_consolidated_metadata_v3(field).problems] == [
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": document}}
+    assert [(p.loc, p.kind) for p in read_consolidated_metadata_v3(member).problems] == [
         (("metadata", "a", "fill_value"), "invalid_value")
     ]
 

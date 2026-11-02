@@ -5,7 +5,7 @@ The kind of metadata a definition defines is its type: `CodecDefinition`
 is determined by the input size, or `"dynamic"` if it depends on the
 values), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`, and, for
-the fields of a document that the spec does not define,
+the members of a document that the spec does not define,
 `ArrayExtraFieldDefinition` and `GroupExtraFieldDefinition`. What a
 definition is and how a declaration is read are in `zarr_metadata.definition`,
 which both formats share. `ZarrV3Context` is the v3 scope, with one slot
@@ -23,19 +23,19 @@ names, by that data type's definition. The chunk grid is checked against
 the shape, by the grid's definition. The codecs are checked as a
 pipeline, each by its definition against the chunk it receives.
 
-A field that holds another declaration is annotated with the declaration
+A member that holds another declaration is annotated with the declaration
 alias of its kind (a shard's `codecs: tuple[ZarrV3CodecDeclaration, ...]`) and
 is read in the same scope as its parent declaration. A problem with the nested
 declaration belongs to that declaration and is reported at its location. The parent
 declaration is still read, as a document containing the nested declaration would be.
-A field that accepts only codecs of static size is annotated
+A member that accepts only codecs of static size is annotated
 `ZarrV3StaticCodecDeclaration`. A shard's `index_codecs` uses this, because a
 reader locates the index from a size it knows before reading it. A codec
-of dynamic size in such a field is a problem at its location, when the
+of dynamic size in such a member is a problem at its location, when the
 declaration is read in a scope. A name that nothing claims is not checked, and
 its size is unknown, like everything else about it.
 `ZarrV3DeclarationJSON` describes the same JSON, but it is checked
-only as JSON, so a definition rejects a field typed with it. An
+only as JSON, so a definition rejects a member typed with it. An
 extension with nothing to configure uses `EmptyConfiguration`, and is
 written with its name only.
 
@@ -72,7 +72,7 @@ checks their order (array -> array codecs, one array -> bytes codec,
 bytes -> bytes codecs), then checks each codec against the chunk it
 receives, and records a `Stage` for each codec with that chunk. A codec
 that contains its own pipelines declares what each one receives with
-`pipelines`, keyed by the configuration field that holds each
+`pipelines`, keyed by the configuration member that holds each
 pipeline. For example, a shard's inner codecs receive its inner chunks,
 and its index codecs receive the shard index. Each pipeline is read the
 same way, and its stages are stored as the codec's `Stage.inner`.

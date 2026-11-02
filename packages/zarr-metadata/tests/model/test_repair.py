@@ -382,7 +382,7 @@ ZMETADATA_CLEAN: dict[str, Any] = {
             ],
         ),
         (ZMETADATA_CLEAN, ZMETADATA_CLEAN, []),
-        # The root's .zgroup: no zarr-python version writes the field there.
+        # The root's .zgroup: no zarr-python version writes the member there.
         (
             {"zarr_consolidated_format": 1, "metadata": {".zgroup": ZGROUP_FROM_ZARR3}},
             {"zarr_consolidated_format": 1, "metadata": {".zgroup": ZGROUP_FROM_ZARR3}},
@@ -418,7 +418,7 @@ ZMETADATA_CLEAN: dict[str, Any] = {
 def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_entry(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """zarr-python 3.x writes a `consolidated_metadata` field into each non-root `.zgroup` entry of a `.zmetadata`, but the v2 group document does not allow that field. `repair_consolidated_metadata_v2` removes it and reports its location. Anything else is left unchanged, and the input document is not modified."""
+    """zarr-python 3.x writes a `consolidated_metadata` member into each non-root `.zgroup` entry of a `.zmetadata`, but the v2 group document does not allow that member. `repair_consolidated_metadata_v2` removes it and reports its location. Anything else is left unchanged, and the input document is not modified."""
     before = copy.deepcopy(value)
     document, made = repair_consolidated_metadata_v2(value)
     assert document == repaired
@@ -429,7 +429,7 @@ def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_
 
 
 def test_read_repaired_consolidated_v2_reads_what_the_strict_read_refuses() -> None:
-    """The strict `ZarrV2ConsolidatedMetadata` refuses the `.zmetadata` that zarr-python 3.x writes, reporting the problem at the entry's field. `read_repaired_consolidated_metadata_v2` returns the strict reading of the repaired document, as `read_consolidated_metadata_v2` reads it, and the repairs, as the node repair readers do. A problem that no repair fixes is in that reading, which then holds no model."""
+    """The strict `ZarrV2ConsolidatedMetadata` refuses the `.zmetadata` that zarr-python 3.x writes, reporting the problem at the entry's member. `read_repaired_consolidated_metadata_v2` returns the strict reading of the repaired document, as `read_consolidated_metadata_v2` reads it, and the repairs, as the node repair readers do. A problem that no repair fixes is in that reading, which then holds no model."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(ZMETADATA_FROM_ZARR3)
     assert [p.loc for p in raised.value.problems] == [

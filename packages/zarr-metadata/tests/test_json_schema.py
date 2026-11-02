@@ -99,12 +99,12 @@ def _holding(annotation: object) -> type:
 Both = _closed("Both", {"first": Inner, "second": _closed("Inner", {"y": str})})
 
 
-def _held(field: dict[str, Any], defs: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The schema of `_holding(annotation)`, where `field` is the schema of `annotation`."""
+def _held(member: dict[str, Any], defs: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The schema of `_holding(annotation)`, where `member` is the schema of `annotation`."""
     schema: dict[str, Any] = {
         "$schema": DIALECT,
         "type": "object",
-        "properties": {"value": field},
+        "properties": {"value": member},
         "required": ["value"],
         "additionalProperties": False,
     }
@@ -414,7 +414,7 @@ _VALUES = st.recursive(
 
 
 def _places(value: object, path: tuple[str | int, ...] = ()) -> list[tuple[str | int, ...]]:
-    """Every place in `value`: itself, and each field or entry inside it, depth first."""
+    """Every place in `value`: itself, and each member or entry inside it, depth first."""
     found = [path]
     if isinstance(value, dict):
         for key, entry in cast("dict[str, object]", value).items():
@@ -458,8 +458,8 @@ def _changed(draw: st.DrawFn, value: object) -> object:
         if how == "drop" and len(path) != 0:
             value = _put(value, path, _GONE)
         elif how == "add" and isinstance(here, dict):
-            fields = cast("dict[str, object]", here)
-            value = _put(value, path, {**fields, draw(st.sampled_from(_KEYS)): draw(_VALUES)})
+            members = cast("dict[str, object]", here)
+            value = _put(value, path, {**members, draw(st.sampled_from(_KEYS)): draw(_VALUES)})
         elif how == "add" and isinstance(here, list):
             value = _put(value, path, [*cast("list[object]", here), draw(_VALUES)])
         elif how == "extend" and isinstance(here, str):
@@ -542,7 +542,7 @@ DECLARATIONS: list[tuple[str, object, type[ZarrV3Kind], ZarrV3Context, bool, boo
         False,
     ),
     (
-        "stray-field",
+        "stray-member",
         {"name": "gzip", "configuration": {"level": 5}, "version": 2},
         CodecDefinition,
         CORE_CONTEXT,
@@ -832,7 +832,7 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
         False,
     ),
     ("an-extension-field", {**ARRAY, "acme": {"must_understand": False}}, True, True),
-    # Constraints across several fields are checked by the rules, not the schema.
+    # Constraints across several members are checked by the rules, not the schema.
     ("names-for-another-rank", {**ARRAY, "dimension_names": ["x"]}, True, False),
     (
         "codecs-out-of-order",
@@ -970,7 +970,7 @@ def test_the_stricter_of_two_bounds_of_one_keyword_is_kept(
     assert json_schema(_holding(_annotated[Bounded, outer])) == _held(expected)
 
 
-def test_a_stray_field_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
+def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
     # The schema rejects it, as the reader does: the envelope of an
     # unclaimed name holds only the name and its configuration.
     declaration = {"name": "zfpy", "version": 2}

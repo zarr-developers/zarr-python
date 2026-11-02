@@ -71,7 +71,7 @@ as a JSON Schema.
 user data such as attributes), a `Literal`,
 `tuple[T, ...]` and `tuple[T1, T2]`, a union, a TypedDict,
 `Mapping[str, V]`, a `NewType` and a type alias. A TypedDict that
-contains anything else raises `TypeError`, naming the field and the
+contains anything else raises `TypeError`, naming the member and the
 TypedDict that contains it. The same happens for a TypedDict the spec
 itself forbids, such as one with a key that is both `Required` and
 `NotRequired`, and for a generic TypedDict, because no runtime records

@@ -247,7 +247,7 @@ def alias_value(alias: typing_extensions.TypeAliasType) -> object:
 class TypedDictKeys:
     """The keys a TypedDict defines for an object, read as the typing spec defines them.
 
-    `fields` holds every key the TypedDict declares, including keys from
+    `members` holds every key the TypedDict declares, including keys from
     its bases. For each key it holds the type of the value and whether the
     key is required. The type has its qualifiers removed and keeps any
     `Annotated` metadata, since a constraint there is part of the type.
@@ -258,7 +258,7 @@ class TypedDictKeys:
     open.
     """
 
-    fields: Mapping[str, tuple[object, bool]]
+    members: Mapping[str, tuple[object, bool]]
     """Every key it declares, its bases' included, with its value's type and whether it is required.
 
     The type has its qualifiers and `Annotated` metadata peeled.
@@ -278,7 +278,7 @@ class TypedDictKeys:
     @property
     def required(self) -> frozenset[str]:
         """The keys an object of this TypedDict must have."""
-        return frozenset(key for key, (_, required) in self.fields.items() if required)
+        return frozenset(key for key, (_, required) in self.members.items() if required)
 
     @property
     def closed(self) -> bool:
@@ -322,7 +322,7 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
             f"{sorted(required_at_runtime | optional_at_runtime)!r}"
         )
         raise TypeError(msg)
-    fields: dict[str, tuple[object, bool]] = {}
+    members: dict[str, tuple[object, bool]] = {}
     for key, hint in hints.items():
         said = qualifiers(hint)
         if "Required" in said and "NotRequired" in said:
@@ -334,9 +334,9 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
             required = False
         else:
             required = key in required_at_runtime
-        fields[key] = (unqualified(hint), required)
+        members[key] = (unqualified(hint), required)
     extra_items, declared = _openness(typeddict)
-    return TypedDictKeys(types.MappingProxyType(fields), extra_items, declared)
+    return TypedDictKeys(types.MappingProxyType(members), extra_items, declared)
 
 
 @functools.cache
@@ -623,7 +623,7 @@ _USER_JSON: Final = _scalar("a JSON value", lambda value: is_canonical_json(valu
 
 
 def one_of(allowed: tuple[object, ...]) -> Parser:
-    """A field whose type is a closed set of values.
+    """A member whose type is a closed set of values.
 
     A value matches an entry when it is equal and of the same type. JSON
     `true` is not the integer 1, though in Python `True == 1`. If the
@@ -641,7 +641,7 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
 
 
 def sequence_of(element: Parser) -> Parser:
-    """A field whose type is an array of one element type, parsed element by element."""
+    """A member whose type is an array of one element type, parsed element by element."""
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not is_list_or_tuple(value):
@@ -659,7 +659,7 @@ def sequence_of(element: Parser) -> Parser:
 
 
 def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
-    """A field whose type is an array of a fixed length, parsed position by position."""
+    """A member whose type is an array of a fixed length, parsed position by position."""
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not is_list_or_tuple(value):
@@ -692,7 +692,7 @@ def any_of(
     literals: frozenset[int] = frozenset(),
     allowed: tuple[JSONValue, ...] = (),
 ) -> Parser:
-    """A field whose type is a union of shapes, parsed by the matching branch.
+    """A member whose type is a union of shapes, parsed by the matching branch.
 
     The parser tries only the branches whose top-level shape matches the
     value, and an array of a fixed length only on an array of that length.
@@ -770,10 +770,10 @@ def _hashable(value: object) -> bool:
     return value is None or isinstance(value, (str, int, float))
 
 
-def object_of(fields: Mapping[str, tuple[Parser, bool]], extra: Parser | None) -> Parser:
+def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) -> Parser:
     """An object with declared keys, each parsed at its own key, and `extra` for every other key.
 
-    `fields` maps each declared key to its parser and whether it is
+    `members` maps each declared key to its parser and whether it is
     required. A missing required key is a `missing_key` problem. `extra`
     parses a key the object does not declare. With no `extra` (a closed
     TypedDict), such a key is an `unknown_key` problem and is left out of
@@ -790,16 +790,16 @@ def object_of(fields: Mapping[str, tuple[Parser, bool]], extra: Parser | None) -
             if not isinstance(key, str):
                 found.extend(problem(loc, f"non-string key {shown(key)}"))
                 continue
-            if key in fields:
+            if key in members:
                 continue
             if extra is None:
                 found.extend(problem((*loc, key), f"unexpected key {key!r}", "unknown_key"))
                 continue
             parsed[key], problems = extra(entry, (*loc, key))
             found.extend(problems)
-        for key, (field, required) in fields.items():
+        for key, (member, required) in members.items():
             if key in entries:
-                parsed[key], problems = field(entries[key], (*loc, key))
+                parsed[key], problems = member(entries[key], (*loc, key))
                 found.extend(problems)
             elif required:
                 found.extend(problem((*loc, key), f"missing required key {key!r}", "missing_key"))
@@ -811,7 +811,7 @@ def object_of(fields: Mapping[str, tuple[Parser, bool]], extra: Parser | None) -
 
 
 def mapping_of(value: Parser) -> Parser:
-    """A field whose type is an object with any keys, parsed value by value.
+    """A member whose type is an object with any keys, parsed value by value.
 
     The open counterpart of `object_of`: a `Mapping[str, V]` does not
     restrict the keys, only the type of each value.
@@ -989,7 +989,7 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
             return None
         typeddict = strip_annotation(branch)[0]
         keys = (
-            frozenset(typeddict_keys(typeddict).fields)
+            frozenset(typeddict_keys(typeddict).members)
             if isinstance(typeddict, type) and is_typeddict(typeddict)
             else None
         )
@@ -1037,7 +1037,7 @@ def _tag(arguments: Sequence[object]) -> Tag | None:
     for key in sorted(shared):
         picks: dict[tuple[type, object], int] = {}
         for index, each in enumerate(keys):
-            annotation = strip_annotation(each.fields[key][0])[0]
+            annotation = strip_annotation(each.members[key][0])[0]
             if get_origin(annotation) is not Literal:
                 break
             values: tuple[object, ...] = get_args(annotation)
@@ -1090,21 +1090,21 @@ def _recursive(
 def _object(typeddict: type, leaf: Leaf, building: _Building) -> Parser | None:
     def compile_() -> Parser | None:
         keys = typeddict_keys(typeddict)
-        fields: dict[str, tuple[Parser, bool]] = {}
-        for key, (annotation, required) in keys.fields.items():
-            field = _compile(annotation, leaf, building)
-            if field is None:
+        members: dict[str, tuple[Parser, bool]] = {}
+        for key, (annotation, required) in keys.members.items():
+            member = _compile(annotation, leaf, building)
+            if member is None:
                 return None
-            fields[key] = (field, required)
+            members[key] = (member, required)
         if keys.closed:
-            return object_of(fields, None)
+            return object_of(members, None)
         if keys.open:
             # Any JSON value is allowed. A note does not change that, and a
             # bound cannot apply, but the metadata is still checked.
             _constrainable(object, constraints_of(strip_annotation(keys.extra_items)[1]))
-            return object_of(fields, _JSON)
+            return object_of(members, _JSON)
         extra = _compile(keys.extra_items, leaf, building)
-        return None if extra is None else object_of(fields, extra)
+        return None if extra is None else object_of(members, extra)
 
     return _recursive(typeddict, building, compile_)
 
@@ -1234,13 +1234,13 @@ def _unread_in(
 ) -> tuple[Unread | None, bool]:
     """The unread part of `typeddict`, looked inside from each TypedDict in `visiting`, itself included, and whether it is surely the part that is unread.
 
-    Each TypedDict a field holds, directly, in a union or a container, or
+    Each TypedDict a member holds, directly, in a union or a container, or
     through an alias or a `NewType`, is looked inside first, as the
-    checker meets it first. Then a field that holds a TypedDict is named
+    checker meets it first. Then a member that holds a TypedDict is named
     when the checker does not read its own metadata, such as a constraint.
-    A field that leads back to one of `visiting` may be unread only
+    A member that leads back to one of `visiting` may be unread only
     because of what is unread there, which is found at that TypedDict's
-    own fields. Looking inside it again would not end, so such a field
+    own members. Looking inside it again would not end, so such a member
     is named only when nothing else is unread.
     """
     keys = typeddict_keys(typeddict)
@@ -1248,13 +1248,13 @@ def _unread_in(
     if not (keys.closed or keys.open):
         others.append(("extra_items", keys.extra_items))
     fallback: Unread | None = None
-    for key, annotation in [*((key, field[0]) for key, field in keys.fields.items()), *others]:
+    for key, annotation in [*((key, member[0]) for key, member in keys.members.items()), *others]:
         failed: TypeError | None = None
         try:
-            field = parser_for(annotation, leaf)
+            member = parser_for(annotation, leaf)
         except TypeError as error:
-            failed, field = error, None
-        if field is not None:
+            failed, member = error, None
+        if member is not None:
             continue
         inner, metadata = strip_annotation(annotation)
         held = _typeddicts_in(inner, frozenset())
@@ -1262,14 +1262,14 @@ def _unread_in(
         for nested in held:
             if nested in visiting:
                 continue
-            # Name the part inside a TypedDict the field holds, whether
-            # the field's parser failed or there is none.
+            # Name the part inside a TypedDict the member holds, whether
+            # the member's parser failed or there is none.
             try:
                 deeper, sure = _unread_in(nested, leaf, visiting | {nested})
             except TypeError as error:
                 # The nested TypedDict cannot be read at all, which this
                 # error says.
-                return _unread_field(typeddict, key, error), True
+                return _unread_member(typeddict, key, error), True
             if deeper is not None:
                 named = Unread(f"{typeddict.__name__}.{key}: {deeper.message}", deeper.constraint)
                 if sure:
@@ -1280,12 +1280,12 @@ def _unread_in(
         if len(held) != 0:
             own = _metadata_problem(inner, metadata)
             if own is not None:
-                return _unread_field(typeddict, key, own), True
+                return _unread_member(typeddict, key, own), True
         if leads_back:
             if fallback is None:
-                fallback = _unread_field(typeddict, key, failed)
+                fallback = _unread_member(typeddict, key, failed)
             continue
-        return _unread_field(typeddict, key, failed), True
+        return _unread_member(typeddict, key, failed), True
     return fallback, False
 
 
@@ -1314,7 +1314,7 @@ def _typeddicts_in(annotation: object, seen: frozenset[object]) -> tuple[type, .
 
 
 def _metadata_problem(inner: object, metadata: tuple[object, ...]) -> TypeError | None:
-    """The error the checker raises for `metadata` on a field of type `inner`: a constraint it does not read, or a bound on a type that is not a number; None when it reads the metadata, as it does a note."""
+    """The error the checker raises for `metadata` on a member of type `inner`: a constraint it does not read, or a bound on a type that is not a number; None when it reads the metadata, as it does a note."""
     try:
         _constrainable(inner, constraints_of(metadata))
     except TypeError as error:
@@ -1322,8 +1322,8 @@ def _metadata_problem(inner: object, metadata: tuple[object, ...]) -> TypeError 
     return None
 
 
-def _unread_field(typeddict: type, key: str, failed: TypeError | None) -> Unread:
-    """The field `key` of `typeddict` as unread: the error its parser raised, or, when it has no parser, that it is not a shape JSON takes."""
+def _unread_member(typeddict: type, key: str, failed: TypeError | None) -> Unread:
+    """The member `key` of `typeddict` as unread: the error its parser raised, or, when it has no parser, that it is not a shape JSON takes."""
     if failed is not None:
         constraint = isinstance(failed, UnreadConstraintError)
         return Unread(f"{typeddict.__name__}.{key}: {failed}", constraint)
@@ -1345,7 +1345,7 @@ def check(
     """Type-check `value` as `shape`, a TypedDict. Returns the typed value or None, and every problem.
 
     This function first refines `value` to JSON (arrays as tuples, string
-    keys, finite floats), then checks it field by field. Each problem is
+    keys, finite floats), then checks it member by member. Each problem is
     located under `loc`. The returned value holds only what `shape` allows.
     A key that a closed TypedDict does not declare is reported as
     `unknown_key` and left out, and the value is still returned. Any other
@@ -1455,11 +1455,11 @@ class Schemas:
         """The inline schema of `typeddict`: its keys, its required keys, and what any other key may hold."""
         keys = typeddict_keys(typeddict)
         schema: JSONSchema = {"type": "object"}
-        if len(keys.fields) != 0:
+        if len(keys.members) != 0:
             schema["properties"] = {
-                key: self.of(annotation) for key, (annotation, _) in keys.fields.items()
+                key: self.of(annotation) for key, (annotation, _) in keys.members.items()
             }
-        required: list[JSONValue] = [key for key in keys.fields if key in keys.required]
+        required: list[JSONValue] = [key for key in keys.members if key in keys.required]
         if len(required) != 0:
             schema["required"] = required
         if keys.closed:

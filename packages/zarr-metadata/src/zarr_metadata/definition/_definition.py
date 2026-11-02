@@ -5,16 +5,16 @@ the step before:
 
 1. The type check needs the value and a TypedDict. `check` runs the
    checker compiled from the TypedDict's annotations over the JSON. It
-   checks the shape field by field, locates every problem, and returns
+   checks the shape member by member, locates every problem, and returns
    a value of the TypedDict. A key the TypedDict does not declare is
-   reported and left out. A field that holds another declaration (a
+   reported and left out. A member that holds another declaration (a
    shard's codecs, a cast's data type) is annotated with a declaration alias
    such as `ZarrV3CodecDeclaration`, and is checked as an envelope: a name, or
    a named configuration. Which definition the name refers to is a
    question for a scope, so the check does not need one.
 2. The rules need the definition. They are plain functions over the
    checked TypedDict, for constraints that a type cannot express (a
-   bound, or fields that depend on each other).
+   bound, or members that depend on each other).
    `Definition.read_configuration` runs the check and then the rules, for
    a caller that has one configuration.
 3. The reading needs a scope. `resolve` maps the declaration's name to a
@@ -130,7 +130,7 @@ class EmptyConfiguration(TypedDict, closed=True):
 
 
 _DECLARATION_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
-"""Maps each declaration alias to the kind that a field annotated with it is read as. Each kind adds its aliases when its class is built."""
+"""Maps each declaration alias to the kind that a member annotated with it is read as. Each kind adds its aliases when its class is built."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -148,7 +148,7 @@ class Definition(Generic[C]):
     `closed=False`, anything is allowed. `rules` yields each violation of
     the spec it finds in a configuration of that type. It receives only a
     configuration that has passed the check: it contains only what the
-    TypedDict admits, each field is within the bounds its type declares,
+    TypedDict admits, each member is within the bounds its type declares,
     and the nested declarations are passed as the scope read them (for example, a
     struct's field types). The nested declarations are empty when no scope read
     the configuration. `read_configuration` runs both steps, for a caller
@@ -157,15 +157,15 @@ class Definition(Generic[C]):
     Each function receives the configuration as a read-only view, not a
     `dict`. `copy.deepcopy` and `json.dumps` reject this view. A function
     that simplifies a spelling must build a new mapping, such as
-    `{**configuration}` without the field, instead of editing its input.
+    `{**configuration}` without the member, instead of editing its input.
 
     `canonical` is where two spellings of the configuration that mean the
     same thing are reduced to one.
 
     A definition built by hand rejects inputs it could not read with: a
     `configuration` that is not a TypedDict, that does not declare how
-    undeclared keys are handled, or that has a field no checker reads
-    (the error names the field); and a `name` or rules of the wrong type.
+    undeclared keys are handled, or that has a member no checker reads
+    (the error names the member); and a `name` or rules of the wrong type.
     """
 
     _is_kind: ClassVar[bool] = False
@@ -179,7 +179,7 @@ class Definition(Generic[C]):
     label: ClassVar[str] = "definition"
     """The name of the kind in error messages, for example "codec"."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = ()
-    """The declaration aliases used to annotate a configuration field that holds a declaration of this kind. For a codec: `ZarrV3CodecDeclaration` and `ZarrV3StaticCodecDeclaration`."""
+    """The declaration aliases used to annotate a configuration member that holds a declaration of this kind. For a codec: `ZarrV3CodecDeclaration` and `ZarrV3StaticCodecDeclaration`."""
 
     name: str
     """The name the metadata uses. A scope files the definition under this name."""
@@ -190,7 +190,7 @@ class Definition(Generic[C]):
     canonical: Callable[[C], C] = unchanged
     """A well-typed, allowed configuration in its simplest equivalent spelling.
 
-    This handles only the definition's own fields. `canonicalize` puts
+    This handles only the definition's own members. `canonicalize` puts
     each nested declaration in its own canonical form, because it knows the
     location of each one.
     """
@@ -256,7 +256,7 @@ class Definition(Generic[C]):
 
     @classmethod
     def _undeclared_parts(cls, family: str, name: str, keys: Sequence[str]) -> str:
-        """The message for `name`, a name filed under `family` that encodes the configuration fields `keys`, which the definition does not declare. For a kind whose names encode configuration; by default the message names the keys."""
+        """The message for `name`, a name filed under `family` that encodes the configuration members `keys`, which the definition does not declare. For a kind whose names encode configuration; by default the message names the keys."""
         return (
             f"expected a name that {family!r} reads, got {shown(name)}, which encodes "
             f"{said(keys)} that it does not declare"
@@ -276,7 +276,7 @@ class Definition(Generic[C]):
     def _alias_problems(
         cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
     ) -> Problems:
-        """The problems with using `definition` in a field annotated with `alias`, one of this kind's `declaration_aliases`. Empty by default.
+        """The problems with using `definition` in a member annotated with `alias`, one of this kind's `declaration_aliases`. Empty by default.
 
         A kind with an alias that admits only some of its definitions
         overrides this. For example, `ZarrV3StaticCodecDeclaration` admits only
@@ -346,7 +346,7 @@ class Definition(Generic[C]):
 
         `zarr_metadata.typed_json.check` does only the type check. This
         method also checks the envelope of each declaration that a
-        field holds.
+        member holds.
         """
         configuration, problems = _configuration_checked(
             value, self.configuration, loc, finite=self._finite_numbers()
@@ -359,8 +359,8 @@ class Definition(Generic[C]):
         The rules run only on a configuration that passed the type check,
         including its bounds, and whose nested declarations are well formed. Such
         a configuration contains only what its TypedDict admits. So a rule
-        never receives a field of the wrong type, a field out of bounds,
-        or a field the type does not allow. No scope reads the nested
+        never receives a member of the wrong type, a member out of bounds,
+        or a member the type does not allow. No scope reads the nested
         declarations here, so the rules see none of them as read. A rule about a
         nested declaration (for example, a struct field whose type has values of
         varying size) finds nothing to check. `resolve` reads the declaration in a
@@ -427,7 +427,7 @@ class WithFillValue(Definition[C]):
     so `fill_value_problems` can check a fill value for either format.
 
     `fill_value` is the JSON shape of a fill value, as an annotation. The
-    checker reads it the same way it reads a configuration's fields,
+    checker reads it the same way it reads a configuration's members,
     including any range. `fill_value_rules` yields the spec violations in
     a fill value of that shape that the type cannot express. It receives
     the configuration, the nested declarations as the scope read them, and the
@@ -516,7 +516,7 @@ def as_kind(kind: object) -> type[Definition[Any]]:
 
 
 def declaration_kind(annotation: object) -> type[Definition[Any]] | None:
-    """The kind of declaration held by a field annotated with `annotation` (`CodecDefinition` for `ZarrV3CodecDeclaration`), or None if the field holds no declaration."""
+    """The kind of declaration held by a member annotated with `annotation` (`CodecDefinition` for `ZarrV3CodecDeclaration`), or None if the member holds no declaration."""
     if not is_alias(annotation):
         return None
     return _DECLARATION_KINDS.get(annotation)
@@ -556,11 +556,11 @@ class _NestedDeclaration:
     kind: type[Definition[Any]]
     json: JSONValue
     alias: TypeAliasType
-    """Whether the field that holds it accepts only codecs of static size."""
+    """Whether the member that holds it accepts only codecs of static size."""
 
 
 def _declaration(annotation: object) -> Parser | None:
-    """The one checker shape that this module defines: a field that holds a declaration.
+    """The one checker shape that this module defines: a member that holds a declaration.
 
     The value is checked only as a bare name or an object, and passed on.
     Whoever reads the declaration (`check` without a scope, `resolve` with one)
@@ -583,7 +583,7 @@ def _declaration(annotation: object) -> Parser | None:
 def _vetting(annotation: object) -> Parser | None:
     """`_declaration`, but rejecting annotations that a definition's configuration cannot contain and still be read.
 
-    A field typed with the envelope's own TypedDict
+    A member typed with the envelope's own TypedDict
     (`ZarrV3DeclarationJSON`) is checked as plain JSON, so its name would
     never be mapped to a definition and its configuration would never be
     checked. A TypedDict that does not declare how undeclared keys are
@@ -591,7 +591,7 @@ def _vetting(annotation: object) -> Parser | None:
     """
     if annotation is ZarrV3NamedConfigJSON:
         msg = (
-            "a field typed ZarrV3DeclarationJSON checks as plain JSON, and is never read as "
+            "a member typed ZarrV3DeclarationJSON checks as plain JSON, and is never read as "
             "a declaration; annotate it with the declaration alias of its kind: "
             + ", ".join(alias.__name__ for alias in _DECLARATION_KINDS)
         )
@@ -635,7 +635,7 @@ def _vet(configuration: type, zarr_format: int | None) -> None:
         kind = declaration_kind(annotation)
         if kind is not None and zarr_format is not None and format_of(kind) != zarr_format:
             msg = (
-                f"a field typed {getattr(annotation, '__name__', annotation)} holds a declaration of "
+                f"a member typed {getattr(annotation, '__name__', annotation)} holds a declaration of "
                 f"a Zarr v{format_of(kind)} document, which a definition of a v{zarr_format} "
                 "declaration never reads"
             )
@@ -747,10 +747,10 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
 
 
 def read_only(configuration: C) -> C:
-    """`configuration` in the form a definition's functions receive it: a read-only view of the declaration's own configuration, so a function that assigns a field fails.
+    """`configuration` in the form a definition's functions receive it: a read-only view of the declaration's own configuration, so a function that assigns a member fails.
 
-    This function makes only the top-level fields read-only. The value a
-    field holds (for example, an object in a struct's `fields`) is passed
+    This function makes only the top-level members read-only. The value a
+    member holds (for example, an object in a struct's `fields`) is passed
     as is. While a configuration is being read, that value can be mutable,
     and a function that writes into it changes the configuration. An
     accepted declaration's configuration is already read-only at every level.
@@ -819,11 +819,11 @@ def _configuration_checked(
 ) -> tuple[T | None, Problems]:
     """Check `value` as `shape`, as `typed_json.check` does, and check the envelope of each nested declaration.
 
-    A definition's `read_configuration` starts with this step. A field
+    A definition's `read_configuration` starts with this step. A member
     typed with a declaration alias holds a declaration, and its envelope is
     checked the same way as in a document. A `must_understand` of `false`
     is a problem of the configuration, and no value is returned. An extra
-    field is an unknown key: it is reported and left out, and the value is
+    member is an unknown key: it is reported and left out, and the value is
     still returned. This matches how the checker reports and leaves out a
     key that a closed TypedDict does not declare. A number that is not
     finite is a problem unless `finite` is false, for a configuration that
@@ -1159,7 +1159,7 @@ def declaration_key(declaration: ResolvedDeclaration[Any]) -> tuple[object, ...]
         # Each nested declaration is compared by its own key, so its location is
         # cleared before the definition's `canonical` sees the rest, in the
         # same order as `_canonical_declaration`. `canonical` simplifies only the
-        # definition's own fields.
+        # definition's own members.
         for loc in declaration.nested:
             configuration = _replaced(configuration, loc, None)
         view = read_only(cast("Mapping[str, JSONValue]", configuration))
@@ -1187,7 +1187,7 @@ def declaration_key(declaration: ResolvedDeclaration[Any]) -> tuple[object, ...]
 
 
 def own_key(declaration: AcceptedDeclaration[Any]) -> tuple[object, ...]:
-    """The part of `declaration_key` for an accepted declaration that excludes nested declarations: the definition and the canonical spelling of its own fields."""
+    """The part of `declaration_key` for an accepted declaration that excludes nested declarations: the definition and the canonical spelling of its own members."""
     return declaration_key(declaration)[:3]
 
 
@@ -1461,7 +1461,7 @@ def resolve_refined(
 ) -> tuple[ResolvedDeclaration[D], Problems]:
     """`resolve` for `data` that the caller has already refined. `refined` and `problems` are the result of `refine_json(data, loc)`.
 
-    This is for a reader that refines a document's fields once and keeps
+    This is for a reader that refines a document's members once and keeps
     the result (the document a model holds is built from it), instead of
     refining each declaration again here. `problems` shows whether `data` is
     JSON. If it contains any problems, `refined` is not used.
@@ -1489,7 +1489,7 @@ def _resolve_declaration(
     """Check the envelope of a refined declaration, then read the declaration.
 
     The result of the reading depends only on the configuration. An extra
-    field or a `must_understand` of `false` does not affect the
+    member or a `must_understand` of `false` does not affect the
     configuration, so it is reported alongside the declaration that was read,
     and later layers can still check that declaration.
     """
@@ -1591,7 +1591,7 @@ def _in_document(
     `written` says whether the document writes a configuration. A declaration
     whose configuration has a location of its own, and which writes none
     (a v3 codec written as its name alone, or with no `configuration`),
-    has an empty configuration that the document does not hold. A field
+    has an empty configuration that the document does not hold. A member
     found missing from it is then the configuration itself, missing, as
     for a declaration that requires a configuration, and a problem with the
     configuration as a whole is the declaration's.
@@ -1629,7 +1629,7 @@ def _read_carried(
     The document wrote a name, so a problem with the configuration encoded
     in the name (such as a size that is not a positive multiple of 8) is a
     problem of the declaration. A configuration written next to the name must be
-    empty, so each field in it is an undeclared key.
+    empty, so each member in it is an undeclared key.
     """
     _, beside, _ = _checked(
         EmptyConfiguration,
@@ -1640,13 +1640,13 @@ def _read_carried(
     # a wrong value of the name, not an unknown key a reader may leave out.
     # The parts it does not declare are reported in one problem, by how the
     # name spells them, and the rest is read.
-    fields = typeddict_keys(definition.configuration).fields
-    declared = {key: value for key, value in carried.items() if key in fields}
-    undeclared = [key for key in carried if key not in fields]
+    members = typeddict_keys(definition.configuration).members
+    declared = {key: value for key, value in carried.items() if key in members}
+    undeclared = [key for key in carried if key not in members]
     configuration, judged = definition.read_configuration(declared)
     # A problem with the configuration encoded in the name belongs to the
     # declaration. It is located at the declaration, where the name is, and the
-    # `input` and `ctx` that described a configuration field do not apply
+    # `input` and `ctx` that described a configuration member do not apply
     # to the name, so they are cleared. Each is a wrong value of the name:
     # a part it lacks is not a missing key.
     problems = (
@@ -1669,7 +1669,7 @@ def _read_carried(
 
 
 def _sized(declaration: _NestedDeclaration, inner: ResolvedDeclaration[Any]) -> Problems:
-    """The problems with the definition that read `inner` in the field that holds `declaration`, as the kind of `declaration` reports them for its alias.
+    """The problems with the definition that read `inner` in the member that holds `declaration`, as the kind of `declaration` reports them for its alias.
 
     A name that nothing in scope claims is not checked. Nothing is known
     about it.
@@ -1687,7 +1687,7 @@ def canonicalize(
 
     Only a declaration without problems has a simplest spelling. A simplest
     spelling expresses what the author wrote in fewer words. A key the
-    TypedDict does not declare, an extra envelope field, or a
+    TypedDict does not declare, an extra envelope member, or a
     `must_understand` of `false` is something the author wrote that the
     simplest spelling would erase. So a declaration with any problem returns
     None, with its problems. Otherwise each nested declaration is written in its
@@ -1739,7 +1739,7 @@ def _simplest(declaration: ResolvedDeclaration[Any]) -> JSONValue | None:
 
 
 def _canonical_declaration(resolved: AcceptedDeclaration[Any]) -> JSONValue | None:
-    """An accepted declaration in its simplest equivalent spelling: nested declarations first, then its own fields. None when a nested declaration was refused."""
+    """An accepted declaration in its simplest equivalent spelling: nested declarations first, then its own members. None when a nested declaration was refused."""
     definition, name = resolved.definition, resolved.name
     configuration: JSONValue = dict(resolved.configuration)
     for loc, inner in resolved.nested.items():

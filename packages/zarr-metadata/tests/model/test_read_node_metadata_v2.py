@@ -129,7 +129,7 @@ def test_error_files_with_both_node_files_are_no_node() -> None:
 def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and_a_zmetadata(
     name: str, document: dict[str, Any]
 ) -> None:
-    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the field in the file and in its entry. The kind is `invalid_value` for both files: the field is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
+    """A `.zarray` or `.zgroup` that holds `attributes` itself is refused, with a message that says the attributes belong in `.zattrs`. `read_node_metadata_v2` and `read_consolidated_metadata_v2` report the same problem at the member in the file and in its entry. The kind is `invalid_value` for both files: the member is taken by the attributes, not unknown, and a caller who tolerates an unknown key would lose the attributes it holds."""
     held = {**document, "attributes": {}}
     from_files = read_node_metadata_v2({name: held}).problems
     from_entries = read_consolidated_metadata_v2(

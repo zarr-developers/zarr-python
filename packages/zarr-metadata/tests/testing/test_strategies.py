@@ -85,7 +85,7 @@ _IN_SCOPE = frozenset(
         *ZARR_PYTHON_CONTEXT.storage_transformers.values(),
     )
 )
-"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; fields of a document it defines are not declarations."""
+"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not declarations."""
 _CORE_DATA_TYPES = frozenset(CORE_CONTEXT.data_types.values())
 
 _DEFINITIONS = sorted(DEFAULT_STRATEGIES, key=lambda definition: definition.name)
@@ -208,7 +208,7 @@ def _configuration_targets(
 ) -> list[Target | tuple[Literal["simplified"]]]:
     """What a strategy for `definition` ought to reach, by its configuration's TypedDict."""
     targets: list[Target | tuple[Literal["simplified"]]] = []
-    for key, (annotation, required) in typeddict_keys(definition.configuration).fields.items():
+    for key, (annotation, required) in typeddict_keys(definition.configuration).members.items():
         if not required:
             targets.extend([("present", key), ("absent", key)])
         if get_origin(annotation) is Literal:
@@ -347,9 +347,9 @@ def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:
 @pytest.mark.parametrize(
     "definition", [FLOAT16_DATA_TYPE, FLOAT32_DATA_TYPE, FLOAT64_DATA_TYPE], ids=_id
 )
-@pytest.mark.parametrize("field", ["offset", "scale"])
+@pytest.mark.parametrize("member", ["offset", "scale"])
 def test_scale_offset_reaches_a_value_written_in_hex(
-    definition: DataTypeDefinition[Any], field: str
+    definition: DataTypeDefinition[Any], member: str
 ) -> None:
     """A float's `offset` and `scale` are fill values of its type, which the bits in hex spell too."""
     chunk = Chunk(None, _read(definition, definition.name))
@@ -357,7 +357,7 @@ def test_scale_offset_reaches_a_value_written_in_hex(
     assert configurations is not None
     find(
         configurations,
-        lambda configuration: isinstance(configuration.get(field), str),
+        lambda configuration: isinstance(configuration.get(member), str),
         settings=_REACH,
     )
 

@@ -129,10 +129,10 @@ def _chunk_rules(
             "invalid_value",
         )
         return
-    for field in ("offset", "scale"):
-        value = configuration.get(field)
+    for member in ("offset", "scale"):
+        value = configuration.get(member)
         if value is not None:
-            yield from fill_value_problems(source, value, (field,))
+            yield from fill_value_problems(source, value, (member,))
 
 
 def _transition(

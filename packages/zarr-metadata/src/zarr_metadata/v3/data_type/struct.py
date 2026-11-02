@@ -92,8 +92,8 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
     if len(fields) == 0:
         yield ValidationProblem(("fields",), "expected at least one struct field", "invalid_value")
     seen: dict[str, int] = {}
-    for index, field in enumerate(fields):
-        name = field["name"]
+    for index, member in enumerate(fields):
+        name = member["name"]
         if name == "":
             yield ValidationProblem(
                 ("fields", index, "name"), "expected a non-empty field name", "invalid_value"
@@ -126,7 +126,7 @@ def _fill_value_rules(
     does not hold a reading of that field type, the fill value of that
     field is not checked.
     """
-    names = [field["name"] for field in configuration["fields"]]
+    names = [member["name"] for member in configuration["fields"]]
     declared = set(names)
     for index, name in enumerate(names):
         if name not in value:
@@ -152,8 +152,8 @@ def _fill_value_canonical(
     field is kept as written.
     """
     spelled: dict[str, JSONValue] = {}
-    for index, field in enumerate(configuration["fields"]):
-        name = field["name"]
+    for index, member in enumerate(configuration["fields"]):
+        name = member["name"]
         field_type = nested.get(("fields", index, "data_type"))
         held = value[name]
         spelled[name] = held if field_type is None else spelled_canonically(field_type, held)

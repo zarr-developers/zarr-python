@@ -339,31 +339,31 @@ def test_a_declaration_built_by_hand_is_of_the_kind_it_says(
 
 
 class _HoldsAV2DataType(TypedDict, closed=True):
-    """A v3 configuration with a field that holds a v2 data type declaration."""
+    """A v3 configuration with a member that holds a v2 data type declaration."""
 
     dt: ZarrV2DataTypeDeclaration
 
 
 class _HoldsAV3Codec(TypedDict, closed=True):
-    """A v2 configuration with a field that holds a v3 codec declaration."""
+    """A v2 configuration with a member that holds a v3 codec declaration."""
 
     inner: ZarrV3CodecDeclaration
 
 
 class _HoldsV2DataTypes(TypedDict, closed=True):
-    """A v3 configuration with a field that holds an array of v2 data type declarations."""
+    """A v3 configuration with a member that holds an array of v2 data type declarations."""
 
     dts: tuple[ZarrV2DataTypeDeclaration, ...]
 
 
 class _HoldsANestedV2DataType(TypedDict, closed=True):
-    """A v3 configuration with a field that holds an object with a v2 data type declaration."""
+    """A v3 configuration with a member that holds an object with a v2 data type declaration."""
 
     nested: _HoldsAV2DataType
 
 
 class _HoldsV3Codecs(TypedDict, closed=True):
-    """A v2 configuration with a field that holds an array of v3 codec declarations."""
+    """A v2 configuration with a member that holds an array of v3 codec declarations."""
 
     inner: tuple[ZarrV3CodecDeclaration, ...]
 
@@ -412,7 +412,7 @@ class _HoldsV3Codecs(TypedDict, closed=True):
 def test_error_a_configuration_holding_a_declaration_of_the_other_format(
     build: Callable[[], object], named: str
 ) -> None:
-    """A definition reads the declarations of its own format only: a document of one format never holds a declaration of the other. A configuration with a field that holds the other format's declaration alias, directly, as the items of an array, or inside a nested TypedDict, is refused when the definition is built, with a `TypeError` that names the alias, so no read of it fails part way."""
+    """A definition reads the declarations of its own format only: a document of one format never holds a declaration of the other. A configuration with a member that holds the other format's declaration alias, directly, as the items of an array, or inside a nested TypedDict, is refused when the definition is built, with a `TypeError` that names the alias, so no read of it fails part way."""
     with pytest.raises(TypeError, match=named):
         build()
 
@@ -733,7 +733,7 @@ def test_error_a_rule_refuses_a_value() -> None:
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
 
 
-def test_error_a_field_of_the_wrong_type_is_not_asked_of_the_rules() -> None:
+def test_error_a_member_of_the_wrong_type_is_not_asked_of_the_rules() -> None:
     resolved, found = resolve(
         {"name": "gzip", "configuration": {"level": "5"}}, CodecDefinition, CONTEXT
     )
@@ -770,7 +770,7 @@ def test_error_must_understand_false_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "kind"),
+    ("member", "kind"),
     [
         ("data_type", DataTypeDefinition),
         ("chunk_grid", ChunkGridDefinition),
@@ -780,15 +780,15 @@ def test_error_must_understand_false_is_refused() -> None:
     ],
 )
 def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
-    field: str, kind: type[Definition[Any]]
+    member: str, kind: type[Definition[Any]]
 ) -> None:
     # One interpretation of the spec, applied by two readers: reading a declaration
     # here, and the model's validator. If only one of them changes, this fails.
     declaration: dict[str, JSONValue] = {"name": "acme.example", "must_understand": False}
-    listed = field in ("codecs", "storage_transformers")
+    listed = member in ("codecs", "storage_transformers")
     document: dict[str, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
-    document[field] = [declaration] if listed else declaration
-    at = (field, 0) if listed else (field,)
+    document[member] = [declaration] if listed else declaration
+    at = (member, 0) if listed else (member,)
     by_model = [
         (problem.loc[len(at) :], problem.kind)
         for problem in read_array_metadata_v3(document).problems
@@ -1116,7 +1116,7 @@ def test_error_check_judges_a_nested_envelope() -> None:
 def test_read_configuration_leaves_out_a_field_a_nested_declaration_s_envelope_does_not_declare() -> (
     None
 ):
-    # The field is reported as an unknown key and left out, as the checker
+    # The member is reported as an unknown key and left out, as the checker
     # leaves out a key that a closed TypedDict does not declare. The
     # configuration is still returned.
     typed, problems = ACME_STACK.read_configuration({"codecs": [{"name": "crc32c", "x": 1}]})
@@ -1224,7 +1224,7 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
         ),
         ("int8", "uint8", DataTypeDefinition, False),
         # The spec's equivalences, which each definition's `canonical`
-        # normalizes: a field at its default, a run-length encoding, and
+        # normalizes: a member at its default, a run-length encoding, and
         # leading zeros in a size.
         (
             {"name": "blosc", "configuration": {**NOSHUFFLE}},
@@ -1368,7 +1368,7 @@ def test_error_a_definition_configuration_is_a_typeddict() -> None:
         CodecDefinition(name="acme.bad", configuration=dict, kind="bytes_bytes", size="dynamic")
 
 
-def test_error_a_definition_field_is_a_shape_json_takes() -> None:
+def test_error_a_definition_member_is_a_shape_json_takes() -> None:
     with pytest.raises(TypeError, match="Unreadable: members is not a shape JSON takes"):
         CodecDefinition(
             name="acme.bad", configuration=Unreadable, kind="bytes_bytes", size="dynamic"

@@ -13,12 +13,12 @@ it may contain. A definition is a value, not a class to subclass. It has:
   interpreted as the typing spec defines a TypedDict: `total`,
   `Required`, `NotRequired`, `closed` and `extra_items` mean what they
   mean to a type checker, whether or not its module postpones
-  annotations. A field's type carries its bounds, in the same way
+  annotations. A member's type carries its bounds, in the same way
   pydantic reads them: a gzip `level` is
   `Annotated[int, Interval(ge=0, le=9)]`;
 - `rules`, a function over that TypedDict that yields the spec
   violations a type cannot express (such as constraints between
-  fields), located in the configuration.
+  members), located in the configuration.
 
 The kind of metadata a definition defines is its type. The v3 kinds are
 in `zarr_metadata.v3.definition`, and the v2 kinds are in
@@ -34,11 +34,11 @@ can be used on its own by a caller that has only JSON:
    type-checks JSON against a TypedDict and needs nothing else. It
    returns a value of the TypedDict or None, and every problem, each
    with a location. The value contains only what the TypedDict admits. A
-   field typed with a declaration alias is checked as declaration JSON.
+   member typed with a declaration alias is checked as declaration JSON.
 2. `definition.read_configuration(configuration)` returns the
    configuration as that definition reads it. It type-checks the
    configuration, checks the envelope of each nested declaration (an extra
-   field, a `must_understand` of `false`), and then runs the rules, for
+   member, a `must_understand` of `false`), and then runs the rules, for
    one configuration: `GZIP_CODEC.read_configuration({"level": 12})`.
 3. `resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)` reads a whole
    declaration in a scope. It checks the envelope, maps the name to a
@@ -156,7 +156,7 @@ The TypedDict declares how keys it does not declare are handled. With
 such a key must hold that type. With `closed=False`, anything is
 allowed. A TypedDict that declares none of these is open by default and
 would accept a misspelled key silently, so a definition rejects it. Its
-fields must be JSON shapes: `int`, `float`, `bool`, `str`, `None`,
+members must be JSON shapes: `int`, `float`, `bool`, `str`, `None`,
 `JSONValue`, a `Literal`, `tuple[T, ...]` and `tuple[T1, T2]`, a union,
 a TypedDict, `Mapping[str, V]`, a `NewType` and a type alias. A number's
 type may carry bounds, written with annotated-types and read the way
@@ -222,7 +222,7 @@ are separate classes, and `Context` is the protocol both implement: the
 Zarr format a scope reads, and `claimant`, which says which definition
 of a kind reads a name. That is all `resolve` needs, so any object that
 provides these two can be a scope. A scope has one slot for each kind of
-declaration its format has, named like the document field that holds such
+declaration its format has, named like the document member that holds such
 declarations: `ZarrV3Context(codecs=[...], data_types=[...])` builds one, and
 `context.codecs["gzip"]` reads one slot. A type checker rejects a
 definition in the wrong slot, and a scope of one format given to a
@@ -244,7 +244,7 @@ different definitions is a conflict.
 A definition checks itself when it is built. Each of these raises a
 `TypeError` that says what is wrong: a `configuration` that is not a
 TypedDict, that does not declare how undeclared keys are handled, or
-that has a field no checker reads (the error names the TypedDict that
+that has a member no checker reads (the error names the TypedDict that
 contains it); a `name` that is not a string; an attribute declared as a
 function (`rules`, `canonical`, `fill_value_rules`, `storage`,
 `shape_rules`, `chunk_lengths`, `chunk_rules`, `transition`,
@@ -255,7 +255,7 @@ data type never does; a codec `kind` that is not one of the three, or a
 called for a codec of its kind (chunk rules or pipelines of a
 bytes -> bytes codec, which receives bytes, or a `transition` of a codec
 that outputs bytes); a data type named the way raw bits of one size are
-written; an extra field named after a field the spec defines, whose
+written; an extra field named after a member the spec defines, whose
 `finite` is not a boolean, or whose configuration does not declare
 `must_understand`. Building a definition files it nowhere: only a scope
 built from it does.

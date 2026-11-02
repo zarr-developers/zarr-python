@@ -89,7 +89,7 @@ closely model the content of the Zarr specifications, such as:
 
   Note that a bare `TypeAdapter` over a public `TypedDict` is a **coercive** shape
   adapter, not a Zarr conformance validator; it may coerce values or discard
-  fields that the strict model parser rejects. This is better suited for handling input provided
+  members that the strict model parser rejects. This is better suited for handling input provided
   from Python objects (e.g., user-authored dicts) than JSON.
 
 ## Validation boundary
@@ -97,7 +97,7 @@ closely model the content of the Zarr specifications, such as:
 The readers and model constructors enforce the declared document structure and a small set
 of context-free consistency rules, e.g.:
 - fixed format literals,
-- finite JSON numbers outside `attributes` and the fields nothing in scope reads
+- finite JSON numbers outside `attributes` and the members nothing in scope reads
 - non-negative dimensions
 - one `dimension_names` entry per array dimension.
 
@@ -131,7 +131,7 @@ Some choices that the spec text leaves open, or answers in two ways:
   does not interpret attributes, and zarr-python and xarray write these
   numbers there (for example, a CF `_FillValue`). The models read them,
   and `to_key_value` writes them back as bare tokens, which a strict JSON
-  parser rejects. So may a field the spec does not define when no
+  parser rejects. So may a member the spec does not define when no
   definition in scope claims it: nothing reads it, so it is kept as
   written. `check`, from `zarr_metadata.typed_json`, rejects a non-finite
   number anywhere, including in attributes.
@@ -153,8 +153,8 @@ Some choices that the spec text leaves open, or answers in two ways:
   including codecs and storage transformers, although the core spec names
   only the data type, chunk grid and chunk key encoding. A reader that
   skips a codec reads wrong bytes, just as a reader that skips a data type
-  reads wrong values. On an unknown top-level field, `must_understand`
-  keeps its meaning: a reader can skip that field.
+  reads wrong values. On an unknown top-level member, `must_understand`
+  keeps its meaning: a reader can skip that member.
 - **A v2 datetime or timedelta dtype must have a unit**, as in `<M8[ns]`,
   because the v2 spec requires the unit in brackets. zarr-python 3 writes
   `<M8` or `<m8` for a NumPy `datetime64` or `timedelta64` with no unit,
@@ -185,7 +185,7 @@ read the result strictly, and return each change they made as a `Repair`:
   dimension, which zarr-python 3.0 and 3.1 wrote, is written as 1.
 - `consolidated_metadata: null` on a v3 group, which zarr-python 3.0 and
   3.1 wrote, is removed.
-- The `consolidated_metadata` field that zarr-python 3 writes into each
+- The `consolidated_metadata` member that zarr-python 3 writes into each
   `.zgroup` entry of a `.zmetadata` below the root is removed.
 - A non-finite v2 fill value that zarr-python 3.0.0 to 3.0.6 wrote as a
   bare `NaN`, `Infinity` or `-Infinity` is written as the string the v2
@@ -252,7 +252,7 @@ metadata = reading.metadata  # None when reading.problems is not empty
 
 `read_group_metadata_v3` reads a group the same way. It checks the
 envelope of the group's `consolidated_metadata`, and does not read the
-documents the field lists (see below). `read_node_metadata_v3` reads
+documents the member lists (see below). `read_node_metadata_v3` reads
 a `zarr.json` of either kind as the node type its `node_type` names, the
 same way a discriminated union uses its tag. A document whose `node_type`
 is neither reads as `ZarrV3UnknownNodeMetadataReading`, with the problems.
@@ -272,25 +272,25 @@ types with the same names. `validate_node_name_v3`, `is_node_name_v3` and
 `parse_node_name_v3`, and the matching `node_path` functions, check a
 string against those rules.
 
-A top-level field that the spec does not define is an extra field. A
+A top-level member that the spec does not define is an extra field. A
 scope can hold a definition for one, by its key, in the
 `array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
-field whose key a definition claims is read by that definition: an extra field is a declaration
-written as the field alone, `{key: value}`. Any other extra field is kept as
+member whose key a definition claims is read by that definition: an extra field is a declaration
+written as the member alone, `{key: value}`. Any other extra field is kept as
 written, as an `UnclaimedDeclaration`.
 The scope is what a reader recognizes, so the model's
-`must_understand_fields` lists each unclaimed field that does not say
+`must_understand_fields` lists each unclaimed member that does not say
 `"must_understand": false`: the spec requires a reader to fail to open a
-node with any such field. It covers extra fields only. A data type, chunk
+node with any such member. It covers extra fields only. A data type, chunk
 grid, chunk key encoding, codec or storage transformer that nothing in
 scope claims is an `UnclaimedDeclaration` too, also when it sits inside another
 declaration, such as a codec inside a shard. A model's `unclaimed_declarations` lists
 every declaration nothing in scope claims, at any depth, by its location, and
-leaves out the fields that waive `must_understand`: a reader can open
+leaves out the members that waive `must_understand`: a reader can open
 the node when it is empty. `CORE_CONTEXT` holds
 `CONSOLIDATED_METADATA_EXTRA_FIELD`, which reads a group's
 `consolidated_metadata` as the envelope the spec fixes. A group's
-`consolidated()` reads the documents that field lists, in the group's
+`consolidated()` reads the documents that member lists, in the group's
 own scope.
 
 A v3 model consists of its document and the scope it was read in.
@@ -302,25 +302,25 @@ built. `to_json` returns the document as it was written, and
 
 Every typed attribute is a view of that read: each declaration as the scope read
 it (an `AcceptedDeclaration` or an `UnclaimedDeclaration`), and `shape`, `attributes`
-and the fields that hold no declaration as the read refined them. These views are read-only
+and the members that hold no declaration as the read refined them. These views are read-only
 at every level: a list in the document is shown as a tuple, and an object
 as a read-only mapping. `to_json` returns plain containers.
 
-To change a model, call `update`. It replaces fields of the document with
-the given JSON fields and reads the result in the model's own scope, so
-you do not pass the scope again. A field the spec defines is given by its
-name, and any other field in `extra_fields`, a mapping from its key to its
+To change a model, call `update`. It replaces members of the document with
+the given JSON members and reads the result in the model's own scope, so
+you do not pass the scope again. A member the spec defines is given by its
+name, and any other member in `extra_fields`, a mapping from its key to its
 value, or to `UNSET` to remove it. A name `update` does not take raises
-`TypeError`, so a misspelled field is never written. `with_context` reads the document in
+`TypeError`, so a misspelled member is never written. `with_context` reads the document in
 another scope. `refined_in` also reads the document in another scope, but
 only one that claims what this scope left unclaimed and contradicts
 nothing; otherwise it raises `ScopeConflictError`.
 
 A group does not read the documents its `consolidated_metadata` lists.
 Consolidated metadata is a convention of the reference implementation,
-not core metadata, so a group holds the field as written, after it
+not core metadata, so a group holds the member as written, after it
 checks the envelope that the core spec fixes. A reader can use the
-field as a source of child documents in place of the store: read one
+member as a source of child documents in place of the store: read one
 document with `read_node_metadata_v3` when that node is opened, or read
 all of them with `ZarrV3ConsolidatedMetadata`, or with
 `read_consolidated_metadata_v3`, which returns problems instead of
@@ -375,8 +375,8 @@ name that nothing in the scope claims may have any configuration. The fill
 value must be a valid fill value for the data type the document names.
 `declaration_json_schema_v3(kind, *, context=None)` writes the schema of one declaration, and
 `json_schema` writes the schema of any TypedDict as `check` reads it. All
-three are in `zarr_metadata.json_schema`. A schema describes each field on its own, not the rules that
-relate fields to each other, so a document the schema accepts may still
+three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
+relate members to each other, so a document the schema accepts may still
 have a problem. Every JSON document the readers accept, the schema also
 accepts. A schema validator reads JSON as a parser produces it, with
 arrays as lists. A model's `to_json` returns tuples, which a Python

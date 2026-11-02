@@ -202,10 +202,10 @@ def test_attributes_holding_non_finite_numbers_round_trip_through_the_store(
 
 
 @pytest.mark.parametrize(
-    ("key", "field"),
+    ("key", "member"),
     [
         ("extension", {"must_understand": False, "x": math.nan}),
-        # Only a v3 group holds node documents inline. In an array, a field
+        # Only a v3 group holds node documents inline. In an array, a member
         # with that name is an extra field that nothing in scope claims.
         (
             "consolidated_metadata",
@@ -214,11 +214,11 @@ def test_attributes_holding_non_finite_numbers_round_trip_through_the_store(
     ],
     ids=["extension-field", "consolidated-in-an-array"],
 )
-def test_an_unclaimed_field_holding_non_finite_numbers_round_trips_through_the_store(
-    key: str, field: dict[str, object]
+def test_an_unclaimed_member_holding_non_finite_numbers_round_trips_through_the_store(
+    key: str, member: dict[str, object]
 ) -> None:
-    """Nothing reads a field that no definition in scope claims, so like attributes it may hold `NaN` and the infinities: the model reads it, and writes it back as bare tokens."""
-    model = ZarrV3ArrayMetadata.from_key_value(_stored("zarr.json", {**_ARRAY, key: field}))
+    """Nothing reads a member that no definition in scope claims, so like attributes it may hold `NaN` and the infinities: the model reads it, and writes it back as bare tokens."""
+    model = ZarrV3ArrayMetadata.from_key_value(_stored("zarr.json", {**_ARRAY, key: member}))
     written = model.to_key_value()
     assert b"NaN" in written["zarr.json"]
     assert ZarrV3ArrayMetadata.from_key_value(written) == model

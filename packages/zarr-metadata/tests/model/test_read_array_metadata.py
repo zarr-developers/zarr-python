@@ -359,27 +359,27 @@ def test_error_a_value_that_is_not_a_mapping_reads_as_nothing() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "attribute"),
+    ("member", "attribute"),
     [("codecs", "pipeline"), ("storage_transformers", "storage_transformers")],
 )
 def test_error_a_list_of_declarations_that_is_not_a_list_reads_as_empty(
-    field: str, attribute: str
+    member: str, attribute: str
 ) -> None:
     document = _document()
-    document[field] = "bytes"
+    document[member] = "bytes"
     reading = read_array_metadata_v3(document)
     assert getattr(reading, attribute) == ()
-    assert [(p.loc, p.kind) for p in reading.problems] == [((field,), "invalid_type")]
+    assert [(p.loc, p.kind) for p in reading.problems] == [((member,), "invalid_type")]
 
 
-@pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
-def test_error_a_document_without_a_declaration_reads_it_as_unset(field: str) -> None:
+@pytest.mark.parametrize("member", ["data_type", "chunk_grid", "chunk_key_encoding"])
+def test_error_a_document_without_a_declaration_reads_it_as_unset(member: str) -> None:
     document = _document()
-    del document[field]
+    del document[member]
     reading = read_array_metadata_v3(document)
-    assert getattr(reading, field) is UNSET
-    assert (field,) not in [loc for loc, _ in reading.declarations()]
-    assert ValidationProblem((field,), "missing required key", "missing_key") in reading.problems
+    assert getattr(reading, member) is UNSET
+    assert (member,) not in [loc for loc, _ in reading.declarations()]
+    assert ValidationProblem((member,), "missing required key", "missing_key") in reading.problems
 
 
 def test_error_a_document_without_a_shape_hands_its_codecs_chunks_of_no_known_rank() -> None:

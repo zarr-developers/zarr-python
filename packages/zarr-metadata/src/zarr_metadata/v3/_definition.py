@@ -3,7 +3,7 @@
 The kinds at the spec's five extension points are `DataTypeDefinition`,
 `ChunkGridDefinition`, `ChunkKeyEncodingDefinition`, `CodecDefinition`
 and `StorageTransformerDefinition`. `ArrayExtraFieldDefinition` and
-`GroupExtraFieldDefinition` read fields the spec does not define. This module also holds the chunk that a
+`GroupExtraFieldDefinition` read members the spec does not define. This module also holds the chunk that a
 codec receives, how a data type's values are stored, the raw bits name
 `r*`, and the JSON Schema of a v3 declaration. The reading itself is in
 `zarr_metadata.definition`, which both formats share.
@@ -157,7 +157,7 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
 
     `fill_value` is the JSON shape of a fill value, such as
     `Int8FillValue`. It is an annotation that the checker reads the same
-    way it reads a configuration's fields, including any range.
+    way it reads a configuration's members, including any range.
     `fill_value_rules` yields the spec violations in a fill value of that
     shape that the type cannot express, such as a hex string of the wrong
     width.
@@ -190,7 +190,7 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     label: ClassVar[str] = "data type"
     """The name of the kind in error messages, `"data type"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3DataTypeDeclaration,)
-    """The declaration alias that annotates a configuration field holding a data type, `ZarrV3DataTypeDeclaration`."""
+    """The declaration alias that annotates a configuration member holding a data type, `ZarrV3DataTypeDeclaration`."""
 
     @classmethod
     def _filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
@@ -250,7 +250,7 @@ class ChunkGridDefinition(Definition[C], kind=True, format=3):
     label: ClassVar[str] = "chunk grid"
     """The name of the kind in error messages, `"chunk grid"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkGridDeclaration,)
-    """The declaration alias that annotates a configuration field holding a chunk grid, `ZarrV3ChunkGridDeclaration`."""
+    """The declaration alias that annotates a configuration member holding a chunk grid, `ZarrV3ChunkGridDeclaration`."""
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """The spec violations in this grid over an array of a given shape, located in the configuration."""
@@ -265,7 +265,7 @@ class ChunkKeyEncodingDefinition(Definition[C], kind=True, format=3):
     label: ClassVar[str] = "chunk key encoding"
     """The name of the kind in error messages, `"chunk key encoding"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkKeyEncodingDeclaration,)
-    """The declaration alias that annotates a configuration field holding a chunk key encoding, `ZarrV3ChunkKeyEncodingDeclaration`."""
+    """The declaration alias that annotates a configuration member holding a chunk key encoding, `ZarrV3ChunkKeyEncodingDeclaration`."""
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
@@ -316,7 +316,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     A codec that contains its own pipelines declares what each one
     receives with `pipelines`. Given the codec's input chunk, it returns
     the chunk that the first codec of each pipeline receives, keyed by the
-    configuration field that holds the pipeline. For example, a shard's
+    configuration member that holds the pipeline. For example, a shard's
     inner codecs receive its inner chunks, and its index codecs receive
     the shard index. Like the transition, it is called whatever the chunk
     rules found, and must return only what is true in either case. A
@@ -331,7 +331,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
         ZarrV3CodecDeclaration,
         ZarrV3StaticCodecDeclaration,
     )
-    """The declaration aliases that annotate a configuration field holding a codec.
+    """The declaration aliases that annotate a configuration member holding a codec.
 
     `ZarrV3CodecDeclaration` admits any codec; `ZarrV3StaticCodecDeclaration` admits only
     codecs of static size.
@@ -347,7 +347,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     size: CodecSize
     """Whether the size of what the codec gives out is fixed by the size of what it is handed.
 
-    Where a field takes only codecs of static size, a codec of dynamic size
+    Where a member takes only codecs of static size, a codec of dynamic size
     is a problem.
     """
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
@@ -355,7 +355,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
     """The chunk the next codec receives, given the chunk this array -> array codec receives."""
     pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
-    """The chunk each contained pipeline receives, keyed by the configuration field that holds the pipeline."""
+    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
@@ -376,7 +376,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     def _alias_problems(
         cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
     ) -> Problems:
-        """A codec of dynamic size in a field annotated with `ZarrV3StaticCodecDeclaration`, which admits only codecs of static size, is a problem at the declaration."""
+        """A codec of dynamic size in a member annotated with `ZarrV3StaticCodecDeclaration`, which admits only codecs of static size, is a problem at the declaration."""
         if alias not in STATIC_SIZE_ALIASES:
             return ()
         if not isinstance(definition, CodecDefinition) or definition.size == "static":
@@ -398,43 +398,43 @@ class StorageTransformerDefinition(Definition[C], kind=True, format=3):
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (
         ZarrV3StorageTransformerDeclaration,
     )
-    """The declaration alias that annotates a configuration field holding a storage transformer, `ZarrV3StorageTransformerDeclaration`."""
+    """The declaration alias that annotates a configuration member holding a storage transformer, `ZarrV3StorageTransformerDeclaration`."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ExtraFieldDefinition(Definition[C]):
-    """A field of a v3 document that the spec does not define, an extra field: its name is the field's key, and its configuration is the field's value.
+    """A member of a v3 document that the spec does not define, an extra field: its name is the member's key, and its configuration is the member's value.
 
     This is not a kind. `ArrayExtraFieldDefinition` and
     `GroupExtraFieldDefinition` are, because one key may mean different
     things in an array document and in a group document. An extra field is
     not one of the spec's extension points, and no registry names it, so
-    any key may name one. As a declaration it is written as the field alone,
-    `{key: value}`, and it is located at the field's key. A definition
-    reads a field whose value is an object. A field that no definition
+    any key may name one. As a declaration it is written as the member alone,
+    `{key: value}`, and it is located at the member's key. A definition
+    reads a member whose value is an object. A member that no definition
     in scope claims is not read: a reader keeps it as it is written, and
     lists it in `must_understand_fields` unless it says
     `"must_understand": false`.
 
-    `finite` says whether every number in the field must be finite, as
-    RFC 8259 JSON requires. A field that holds user data sets it to
+    `finite` says whether every number in the member must be finite, as
+    RFC 8259 JSON requires. A member that holds user data sets it to
     False: consolidated metadata holds node documents, whose attributes
-    may hold `NaN`, `Infinity` and `-Infinity`. A field that nothing
+    may hold `NaN`, `Infinity` and `-Infinity`. A member that nothing
     claims is not read, so like attributes it may hold any number.
 
     The spec lets every extension field carry `"must_understand": false`,
-    which tells a reader that does not understand the field that it may
+    which tells a reader that does not understand the member that it may
     ignore it. So the configuration declares `must_understand`, and a
-    definition whose configuration does not is refused. A field the spec
+    definition whose configuration does not is refused. A member the spec
     defines, such as an array's `shape`, is never an extra field, and a
     definition named after one is refused too.
     """
 
     finite: bool = True
-    """Whether every number in the field must be finite."""
+    """Whether every number in the member must be finite."""
 
-    spec_fields: ClassVar[frozenset[str]] = frozenset()
-    """The fields the spec defines in a document this kind reads extra fields of, which are never extra fields."""
+    spec_members: ClassVar[frozenset[str]] = frozenset()
+    """The members the spec defines in a document this kind reads extra fields of, which are never extra fields."""
 
     def _finite_numbers(self) -> bool:
         return self.finite
@@ -448,10 +448,10 @@ class ExtraFieldDefinition(Definition[C]):
         try:
             takes = _takes_the_waiver(self.configuration)
         except TypeError as error:
-            # Name the field, as the checker names a field it cannot read.
+            # Name the member, as the checker names a member it cannot read.
             keys = typeddict_keys(self.configuration)
-            field = "must_understand" if "must_understand" in keys.fields else "extra_items"
-            return f"{self.name!r}: {self.configuration.__name__}.{field}: {error}"
+            member = "must_understand" if "must_understand" in keys.members else "extra_items"
+            return f"{self.name!r}: {self.configuration.__name__}.{member}: {error}"
         if not takes:
             return (
                 f"{self.name!r}: expected a configuration that takes must_understand as a "
@@ -464,9 +464,9 @@ class ExtraFieldDefinition(Definition[C]):
     def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
         # No registry names extra fields, so any key the spec does not
         # define may name one.
-        if name in cls.spec_fields:
+        if name in cls.spec_members:
             return ValidationProblem(
-                at, f"{name!r} is a field the spec defines, not an extra field", "invalid_value"
+                at, f"{name!r} is a member the spec defines, not an extra field", "invalid_value"
             )
         return None
 
@@ -474,8 +474,8 @@ class ExtraFieldDefinition(Definition[C]):
     def _named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
-        # A field whose value is not an object has no configuration. Only
-        # a definition that claims the field reads it, and `_refined`
+        # A member whose value is not an object has no configuration. Only
+        # a definition that claims the member reads it, and `_refined`
         # refuses such a value then.
         if not is_object(value) or len(value) != 1:
             return None, None, ()
@@ -492,7 +492,7 @@ class ExtraFieldDefinition(Definition[C]):
         if name is None:
             return (
                 ValidationProblem(
-                    (), "expected a field, as an object with one string key", "invalid_type"
+                    (), "expected a member, as an object with one string key", "invalid_type"
                 ),
             )
         bad = cls._name_problem(name, ())
@@ -502,9 +502,9 @@ class ExtraFieldDefinition(Definition[C]):
     def _refined(
         cls, data: object, loc: Loc, definition: Definition[Any] | None
     ) -> tuple[JSONValue | None, Problems]:
-        # The field's value is at the field's location, `loc`. A field
+        # The member's value is at the member's location, `loc`. A member
         # nothing claims is not read, so like attributes it is user data.
-        # A claimed field is user data when its definition says so, and
+        # A claimed member is user data when its definition says so, and
         # its value must be an object.
         name = cls._named_configuration(data)[0]
         if name is None or not is_object(data):
@@ -527,7 +527,7 @@ class ExtraFieldDefinition(Definition[C]):
     def _unclaimed_json(
         cls, json: JSONValue, name: str, configuration: Mapping[str, JSONValue]
     ) -> JSONValue:
-        # A field no definition claims is written as it is, whatever its
+        # A member no definition claims is written as it is, whatever its
         # value; only a definition reads it as an object.
         return json
 
@@ -543,7 +543,7 @@ class ExtraFieldDefinition(Definition[C]):
 def _takes_the_waiver(configuration: type) -> bool:
     """Whether `configuration`, a TypedDict, takes the spec's `"must_understand": false`: the type it gives `must_understand`, declared or as another key, admits `false` and only booleans."""
     keys = typeddict_keys(configuration)
-    declared = keys.fields.get("must_understand")
+    declared = keys.members.get("must_understand")
     booleans = _booleans(keys.extra_items if declared is None else declared[0], frozenset())
     return booleans is not None and False in booleans
 
@@ -578,26 +578,26 @@ def _booleans(annotation: object, seen: frozenset[object]) -> frozenset[bool] | 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ArrayExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
-    """An extra field of a v3 array document: a field the spec does not define, read by its key."""
+    """An extra field of a v3 array document: a member the spec does not define, read by its key."""
 
     label: ClassVar[str] = "array extra field"
     """The name of the kind in error messages, `"array extra field"`."""
-    spec_fields: ClassVar[frozenset[str]] = frozenset(
-        typeddict_keys(ZarrV3ArrayMetadataJSON).fields
+    spec_members: ClassVar[frozenset[str]] = frozenset(
+        typeddict_keys(ZarrV3ArrayMetadataJSON).members
     )
-    """The fields the spec defines in an array document, the keys of `ZarrV3ArrayMetadataJSON`; never extra fields."""
+    """The members the spec defines in an array document, the keys of `ZarrV3ArrayMetadataJSON`; never extra fields."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class GroupExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
-    """An extra field of a v3 group document: a field the spec does not define, read by its key. `consolidated_metadata` is one."""
+    """An extra field of a v3 group document: a member the spec does not define, read by its key. `consolidated_metadata` is one."""
 
     label: ClassVar[str] = "group extra field"
     """The name of the kind in error messages, `"group extra field"`."""
-    spec_fields: ClassVar[frozenset[str]] = frozenset(
-        typeddict_keys(ZarrV3GroupMetadataJSON).fields
+    spec_members: ClassVar[frozenset[str]] = frozenset(
+        typeddict_keys(ZarrV3GroupMetadataJSON).members
     )
-    """The fields the spec defines in a group document, the keys of `ZarrV3GroupMetadataJSON`; never extra fields."""
+    """The members the spec defines in a group document, the keys of `ZarrV3GroupMetadataJSON`; never extra fields."""
 
 
 STATIC_SIZE_ALIASES: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecDeclaration})

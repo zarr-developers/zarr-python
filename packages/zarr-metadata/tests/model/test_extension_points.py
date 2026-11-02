@@ -166,18 +166,18 @@ def test_error_a_configuration_its_definition_refuses(
 
 
 def test_error_an_array_in_consolidated_metadata() -> None:
-    """A codec configuration that the codec's definition refuses, in an array listed in consolidated metadata, is reported at its location in the field."""
-    field = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
+    """A codec configuration that the codec's definition refuses, in an array listed in consolidated metadata, is reported at its location in the member."""
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
     assert [
-        (problem.loc, problem.kind) for problem in read_consolidated_metadata_v3(field).problems
+        (problem.loc, problem.kind) for problem in read_consolidated_metadata_v3(member).problems
     ] == [(("metadata", "a", "codecs", 1, "configuration", "level"), "invalid_value")]
 
 
 def test_an_array_in_consolidated_metadata_reads_in_the_scope_it_is_read_in() -> None:
-    """An array listed in consolidated metadata is read in the scope the field is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
-    field = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
+    """An array listed in consolidated metadata is read in the scope the member is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
     lenient = CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP})
-    reading = read_consolidated_metadata_v3(field, context=lenient)
+    reading = read_consolidated_metadata_v3(member, context=lenient)
     assert reading.problems == ()
     assert reading.metadata is not None
     assert (

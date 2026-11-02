@@ -283,7 +283,7 @@ _EXTENSION_ROLES = (
     # `CodecDefinition`, which holds a codec's name, configuration TypedDict
     # and rules.
     "Definition",
-    # A configuration field that holds a metadata declaration of that kind: for
+    # A configuration member that holds a metadata declaration of that kind: for
     # example, `ZarrV3CodecDeclaration`, read in the same scope as the declaration that
     # contains it.
     "Declaration",

@@ -260,13 +260,13 @@ def prefixed(
 
 
 def value_at(value: object, loc: tuple[str | int, ...]) -> object:
-    """The value inside `value` at `loc`, where each key names an object field and each index an array element; `UNSET` if nothing is there."""
+    """The value inside `value` at `loc`, where each key names an object member and each index an array element; `UNSET` if nothing is there."""
     for part in loc:
         if isinstance(part, str) and is_object(value):
-            fields = value
-            if part not in fields:
+            members = value
+            if part not in members:
                 return UNSET
-            value = fields[part]
+            value = members[part]
         elif isinstance(part, int) and is_array(value) and 0 <= part < len(value):
             value = value[part]
         else:
@@ -304,7 +304,7 @@ def with_input(
 def _holdable(value: object) -> bool:
     """Whether a problem can hold `value` as its input: JSON, nested no deeper than `JSON_DEPTH`.
 
-    A value the validator did not walk (a field it only reports) may be
+    A value the validator did not walk (a member it only reports) may be
     nested deeper than that. Such a value is not stored, because
     `is_canonical_json` rejects it.
     """
@@ -416,7 +416,7 @@ def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> Validat
     `_refine` applies this rule to each container it reaches, through
     `_past_the_levels`, which handles a value known to be a container. A
     reader also calls this for each container it walks without refining
-    (a document's fields, or the consolidated metadata it descends into).
+    (a document's members, or the consolidated metadata it descends into).
     This bounds a chain of documents in the same way as any other nesting,
     and checks every container at its location, with the same result as
     `refine_json` of the whole document.
@@ -500,23 +500,23 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     if len(loc) >= JSON_DEPTH:
         return None, (_past_the_levels(loc),)
     if mapping:
-        # Walk the fields here rather than in a separate function, so that
+        # Walk the members here rather than in a separate function, so that
         # each level of nesting costs one frame, `JSON_DEPTH` at most.
-        fields: dict[str, JSONValue] = {}
-        found_in_fields: list[ValidationProblem] = []
+        members: dict[str, JSONValue] = {}
+        found_in_members: list[ValidationProblem] = []
         for key, item in cast("Mapping[object, object]", value).items():
             if not isinstance(key, str):
-                found_in_fields.append(
+                found_in_members.append(
                     ValidationProblem(
                         loc, f"non-string key {shown_key(key)} in JSON object", "invalid_type"
                     )
                 )
                 continue
-            field, found = _refine(item, (*loc, key), finite=finite)
-            found_in_fields.extend(found)
+            member, found = _refine(item, (*loc, key), finite=finite)
+            found_in_members.extend(found)
             if len(found) == 0:
-                fields[key] = field
-        return (fields if len(found_in_fields) == 0 else None), tuple(found_in_fields)
+                members[key] = member
+        return (members if len(found_in_members) == 0 else None), tuple(found_in_members)
     entries: list[JSONValue] = []
     found_in_entries: list[ValidationProblem] = []
     for index, item in enumerate(cast("Sequence[object]", value)):
@@ -746,13 +746,13 @@ def frozen(value: JSONValue) -> JSONValue:
     if cls in _SCALARS:
         return value
     if cls is dict or isinstance(value, Mapping):
-        fields = cast("Mapping[str, JSONValue]", value)
+        members = cast("Mapping[str, JSONValue]", value)
         return cast(
             "JSONValue",
             MappingProxyType(
                 {
                     key: item if type(item) in _SCALARS else frozen(item)
-                    for key, item in fields.items()
+                    for key, item in members.items()
                 }
             ),
         )
@@ -775,10 +775,10 @@ def copied(value: JSONValue) -> JSONValue:
     does, so any refined value can be copied, however deep it is.
     """
     if isinstance(value, Mapping):
-        fields: dict[str, JSONValue] = {}
+        members: dict[str, JSONValue] = {}
         for key, item in value.items():
-            fields[key] = copied(item)
-        return fields
+            members[key] = copied(item)
+        return members
     if isinstance(value, (tuple, list)):
         # Use `map`, not a comprehension. Before Python 3.12 a comprehension
         # uses its own frame; this keeps it to one frame per level.

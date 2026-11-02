@@ -96,9 +96,9 @@ def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | No
     """The chunk each codec receives, for every pipeline held by the codecs, keyed by the codec's location."""
     found: dict[Where, Chunk | None] = {}
     for index, stage in enumerate(stages):
-        for field, held in stage.inner.items():
-            found |= {(*at, index, field, place): s.incoming for place, s in enumerate(held)}
-            found |= _handed(held, (*at, index, field))
+        for member, held in stage.inner.items():
+            found |= {(*at, index, member, place): s.incoming for place, s in enumerate(held)}
+            found |= _handed(held, (*at, index, member))
     return found
 
 

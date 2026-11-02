@@ -38,8 +38,8 @@ UserJSONValue = TypeAliasType("UserJSONValue", JSONValue)
 
 The spec only requires attributes to be JSON values, and zarr-python
 writes these numbers as bare tokens, so a reader accepts them where a
-document holds user data. A configuration field annotated with this
-alias is checked that way; a field annotated `JSONValue` must hold
+document holds user data. A configuration member annotated with this
+alias is checked that way; a member annotated `JSONValue` must hold
 finite numbers, as RFC 8259 requires.
 """
 
@@ -66,7 +66,7 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     keeping it mutable lets writers set it on an already-constructed declaration.
 
     The type is `closed` (PEP 728): the spec's named-configuration envelope
-    has exactly these three fields, and closing it is also what makes this
+    has exactly these three members, and closing it is also what makes this
     type — and every concrete entity type embedding it, e.g. the
     `sharding_indexed` configuration's inner `codecs` list — assignable to
     `Mapping[str, JSONValue]` (i.e. usable as a `JSONValue`).

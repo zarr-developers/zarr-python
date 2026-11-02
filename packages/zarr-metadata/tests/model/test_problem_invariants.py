@@ -2,7 +2,7 @@
 
 Each test starts from valid documents of every kind a reader reads, and
 changes them in a few places: a value replaced with any JSON value or with
-a name a document might write, a field removed, a field added, a key
+a name a document might write, a member removed, a member added, a key
 renamed. Whatever the reader makes of the result, its problems must be
 located in the document it was given, and none may be reported twice. A
 tool places a diagnostic at a problem's `loc`, so a location the document
@@ -11,7 +11,7 @@ does not have is a diagnostic nobody can place.
 The other tests pin one rule each, where an earlier release broke it: a
 typestr is one token, so each of its problems is a wrong value of the
 dtype, never an unknown or missing key; a float for an integer `Literal`
-is the wrong type wherever the `Literal` sits; a field nothing claims
+is the wrong type wherever the `Literal` sits; a member nothing claims
 may hold any number in both formats; and both formats refuse the same
 node paths.
 """
@@ -394,14 +394,14 @@ _ANY_NUMBER = st.recursive(
 
 
 @_PROPERTY
-@given(field=_ANY_NUMBER)
-def test_a_field_nothing_claims_may_hold_any_number_in_either_format(field: object) -> None:
-    """A field the spec does not define is not read, so like attributes it may hold `NaN` and the infinities, in a v2 `.zarray`, in a `.zmetadata` entry, and in a v3 document alike."""
-    v2 = {**_V2_ARRAY, "unexpected": field}
-    v3 = {**_V3_ARRAY, "unexpected": {"must_understand": False, "value": field}}
+@given(member=_ANY_NUMBER)
+def test_a_member_nothing_claims_may_hold_any_number_in_either_format(member: object) -> None:
+    """A member the spec does not define is not read, so like attributes it may hold `NaN` and the infinities, in a v2 `.zarray`, in a `.zmetadata` entry, and in a v3 document alike."""
+    v2 = {**_V2_ARRAY, "unexpected": member}
+    v3 = {**_V3_ARRAY, "unexpected": {"must_understand": False, "value": member}}
     event(
         "non-finite"
-        if any(isinstance(x, float) and not math.isfinite(x) for x in _leaves(field))
+        if any(isinstance(x, float) and not math.isfinite(x) for x in _leaves(member))
         else "finite"
     )
     assert read_array_metadata_v2(v2).problems == ()

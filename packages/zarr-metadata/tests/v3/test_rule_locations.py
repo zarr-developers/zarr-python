@@ -85,7 +85,7 @@ def test_error_a_rule_of_a_name_that_encodes_its_configuration_is_a_wrong_value_
 def test_error_a_rule_of_a_codec_is_located_where_its_document_writes_it(
     codec: object, no_endian: Loc, whole: Loc
 ) -> None:
-    """A codec that writes no configuration has an empty one the document does not hold. A field its rules find missing is the configuration itself, missing, and a problem with the configuration as a whole is the codec's."""
+    """A codec that writes no configuration has an empty one the document does not hold. A member its rules find missing is the configuration itself, missing, and a problem with the configuration as a whole is the codec's."""
     context = CORE_CONTEXT.update(
         codecs={
             **CORE_CONTEXT.codecs,

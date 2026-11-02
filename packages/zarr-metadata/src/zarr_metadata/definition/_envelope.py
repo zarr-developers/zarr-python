@@ -85,7 +85,9 @@ def envelope_problems(
     for key in declaration:
         if not isinstance(key, str):
             problems.append(
-                ValidationProblem((), f"non-string field key {shown_key(key)}", "invalid_type")
+                ValidationProblem(
+                    (), f"non-string declaration key {shown_key(key)}", "invalid_type"
+                )
             )
         elif key not in ENVELOPE_KEYS:
             problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
