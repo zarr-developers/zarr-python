@@ -12,12 +12,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
 )
 from zarr_metadata.v3._common import (
-    ZarrV3CodecField,
-    ZarrV3StaticCodecField,
+    ZarrV3CodecDeclaration,
+    ZarrV3StaticCodecDeclaration,
 )
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -65,12 +65,12 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     One length, at least 1, per axis of the shard the codec is handed, each
     dividing the shard's length along that axis.
     """
-    codecs: tuple[ZarrV3CodecField, ...]
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
     """The codec pipeline that encodes each inner chunk.
 
     Like an array's `codecs`, it holds exactly one array -> bytes codec.
     """
-    index_codecs: tuple[ZarrV3StaticCodecField, ...]
+    index_codecs: tuple[ZarrV3StaticCodecDeclaration, ...]
     """The codec pipeline that encodes the shard index.
 
     It holds exactly one array -> bytes codec, and only codecs whose output
@@ -149,7 +149,7 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = AcceptedField(
+_UINT64: Final = AcceptedDeclaration(
     json=UINT64_DATA_TYPE_NAME,
     name=UINT64_DATA_TYPE_NAME,
     definition=UINT64_DATA_TYPE,
@@ -227,7 +227,7 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
 )
 """The `sharding_indexed` codec.
 
-Its two pipelines are nested fields. Each codec in them is read in the
+Its two pipelines are nested declarations. Each codec in them is read in the
 same scope as the shard, and each pipeline is read as a pipeline: the
 inner codecs receive the inner chunks, and the index codecs receive the
 shard index.

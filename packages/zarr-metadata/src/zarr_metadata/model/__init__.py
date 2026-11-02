@@ -26,7 +26,7 @@ read a store that another writer made with a known writer bug, use
 They undo each bug with `repair_node_metadata_v3` or
 `repair_node_metadata_v2` before the strict read, and report what they
 changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
-readers read, except for the rules. One field on its own is read with
+readers read, except for the rules. One declaration on its own is read with
 `zarr_metadata.definition.resolve`.
 
 The model constructors `from_json` and `from_key_value` raise

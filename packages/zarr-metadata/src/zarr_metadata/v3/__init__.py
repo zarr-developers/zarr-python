@@ -1,6 +1,6 @@
 """Zarr v3 metadata types, and the front door to the v3 definitions.
 
-This module holds the JSON of any metadata field (a bare name or a
+This module holds the JSON of any declaration (a bare name or a
 `ZarrV3NamedConfigJSON` envelope) and the node name and path
 types. Each document type is in the submodule for its node: `array`,
 `group` and `consolidated`. The extensions are in `codec`, `data_type`,
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from zarr_metadata._common import ZarrV3NamedConfigJSON
 from zarr_metadata._renamed import renamed_scope
-from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import ZarrV3DeclarationJSON, ZarrV3ExtensionField
 from zarr_metadata.v3._core import RENAMED_SCOPES
 from zarr_metadata.v3._hierarchy import NodeName, NodePath
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
@@ -115,8 +115,8 @@ __all__ = [
     "NodeName",
     "NodePath",
     "ZarrV3Context",
+    "ZarrV3DeclarationJSON",
     "ZarrV3ExtensionField",
-    "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
 ]
 

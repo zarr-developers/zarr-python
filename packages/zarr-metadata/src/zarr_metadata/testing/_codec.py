@@ -1,4 +1,4 @@
-"""Strategies for each codec this package defines that holds no other field.
+"""Strategies for each codec this package defines that holds no other declaration.
 
 A codec handed an array draws what fits the chunk: a `bytes` codec an
 `endian` for a type whose values take several bytes, a `transpose` an
@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from hypothesis import strategies as st
 
-from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
+from zarr_metadata.definition._definition import AcceptedDeclaration, EmptyConfiguration
 from zarr_metadata.testing._data_type import (
     COMPLEX_WIDTHS,
     FLOAT_WIDTHS,
@@ -131,7 +131,7 @@ def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | 
     non-negative integers, which every integer and float type holds.
     """
     data_type = chunk.data_type
-    definition = data_type.definition if isinstance(data_type, AcceptedField) else None
+    definition = data_type.definition if isinstance(data_type, AcceptedDeclaration) else None
     if definition is None:
         offset: st.SearchStrategy[JSONValue] = st.integers(0, 127)
         scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)
@@ -189,6 +189,6 @@ CODEC_STRATEGIES: Final[Mapping[CodecDefinition[Any], CodecStrategy]] = {
         )
     ),
 }
-"""A strategy for each codec that holds no other field."""
+"""A strategy for each codec that holds no other declaration."""
 
 __all__ = ["CODEC_STRATEGIES"]

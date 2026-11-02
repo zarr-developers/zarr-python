@@ -23,7 +23,7 @@ reported as `unknown_key` and left out.
 
 `check` is the full entry point for a caller that has a JSON value and a
 TypedDict. The public module `zarr_metadata.typed_json` exports it.
-This module does not know what a metadata field is. A caller with its own
+This module does not know what a declaration is. A caller with its own
 shapes passes a `leaf`. The parser asks the leaf first for every
 annotation at every depth, and uses the parser the leaf returns without
 changes. Parsers are compiled once per annotation and are pure functions

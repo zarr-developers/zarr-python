@@ -13,13 +13,13 @@ from zarr_metadata.definition import (
     Conflict,
     Definition,
     EmptyConfiguration,
-    RefusedField,
-    ResolvedField,
+    RefusedDeclaration,
+    ResolvedDeclaration,
     ScopeConflictError,
     resolve,
 )
 from zarr_metadata.definition._context import disagreements
-from zarr_metadata.definition._definition import fields_of
+from zarr_metadata.definition._definition import declarations_of
 from zarr_metadata.definition._scope import Disagreements, claims_of, kind_name, refines
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
@@ -61,7 +61,9 @@ one reads `gzip` differently.
 """
 
 
-def _read(data: object, kind: type[Definition[Any]], context: ZarrV3Context) -> ResolvedField[Any]:
+def _read(
+    data: object, kind: type[Definition[Any]], context: ZarrV3Context
+) -> ResolvedDeclaration[Any]:
     return resolve(data, kind, context)[0]
 
 
@@ -115,7 +117,7 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "claims"),
+    ("declaration", "claims"),
     [
         (_read("gzip", CodecDefinition, CORE_CONTEXT), {(CodecDefinition, "gzip"): GZIP_CODEC}),
         (_read("zstd", CodecDefinition, CORE_CONTEXT), {(CodecDefinition, "zstd"): None}),
@@ -135,25 +137,27 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
             _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_CONTEXT),
             {(CodecDefinition, "gzip"): GZIP_CODEC},
         ),
-        (RefusedField(json=3, name=None, read_as=CodecDefinition), {}),
+        (RefusedDeclaration(json=3, name=None, read_as=CodecDefinition), {}),
     ],
     ids=["read", "unclaimed", "raw-bits", "nested", "refused-claimed", "refused-nameless"],
 )
 def test_claims_of_says_what_a_reading_claimed_of_each_name(
-    field: ResolvedField[Any], claims: dict[object, object]
+    declaration: ResolvedDeclaration[Any], claims: dict[object, object]
 ) -> None:
-    """A reading's claims map each name written by the field, and by the fields it holds, to the definition that read it. Each name is keyed as the scope files it (raw bits under `r*`), with None where nothing claimed the name. A field refused by a definition still claims that definition. A field with no name claims nothing."""
-    assert claims_of(fields_of(field)) == claims
+    """A reading's claims map each name written by the declaration, and by the declarations it holds, to the definition that read it. Each name is keyed as the scope files it (raw bits under `r*`), with None where nothing claimed the name. A declaration refused by a definition still claims that definition. A declaration with no name claims nothing."""
+    assert claims_of(declarations_of(declaration)) == claims
 
 
 def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
-    """Fields read in two scopes that give one name two different definitions have no single set of claims. `claims_of` raises a `ScopeConflictError` that names the key."""
-    fields = [
-        *fields_of(_read("gzip", CodecDefinition, CORE_CONTEXT), ("codecs", 0)),
-        *fields_of(_read("gzip", CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])), ("codecs", 1)),
+    """Declarations read in two scopes that give one name two different definitions have no single set of claims. `claims_of` raises a `ScopeConflictError` that names the key."""
+    declarations = [
+        *declarations_of(_read("gzip", CodecDefinition, CORE_CONTEXT), ("codecs", 0)),
+        *declarations_of(
+            _read("gzip", CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])), ("codecs", 1)
+        ),
     ]
     with pytest.raises(ScopeConflictError) as raised:
-        claims_of(fields)
+        claims_of(declarations)
     (conflict,) = raised.value.conflicts
     assert (conflict.key, conflict.claimed, conflict.found, conflict.loc) == (
         (CodecDefinition, "gzip"),
@@ -163,8 +167,8 @@ def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
     )
 
 
-GZIP_FIELD = {"name": "gzip", "configuration": {"level": 5}}
-ZSTD_FIELD = {"name": "zstd", "configuration": {"level": 3}}
+GZIP_DECLARATION = {"name": "gzip", "configuration": {"level": 5}}
+ZSTD_DECLARATION = {"name": "zstd", "configuration": {"level": 3}}
 BLOSC = {"cname": "zstd", "shuffle": "noshuffle", "blocksize": 0}
 BLOSC_LEVEL_ONE = {"name": "blosc", "configuration": {**BLOSC, "clevel": 1}}
 BLOSC_LEVEL_TRUE = {"name": "blosc", "configuration": {**BLOSC, "clevel": True}}
@@ -182,18 +186,18 @@ NESTED_ZSTD = {
     "name": "sharding_indexed",
     "configuration": {
         "chunk_shape": [1],
-        "codecs": ["bytes", ZSTD_FIELD],
+        "codecs": ["bytes", ZSTD_DECLARATION],
         "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
     },
 }
 
 
 @pytest.mark.parametrize(
-    ("field", "other", "expected"),
+    ("declaration", "other", "expected"),
     [
         (
-            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
-            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
+            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
+            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
             True,
         ),
         (
@@ -202,18 +206,18 @@ NESTED_ZSTD = {
             True,
         ),
         (
-            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
-            _read(ZSTD_FIELD, CodecDefinition, CORE_CONTEXT),
+            _read(ZSTD_DECLARATION, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _read(ZSTD_DECLARATION, CodecDefinition, CORE_CONTEXT),
             True,
         ),
         (
-            _read(ZSTD_FIELD, CodecDefinition, CORE_CONTEXT),
-            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _read(ZSTD_DECLARATION, CodecDefinition, CORE_CONTEXT),
+            _read(ZSTD_DECLARATION, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
             False,
         ),
         (
-            _read(GZIP_FIELD, CodecDefinition, CORE_CONTEXT),
-            _read(GZIP_FIELD, CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])),
+            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
+            _read(GZIP_DECLARATION, CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])),
             False,
         ),
         (
@@ -270,22 +274,22 @@ NESTED_ZSTD = {
         "unclaimed-differ",
         "gain-over-another-spelling",
         "no-gain-over-true-for-one",
-        "holding-a-refused-field",
+        "holding-a-refused-declaration",
     ],
 )
 def test_refines_orders_readings_by_information(
-    field: ResolvedField[Any], other: ResolvedField[Any], expected: bool
+    declaration: ResolvedDeclaration[Any], other: ResolvedDeclaration[Any], expected: bool
 ) -> None:
-    """`field` refines `other` when it reads the same where both read, and gains where `other` left a name unclaimed, including in the fields it holds. A loss, a conflict, a refused field, or two unclaimed fields written differently do not refine."""
-    assert refines(field, other) is expected
+    """`declaration` refines `other` when it reads the same where both read, and gains where `other` left a name unclaimed, including in the declarations it holds. A loss, a conflict, a refused declaration, or two unclaimed declarations written differently do not refine."""
+    assert refines(declaration, other) is expected
 
 
 DOCUMENTS = [
-    GZIP_FIELD,
+    GZIP_DECLARATION,
     "crc32c",
     {"name": "crc32c"},
     {"name": "crc32c", "configuration": {}},
-    ZSTD_FIELD,
+    ZSTD_DECLARATION,
     NESTED_ZSTD,
     BLOSC_LEVEL_ONE,
     SHARD_HOLDING_REFUSED,
@@ -298,9 +302,9 @@ READINGS = [
 
 @given(st.sampled_from(READINGS), st.sampled_from(READINGS), st.sampled_from(READINGS))
 def test_refines_is_a_partial_order_whose_bottom_is_equality(
-    a: ResolvedField[Any], b: ResolvedField[Any], c: ResolvedField[Any]
+    a: ResolvedDeclaration[Any], b: ResolvedDeclaration[Any], c: ResolvedDeclaration[Any]
 ) -> None:
-    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive. Two fields that refine each other are equal, and equal fields are refined by the same fields."""
+    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive. Two declarations that refine each other are equal, and equal declarations are refined by the same declarations."""
     assert refines(a, a)
     if refines(a, b) and refines(b, c):
         assert refines(a, c)
@@ -404,7 +408,7 @@ def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> Non
 
 
 def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
-    """An accepted field refines an unclaimed one when its definition, reading the JSON of the unclaimed field, produces the accepted field. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
+    """An accepted declaration refines an unclaimed one when its definition, reading the JSON of the unclaimed declaration, produces the accepted declaration. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
     from zarr_metadata.definition import (
         resolve,
     )
@@ -465,7 +469,7 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
         assert again.__notes__ == ["seen in a union"]
 
 
-def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_definitions_apart() -> (
+def test_a_conflict_names_the_declaration_as_the_document_writes_it_and_tells_the_definitions_apart() -> (
     None
 ):
     """A conflict found in a document reports the name the document writes, `r16`, not the name its definition is filed under, `r*`. It tells two definitions of one name apart by the configuration each declares, as the messages for consolidated entries do."""

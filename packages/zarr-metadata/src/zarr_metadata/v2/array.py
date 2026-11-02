@@ -7,7 +7,7 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2._field_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
+from zarr_metadata.v2._declaration_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
 
 ZarrV2ArrayOrder = Literal["C", "F"]
 """Literal type of permitted values for the `order` field of v2 array metadata.

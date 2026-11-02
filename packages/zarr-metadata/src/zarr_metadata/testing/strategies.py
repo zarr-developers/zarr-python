@@ -1,4 +1,4 @@
-"""Hypothesis strategies for valid Zarr v3 metadata fields.
+"""Hypothesis strategies for valid Zarr v3 metadata declarations.
 
 Every strategy here draws metadata its definition accepts, and that the
 spec allows: a reader, writer or converter can test itself against the
@@ -8,24 +8,24 @@ write down.
 
 ```python
 from hypothesis import given
-from zarr_metadata.testing.strategies import fields
+from zarr_metadata.testing.strategies import declarations
 from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
 
-@given(fields(BLOSC_CODEC))
-def test_my_reader_reads_every_blosc_codec(field):
-    my_reader.read_codec(field)
+@given(declarations(BLOSC_CODEC))
+def test_my_reader_reads_every_blosc_codec(declaration):
+    my_reader.read_codec(declaration)
 ```
 
 What a configuration depends on, each kind's function takes:
 `fill_values` a data type's configuration, `chunk_grid_configurations`
 the shape of the array, `codec_configurations` the `Chunk` the codec is
 handed. Left out, nothing is known of it, and what is drawn is what the
-definition's rules accept. `fields` wraps configurations in the
+definition's rules accept. `declarations` wraps configurations in the
 envelopes a document writes them in.
 
 How each definition's configurations are drawn is a value,
 `Strategies`, keyed by the definition: `DEFAULT_STRATEGIES` holds one
-for each definition this package defines that holds no other field. An
+for each definition this package defines that holds no other declaration. An
 extension author adds their own with
 `DEFAULT_STRATEGIES | {MY_CODEC: CodecStrategy(...)}`.
 
@@ -69,7 +69,7 @@ if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
 
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3 import ZarrV3DeclarationJSON
     from zarr_metadata.v3._context import ZarrV3ContextSlots
     from zarr_metadata.v3._definition import (
         ChunkGridDefinition,
@@ -80,9 +80,9 @@ if TYPE_CHECKING:
 C = TypeVar("C")
 
 Spellings = Literal["all", "canonical"]
-"""How fields are written: every spelling the spec allows, or only the simplest.
+"""How declarations are written: every spelling the spec allows, or only the simplest.
 
-`"all"` draws each envelope the spec gives a field -- a bare name, an
+`"all"` draws each envelope the spec gives a declaration -- a bare name, an
 object without a configuration, an empty configuration, a
 `must_understand` of `true` -- and configurations that say what a
 simpler one says, as a `blosc` `typesize` under `noshuffle` does.
@@ -98,7 +98,7 @@ DEFAULT_STRATEGIES: Final[MappingProxyType[Definition[Any], DefinitionStrategy]]
         **CODEC_STRATEGIES,
     }
 )
-"""A strategy for each definition this package defines that holds no other field."""
+"""A strategy for each definition this package defines that holds no other declaration."""
 
 
 def _strategy_for(definition: Definition[Any], strategies: Strategies) -> DefinitionStrategy:
@@ -173,7 +173,7 @@ def codec_configurations(
 
 
 def _written_bare(definition: Definition[Any]) -> bool:
-    """Whether the spec has the field written as its bare name: a data type it defines itself.
+    """Whether the spec has the declaration written as its bare name: a data type it defines itself.
 
     "If the data type is defined in this specification, then the value
     must be the data type identifier provided as a string"
@@ -187,7 +187,7 @@ def _written_bare(definition: Definition[Any]) -> bool:
 @st.composite
 def _any_spelling(
     draw: st.DrawFn, definition: Definition[Any], configurations: SearchStrategy[Any]
-) -> ZarrV3MetadataFieldJSON:
+) -> ZarrV3DeclarationJSON:
     """A configuration of `definition` in one of the envelopes the spec allows it.
 
     A configuration with nothing in it is written as the bare name, an
@@ -205,12 +205,12 @@ def _any_spelling(
     empty = len(configuration) == 0
     if empty and draw(st.booleans()):
         return definition.name
-    field: dict[str, JSONValue] = {"name": definition.name}
+    declaration: dict[str, JSONValue] = {"name": definition.name}
     if not empty or draw(st.booleans()):
-        field["configuration"] = configuration
+        declaration["configuration"] = configuration
     if draw(st.booleans()):
-        field["must_understand"] = True
-    return cast("ZarrV3MetadataFieldJSON", field)
+        declaration["must_understand"] = True
+    return cast("ZarrV3DeclarationJSON", declaration)
 
 
 def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
@@ -226,31 +226,31 @@ def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
 
 
 def _checked(
-    field: ZarrV3MetadataFieldJSON,
+    declaration: ZarrV3DeclarationJSON,
     *,
     definition: Definition[Any],
     kind: type[Definition[Any]],
     scope: ZarrV3Context,
     spellings: Spellings,
-) -> ZarrV3MetadataFieldJSON:
-    """`field`, or its canonical spelling, once it reads without a problem in `scope`; a `ValueError` when it does not."""
-    canonical, problems = canonicalize(field, kind, scope)
+) -> ZarrV3DeclarationJSON:
+    """`declaration`, or its canonical spelling, once it reads without a problem in `scope`; a `ValueError` when it does not."""
+    canonical, problems = canonicalize(declaration, kind, scope)
     if len(problems) != 0:
-        msg = f"{field!r}, drawn for {definition.name!r}, which is refused: {problems!r}"
+        msg = f"{declaration!r}, drawn for {definition.name!r}, which is refused: {problems!r}"
         raise ValueError(msg)
     if spellings == "canonical":
-        return cast("ZarrV3MetadataFieldJSON", canonical)
-    return field
+        return cast("ZarrV3DeclarationJSON", canonical)
+    return declaration
 
 
-def fields(
+def declarations(
     definition: Definition[C],
     configurations: SearchStrategy[C] | UNSET = UNSET,
     *,
     spellings: Spellings = "all",
     strategies: Strategies = DEFAULT_STRATEGIES,
-) -> SearchStrategy[ZarrV3MetadataFieldJSON]:
-    """Metadata fields of `definition`: its name and a configuration, in an envelope a document writes.
+) -> SearchStrategy[ZarrV3DeclarationJSON]:
+    """Metadata declarations of `definition`: its name and a configuration, in an envelope a document writes.
 
     `configurations` is what to draw the configuration from, by default
     the definition's own with nothing known of what they depend on: pass
@@ -258,7 +258,7 @@ def fields(
     once it is known not to be None. `spellings` says whether every
     spelling the spec allows is drawn, or only the simplest.
 
-    Each field is read in a scope of its definition alone, with no chunk
+    Each declaration is read in a scope of its definition alone, with no chunk
     known, and one its definition's rules refuse, as they refuse one
     drawn from `configurations` they do not accept, raises a
     `ValueError`. A codec's chunk rules are not checked: what fits the
@@ -294,6 +294,6 @@ __all__ = [
     "chunk_key_encoding_configurations",
     "codec_configurations",
     "data_type_configurations",
-    "fields",
+    "declarations",
     "fill_values",
 ]

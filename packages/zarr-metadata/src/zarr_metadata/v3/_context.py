@@ -1,4 +1,4 @@
-"""The scope a Zarr v3 document is read in: one slot for each kind of v3 field."""
+"""The scope a Zarr v3 document is read in: one slot for each kind of v3 declaration."""
 
 from __future__ import annotations
 
@@ -51,10 +51,10 @@ ZarrV3Kind: TypeAlias = (
     | ArrayExtraFieldDefinition[Any]
     | GroupExtraFieldDefinition[Any]
 )
-"""A definition of a kind of v3 field."""
+"""A definition of a kind of v3 declaration."""
 
 _K = TypeVar("_K", bound=ZarrV3Kind)
-"""A kind of v3 field, so a type checker refuses a kind of the other format."""
+"""A kind of v3 declaration, so a type checker refuses a kind of the other format."""
 
 _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
     get_origin(member) for member in get_args(ZarrV3Kind)
@@ -62,7 +62,7 @@ _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
 
 
 def is_v3_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV3Kind]]:
-    """Whether `kind` is a kind of v3 field: one of the kinds in `ZarrV3Kind`."""
+    """Whether `kind` is a kind of v3 declaration: one of the kinds in `ZarrV3Kind`."""
     return kind in _KINDS
 
 
@@ -106,10 +106,10 @@ class ZarrV3ContextSlots(TypedDict, total=False, closed=True):
 class ZarrV3Context:
     """A scope that reads Zarr v3 documents. Every v3 reader takes one.
 
-    It implements `Context`, and has one slot for each kind of field a v3
+    It implements `Context`, and has one slot for each kind of declaration a v3
     document holds, as `ZarrV3ContextSlots` declares them. The slots for
     the spec's extension points are named like the document member that
-    holds such fields: `data_types`, `chunk_grids`, `chunk_key_encodings`,
+    holds such declarations: `data_types`, `chunk_grids`, `chunk_key_encodings`,
     `codecs` and `storage_transformers`. `array_extra_fields` and
     `group_extra_fields` hold the definitions of members the spec does not
     define, by key. Each slot is a read-only mapping from the name each

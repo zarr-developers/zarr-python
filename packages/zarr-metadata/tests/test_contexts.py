@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from typing_extensions import TypedDict
 
-from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField, resolve
+from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedDeclaration, resolve
 from zarr_metadata.definition._context import slot_kinds
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -54,7 +54,7 @@ def test_the_scope_of_each_format_behaves_alike(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `union`, equality and hashing by what each slot files, a short repr, and pickling and copying. A field is read in either one with `resolve`."""
+    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `union`, equality and hashing by what each slot files, a short repr, and pickling and copying. A declaration is read in either one with `resolve`."""
     built = cls(codecs=[gzip])
     assert built.zarr_format == zarr_format
     assert built.claimant(kind, "gzip") is gzip
@@ -71,8 +71,8 @@ def test_the_scope_of_each_format_behaves_alike(
     assert pickle.loads(pickle.dumps(core)) == core
     assert copy.copy(core) is core
     assert copy.deepcopy(core) is core
-    field, _ = resolve({"id": "acme"} if zarr_format == 2 else "acme", kind, cls())
-    assert isinstance(field, UnclaimedField)
+    declaration, _ = resolve({"id": "acme"} if zarr_format == 2 else "acme", kind, cls())
+    assert isinstance(declaration, UnclaimedDeclaration)
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)

@@ -16,7 +16,7 @@ from zarr_metadata.definition._definition import (
     fill_value_problems,
     spelled_canonically,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeField
+from zarr_metadata.v3._common import ZarrV3DataTypeDeclaration
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     StorageClass,
@@ -35,7 +35,7 @@ class StructField(TypedDict, closed=True):
 
     name: ReadOnly[str]
     """The field name (must be unique within a struct and non-empty)."""
-    data_type: ReadOnly[ZarrV3DataTypeField]
+    data_type: ReadOnly[ZarrV3DataTypeDeclaration]
     """The field's data type.
 
     Recursive: may be a bare-string primitive or a named-config envelope
@@ -196,7 +196,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=_fill_value_canonical,
     storage=_storage,
 )
-"""The `struct` data type: a record of named fields. The type of each field is a nested field."""
+"""The `struct` data type: a record of named fields. The type of each field is a nested declaration."""
 
 
 __all__ = [

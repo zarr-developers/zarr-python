@@ -7,7 +7,7 @@ title: API reference
 The package is organized to mirror the structure of the Zarr specifications:
 
 - [`zarr_metadata.json_schema`](json_schema.md) — JSON Schema output for
-  any `TypedDict`, one v3 field, or a whole v3 `zarr.json`
+  any `TypedDict`, one v3 declaration, or a whole v3 `zarr.json`
 - [`zarr_metadata.model`](model.md) — document models (each one a
   document and the scope it was read in), the readers that return
   problems instead of raising them, and the `UNSET` sentinel
@@ -30,8 +30,8 @@ The package is organized to mirror the structure of the Zarr specifications:
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),
   and [data types](v3/data_type.md)
 - [`zarr_metadata.definition`](definition.md) — what both formats share
-  for reading a field: `Definition`, `resolve`, the three results of a
-  reading (`AcceptedField`, `UnclaimedField`, `RefusedField`), and the
+  for reading a declaration: `Definition`, `resolve`, the three results of a
+  reading (`AcceptedDeclaration`, `UnclaimedDeclaration`, `RefusedDeclaration`), and the
   scope type `Context`. Its module docstring is the guide
 - [`zarr_metadata.v3.definition`](v3/definition.md) — the five v3 kinds
   of metadata (`CodecDefinition`, `DataTypeDefinition`, ...), the codec

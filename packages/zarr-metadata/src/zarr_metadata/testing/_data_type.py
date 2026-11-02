@@ -1,4 +1,4 @@
-"""Strategies for each data type this package defines that holds no other field.
+"""Strategies for each data type this package defines that holds no other declaration.
 
 A fill value is drawn in every spelling the data type's spec gives it:
 a float's as a number, a named non-finite value or a hex string of its
@@ -243,7 +243,7 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
     NUMPY_DATETIME64_DATA_TYPE: _NUMPY_TIME,
     NUMPY_TIMEDELTA64_DATA_TYPE: _NUMPY_TIME,
 }
-"""A strategy for each data type that holds no other field."""
+"""A strategy for each data type that holds no other declaration."""
 
 __all__ = [
     "COMPLEX_WIDTHS",

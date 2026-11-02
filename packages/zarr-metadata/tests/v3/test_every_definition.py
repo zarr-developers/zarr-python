@@ -16,9 +16,9 @@ import pytest
 from zarr_metadata import ValidationProblem
 from zarr_metadata._json import value_at
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Definition,
-    RefusedField,
+    RefusedDeclaration,
     canonical_of,
     configuration_of,
     fill_value_problems,
@@ -48,7 +48,7 @@ KINDS: dict[str, type[ZarrV3Kind]] = {
     "group_extra_field": GroupExtraFieldDefinition,
 }
 
-# Fields that read without problems, per extension: at least one per definition in
+# Declarations that read without problems, per extension: at least one per definition in
 # the widest scope the package provides.
 EXAMPLES: dict[str, tuple[object, ...]] = {
     "codecs:blosc": (
@@ -168,17 +168,19 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
     ),
 }
 
-CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
+CASES = [
+    (key, declaration) for key, declarations in EXAMPLES.items() for declaration in declarations
+]
 
 
-def _read(key: str, field: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
-    """The type of the result of reading `field` in the scope (`AcceptedField`, `UnclaimedField` or `RefusedField`), and the location of each problem."""
-    resolved, problems = resolve(field, KINDS[key.split(":")[0]], ZARR_PYTHON_CONTEXT)
+def _read(key: str, declaration: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
+    """The type of the result of reading `declaration` in the scope (`AcceptedDeclaration`, `UnclaimedDeclaration` or `RefusedDeclaration`), and the location of each problem."""
+    resolved, problems = resolve(declaration, KINDS[key.split(":")[0]], ZARR_PYTHON_CONTEXT)
     return type(resolved), [(found.loc, found.kind) for found in problems]
 
 
-def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]]:
-    return _read(key, field)[1]
+def _problems(key: str, declaration: object) -> list[tuple[tuple[str | int, ...], str]]:
+    return _read(key, declaration)[1]
 
 
 def test_a_scope_s_definitions_pickle() -> None:
@@ -207,23 +209,25 @@ def test_every_definition_in_scope_has_an_example() -> None:
 
 
 @pytest.mark.parametrize(
-    ("key", "field"), CASES, ids=[f"{k}:{i}" for i, (k, _) in enumerate(CASES)]
+    ("key", "declaration"), CASES, ids=[f"{k}:{i}" for i, (k, _) in enumerate(CASES)]
 )
-def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field: object) -> None:
-    # The field is an AcceptedField with no problems. Its simplest spelling
+def test_every_example_reads_and_its_simplest_spelling_is_stable(
+    key: str, declaration: object
+) -> None:
+    # The declaration is an AcceptedDeclaration with no problems. Its simplest spelling
     # reads the same way, and is its own simplest spelling.
-    assert _read(key, field) == (AcceptedField, [])
+    assert _read(key, declaration) == (AcceptedDeclaration, [])
     kind = KINDS[key.split(":")[0]]
-    simplest, problems = canonicalize(field, kind, ZARR_PYTHON_CONTEXT)
+    simplest, problems = canonicalize(declaration, kind, ZARR_PYTHON_CONTEXT)
     assert problems == ()
     assert simplest is not None
     assert canonicalize(simplest, kind, ZARR_PYTHON_CONTEXT) == (simplest, ())
-    # A field that was already read gives the same spelling as its JSON, without reading it again.
-    assert canonical_of(*resolve(field, kind, ZARR_PYTHON_CONTEXT)) == simplest
+    # A declaration that was already read gives the same spelling as its JSON, without reading it again.
+    assert canonical_of(*resolve(declaration, kind, ZARR_PYTHON_CONTEXT)) == simplest
 
 
 @pytest.mark.parametrize(
-    ("field", "simplest"),
+    ("declaration", "simplest"),
     [
         # `noshuffle` ignores `typesize`, so the simplest spelling drops it.
         (
@@ -253,7 +257,7 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
         # But a data type with nothing configured is written as its bare name,
         # as core data types are written.
         ({"name": "int8", "configuration": {}, "must_understand": True}, "int8"),
-        # Each nested field is written in its own simplest spelling.
+        # Each nested declaration is written in its own simplest spelling.
         (
             {
                 "name": "sharding_indexed",
@@ -343,20 +347,20 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
         "zstd-checksum",
     ],
 )
-def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
+def test_the_simplest_spelling(declaration: dict[str, Any], simplest: object) -> None:
     kinds = {
         "rectilinear": ChunkGridDefinition,
         "int8": DataTypeDefinition,
         "default": ChunkKeyEncodingDefinition,
         "v2": ChunkKeyEncodingDefinition,
     }
-    kind = kinds.get(field["name"], CodecDefinition)
-    assert canonicalize(field, kind, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
-    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)) == simplest
+    kind = kinds.get(declaration["name"], CodecDefinition)
+    assert canonicalize(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
+    assert canonical_of(*resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)) == simplest
 
 
 @pytest.mark.parametrize(
-    ("field", "bits", "simplest"),
+    ("declaration", "bits", "simplest"),
     [
         ("r16", 16, "r16"),
         ({"name": "r8"}, 8, "r8"),
@@ -367,15 +371,18 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
     ids=["bare", "object", "empty-configuration", "leading-zeros"],
 )
 def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
-    field: object, bits: int, simplest: str
+    declaration: object, bits: int, simplest: str
 ) -> None:
-    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    resolved, problems = resolve(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert problems == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition is RAW_BYTES_DATA_TYPE
-    assert resolved.json == field
+    assert resolved.json == declaration
     assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
-    assert canonicalize(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
+    assert canonicalize(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT) == (
+        simplest,
+        (),
+    )
 
 
 def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
@@ -388,7 +395,7 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     )
     resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition is mine
     # The package's own definition does not accept 12 bits, and refuses them.
     again, _ = resolve(
@@ -396,25 +403,25 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
         DataTypeDefinition,
         context.update(data_types={**context.data_types, "r*": RAW_BYTES_DATA_TYPE}),
     )
-    assert isinstance(again, RefusedField)
+    assert isinstance(again, RefusedDeclaration)
     assert again.definition is RAW_BYTES_DATA_TYPE
 
 
 @pytest.mark.parametrize(
-    ("field", "at"),
+    ("declaration", "at"),
     [("r*", ()), ({"name": "r*", "configuration": {"bits": 16}}, ("name",))],
     ids=["bare", "object"],
 )
-def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]) -> None:
+def test_error_r_star_is_notation_and_no_name(declaration: object, at: tuple[str, ...]) -> None:
     # `r*` is how the specification's table writes raw bits, not a name a
     # document can use: `*` is not allowed in an extension name.
-    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
-    assert type(resolved) is RefusedField
+    resolved, problems = resolve(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert type(resolved) is RefusedDeclaration
     assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
 
 @pytest.mark.parametrize(
-    ("field", "kind", "simplest"),
+    ("declaration", "kind", "simplest"),
     [
         ({"name": "zfpy"}, CodecDefinition, {"name": "zfpy"}),
         # Only its own definition can decide its simplest form, so its
@@ -434,10 +441,10 @@ def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]
     ],
     ids=["object", "configured", "bare-codec", "spelled-out", "data-type"],
 )
-def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
-    field: object, kind: type[Definition[Any]], simplest: object
+def test_an_unclaimed_declaration_keeps_its_configuration_in_its_kind_s_envelope(
+    declaration: object, kind: type[Definition[Any]], simplest: object
 ) -> None:
-    assert canonicalize(field, kind, CORE_CONTEXT) == (simplest, ())
+    assert canonicalize(declaration, kind, CORE_CONTEXT) == (simplest, ())
 
 
 def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object]:
@@ -446,7 +453,7 @@ def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object
 
 
 @pytest.mark.parametrize(
-    ("field", "kind", "found"),
+    ("declaration", "kind", "found"),
     [
         (
             {"name": "gzip", "configuration": {"level": 12}},
@@ -495,26 +502,26 @@ def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object
         "must-understand-false",
         "stray",
         "null",
-        "holding-a-refused-field",
+        "holding-a-refused-declaration",
         "a-codec-of-dynamic-size-where-one-of-static-size-goes",
     ],
 )
-def test_error_a_field_with_a_problem_has_no_simplest_spelling(
-    field: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
+def test_error_a_declaration_with_a_problem_has_no_simplest_spelling(
+    declaration: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
 ) -> None:
     # What the author wrote is kept. A simpler spelling would drop the
     # unknown key, the stray member or the `must_understand`, or would
-    # write a value that is not valid. A field that was already read,
+    # write a value that is not valid. A declaration that was already read,
     # together with its problems, has no simplest spelling either.
-    simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    simplest, problems = canonicalize(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
     assert simplest is None
     assert [(problem.loc, problem.kind) for problem in problems] == found
-    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)) is None
+    assert canonical_of(*resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)) is None
 
 
 def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:
     # The output of `canonical` is checked again. A level the rules refuse
-    # is a bug in the definition, not in the field it was asked about.
+    # is a bug in the definition, not in the declaration it was asked about.
     lying = dataclasses.replace(
         GZIP_CODEC, name="acme.lying", canonical=lambda configuration: {"level": -7}
     )
@@ -600,7 +607,7 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
 
 
 @pytest.mark.parametrize(
-    ("kind", "field", "loc", "ctx"),
+    ("kind", "declaration", "loc", "ctx"),
     [
         (
             CodecDefinition,
@@ -681,15 +688,15 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
 )
 def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
     kind: type[Definition[Any]],
-    field: dict[str, Any],
+    declaration: dict[str, Any],
     loc: tuple[str | int, ...],
     ctx: dict[str, int],
 ) -> None:
     # The bound is declared on the TypedDict, as pydantic reads a bound,
     # not in a rule. The problem holds the bound and the value found.
-    _, problems = resolve(field, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    _, problems = resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
     assert [(p.loc, p.kind, p.input, dict(p.ctx)) for p in problems] == [
-        (loc, "invalid_value", value_at(field, loc), ctx)
+        (loc, "invalid_value", value_at(declaration, loc), ctx)
     ]
 
 
@@ -899,7 +906,7 @@ def test_error_struct_field_type_is_judged_where_it_sits() -> None:
 def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str) -> None:
     # Raw bits of a size the spec does not allow are reported, not left
     # unchecked. The document wrote a name, so the problem is located at
-    # the field.
+    # the declaration.
     assert _problems("data_type:r*", name) == [((), "invalid_value")]
 
 
@@ -907,7 +914,7 @@ def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
     # The name carries the configuration, so a configuration written next
     # to it may hold nothing: each member is a key that nothing declares.
     assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
-        AcceptedField,
+        AcceptedDeclaration,
         [(("configuration", "bits"), "unknown_key")],
     )
 
@@ -920,7 +927,7 @@ def test_error_a_chunk_key_separator_is_not_one_the_encoding_takes() -> None:
 
 def test_a_rule_is_a_function_over_the_typeddict() -> None:
     # The rules are plain functions over JSON. A caller with one
-    # configuration can call them without a scope or a field.
+    # configuration can call them without a scope or a declaration.
     from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
 
     _, problems = BLOSC_CODEC.read_configuration({**BLOSC, "clevel": 10})

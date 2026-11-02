@@ -30,7 +30,7 @@ from hypothesis import strategies as st
 
 from zarr_metadata import UNSET
 from zarr_metadata._json import ValidationProblem, value_at
-from zarr_metadata.definition import RefusedField
+from zarr_metadata.definition import RefusedDeclaration
 from zarr_metadata.model import (
     read_array_metadata_v2,
     read_array_metadata_v3,
@@ -337,7 +337,7 @@ def test_a_typestr_s_problems_are_wrong_values_of_the_dtype(typestr: str, nested
     assert found <= {(at, "invalid_value")}
     # The typestr is refused exactly when it has a problem. A type code the
     # spec does not list is unclaimed, which is no problem.
-    assert isinstance(dict(reading.fields())[at], RefusedField) == (len(found) != 0)
+    assert isinstance(dict(reading.declarations())[at], RefusedDeclaration) == (len(found) != 0)
 
 
 _INTEGER_LITERALS: dict[str, tuple[Reader, dict[str, Any], tuple[str, ...]]] = {

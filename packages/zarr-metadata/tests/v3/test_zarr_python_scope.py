@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 
 from zarr_metadata.definition import (
-    AcceptedField,
-    RefusedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
     canonical_fill_value,
     fill_value_problems,
     resolve,
@@ -82,15 +82,17 @@ _RAW = {"name": "raw_bytes", "configuration": {"length_bytes": 4}}
 def test_what_zarr_python_writes_reads_without_a_problem_in_zarr_python(
     document: dict[str, Any], in_core_and_extensions: bool
 ) -> None:
-    # In `ZARR_PYTHON_CONTEXT` every field is read by a definition and has no problem.
+    # In `ZARR_PYTHON_CONTEXT` every declaration is read by a definition and has no problem.
     reading = read_array_metadata_v3(document, context=ZARR_PYTHON_CONTEXT)
     assert reading.problems == ()
-    assert all(isinstance(field, AcceptedField) for _, field in reading.fields())
+    assert all(
+        isinstance(declaration, AcceptedDeclaration) for _, declaration in reading.declarations()
+    )
     # `CORE_AND_EXTENSIONS_CONTEXT` reads the registered extensions, and leaves
     # zarr-python's own data types unclaimed.
     data_type = read_array_metadata_v3(document, context=CORE_AND_EXTENSIONS_CONTEXT).data_type
-    assert isinstance(data_type, AcceptedField) is in_core_and_extensions
-    assert isinstance(data_type, UnclaimedField) is not in_core_and_extensions
+    assert isinstance(data_type, AcceptedDeclaration) is in_core_and_extensions
+    assert isinstance(data_type, UnclaimedDeclaration) is not in_core_and_extensions
 
 
 def test_core_and_extensions_reads_the_registered_extensions() -> None:
@@ -154,7 +156,7 @@ def test_the_canonical_fill_value(data_type: object, value: str, canonical: str)
 )
 def test_error_a_size_that_holds_no_whole_value(data_type: object) -> None:
     resolved, problems = resolve(data_type, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
-    assert isinstance(resolved, RefusedField)
+    assert isinstance(resolved, RefusedDeclaration)
     assert [(p.loc, p.kind) for p in problems] == [
         (("configuration", "length_bytes"), "invalid_value")
     ]

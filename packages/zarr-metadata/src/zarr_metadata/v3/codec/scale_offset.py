@@ -12,7 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
     fill_value_problems,
 )
@@ -120,7 +120,7 @@ def _chunk_rules(
     The rules, not the chunk rules, reject a null.
     """
     source = chunk.data_type
-    if not isinstance(source, AcceptedField):
+    if not isinstance(source, AcceptedDeclaration):
         return
     if source.definition.name in NOT_NUMBERS:
         yield ValidationProblem(
