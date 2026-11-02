@@ -12,6 +12,9 @@ from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.codecs.transpose import TransposeCodec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class, get_numcodec
 
@@ -214,22 +217,38 @@ def test_generic_filter_flattened_output_reshaped() -> None:
     np.testing.assert_array_equal(data, b[:, :])
 
 
-def test_generic_filter_packedbits_output_shape() -> None:
-    # PackBits changes the size of the chunk, so `_encode_sync` must reshape its
-    # output to the shape from `resolve_metadata`, not the input chunk shape
-    data = np.tril(np.ones((16, 16), dtype=bool))
-
-    a = create_array(
-        {},
-        shape=data.shape,
-        chunks=(16, 16),
-        dtype=data.dtype,
-        fill_value=0,
-        filters=[_numcodecs.PackBits()],
+@pytest.mark.parametrize(
+    ("codec", "dtype", "shape"),
+    [
+        (_numcodecs.Delta(dtype="int64"), "int64", (4, 6)),
+        (_numcodecs.FixedScaleOffset(offset=0, scale=1), "int64", (4, 6)),
+        (_numcodecs.Quantize(digits=3), "float32", (4, 6)),
+        (_numcodecs.BitRound(keepbits=10), "float32", (4, 6)),
+        (_numcodecs.AsType(encode_dtype="float32", decode_dtype="float64"), "float64", (4, 6)),
+        (_numcodecs.PackBits(), "bool", (16, 16)),
+        # the packed length (1 + ceil(2 / 8) == 2) equals the chunk size
+        (_numcodecs.PackBits(), "bool", (1, 2)),
+    ],
+    ids=["delta", "fixedscaleoffset", "quantize", "bitround", "astype", "packbits", "packbits-2"],
+)
+def test_generic_filter_encoded_shape(
+    codec: _numcodecs._NumcodecsArrayArrayCodec, dtype: str, shape: tuple[int, ...]
+) -> None:
+    # gh-4553: the next codec receives the chunk shape that resolve_metadata declares
+    zdtype = get_data_type_from_native_dtype(np.dtype(dtype))
+    spec = ArraySpec(
+        shape=shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
     )
+    codec = codec.evolve_from_array_spec(spec)
+    chunk = default_buffer_prototype().nd_buffer.from_ndarray_like(np.ones(shape, dtype=dtype))
 
-    a[:, :] = data
-    np.testing.assert_array_equal(data, a[:, :])
+    encoded = codec._encode_sync(chunk, spec)
+
+    assert encoded.shape == codec.resolve_metadata(spec).shape
 
 
 def test_generic_filter_bitround() -> None:

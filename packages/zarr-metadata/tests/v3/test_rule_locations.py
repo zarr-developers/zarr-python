@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr_metadata import ValidationProblem
-from zarr_metadata.definition import RefusedField, resolve
+from zarr_metadata.definition import RefusedDeclaration, resolve
 from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2DataTypeDefinition
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
@@ -46,7 +46,7 @@ def _wants_an_endian(
 def test_error_a_rule_of_a_name_that_encodes_its_configuration_is_a_wrong_value_of_the_name(
     loc: Loc,
 ) -> None:
-    """A name such as `r16` or `<f4` encodes its configuration, so each problem its definition's rules find is a wrong value of the name, at the field, whatever kind and location the rules give it."""
+    """A name such as `r16` or `<f4` encodes its configuration, so each problem its definition's rules find is a wrong value of the name, at the declaration, whatever kind and location the rules give it."""
     rules = _UnknownKeyAt(loc)
     v3 = CORE_CONTEXT.update(
         data_types={
@@ -65,7 +65,7 @@ def test_error_a_rule_of_a_name_that_encodes_its_configuration_is_a_wrong_value_
         ("<f4", ZarrV2DataTypeDefinition, v2, ("dtype",)),
     ]:
         resolved, problems = resolve(name, kind, context, at)
-        assert isinstance(resolved, RefusedField)
+        assert isinstance(resolved, RefusedDeclaration)
         assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
 

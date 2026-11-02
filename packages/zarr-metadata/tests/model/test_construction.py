@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from zarr_metadata.definition import RefusedField, resolve
+from zarr_metadata.definition import RefusedDeclaration, resolve
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -316,31 +316,31 @@ def test_error_extra_fields_refuses_a_member_the_spec_defines(kind: Any, member:
         kind.create_default(extra_fields={member: 1})
 
 
-def test_error_update_takes_fields_as_json() -> None:
-    """`update` takes each member as a document writes it. A field the model read, such as each of `model.codecs`, is refused with a `TypeError` that says to write it with `to_json()`, rather than reported as a value that is not JSON."""
+def test_error_update_takes_declarations_as_json() -> None:
+    """`update` takes each member as a document writes it. A declaration the model read, such as each of `model.codecs`, is refused with a `TypeError` that says to write it with `to_json()`, rather than reported as a value that is not JSON."""
     with pytest.raises(TypeError, match=r"codecs: .*to_json\(\)"):
         ARRAY.update(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
 
 
-def test_error_update_takes_no_refused_field() -> None:
-    """A field refused by its definition holds JSON its definition does not read, so it has no JSON for `update` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
+def test_error_update_takes_no_refused_declaration() -> None:
+    """A declaration refused by its definition holds JSON its definition does not read, so it has no JSON for `update` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
     refused, _ = resolve(
         {"name": "gzip", "configuration": {"level": 99}}, CodecDefinition, CORE_CONTEXT
     )
-    assert isinstance(refused, RefusedField)
-    with pytest.raises(TypeError, match="a refused field has no JSON"):
+    assert isinstance(refused, RefusedDeclaration)
+    with pytest.raises(TypeError, match="a refused declaration has no JSON"):
         ARRAY.update(codecs=(ARRAY.to_json()["codecs"][0], refused))  # pyright: ignore[reportArgumentType]
 
 
 def test_error_extra_fields_takes_values_as_json() -> None:
-    """A field given as the value of a member in `extra_fields`, or an extra field given as a member's value, is refused with a `TypeError` that names `to_json()[key]`, which is the member's value. Writing a whole field there would nest the member inside itself and lose its waiver."""
+    """A declaration given as the value of a member in `extra_fields`, or an extra field given as a member's value, is refused with a `TypeError` that names `to_json()[key]`, which is the member's value. Writing a whole declaration there would nest the member inside itself and lose its waiver."""
     source = ZarrV3ArrayMetadata.create_default(extra_fields={"foo": {"must_understand": False}})
     with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
         ARRAY.update(extra_fields=dict(source.extra_fields))  # pyright: ignore[reportArgumentType]
     member = GROUP.extra_fields["consolidated_metadata"]
     with pytest.raises(TypeError, match=r"to_json\(\)\['consolidated_metadata'\]"):
         GROUP.update(consolidated_metadata=member)  # pyright: ignore[reportArgumentType]
-    # The advice follows the field's kind, not the key it was given under.
+    # The advice follows the declaration's kind, not the key it was given under.
     with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
         ARRAY.update(extra_fields={"bar": source.extra_fields["foo"]})  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match=r"to_json\(\)$"):

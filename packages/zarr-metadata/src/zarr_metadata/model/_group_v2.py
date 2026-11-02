@@ -70,7 +70,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import ResolvedField, UnclaimedField
+    from zarr_metadata.definition._definition import ResolvedDeclaration, UnclaimedDeclaration
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
@@ -92,7 +92,7 @@ _GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 
 
 def _group_problems_v2(value: object) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no fields for a scope to read, so no scope is needed."""
+    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no declarations for a scope to read, so no scope is needed."""
     if not is_object(value):
         return not_an_object(value)
     doc = value
@@ -115,15 +115,15 @@ _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
 
 @dataclass(frozen=True, slots=True)
 class ZarrV2GroupMetadataReading:
-    """A v2 group document as a scope read it: every problem, and the model when there are no problems. A group has no fields for a scope to read."""
+    """A v2 group document as a scope read it: every problem, and the model when there are no problems. A group has no declarations for a scope to read."""
 
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not valid."""
     metadata: ZarrV2GroupMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Its fields as read: none, since a group has no fields."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Its declarations as read: none, since a group has no declarations."""
         return iter(())
 
     def __reduce__(self) -> str | tuple[object, ...]:
@@ -136,7 +136,7 @@ class ZarrV2GroupMetadataReading:
 def read_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataReading:
-    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem, and the model when there are none. A group has no fields for a scope to read; `context` is taken for consistency with every other v2 reader."""
+    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem, and the model when there are none. A group has no declarations for a scope to read; `context` is taken for consistency with every other v2 reader."""
     context = scoped(context, CORE_V2_CONTEXT)
     problems = _group_problems_v2(value)
     if len(problems) != 0:
@@ -158,8 +158,8 @@ class ZarrV2UnknownNodeMetadataReading:
         """Its model: always None, since there is no node to model."""
         return None
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Its fields as read: none, since no document is read."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Its declarations as read: none, since no document is read."""
         return iter(())
 
 
@@ -188,9 +188,9 @@ def read_node_metadata_v2(
     reading of its node type with no model, and with that problem
     followed by the problems of the rest of the file. Each problem is
     located in the file that holds it, such as `(".zarray", "order")` or
-    `(".zattrs", "x")`, and so is each field of an array's reading, whose
+    `(".zattrs", "x")`, and so is each declaration of an array's reading, whose
     `at` is `(".zarray",)`. The model reads its merged document, so its
-    own `reading` locates fields there, at `("dtype",)`. This is the
+    own `reading` locates declarations there, at `("dtype",)`. This is the
     v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
     and its `node_type`.
     """
@@ -248,6 +248,10 @@ class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
     """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes, which a store holds in `.zattrs`.
+
+    `UNSET` removes it, so the group has no `.zattrs`.
+    """
 
 
 class ZarrV2GroupMetadata(Keyed):
@@ -258,7 +262,7 @@ class ZarrV2GroupMetadata(Keyed):
     them) as written, refined. `attributes` is empty when no `.zattrs`
     exists, as in a v3 model. The document still tells the two apart:
     `to_json` and `to_key_value` write `attributes` and `.zattrs` only when
-    a `.zattrs` exists, even an empty one. A group has no fields
+    a `.zattrs` exists, even an empty one. A group has no declarations
     for a scope to read, so the scope is held only for consistency with
     the other models: `update` reads new attributes in it, and no other
     scope conflicts with the reading. A model is only built by reading:
@@ -275,7 +279,12 @@ class ZarrV2GroupMetadata(Keyed):
     _shown: Mapping[str, JSONValue]
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `2`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
+    """The kind of node, `"group"`. A class constant: comparing it narrows a union of models.
+
+    A v2 document does not write this member: its `.zgroup` key says the node is a group.
+    """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2_CONTEXT)
@@ -313,8 +322,8 @@ class ZarrV2GroupMetadata(Keyed):
         return self._context
 
     @property
-    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims. A v2 group holds no fields, so this is always empty; it is here so a reader can ask any node the same question."""
+    def unclaimed_declarations(self) -> dict[Loc, UnclaimedDeclaration]:
+        """Every declaration nothing in scope claims. A v2 group holds no declarations, so this is always empty; it is here so a reader can ask any node the same question."""
         return {}
 
     @property
@@ -372,7 +381,7 @@ class ZarrV2GroupMetadata(Keyed):
         return self._of(self._document, context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
-        """Return this document read in `context`. A group has no fields, so no scope conflicts with its reading, and this is the same as `with_context`."""
+        """Return this document read in `context`. A group has no declarations, so no scope conflicts with its reading, and this is the same as `with_context`."""
         return self.with_context(context)
 
     def refines(self, other: ZarrV2GroupMetadata) -> bool:
@@ -433,11 +442,11 @@ class ZarrV2ConsolidatedMetadataReading:
     metadata: ZarrV2ConsolidatedMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no fields."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Each declaration of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no declarations."""
         if self.metadata is None:
             return
-        yield from self.metadata._located_fields()  # pyright: ignore[reportPrivateUsage]
+        yield from self.metadata._located_declarations()  # pyright: ignore[reportPrivateUsage]
 
     def __reduce__(self) -> str | tuple[object, ...]:
         # Same as the other readings: pickle through the model, when there is one.
@@ -485,6 +494,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     _metadata: dict[str, ZarrV2NodeMetadata]
 
     zarr_consolidated_format: Final = 1
+    """The version of the consolidated metadata format, `1`."""
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2_CONTEXT)
@@ -563,13 +573,13 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         consumed = {key for names in self._files.values() for key in names.values()}
         return json_text({key: value for key, value in entries.items() if key not in consumed})
 
-    def _located_fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
+    def _located_declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Each declaration of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
         for path, node in self._metadata.items():
             if isinstance(node, ZarrV2ArrayMetadata):
                 key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
-                for loc, field in node.reading.fields():
-                    yield ("metadata", key, *loc), field
+                for loc, declaration in node.reading.declarations():
+                    yield ("metadata", key, *loc), declaration
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
@@ -591,14 +601,14 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         for path, node in self._metadata.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
-            found = disagreements(context, claims_of(node.reading.fields()))
+            found = disagreements(context, claims_of(node.reading.declarations()))
             key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(
                     conflict,
                     loc=("metadata", key, *(() if conflict.loc is None else conflict.loc)),
                 )
-                for conflict in located_conflicts(node.reading.fields(), found.conflicts)
+                for conflict in located_conflicts(node.reading.declarations(), found.conflicts)
             )
         if len(conflicts) != 0:
             raise ScopeConflictError(conflicts)

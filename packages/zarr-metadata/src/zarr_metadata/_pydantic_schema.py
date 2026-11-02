@@ -55,11 +55,9 @@ class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
     must_understand: NotRequired[Literal[True]]
 
 
-ZarrV3MetadataFieldJSON = ExtensionName | ZarrV3NamedConfigJSON
-ZarrV3MandatoryMetadataFieldJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
-ZarrV3CodecPipelineJSON = Annotated[
-    tuple[ZarrV3MandatoryMetadataFieldJSON, ...], Field(min_length=1)
-]
+ZarrV3DeclarationJSON = ExtensionName | ZarrV3NamedConfigJSON
+ZarrV3MandatoryDeclarationJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
+ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MandatoryDeclarationJSON, ...], Field(min_length=1)]
 ZarrV2FilterPipelineJSON = tuple[ZarrV2CodecMetadata, ...]
 
 
@@ -68,14 +66,14 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: ZarrV3MandatoryMetadataFieldJSON
+    data_type: ZarrV3MandatoryDeclarationJSON
     shape: tuple[NonNegativeInt, ...]
-    chunk_grid: ZarrV3MandatoryMetadataFieldJSON
-    chunk_key_encoding: ZarrV3MandatoryMetadataFieldJSON
+    chunk_grid: ZarrV3MandatoryDeclarationJSON
+    chunk_key_encoding: ZarrV3MandatoryDeclarationJSON
     fill_value: JSONValue
     codecs: ZarrV3CodecPipelineJSON
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[ZarrV3MandatoryMetadataFieldJSON, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3MandatoryDeclarationJSON, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
@@ -146,6 +144,6 @@ __all__ = [
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3DeclarationJSON",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3MetadataFieldJSON",
 ]

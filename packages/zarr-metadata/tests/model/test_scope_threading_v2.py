@@ -36,7 +36,7 @@ STORE_C = {".zmetadata": json.dumps(CONSOLIDATED).encode()}
 
 
 def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
-    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, or a field that was read or left unclaimed."""
+    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, or a declaration that was read or left unclaimed."""
 
     def accepted(context: Context | None) -> bool:
         try:
@@ -44,7 +44,7 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
         except MetadataValidationError:
             return False
         if isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], tuple):
-            return len(found[1]) == 0  # a resolved field and its problems
+            return len(found[1]) == 0  # a resolved declaration and its problems
         reading = getattr(found, "reading", found)
         metadata = getattr(reading, "metadata", found)
         return metadata is not None

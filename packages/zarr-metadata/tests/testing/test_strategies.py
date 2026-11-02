@@ -1,7 +1,7 @@
 """The strategies against the definitions they draw for, and against what they ought to reach.
 
 Every draw is read in `ZARR_PYTHON_CONTEXT` and must read without a
-problem, by the definition it was drawn for: the field alone, a fill
+problem, by the definition it was drawn for: the declaration alone, a fill
 value beside its data type, a chunk grid over the shape it was drawn
 for, a codec handed the chunk it was drawn for. A strategy that only
 drew valid metadata could draw almost none, so reach is checked too,
@@ -22,7 +22,7 @@ from hypothesis import strategies as st
 
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Definition,
     EmptyConfiguration,
     fill_value_problems,
@@ -37,7 +37,7 @@ from zarr_metadata.testing.strategies import (
     chunk_grid_configurations,
     codec_configurations,
     data_type_configurations,
-    fields,
+    declarations,
     fill_values,
 )
 from zarr_metadata.v2.definition import CORE_V2_CONTEXT
@@ -71,10 +71,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3 import ZarrV3DeclarationJSON
 
-_HOLDING_FIELDS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DATA_TYPE})
-"""The definitions whose configurations hold other fields, which have no strategy yet."""
+_HOLDING_DECLARATIONS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DATA_TYPE})
+"""The definitions whose configurations hold other declarations, which have no strategy yet."""
 
 _IN_SCOPE = frozenset(
     (
@@ -85,7 +85,7 @@ _IN_SCOPE = frozenset(
         *ZARR_PYTHON_CONTEXT.storage_transformers.values(),
     )
 )
-"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not fields."""
+"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not declarations."""
 _CORE_DATA_TYPES = frozenset(CORE_CONTEXT.data_types.values())
 
 _DEFINITIONS = sorted(DEFAULT_STRATEGIES, key=lambda definition: definition.name)
@@ -102,45 +102,45 @@ def _id(value: object) -> str:
     return str(value)
 
 
-def _read(definition: Definition[Any], field: object) -> Any:  # noqa: ANN401
-    """`field` read in `ZARR_PYTHON_CONTEXT`, asserted to read without a problem by `definition`."""
-    resolved, problems = resolve(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
+def _read(definition: Definition[Any], declaration: object) -> Any:  # noqa: ANN401
+    """`declaration` read in `ZARR_PYTHON_CONTEXT`, asserted to read without a problem by `definition`."""
+    resolved, problems = resolve(declaration, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
     assert problems == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition is definition
     return resolved
 
 
 def test_every_definition_has_a_strategy() -> None:
-    """Each definition in scope has a strategy, but those that hold other fields; and none is out of scope."""
-    assert _IN_SCOPE - frozenset(DEFAULT_STRATEGIES) == _HOLDING_FIELDS
+    """Each definition in scope has a strategy, but those that hold other declarations; and none is out of scope."""
+    assert _IN_SCOPE - frozenset(DEFAULT_STRATEGIES) == _HOLDING_DECLARATIONS
     assert frozenset(DEFAULT_STRATEGIES) <= _IN_SCOPE
 
 
 @pytest.mark.parametrize("spellings", get_args(Spellings))
 @pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
 @given(data=st.data())
-def test_fields_read(
+def test_declarations_read(
     definition: Definition[Any], spellings: Spellings, data: st.DataObject
 ) -> None:
-    """A drawn field reads by its definition, through JSON too; a canonical one is its own simplest spelling."""
-    field = data.draw(fields(definition, spellings=spellings))
-    _read(definition, field)
-    _read(definition, json.loads(json.dumps(field)))
+    """A drawn declaration reads by its definition, through JSON too; a canonical one is its own simplest spelling."""
+    declaration = data.draw(declarations(definition, spellings=spellings))
+    _read(definition, declaration)
+    _read(definition, json.loads(json.dumps(declaration)))
     if definition in _CORE_DATA_TYPES:
-        assert isinstance(field, str)
+        assert isinstance(declaration, str)
     if spellings == "canonical":
-        canonical, _ = canonicalize(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
-        assert canonical == field
+        canonical, _ = canonicalize(declaration, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
+        assert canonical == declaration
 
 
 @pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
 @given(data=st.data())
 def test_a_changed_draw_changes_no_other(definition: Definition[Any], data: st.DataObject) -> None:
     """Each draw is a fresh value: a test that changes the configuration it drew does not change the next draw, which Hypothesis would report as flaky."""
-    field = data.draw(fields(definition))
-    if isinstance(field, dict) and "configuration" in field:
-        configuration = cast("dict[str, JSONValue]", field["configuration"])
+    declaration = data.draw(declarations(definition))
+    if isinstance(declaration, dict) and "configuration" in declaration:
+        configuration = cast("dict[str, JSONValue]", declaration["configuration"])
         assert "changed" not in configuration
         configuration["changed"] = True
 
@@ -151,7 +151,7 @@ def test_fill_values_fit_their_data_type(
     definition: DataTypeDefinition[Any], data: st.DataObject
 ) -> None:
     configuration = data.draw(data_type_configurations(definition))
-    data_type = _read(definition, data.draw(fields(definition, st.just(configuration))))
+    data_type = _read(definition, data.draw(declarations(definition, st.just(configuration))))
     value = data.draw(fill_values(definition, configuration))
     assert fill_value_problems(data_type, value) == ()
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
@@ -163,7 +163,7 @@ def test_chunk_grids_fit_their_shape(
     definition: ChunkGridDefinition[Any], data: st.DataObject, shape: tuple[int, ...]
 ) -> None:
     configurations = chunk_grid_configurations(definition, shape)
-    chunk_grid = _read(definition, data.draw(fields(definition, configurations)))
+    chunk_grid = _read(definition, data.draw(declarations(definition, configurations)))
     lengths, problems = chunk_grid_lengths(chunk_grid, shape)
     assert problems == ()
     # "Chunk sizes must be greater than zero", which the regular grid's rules do not yet refuse.
@@ -174,7 +174,7 @@ def test_chunk_grids_fit_their_shape(
 def _chunks(draw: st.DrawFn) -> Chunk:
     """A chunk of a data type drawn from the strategies, or of none known, with lengths known along some axes, all, or none."""
     definition = draw(st.none() | st.sampled_from(_DATA_TYPES))
-    data_type = None if definition is None else _read(definition, draw(fields(definition)))
+    data_type = None if definition is None else _read(definition, draw(declarations(definition)))
     axis = st.none() | st.integers(1, 8).map(lambda length: frozenset({length}))
     lengths = draw(st.none() | st.lists(axis, max_size=4).map(tuple))
     return Chunk(lengths, data_type)
@@ -192,15 +192,15 @@ def test_codecs_take_their_chunk(
         assert chunk.data_type.definition is not None
         data_type_name = chunk.data_type.definition.name
         event(f"takes no {data_type_name}")
-        codec = _read(definition, data.draw(fields(definition)))
+        codec = _read(definition, data.draw(declarations(definition)))
         assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) != []
         return
-    codec = _read(definition, data.draw(fields(definition, configurations)))
+    codec = _read(definition, data.draw(declarations(definition, configurations)))
     assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) == []
 
 
 Target = tuple[Literal["present", "absent"], str] | tuple[Literal["value"], str, object]
-FieldForm = Literal["bare", "object", "configured", "must_understand"]
+DeclarationForm = Literal["bare", "object", "configured", "must_understand"]
 
 
 def _configuration_targets(
@@ -218,20 +218,20 @@ def _configuration_targets(
     return targets
 
 
-def _field_forms(definition: Definition[Any]) -> list[FieldForm]:
-    """The envelopes the spec allows a field of `definition` to be written in."""
+def _declaration_forms(definition: Definition[Any]) -> list[DeclarationForm]:
+    """The envelopes the spec allows a declaration of `definition` to be written in."""
     if definition in _CORE_DATA_TYPES:
-        return []  # only ever bare, which `test_fields_read` asserts
+        return []  # only ever bare, which `test_declarations_read` asserts
     if definition.requires_configuration:
         return ["configured", "must_understand"]
     return ["bare", "object", "configured", "must_understand"]
 
 
-def _form_of(field: ZarrV3MetadataFieldJSON) -> set[FieldForm]:
-    if isinstance(field, str):
+def _form_of(declaration: ZarrV3DeclarationJSON) -> set[DeclarationForm]:
+    if isinstance(declaration, str):
         return {"bare"}
-    forms: set[FieldForm] = {"configured" if "configuration" in field else "object"}
-    if "must_understand" in field:
+    forms: set[DeclarationForm] = {"configured" if "configuration" in declaration else "object"}
+    if "must_understand" in declaration:
         forms.add("must_understand")
     return forms
 
@@ -263,7 +263,9 @@ _REACH = settings(max_examples=2000, database=None)
 def test_configurations_reach(
     definition: Definition[Any], target: Target | tuple[Literal["simplified"]]
 ) -> None:
-    configurations = fields(definition).map(lambda field: _read(definition, field).configuration)
+    configurations = declarations(definition).map(
+        lambda declaration: _read(definition, declaration).configuration
+    )
     find(
         configurations,
         lambda configuration: _hits(definition, target, configuration),
@@ -273,24 +275,28 @@ def test_configurations_reach(
 
 @pytest.mark.parametrize(
     ("definition", "form"),
-    [(d, form) for d in _DEFINITIONS for form in _field_forms(d)],
+    [(d, form) for d in _DEFINITIONS for form in _declaration_forms(d)],
     ids=_id,
 )
-def test_fields_reach(definition: Definition[Any], form: FieldForm) -> None:
-    find(fields(definition), lambda field: form in _form_of(field), settings=_REACH)
+def test_declarations_reach(definition: Definition[Any], form: DeclarationForm) -> None:
+    find(
+        declarations(definition), lambda declaration: form in _form_of(declaration), settings=_REACH
+    )
 
 
 def test_an_added_strategy_is_drawn_from() -> None:
     """A strategy joined to the defaults, as an extension author adds one, is the one drawn from."""
     level_three = CodecStrategy(configurations=lambda _chunk: st.just({"level": 3}))
     strategies = DEFAULT_STRATEGIES | {GZIP_CODEC: level_three}
-    field = find(fields(GZIP_CODEC, strategies=strategies), lambda _field: True, settings=_REACH)
-    assert _read(GZIP_CODEC, field).configuration == {"level": 3}
+    declaration = find(
+        declarations(GZIP_CODEC, strategies=strategies), lambda _declaration: True, settings=_REACH
+    )
+    assert _read(GZIP_CODEC, declaration).configuration == {"level": 3}
 
 
 def test_a_definition_without_a_strategy_is_a_lookup_error() -> None:
     with pytest.raises(LookupError, match="no strategy for 'sharding_indexed'"):
-        fields(SHARDING_INDEXED_CODEC)
+        declarations(SHARDING_INDEXED_CODEC)
 
 
 def test_a_strategy_of_another_kind_is_a_type_error() -> None:
@@ -308,9 +314,9 @@ def test_a_codec_strategy_refusing_an_unknown_chunk_is_a_value_error() -> None:
 
 @pytest.mark.parametrize("spellings", get_args(Spellings))
 def test_a_refused_draw_is_a_value_error(spellings: Spellings) -> None:
-    refused = fields(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
+    refused = declarations(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
     with pytest.raises(ValueError, match="which is refused"):
-        find(refused, lambda _field: True, settings=settings(database=None))
+        find(refused, lambda _declaration: True, settings=settings(database=None))
 
 
 _BFLOAT16 = DataTypeDefinition(name="bfloat16", configuration=EmptyConfiguration)
@@ -335,7 +341,7 @@ def test_scale_offset_takes_a_data_type_the_package_does_not_define(data: st.Dat
 def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:
     zlib = CORE_V2_CONTEXT.codecs["zlib"]
     with pytest.raises(TypeError, match="which no slot of a Zarr v3 scope holds"):
-        fields(zlib, st.just({}))
+        declarations(zlib, st.just({}))
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,7 @@ registers and this package defines. `ZARR_PYTHON_CONTEXT` adds the data types th
 zarr-python writes but no specification registers, whose spelling
 zarr-python may still change. A name in none of these scopes is not
 rejected, because that is what keeps the format open. Instead it is read
-as an `UnclaimedField` and not checked.
+as an `UnclaimedDeclaration` and not checked.
 """
 
 from __future__ import annotations

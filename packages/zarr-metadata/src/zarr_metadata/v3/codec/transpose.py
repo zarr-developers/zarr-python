@@ -32,14 +32,27 @@ class TransposeCodecConfiguration(TypedDict, closed=True):
     """
 
     order: tuple[int, ...]
+    """The reordering of axes applied when encoding: axis `i` of the encoded chunk is axis `order[i]` of the chunk the codec is handed.
+
+    A permutation of `0, 1, ..., n-1`, `n` being the number of axes of the
+    chunk the codec is handed.
+    """
 
 
 class TransposeCodecObject(TypedDict, closed=True):
     """`transpose` codec metadata in object form."""
 
     name: TransposeCodecName
+    """The codec's name, `"transpose"`."""
     configuration: TransposeCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 TransposeCodecMetadata = TransposeCodecObject

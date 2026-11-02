@@ -1,4 +1,4 @@
-"""The kinds of field in a Zarr v2 array document: a dtype, and a codec in `compressor` or `filters`.
+"""The kinds of declaration in a Zarr v2 array document: a dtype, and a codec in `compressor` or `filters`.
 
 A v2 dtype is written as a NumPy typestr, which is a byte order, a type
 code and a size, such as `<f4`
@@ -10,7 +10,7 @@ the name carries the rest as configuration. For example, `<f4` reads as
 `float` with `{"byteorder": "<", "itemsize": 4}`, in the same way that a
 v3 `r16` reads as `r*` with `{"bits": 16}`. A records array reads as
 `struct`. The records are its configuration, and the type of each record
-is a nested field.
+is a nested declaration.
 
 A v2 codec is a numcodecs configuration: an object whose `id` member
 names the codec and whose other members are its parameters
@@ -31,7 +31,7 @@ from zarr_metadata.definition._definition import (
     Definition,
     WithFillValue,
 )
-from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
+from zarr_metadata.v2._declaration_json import ZarrV2DataTypeMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -40,8 +40,8 @@ if TYPE_CHECKING:
     from zarr_metadata._json import Problems
     from zarr_metadata._typed_json import Loc
 
-ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadata)
-"""A member that holds a v2 dtype: a document's `dtype`, or the type of a struct record. It is read in the same scope as its container."""
+ZarrV2DataTypeDeclaration = TypeAliasType("ZarrV2DataTypeDeclaration", ZarrV2DataTypeMetadata)
+"""A declaration of a v2 dtype: the value of a document's `dtype` member, or the type of a struct record. It is read in the same scope as its container."""
 
 STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""
@@ -153,7 +153,9 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
     """
 
     label: ClassVar[str] = "v2 data type"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeField,)
+    """The name of the kind in error messages, "v2 data type"."""
+    declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeDeclaration,)
+    """The declaration alias that annotates a configuration member holding a v2 dtype, `ZarrV2DataTypeDeclaration`. The type of each struct record is one."""
 
     def _refusal(self) -> str | None:
         if parse_typestr(self.name) is not None:
@@ -242,7 +244,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         # `_named_configuration` gives a v2 dtype a configuration only as a
         # struct's `{_RECORDS: records}`, and every other dtype's
         # configuration is encoded in its name, which is located at the
-        # field. So a place is the configuration itself, `()`, or starts
+        # declaration. So a place is the configuration itself, `()`, or starts
         # with `_RECORDS`, which the document does not write: it writes the
         # records as the dtype itself.
         return (*loc, *place[1:])
@@ -257,11 +259,12 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
     """A v2 codec: a numcodecs id, and the TypedDict that describes its parameters.
 
     A document writes `{"id": name, **parameters}`. The configuration of
-    the definition is the parameters, read at the location of the field
+    the definition is the parameters, read at the location of the declaration
     itself.
     """
 
     label: ClassVar[str] = "v2 codec"
+    """The name of the kind in error messages, "v2 codec"."""
 
     @classmethod
     def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
@@ -325,8 +328,8 @@ __all__ = [
     "STRUCT_NAME",
     "TYPESTR_PATTERN",
     "ZarrV2CodecDefinition",
+    "ZarrV2DataTypeDeclaration",
     "ZarrV2DataTypeDefinition",
-    "ZarrV2DataTypeField",
     "item_bytes",
     "parse_typestr",
     "typestr_problem",

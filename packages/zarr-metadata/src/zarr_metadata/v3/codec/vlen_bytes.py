@@ -31,8 +31,19 @@ class VlenBytesCodecObject(TypedDict, closed=True):
     """`vlen-bytes` codec metadata in object form. The codec has no configuration fields."""
 
     name: VlenBytesCodecName
+    """The codec's name, `"vlen-bytes"`."""
     configuration: NotRequired[EmptyConfiguration]
+    """The codec's parameters, of which there are none.
+
+    Absent, or an empty mapping.
+    """
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 VlenBytesCodecMetadata = VlenBytesCodecObject | VlenBytesCodecName

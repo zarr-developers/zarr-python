@@ -46,7 +46,7 @@ closely model the content of the Zarr specifications, such as:
 - **Problems** ([`zarr_metadata.problems`](api/problems.md)): the problem
   values every reader returns, and the error that carries them.
 - **JSON Schema** ([`zarr_metadata.json_schema`](api/json_schema.md)): the
-  JSON Schema of a `TypedDict`, a v3 field, or a whole `zarr.json`.
+  JSON Schema of a `TypedDict`, a v3 declaration, or a whole `zarr.json`.
 - **Optional Pydantic integration** ([`zarr_metadata.pydantic`](api/pydantic.md),
   requires Pydantic 2.13 or newer): each model as a Pydantic field type that
   validates raw documents through the same strict parser.
@@ -215,23 +215,23 @@ with one of them is refused:
 `read_array_metadata_v3` reads a document once and returns everything the
 read found:
 
-- each field as the scope read it: an `AcceptedField` when a definition
-  claims its name, an `UnclaimedField` when none does, or a
-  `RefusedField`, together with the field's location and the kind it was
+- each declaration as the scope read it: an `AcceptedDeclaration` when a definition
+  claims its name, an `UnclaimedDeclaration` when none does, or a
+  `RefusedDeclaration`, together with the declaration's location and the kind it was
   read as;
 - each codec, with the chunk it receives;
 - every problem;
 - the model, when there are no problems.
 
 `from_json` returns that model, or raises the problems. A consumer can
-apply its own policy by walking the fields, without reading anything
-twice. `with_problems` pairs each field with its problems: those located
-in the field and in the fields it contains. This matches how zod's
+apply its own policy by walking the declarations, without reading anything
+twice. `with_problems` pairs each declaration with its problems: those located
+in the declaration and in the declarations it contains. This matches how zod's
 `flattenError` groups issues. `canonical_of` returns the simplest
-spelling of a field that has no problems, without reading it again. For
-example, the code below finds the fields that go beyond the core spec (a
-field with no name is already a problem), and the simplest spelling of
-each field:
+spelling of a declaration that has no problems, without reading it again. For
+example, the code below finds the declarations that go beyond the core spec (a
+declaration with no name is already a problem), and the simplest spelling of
+each declaration:
 
 ```python test="true" session="index"
 from zarr_metadata.model import read_array_metadata_v3
@@ -241,12 +241,12 @@ from zarr_metadata.v3.definition import CORE_CONTEXT
 reading = read_array_metadata_v3(raw)
 beyond_core = [
     loc
-    for loc, field in reading.fields()
-    if field.name is not None and CORE_CONTEXT.claimant(field.read_as, field.name) is None
+    for loc, declaration in reading.declarations()
+    if declaration.name is not None and CORE_CONTEXT.claimant(declaration.read_as, declaration.name) is None
 ]
 simplest = {
-    loc: canonical_of(field, problems)
-    for loc, field, problems in with_problems(reading.fields(), reading.problems)
+    loc: canonical_of(declaration, problems)
+    for loc, declaration, problems in with_problems(reading.declarations(), reading.problems)
 }
 metadata = reading.metadata  # None when reading.problems is not empty
 ```
@@ -276,16 +276,17 @@ string against those rules.
 A top-level member that the spec does not define is an extra field. A
 scope can hold a definition for one, by its key, in the
 `array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
-member whose key a definition claims is read by that definition, like any
-other field. Any other member is kept as written, as an `UnclaimedField`.
+member whose key a definition claims is read by that definition: an extra field is a declaration
+written as the member alone, `{key: value}`. Any other extra field is kept as
+written, as an `UnclaimedDeclaration`.
 The scope is what a reader recognizes, so the model's
 `must_understand_fields` lists each unclaimed member that does not say
 `"must_understand": false`: the spec requires a reader to fail to open a
-node with any such member. It covers members only. A data type, chunk
+node with any such member. It covers extra fields only. A data type, chunk
 grid, chunk key encoding, codec or storage transformer that nothing in
-scope claims is an `UnclaimedField` too, also when it sits inside another
-field, such as a codec inside a shard. A model's `unclaimed_fields` lists
-every field nothing in scope claims, at any depth, by its location, and
+scope claims is an `UnclaimedDeclaration` too, also when it sits inside another
+declaration, such as a codec inside a shard. A model's `unclaimed_declarations` lists
+every declaration nothing in scope claims, at any depth, by its location, and
 leaves out the members that waive `must_understand`: a reader can open
 the node when it is empty. `CORE_CONTEXT` holds
 `CONSOLIDATED_METADATA_EXTRA_FIELD`, which reads a group's
@@ -300,9 +301,9 @@ scope (`CORE_AND_EXTENSIONS_CONTEXT` when none is given) and raises
 built. `to_json` returns the document as it was written, and
 `to_key_value` writes that same document to store bytes.
 
-Every typed member is a view of that read: each field as the scope read
-it (an `AcceptedField` or an `UnclaimedField`), and `shape`, `attributes`
-and the other members as the read refined them. These views are read-only
+Every typed attribute is a view of that read: each declaration as the scope read
+it (an `AcceptedDeclaration` or an `UnclaimedDeclaration`), and `shape`, `attributes`
+and the members that hold no declaration as the read refined them. These views are read-only
 at every level: a list in the document is shown as a tuple, and an object
 as a read-only mapping. `to_json` returns plain containers.
 
@@ -339,7 +340,7 @@ children that were read in several scopes, consolidate them in the
 default scope, `CORE_AND_EXTENSIONS_CONTEXT`.
 
 Two models are equal when they represent the same document, even if each
-is spelled differently. Values the package interprets (each field, and the
+is spelled differently. Values the package interprets (each declaration, and the
 fill value against its data type) are compared by their canonical
 spelling, as returned by `canonical_of` and `canonical_fill_value`. For
 example, `"NaN"` and `"0x7fc00000"` are the same `float32` fill value,
@@ -359,7 +360,7 @@ the same data. The v3 spec defines its blosc codec, and says `noshuffle`
 ignores `typesize`. A v2 node with no `.zattrs` equals one with an
 empty `.zattrs`, as a v3 document with and without an empty
 `attributes` are equal. Values the package does
-not interpret (attributes, extra fields, and the configuration of a field
+not interpret (attributes, extra fields, and the configuration of a declaration
 that nothing in the scope claims) are compared as JSON text. JSON text
 distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as
 equal to itself. Equal models have equal hashes, but may write different
@@ -369,11 +370,11 @@ model holds nothing that can be changed in place.
 `node_metadata_json_schema_v3` writes the rules the readers apply as a
 JSON Schema (draft 2020-12). Use it in an editor that checks a `zarr.json`
 while you write it, or with a validator in another language. Each
-extension point is described as a field as its scope reads it: a claimed
+extension point is described as a declaration as its scope reads it: a claimed
 configuration follows its definition's TypedDict, including bounds, and a
 name that nothing in the scope claims may have any configuration. The fill
 value must be a valid fill value for the data type the document names.
-`field_json_schema_v3(kind, *, context=None)` writes the schema of one field, and
+`declaration_json_schema_v3(kind, *, context=None)` writes the schema of one declaration, and
 `json_schema` writes the schema of any TypedDict as `check` reads it. All
 three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
 relate members to each other, so a document the schema accepts may still

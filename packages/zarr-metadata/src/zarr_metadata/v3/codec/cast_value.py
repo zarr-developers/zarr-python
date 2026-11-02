@@ -12,11 +12,11 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
     fill_value_problems,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeField
+from zarr_metadata.v3._common import ZarrV3DataTypeDeclaration
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -72,7 +72,17 @@ class ScalarMap(TypedDict, closed=True):
     """Optional encode/decode scalar overrides for the cast_value codec."""
 
     encode: NotRequired[tuple[ScalarMapEntry, ...]]
+    """The `[input, output]` pairs applied when encoding: input in the array's data type, output in `data_type`.
+
+    Each scalar is written in its data type's fill value encoding. Where an
+    input repeats, the first pair applies.
+    """
     decode: NotRequired[tuple[ScalarMapEntry, ...]]
+    """The `[input, output]` pairs applied when decoding: input in `data_type`, output in the array's data type.
+
+    Each scalar is written in its data type's fill value encoding. Where an
+    input repeats, the first pair applies.
+    """
 
 
 class CastValueCodecConfiguration(TypedDict, closed=True):
@@ -84,18 +94,45 @@ class CastValueCodecConfiguration(TypedDict, closed=True):
     bare-string primitive name or a `{name, configuration}` envelope.
     """
 
-    data_type: ZarrV3DataTypeField
+    data_type: ZarrV3DataTypeDeclaration
+    """The data type values are cast to when encoding, and the one the decoder is handed.
+
+    The codec is defined only for data types that model real numbers, the
+    integer and floating-point types: a boolean, raw-bits, string, bytes,
+    struct or complex type is refused, here and as the data type the codec
+    is handed.
+    """
     rounding: NotRequired[CastRoundingMode]
+    """How a value `data_type` cannot represent exactly is rounded.
+
+    Absent means `"nearest-even"`.
+    """
     out_of_range: NotRequired[CastOutOfRangeMode]
+    """How a value outside the range of `data_type` is brought into it, after rounding.
+
+    `"clamp"` takes the nearest bound; `"wrap"` takes the value congruent
+    modulo 2^N, N being the width in bits of `data_type`, and is permitted
+    only when `data_type` is an integral type. Absent means an out-of-range
+    value is an encoding or decoding error.
+    """
     scalar_map: NotRequired[ScalarMap]
+    """Scalars mapped explicitly, in place of `rounding` and `out_of_range`."""
 
 
 class CastValueCodecObject(TypedDict, closed=True):
     """`cast_value` codec metadata in object form."""
 
     name: CastValueCodecName
+    """The codec's name, `"cast_value"`."""
     configuration: CastValueCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 CastValueCodecMetadata = CastValueCodecObject
@@ -150,7 +187,7 @@ def _rules(
     not model real numbers, that is the only problem reported for it.
     """
     target = nested.get(("data_type",))
-    if not isinstance(target, AcceptedField):
+    if not isinstance(target, AcceptedDeclaration):
         return
     name, written = target.definition.name, target.name
     if name in _NO_REAL_NUMBERS:
@@ -182,7 +219,7 @@ def _chunk_rules(
     data type.
     """
     source = chunk.data_type
-    if not isinstance(source, AcceptedField):
+    if not isinstance(source, AcceptedDeclaration):
         return
     if source.definition.name in _NO_REAL_NUMBERS:
         yield ValidationProblem(
@@ -201,8 +238,8 @@ def _transition(configuration: CastValueCodecConfiguration, nested: Nested, chun
     It "converts (casts) the values of the input array to a new data
     type ... and it leaves all other array properties intact"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L3).
-    The output data type is the data type field as the scope read it. If
-    the scope did not read that field, the output data type is unknown.
+    The output data type is the data type declaration as the scope read it. If
+    the scope did not read that declaration, the output data type is unknown.
     """
     return Chunk(chunk.lengths, nested.get(("data_type",)))
 
@@ -218,7 +255,7 @@ CAST_VALUE_CODEC: Final = CodecDefinition(
 )
 """The `cast_value` codec.
 
-The target data type is a nested field. It is read in the same scope as
+The target data type is a nested declaration. It is read in the same scope as
 the codec, and it becomes the data type of the output chunk.
 """
 

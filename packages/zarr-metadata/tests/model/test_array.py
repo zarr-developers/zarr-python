@@ -23,14 +23,14 @@ from zarr_metadata._json import (
     validate_json,
 )
 from zarr_metadata.definition import (
-    AcceptedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    UnclaimedDeclaration,
     canonical_of,
     configuration_of,
     resolve,
     with_problems,
 )
-from zarr_metadata.definition._definition import fields_of
+from zarr_metadata.definition._definition import declarations_of
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -233,7 +233,7 @@ def test_v3_a_data_type_with_nothing_to_configure_is_written_by_its_bare_name(
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
     }
     model = ZarrV3ArrayMetadata.from_json(document)
-    # The document is written back as it was written. The field on its own
+    # The document is written back as it was written. The declaration on its own
     # is written by its bare name, which every reader accepts.
     assert model.to_json()["data_type"] == data_type
     assert model.data_type.to_json() == "int32"
@@ -479,12 +479,12 @@ def test_update_reads_every_member_in_the_models_own_scope() -> None:
     little: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     base = ZarrV3ArrayMetadata.create_default(context=CORE_CONTEXT, codecs=(little, zstd))
-    assert isinstance(base.codecs[1], UnclaimedField)
+    assert isinstance(base.codecs[1], UnclaimedDeclaration)
     kept = base.update(attributes={"k": 1})
     assert kept.codecs[1] == base.codecs[1]
     assert kept.context == CORE_CONTEXT
     given = base.with_context(CORE_AND_EXTENSIONS_CONTEXT).update(codecs=(little, zstd))
-    assert isinstance(given.codecs[1], AcceptedField)
+    assert isinstance(given.codecs[1], AcceptedDeclaration)
 
 
 def test_update_leaves_out_a_member_given_as_unset() -> None:
@@ -536,7 +536,7 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
         "codec-verbose",
         "empty-configuration",
         "unclaimed",
-        "a-field-a-codec-holds-bare",
+        "a-declaration-a-codec-holds-bare",
     ],
 )
 def test_a_model_is_what_its_document_says_not_how_it_is_spelled(
@@ -574,7 +574,7 @@ _LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 def test_two_models_are_one_array_when_their_fill_values_are_one_value(
     data_type: object, left: object, right: object, same: bool
 ) -> None:
-    """Two models are equal when their fill values are the same value, however each is spelled, just as two fields are equal when they read the same."""
+    """Two models are equal when their fill values are the same value, however each is spelled, just as two declarations are equal when they read the same."""
     codecs = [{"name": "vlen-bytes"} if data_type == "bytes" else _LITTLE]
     document = {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "codecs": codecs}
     models = [
@@ -620,10 +620,10 @@ _NOSHUFFLE = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 
     ],
     ids=["blosc-typesize-noshuffle", "zstd-checksum-false", "default-separator"],
 )
-def test_two_models_are_one_array_when_their_fields_read_the_same(
+def test_two_models_are_one_array_when_their_declarations_read_the_same(
     member: str, left: object, right: object
 ) -> None:
-    """The spec's equivalences, which each definition's `canonical` normalizes, hold for a model's `==`, even though `to_json` writes each field as given."""
+    """The spec's equivalences, which each definition's `canonical` normalizes, hold for a model's `==`, even though `to_json` writes each declaration as given."""
     document = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
     models = [ZarrV3ArrayMetadata.from_json({**document, member: value}) for value in (left, right)]
     assert models[0] == models[1]
@@ -803,12 +803,12 @@ def test_v3_from_json_defaults_for_omitted_optionals() -> None:
 
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
-    """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedField`, written as the document wrote it."""
+    """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedDeclaration`, written as the document wrote it."""
     doc = ZarrV3ArrayMetadata.create_default(
         extra_fields={"my_ext": {"must_understand": False}}
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
-    assert isinstance(model.extra_fields["my_ext"], UnclaimedField)
+    assert isinstance(model.extra_fields["my_ext"], UnclaimedDeclaration)
     assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
 
 
@@ -995,13 +995,13 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
 
 
 @pytest.mark.parametrize("name", ["bytes", "acme.codec", "urn:example:codec"])
-def test_metadata_field_accepts_a_name_as_the_spec_names_one(name: str) -> None:
+def test_declaration_accepts_a_name_as_the_spec_names_one(name: str) -> None:
     """The envelope check accepts a name in a form the spec allows for an extension name, whether or not a definition in scope claims it."""
     assert resolve({"name": name}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1] == ()
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
-def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
+def test_declaration_must_understand_must_be_boolean(value: object) -> None:
     """must_understand is a JSON boolean, not a truthy scalar."""
     _, problems = resolve(
         {"name": "acme.x", "must_understand": value}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
@@ -1011,7 +1011,7 @@ def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
     ]
 
 
-def test_metadata_field_rejects_unknown_envelope_member() -> None:
+def test_declaration_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
     _, problems = resolve(
         {"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
@@ -1239,13 +1239,13 @@ def test_json_type_guard_rejects_abstract_sequence() -> None:
     assert parse_json(range(3)) == (0, 1, 2)
 
 
-def test_a_field_read_from_abstract_containers_writes_canonical_containers() -> None:
-    """`resolve` reads a field given as abstract containers, and the field writes canonical containers at every nesting level."""
+def test_a_declaration_read_from_abstract_containers_writes_canonical_containers() -> None:
+    """`resolve` reads a declaration given as abstract containers, and the declaration writes canonical containers at every nesting level."""
     value = UserDict({"name": "example", "configuration": UserDict({"values": range(2)})})
 
-    field, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
-    assert isinstance(field, UnclaimedField)
-    written = field.to_json()
+    declaration, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert isinstance(declaration, UnclaimedDeclaration)
+    written = declaration.to_json()
 
     assert problems == ()
     assert isinstance(written, dict)
@@ -1260,7 +1260,7 @@ def test_validate_json_reports_json_in_message() -> None:
     assert "JSON" in problems[0].message
 
 
-METADATA_FIELD_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
+DECLARATION_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
     Expect("bytes", frozenset(), id="bare-string"),
     Expect({"name": "acme.x", "configuration": {"a": 1}}, frozenset(), id="named-config"),
     Expect({"name": "bytes"}, frozenset(), id="name-only"),
@@ -1280,11 +1280,11 @@ METADATA_FIELD_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ..
 ]
 
 
-@pytest.mark.parametrize("case", METADATA_FIELD_VALIDATE_CASES, ids=lambda c: c.id)
-def test_resolve_reports_the_problems_of_a_metadata_field(
+@pytest.mark.parametrize("case", DECLARATION_VALIDATE_CASES, ids=lambda c: c.id)
+def test_resolve_reports_the_problems_of_a_declaration(
     case: Expect[object, frozenset[tuple[str | int, ...]]],
 ) -> None:
-    """`resolve` reports the problems of a metadata-field value, read as a codec."""
+    """`resolve` reports the problems of a declaration value, read as a codec."""
     _, problems = resolve(case.input, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert (problems == ()) is (case.output == frozenset())
     assert {p.loc for p in problems} >= case.output
@@ -1486,13 +1486,13 @@ def test_metadata_validation_error_holds_problems() -> None:
     problems = [
         ValidationProblem(loc=("shape",), message="missing required key", kind="missing_key"),
         ValidationProblem(
-            loc=("data_type",), message="expected a metadata field", kind="invalid_type"
+            loc=("data_type",), message="expected a declaration", kind="invalid_type"
         ),
     ]
     err = MetadataValidationError(problems)
     assert err.problems == tuple(problems)
     assert "shape: missing required key" in str(err)
-    assert "data_type: expected a metadata field" in str(err)
+    assert "data_type: expected a declaration" in str(err)
 
 
 def test_the_error_pickles_and_copies_as_its_problems() -> None:
@@ -1901,7 +1901,7 @@ def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_na
 
 
 def test_a_shard_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
-    """Every walker of fields uses more than one stack frame per shard, so the deepest nesting the cap allows is where the interpreter's recursion limit would show. One shard deeper is reported as the depth problem."""
+    """Every walker of declarations uses more than one stack frame per shard, so the deepest nesting the cap allows is where the interpreter's recursion limit would show. One shard deeper is reported as the depth problem."""
     little = {"name": "bytes", "configuration": {"endian": "little"}}
 
     def nested(shards: int) -> list[object]:
@@ -1935,7 +1935,7 @@ def test_a_shard_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
     (shard,) = model.codecs
     assert json_text(canonical_of(shard, ())) == json_text(cast("JSONValue", codecs[0]))
     # Each level has a shard and its index codec, plus the innermost codec.
-    assert len(list(with_problems(fields_of(shard), ()))) == 2 * deepest + 1
+    assert len(list(with_problems(declarations_of(shard), ()))) == 2 * deepest + 1
     problems = read_array_metadata_v3({**document, "codecs": nested(deepest + 1)}).problems
     assert {(problem.kind, len(problem.loc), problem.message) for problem in problems} == {
         ("invalid_value", JSON_DEPTH, f"nested deeper than the {JSON_DEPTH} levels a reader walks")
@@ -1959,15 +1959,15 @@ def test_a_model_is_written_as_deep_as_it_is_read() -> None:
     assert copy.deepcopy(model) == model
 
 
-def test_a_field_s_configuration_member_is_counted_from_the_field_s_root() -> None:
-    # `resolve` reads a field on its own, from the field's root. A member
+def test_a_declaration_s_configuration_member_is_counted_from_the_declaration_s_root() -> None:
+    # `resolve` reads a declaration on its own, from the declaration's root. A member
     # of its configuration is two levels down, and the cap counts from the
     # root, not from the member.
     nested: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 2):
         nested = {"x": nested}
-    field = {"name": "acme.x", "configuration": {"y": nested}}
-    _, problems = resolve(field, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    declaration = {"name": "acme.x", "configuration": {"y": nested}}
+    _, problems = resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert [(len(p.loc), p.kind) for p in problems] == [(JSON_DEPTH, "invalid_value")]
     assert problems[0].loc[:2] == ("configuration", "y")
     shallower = {"name": "acme.x", "configuration": {"y": nested["x"]}}
@@ -2421,12 +2421,12 @@ def test_error_a_document_nested_deeper_than_a_reader_walks_is_a_problem() -> No
         ZarrV3ArrayMetadata.from_json(document)
 
 
-def test_error_a_field_object_in_a_document_is_not_json() -> None:
-    # An `AcceptedField` built by hand, with a configuration its definition
+def test_error_a_declaration_object_in_a_document_is_not_json() -> None:
+    # An `AcceptedDeclaration` built by hand, with a configuration its definition
     # refuses, and inserted into a document is refused as a non-JSON value.
-    # So nothing built by hand passes as read. A model holds its own fields
+    # So nothing built by hand passes as read. A model holds its own declarations
     # as read.
-    smuggled = AcceptedField(
+    smuggled = AcceptedDeclaration(
         json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
     )
     document = {
@@ -2438,8 +2438,8 @@ def test_error_a_field_object_in_a_document_is_not_json() -> None:
     ]
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
-    # `update` refuses a field among the members it is given with a
-    # `TypeError`, as `test_error_update_takes_fields_as_json` shows.
+    # `update` refuses a declaration among the members it is given with a
+    # `TypeError`, as `test_error_update_takes_declarations_as_json` shows.
     model = ZarrV3ArrayMetadata.create_default(shape=(2,))
     with pytest.raises(TypeError, match="to_json"):
         model.update(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
