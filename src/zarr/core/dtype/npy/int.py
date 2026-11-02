@@ -63,7 +63,36 @@ class BaseInt[
     in both Zarr v2 and v3 formats, as well as methods for checking and casting scalars.
     """
 
+    dtype_cls: ClassVar[type[_NumpyIntDType]]
     _zarr_v2_names: ClassVar[tuple[str, ...]]
+
+    @classmethod
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[DType]:
+        """
+        Check the integer kind and item size, allowing equivalent NumPy dtype aliases.
+
+        This is required for the following reasons:
+        - On Windows, np.dtype('i') creates an instance of ``np.dtypes.IntDType``, rather than an
+          instance of ``np.dtypes.Int32DType``, even though both represent 32-bit signed integers.
+        - On Windows, ``np.array([1], dtype=np.uint32) & 1`` creates an instance of
+          ``np.dtypes.UIntDType``, rather than an instance of ``np.dtypes.UInt32DType``,
+          even though both represent 32-bit unsigned integers.
+        - On Linux, ``np.longlong`` and ``np.ulonglong`` create instances of
+          ``np.dtypes.ULongLongDType`` and ``np.dtypes.LongLongDType`` instead of the expected
+          ``np.dtypes.Int64DType`` and ``np.dtypes.UInt64DType``.
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        expected = cls.dtype_cls()
+        return dtype.kind == expected.kind and dtype.itemsize == expected.itemsize
 
     @classmethod
     def _check_json_v2(cls, data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
@@ -887,27 +916,6 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
 
     @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.Int32DType]:
-        """
-        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
-
-        This method is overridden for this particular data type because of a Windows-specific issue
-        where np.dtype('i') creates an instance of ``np.dtypes.IntDType``, rather than an
-        instance of ``np.dtypes.Int32DType``, even though both represent 32-bit signed integers.
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return super()._check_native_dtype(dtype) or dtype == np.dtypes.Int32DType()
-
-    @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Create an Int32 from an np.dtype('int32') instance.
@@ -1069,28 +1077,6 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name: ClassVar[Literal["uint32"]] = "uint32"
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
-
-    @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.UInt32DType]:
-        """
-        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
-
-        This method is overridden for this particular data type because of a Windows-specific issue
-        where ``np.array([1], dtype=np.uint32) & 1`` creates an instance of ``np.dtypes.UIntDType``,
-        rather than an instance of ``np.dtypes.UInt32DType``, even though both represent 32-bit
-        unsigned integers. (In contrast to ``np.dtype('i')``, ``np.dtype('u')`` raises an error.)
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return super()._check_native_dtype(dtype) or dtype == np.dtypes.UInt32DType()
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:

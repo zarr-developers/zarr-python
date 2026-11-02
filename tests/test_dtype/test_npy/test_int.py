@@ -114,7 +114,7 @@ class TestInt32(BaseTestZDType):
 class TestInt64(BaseTestZDType):
     test_cls = Int64
     scalar_type = np.int64
-    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"))
+    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"), np.dtype(np.longlong))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
@@ -261,7 +261,7 @@ class TestUInt32(BaseTestZDType):
 class TestUInt64(BaseTestZDType):
     test_cls = UInt64
     scalar_type = np.uint64
-    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"))
+    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"), np.dtype(np.ulonglong))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.int16),
