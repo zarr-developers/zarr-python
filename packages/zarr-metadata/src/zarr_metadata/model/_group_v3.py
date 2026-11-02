@@ -133,8 +133,11 @@ class ZarrV3ConsolidatedMetadataInput(TypedDict, closed=True):
     """
 
     kind: Literal["inline"]
+    """How the entries are carried, `"inline"`: in the group's own document."""
     must_understand: Literal[False]
+    """Always `False`: a reader that does not recognize consolidated metadata may ignore it."""
     metadata: Mapping[str, ZarrV3NodeMetadataInput]
+    """The document of each node below the group, or a model of one, by its path from the group."""
 
 
 class ZarrV3GroupMetadataUpdate(TypedDict, total=False, closed=True):
@@ -153,13 +156,25 @@ class ZarrV3GroupMetadataUpdate(TypedDict, total=False, closed=True):
     """
 
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes.
+
+    `UNSET` removes it, so the group has no attributes.
+    """
     consolidated_metadata: (
         ZarrV3ConsolidatedMetadataJSON
         | Mapping[str, JSONValue]
         | ZarrV3ConsolidatedMetadata
         | UNSET
     )
+    """The `consolidated_metadata` member: the documents of the nodes below the group, carried in its own document.
+
+    `UNSET` removes it.
+    """
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
+    """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
+
+    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    """
 
 
 class ZarrV3GroupMetadata(Keyed):
@@ -183,7 +198,9 @@ class ZarrV3GroupMetadata(Keyed):
     __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `3`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
+    """The kind of node, `"group"`. A class constant: comparing it narrows a union of models."""
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
@@ -492,7 +509,9 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     __slots__ = ("_context", "_document", "_metadata")
 
     kind: Final = "inline"
+    """How the entries are carried, `"inline"`: in the group's own document."""
     must_understand: Final = False
+    """Always `False`: a reader that does not recognize consolidated metadata may ignore it."""
 
     def __init__(self, member: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)

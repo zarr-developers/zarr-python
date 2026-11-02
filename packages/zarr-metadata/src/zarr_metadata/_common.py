@@ -73,5 +73,13 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """
 
     name: ReadOnly[str]
+    """The extension's name."""
     configuration: NotRequired[ReadOnly[Mapping[str, JSONValue]]]
+    """The extension's parameters. May be absent."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this extension must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type, chunk
+    grid or chunk key encoding
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581).
+    """

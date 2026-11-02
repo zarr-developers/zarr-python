@@ -259,8 +259,21 @@ class TypedDictKeys:
     """
 
     members: Mapping[str, tuple[object, bool]]
+    """Every key it declares, its bases' included, with its value's type and whether it is required.
+
+    The type has its qualifiers and `Annotated` metadata peeled.
+    """
     extra_items: object
+    """What any other key may hold.
+
+    `Never` when the TypedDict is closed, `object` when it is open, and the
+    `extra_items` type otherwise.
+    """
     declared: bool
+    """Whether the TypedDict or a base said what other keys may hold, rather than defaulting.
+
+    It is said with `closed=` or `extra_items=`. A TypedDict that says nothing is open.
+    """
 
     @property
     def required(self) -> frozenset[str]:

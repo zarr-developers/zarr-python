@@ -467,15 +467,34 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """
 
     shape: tuple[int, ...]
+    """The `shape` member: the length of each dimension."""
     dtype: ZarrV2DataTypeMetadata
+    """The `dtype` member: a NumPy typestr, or a list of field records for a structured data type."""
     chunks: tuple[int, ...]
+    """The `chunks` member: the length of each chunk along each dimension, one for each dimension of `shape`."""
     fill_value: JSONValue
+    """The `fill_value` member: the value of an element in a chunk that was never written, or `None` for none."""
     order: ZarrV2ArrayOrder
+    """The `order` member: the layout of elements within each chunk, `"C"` or `"F"`."""
     compressor: ZarrV2CodecMetadata | None
+    """The `compressor` member: the configuration of the codec that compresses each chunk, or `None` for none."""
     filters: tuple[ZarrV2CodecMetadata, ...] | None
+    """The `filters` member: the configuration of each codec applied to each chunk before the compressor, in order, or `None` for none."""
     dimension_separator: ZarrV2ArrayDimensionSeparator | UNSET
+    """The `dimension_separator` member: the separator between a chunk's grid coordinates in its key, `"."` or `"/"`.
+
+    `UNSET` removes it, which means `"."`.
+    """
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes, which a store holds in `.zattrs`.
+
+    `UNSET` removes it, so the array has no `.zattrs`.
+    """
     extra_fields: Mapping[str, JSONValue | UNSET]
+    """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
+
+    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    """
 
 
 class ZarrV2ArrayMetadata(Keyed):
@@ -507,7 +526,12 @@ class ZarrV2ArrayMetadata(Keyed):
     __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `2`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
+    """The kind of node, `"array"`. A class constant: comparing it narrows a union of models.
+
+    A v2 document does not write this member: its `.zarray` key says the node is an array.
+    """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2_CONTEXT)

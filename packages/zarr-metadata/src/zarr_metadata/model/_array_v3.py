@@ -459,15 +459,37 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """
 
     shape: tuple[int, ...]
+    """The `shape` member: the length of each dimension."""
     data_type: ZarrV3MetadataFieldJSON
+    """The `data_type` member: the data type of the array's elements."""
     chunk_grid: ZarrV3MetadataFieldJSON
+    """The `chunk_grid` member: how the array is divided into chunks."""
     chunk_key_encoding: ZarrV3MetadataFieldJSON
+    """The `chunk_key_encoding` member: how a chunk's grid coordinates become its store key."""
     fill_value: JSONValue
+    """The `fill_value` member: the value of an element in a chunk that was never written."""
     codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    """The `codecs` member: the codecs that encode each chunk, in order."""
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes.
+
+    `UNSET` removes it, so the array has no attributes.
+    """
     storage_transformers: tuple[ZarrV3MetadataFieldJSON, ...] | UNSET
+    """The `storage_transformers` member: the storage transformers, in order.
+
+    `UNSET` removes it, which means none.
+    """
     dimension_names: tuple[str | None, ...] | UNSET
+    """The `dimension_names` member: a name for each dimension, `None` for an unnamed one.
+
+    `UNSET` removes it, which means every dimension is unnamed.
+    """
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
+    """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
+
+    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    """
 
 
 class ZarrV3ArrayMetadata(Keyed):
@@ -496,7 +518,9 @@ class ZarrV3ArrayMetadata(Keyed):
     __slots__ = ("_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `3`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
+    """The kind of node, `"array"`. A class constant: comparing it narrows a union of models."""
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)

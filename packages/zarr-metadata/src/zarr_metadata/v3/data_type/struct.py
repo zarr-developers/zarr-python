@@ -31,34 +31,42 @@ StructDataTypeName = Literal["struct"]
 
 
 class StructField(TypedDict, closed=True):
-    """
-    A single field entry inside a structured dtype.
-
-    Attributes
-    ----------
-    name
-        The field name (must be unique within a struct and non-empty).
-    data_type
-        The field's data type. Recursive: may be a bare-string primitive
-        or a named-config envelope including another `struct`.
-    """
+    """A single field entry inside a structured dtype."""
 
     name: ReadOnly[str]
+    """The field name (must be unique within a struct and non-empty)."""
     data_type: ReadOnly[ZarrV3DataTypeField]
+    """The field's data type.
+
+    Recursive: may be a bare-string primitive or a named-config envelope
+    including another `struct`.
+    """
 
 
 class StructConfiguration(TypedDict, closed=True):
     """Configuration for the `struct` data type."""
 
     fields: ReadOnly[tuple[StructField, ...]]
+    """The record's fields, in the order they are encoded.
+
+    At least one. The order is significant: it is the order in which the
+    `bytes` codec packs the fields' values.
+    """
 
 
 class Struct(TypedDict, closed=True):
     """`struct` data type metadata."""
 
     name: StructDataTypeName
+    """The data type's name, `"struct"`."""
     configuration: StructConfiguration
+    """The data type's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this data type must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 StructFillValue = Mapping[str, JSONValue]

@@ -14,6 +14,10 @@ class ZarrV2Checksum32Parameters(TypedDict, closed=True):
     """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed. When it is omitted or null, numcodecs places it at the start for crc32 and adler32, and at the end for crc32c."""
 
     location: NotRequired[ReadOnly[Literal["start", "end"] | None]]
+    """Where the checksum is placed in the encoded chunk, `"start"` or `"end"`.
+
+    Absent or null means the start for `crc32` and `adler32`, and the end for `crc32c`.
+    """
 
 
 def _fill_location(

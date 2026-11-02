@@ -27,7 +27,14 @@ class ZarrV2ScalarConfiguration(TypedDict, closed=True):
     """The configuration that a scalar typestr carries: its byte order and its size in bytes, such as `{"byteorder": "<", "itemsize": 4}` for `<f4`."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
+    """The byte order that the typestr writes.
+
+    A family refuses `|` at a size where the order of the bytes matters, and
+    its canonical form writes `|` at a size where it does not, such as `<i1`
+    as `|i1`.
+    """
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
+    """The size that the typestr writes: a count of bytes, or of code points for `str` (`U`)."""
 
 
 _ONE_BYTE: Final = frozenset({1})
