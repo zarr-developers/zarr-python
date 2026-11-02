@@ -31,8 +31,8 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -84,13 +84,18 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
 @pytest.mark.parametrize(
     ("document", "context", "declarations", "handed"),
     [
-        (_document(), CORE_AND_EXTENSIONS, [*POINTS, _codec(("codecs", 0))], [(frozenset({4}),)]),
+        (
+            _document(),
+            CORE_AND_EXTENSIONS_CONTEXT,
+            [*POINTS, _codec(("codecs", 0))],
+            [(frozenset({4}),)],
+        ),
         # Each codec receives the chunk that the previous codec outputs.
         (
             _document(
                 (4, 6), codecs=[{"name": "transpose", "configuration": {"order": [1, 0]}}, "bytes"]
             ),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             [*POINTS, _codec(("codecs", 0)), _codec(("codecs", 1))],
             [(frozenset({4}), frozenset({6})), (frozenset({6}), frozenset({4}))],
         ),
@@ -103,7 +108,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 chunk_grid={"name": "regular", "configuration": {"chunk_shape": [8, 8]}},
                 codecs=[_shard([4, 4], codecs=[LITTLE, ZSTD], index_codecs=[LITTLE, "crc32c"])],
             ),
-            CORE,
+            CORE_CONTEXT,
             [
                 *POINTS,
                 _codec(("codecs", 0)),
@@ -121,7 +126,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 chunk_grid={"name": "regular", "configuration": {"chunk_shape": [8, 8]}},
                 codecs=[_shard([4, 4], codecs=[_shard([2, 2])])],
             ),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             [
                 *POINTS,
                 _codec(("codecs", 0)),
@@ -141,7 +146,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 chunk_grid={"name": "regular", "configuration": {"chunk_shape": [8, 8]}},
                 codecs=[_shard([4, 4], index_location="middle", codecs=[LITTLE, ZSTD])],
             ),
-            CORE,
+            CORE_CONTEXT,
             [
                 *POINTS,
                 _codec(("codecs", 0), RefusedDeclaration),
@@ -167,7 +172,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 fill_value={"a": 0, "b": "anything"},
                 codecs=[LITTLE],
             ),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             [
                 POINTS[0],
                 (
@@ -194,7 +199,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 codecs=["bytes", {"name": "gzip", "configuration": {"level": 99}}],
                 storage_transformers=[{"name": "acme.transformer"}],
             ),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             [
                 POINTS[0],
                 (("chunk_grid",), ChunkGridDefinition, UnclaimedDeclaration),
@@ -208,7 +213,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
         # A data type that is not JSON is refused.
         (
             _document(data_type=float("nan")),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             [
                 (("data_type",), DataTypeDefinition, RefusedDeclaration),
                 *POINTS[1:],
@@ -277,7 +282,7 @@ def _codec_declarations(
     resolved, problems = resolve(
         cast("dict[str, Any]", document)["codecs"][0],
         CodecDefinition,
-        CORE_AND_EXTENSIONS,
+        CORE_AND_EXTENSIONS_CONTEXT,
         ("codecs", 0),
     )
     return with_problems(declarations_of(resolved, ("codecs", 0)), problems)

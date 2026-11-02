@@ -188,7 +188,9 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "data type"
+    """The name of the kind in error messages, `"data type"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3DataTypeDeclaration,)
+    """The declaration alias that annotates a configuration field holding a data type, `ZarrV3DataTypeDeclaration`."""
 
     @classmethod
     def _filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
@@ -246,7 +248,9 @@ class ChunkGridDefinition(Definition[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "chunk grid"
+    """The name of the kind in error messages, `"chunk grid"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkGridDeclaration,)
+    """The declaration alias that annotates a configuration field holding a chunk grid, `ZarrV3ChunkGridDeclaration`."""
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """The spec violations in this grid over an array of a given shape, located in the configuration."""
@@ -259,7 +263,9 @@ class ChunkKeyEncodingDefinition(Definition[C], kind=True, format=3):
     """A chunk key encoding."""
 
     label: ClassVar[str] = "chunk key encoding"
+    """The name of the kind in error messages, `"chunk key encoding"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkKeyEncodingDeclaration,)
+    """The declaration alias that annotates a configuration field holding a chunk key encoding, `ZarrV3ChunkKeyEncodingDeclaration`."""
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
@@ -320,13 +326,30 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "codec"
+    """The name of the kind in error messages, `"codec"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (
         ZarrV3CodecDeclaration,
         ZarrV3StaticCodecDeclaration,
     )
+    """The declaration aliases that annotate a configuration field holding a codec.
+
+    `ZarrV3CodecDeclaration` admits any codec; `ZarrV3StaticCodecDeclaration` admits only
+    codecs of static size.
+    """
 
     kind: CodecKind
+    """What the codec does to what it is handed: array -> array, array -> bytes or bytes -> bytes.
+
+    It fixes where the codec may sit in a pipeline, and which of `chunk_rules`,
+    `transition` and `pipelines` it may be given: building a definition with
+    one its kind is never asked raises `TypeError`.
+    """
     size: CodecSize
+    """Whether the size of what the codec gives out is fixed by the size of what it is handed.
+
+    Where a field takes only codecs of static size, a codec of dynamic size
+    is a problem.
+    """
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
     """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
     transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
@@ -371,9 +394,11 @@ class StorageTransformerDefinition(Definition[C], kind=True, format=3):
     """A storage transformer."""
 
     label: ClassVar[str] = "storage transformer"
+    """The name of the kind in error messages, `"storage transformer"`."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (
         ZarrV3StorageTransformerDeclaration,
     )
+    """The declaration alias that annotates a configuration field holding a storage transformer, `ZarrV3StorageTransformerDeclaration`."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -556,9 +581,11 @@ class ArrayExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
     """An extra field of a v3 array document: a field the spec does not define, read by its key."""
 
     label: ClassVar[str] = "array extra field"
+    """The name of the kind in error messages, `"array extra field"`."""
     spec_fields: ClassVar[frozenset[str]] = frozenset(
         typeddict_keys(ZarrV3ArrayMetadataJSON).fields
     )
+    """The fields the spec defines in an array document, the keys of `ZarrV3ArrayMetadataJSON`; never extra fields."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -566,9 +593,11 @@ class GroupExtraFieldDefinition(ExtraFieldDefinition[C], kind=True, format=3):
     """An extra field of a v3 group document: a field the spec does not define, read by its key. `consolidated_metadata` is one."""
 
     label: ClassVar[str] = "group extra field"
+    """The name of the kind in error messages, `"group extra field"`."""
     spec_fields: ClassVar[frozenset[str]] = frozenset(
         typeddict_keys(ZarrV3GroupMetadataJSON).fields
     )
+    """The fields the spec defines in a group document, the keys of `ZarrV3GroupMetadataJSON`; never extra fields."""
 
 
 STATIC_SIZE_ALIASES: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecDeclaration})

@@ -70,7 +70,7 @@ from zarr_metadata.v2.array import (
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import (
-    CORE_V2,
+    CORE_V2_CONTEXT,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
 )
@@ -437,7 +437,7 @@ ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
 def read_array_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ArrayMetadataReading:
-    """Read `value`, a v2 array document, in `context` (`CORE_V2` when none is given), whatever it holds.
+    """Read `value`, a v2 array document, in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds.
 
     The result holds everything the read finds: the dtype, the compressor
     and each filter as the scope read them (an `AcceptedDeclaration` read by
@@ -447,7 +447,7 @@ def read_array_metadata_v2(
     problem. One that the scope does not claim is not a problem.
     `fill_value` is checked against the dtype the scope read.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     reading, fields = read_array_v2(value, context)
     if fields is None:
         return reading
@@ -467,15 +467,34 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """
 
     shape: tuple[int, ...]
+    """The `shape` field: the length of each dimension."""
     dtype: ZarrV2DataTypeMetadata
+    """The `dtype` field: a NumPy typestr, or a list of field records for a structured data type."""
     chunks: tuple[int, ...]
+    """The `chunks` field: the length of each chunk along each dimension, one for each dimension of `shape`."""
     fill_value: JSONValue
+    """The `fill_value` field: the value of an element in a chunk that was never written, or `None` for none."""
     order: ZarrV2ArrayOrder
+    """The `order` field: the layout of elements within each chunk, `"C"` or `"F"`."""
     compressor: ZarrV2CodecMetadata | None
+    """The `compressor` field: the configuration of the codec that compresses each chunk, or `None` for none."""
     filters: tuple[ZarrV2CodecMetadata, ...] | None
+    """The `filters` field: the configuration of each codec applied to each chunk before the compressor, in order, or `None` for none."""
     dimension_separator: ZarrV2ArrayDimensionSeparator | UNSET
+    """The `dimension_separator` field: the separator between a chunk's grid coordinates in its key, `"."` or `"/"`.
+
+    `UNSET` removes it, which means `"."`.
+    """
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` field: user attributes, which a store holds in `.zattrs`.
+
+    `UNSET` removes it, so the array has no `.zattrs`.
+    """
     extra_fields: Mapping[str, JSONValue | UNSET]
+    """The fields the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
+
+    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    """
 
 
 class ZarrV2ArrayMetadata(Keyed):
@@ -507,10 +526,15 @@ class ZarrV2ArrayMetadata(Keyed):
     __slots__ = ("_context", "_document", "_fields", "_reading", "_shown")
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `2`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
+    """The kind of node, `"array"`. A class constant: comparing it narrows a union of models.
+
+    A v2 document does not write this field: its `.zarray` key says the node is an array.
+    """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         reading, fields = read_array_v2(document, context)
         if fields is None:
             raise MetadataValidationError(reading.problems)
@@ -733,7 +757,7 @@ class ZarrV2ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         if disagreements(context, claims_of(self._reading.declarations())).agrees:
             return self._of(self._document, context, self._reading, self._fields)
         return type(self)(self._document, context=context)
@@ -747,7 +771,7 @@ class ZarrV2ArrayMetadata(Keyed):
         in the document. Raises `MetadataValidationError` when a definition
         that `context` claims rejects what was written.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         found = disagreements(context, claims_of(self._reading.declarations()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(
@@ -811,7 +835,9 @@ class ZarrV2ArrayMetadata(Keyed):
             if lengths is not None:
                 given["chunks"] = lengths
         if "dtype" in given and "fill_value" not in given:
-            dtype, _ = resolve(given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2))
+            dtype, _ = resolve(
+                given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2_CONTEXT)
+            )
             if len(fill_value_problems(dtype, 0)) != 0:
                 given["fill_value"] = None
         merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}
@@ -840,7 +866,7 @@ class ZarrV2ArrayMetadata(Keyed):
         valid, with every problem the read finds. Raises `TypeError` for a
         scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_ARRAY_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )

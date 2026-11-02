@@ -28,27 +28,34 @@ NumpyDatetime64DataTypeName = Literal["numpy.datetime64"]
 
 
 class NumpyDatetime64Configuration(TypedDict, closed=True):
-    """
-    Configuration for the `numpy.datetime64` data type.
-
-    Attributes
-    ----------
-    unit
-        A string encoding a unit of time.
-    scale_factor
-        The multiplier relative to the unit.
-    """
+    """Configuration for the `numpy.datetime64` data type."""
 
     unit: ReadOnly[NumpyTimeUnit]
+    """A string encoding a unit of time.
+
+    `"us"` and `"μs"` are equivalent spellings of microseconds; `"generic"`
+    means the unit is unspecified.
+    """
     scale_factor: ReadOnly[NumpyTimeScaleFactor]
+    """The multiplier relative to the unit.
+
+    An integer in `[1, 2147483647]`.
+    """
 
 
 class NumpyDatetime64(TypedDict, closed=True):
     """`numpy.datetime64` data type metadata."""
 
     name: NumpyDatetime64DataTypeName
+    """The data type's name, `"numpy.datetime64"`."""
     configuration: NumpyDatetime64Configuration
+    """The data type's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this data type must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 NumpyDatetime64FillValue = NumpyTimeTicks | Literal["NaT"]

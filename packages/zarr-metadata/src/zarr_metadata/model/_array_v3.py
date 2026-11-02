@@ -62,7 +62,7 @@ from zarr_metadata.v3._common import ZarrV3DeclarationJSON, ZarrV3ExtensionField
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
     Chunk,
@@ -462,15 +462,37 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """
 
     shape: tuple[int, ...]
+    """The `shape` field: the length of each dimension."""
     data_type: ZarrV3DeclarationJSON
+    """The `data_type` field: the data type of the array's elements."""
     chunk_grid: ZarrV3DeclarationJSON
+    """The `chunk_grid` field: how the array is divided into chunks."""
     chunk_key_encoding: ZarrV3DeclarationJSON
+    """The `chunk_key_encoding` field: how a chunk's grid coordinates become its store key."""
     fill_value: JSONValue
+    """The `fill_value` field: the value of an element in a chunk that was never written."""
     codecs: tuple[ZarrV3DeclarationJSON, ...]
+    """The `codecs` field: the codecs that encode each chunk, in order."""
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` field: user attributes.
+
+    `UNSET` removes it, so the array has no attributes.
+    """
     storage_transformers: tuple[ZarrV3DeclarationJSON, ...] | UNSET
+    """The `storage_transformers` field: the storage transformers, in order.
+
+    `UNSET` removes it, which means none.
+    """
     dimension_names: tuple[str | None, ...] | UNSET
+    """The `dimension_names` field: a name for each dimension, `None` for an unnamed one.
+
+    `UNSET` removes it, which means every dimension is unnamed.
+    """
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
+    """The fields the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
+
+    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    """
 
 
 class ZarrV3ArrayMetadata(Keyed):
@@ -499,10 +521,12 @@ class ZarrV3ArrayMetadata(Keyed):
     __slots__ = ("_context", "_document", "_fields", "_reading", "_shown")
 
     zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `3`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
+    """The kind of node, `"array"`. A class constant: comparing it narrows a union of models."""
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         reading, fields = read_array_v3(document, context)
         if fields is None:
             raise MetadataValidationError(reading.problems)
@@ -705,7 +729,7 @@ class ZarrV3ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         if disagreements(context, claims_of(self._reading.declarations())).agrees:
             return self._of(self._document, context, self._reading, self._fields)
         return type(self)(self._document, context=context)
@@ -722,7 +746,7 @@ class ZarrV3ArrayMetadata(Keyed):
         gain can expose a problem. `with_context` reads the document in
         any scope.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         found = disagreements(context, claims_of(self._reading.declarations()))
         if len(found.conflicts) != 0:
             raise ScopeConflictError(
@@ -822,7 +846,7 @@ class ZarrV3ArrayMetadata(Keyed):
         are not JSON, or the document is not valid. Raises `TypeError` for
         a scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
@@ -897,7 +921,7 @@ def read_array_metadata_v3(
     spec's declarations), iterate over the reading's `declarations()`. A value that
     is not an object has no declarations.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     reading, fields = read_array_v3(value, context)
     if fields is None:
         return reading

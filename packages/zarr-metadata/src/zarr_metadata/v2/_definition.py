@@ -153,7 +153,9 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
     """
 
     label: ClassVar[str] = "v2 data type"
+    """The name of the kind in error messages, "v2 data type"."""
     declaration_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeDeclaration,)
+    """The declaration alias that annotates a configuration field holding a v2 dtype, `ZarrV2DataTypeDeclaration`. The type of each struct record is one."""
 
     def _refusal(self) -> str | None:
         if parse_typestr(self.name) is not None:
@@ -262,6 +264,7 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
     """
 
     label: ClassVar[str] = "v2 codec"
+    """The name of the kind in error messages, "v2 codec"."""
 
     @classmethod
     def _name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:

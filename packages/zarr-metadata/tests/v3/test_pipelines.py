@@ -27,7 +27,7 @@ from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
@@ -64,8 +64,8 @@ ACME_SHUFFLE = CodecDefinition(
 )
 """An array -> array codec that does not declare its output chunk."""
 
-CONTEXT = CORE_AND_EXTENSIONS.update(
-    codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_TILE, ACME_SHUFFLE]
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(
+    codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_TILE, ACME_SHUFFLE]
 )
 
 UINT8 = resolve("uint8", DataTypeDefinition, CONTEXT)[0]
@@ -187,7 +187,7 @@ def _lengths(*axes: set[int]) -> tuple[frozenset[int], ...]:
             CHUNK,
             [CHUNK, Chunk(), Chunk(None, _of("float32").data_type)],
         ),
-        ([_scale(offset=1), "vlen-utf8"], Chunk(), [Chunk(), Chunk()]),
+        ([_scale(offset=1), "acme.vlen"], Chunk(), [Chunk(), Chunk()]),
         # Where the specs disagree or say nothing, a data type is not checked.
         # The numpy time types say they accept any codec of 64-bit integers,
         # and scale_offset does not say whether it accepts complex numbers.
@@ -330,7 +330,7 @@ def test_error_an_arithmetic_codec_handed_values_that_are_no_numbers(
 ) -> None:
     # The codec comes before an array -> bytes codec that nothing in scope
     # claims, which is not checked.
-    assert _problems([codec, "vlen-utf8"], _of(data_type)) == [((0,), "invalid_value")]
+    assert _problems([codec, "acme.vlen"], _of(data_type)) == [((0,), "invalid_value")]
 
 
 def test_error_a_codec_handed_on_what_another_could_not_take_is_judged_too() -> None:
@@ -343,7 +343,7 @@ def test_error_a_codec_handed_on_what_another_could_not_take_is_judged_too() -> 
 
 
 def test_error_a_cast_handed_complex_numbers() -> None:
-    assert _problems([_cast("float32"), "vlen-utf8"], _of("complex64")) == [((0,), "invalid_value")]
+    assert _problems([_cast("float32"), "acme.vlen"], _of("complex64")) == [((0,), "invalid_value")]
 
 
 @pytest.mark.parametrize(

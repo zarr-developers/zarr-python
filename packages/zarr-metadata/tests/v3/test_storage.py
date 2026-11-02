@@ -18,7 +18,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
     StorageClass,
     storage_of,
@@ -76,7 +76,7 @@ DATETIME: JSONValue = {
 def test_every_data_type_says_how_its_values_are_stored(
     data_type: JSONValue, storage: StorageClass | None
 ) -> None:
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert storage_of(resolved) == storage
 
 
@@ -85,7 +85,9 @@ def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> Non
     resolved, _ = resolve(
         "acme.quiet",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), quiet]),
+        CORE_AND_EXTENSIONS_CONTEXT.update(
+            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), quiet]
+        ),
     )
     assert storage_of(resolved) is None
 
@@ -99,7 +101,9 @@ def test_error_a_storage_that_gives_something_else() -> None:
     resolved, _ = resolve(
         "acme.lying",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), lying]),
+        CORE_AND_EXTENSIONS_CONTEXT.update(
+            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), lying]
+        ),
     )
     with pytest.raises(TypeError, match="'acme.lying': its storage gives one of"):
         storage_of(resolved)
@@ -115,7 +119,9 @@ def test_error_a_storage_that_raises_says_whose_it_is() -> None:
     resolved, _ = resolve(
         "acme.raising",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.update(data_types=[*CORE_AND_EXTENSIONS.data_types.values(), raising]),
+        CORE_AND_EXTENSIONS_CONTEXT.update(
+            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), raising]
+        ),
     )
     with pytest.raises(KeyError) as raised:
         storage_of(resolved)

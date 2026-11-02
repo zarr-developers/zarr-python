@@ -25,6 +25,7 @@ class ZarrV2ZGroupJSON(TypedDict, closed=True):
     """
 
     zarr_format: Literal[2]
+    """The Zarr format version, `2`."""
 
 
 class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
@@ -46,7 +47,12 @@ class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
     """
 
     zarr_format: Literal[2]
+    """The Zarr format version, `2`."""
     attributes: NotRequired[Mapping[str, JSONValue]]
+    """User attributes from the sibling `.zattrs` file (not part of `.zgroup`).
+
+    See the class docstring for the rationale behind the merged representation.
+    """
 
 
 ZarrV2GroupMetadataStoreKey = Literal[".zgroup"]

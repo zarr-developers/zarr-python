@@ -35,6 +35,11 @@ class ZarrV2StructConfiguration(TypedDict, closed=True):
     """The records of a structured dtype. The document writes the records as the dtype itself."""
 
     fields: ReadOnly[tuple[ZarrV2StructRecord, ...]]
+    """The field records, in order.
+
+    Their names must be distinct, except `""`, which NumPy gives the padding
+    of an aligned struct. There may be no records.
+    """
 
 
 def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:

@@ -533,9 +533,13 @@ class Context(Protocol):
     """
 
     @property
-    def zarr_format(self) -> Literal[2, 3]: ...
+    def zarr_format(self) -> Literal[2, 3]:
+        """The Zarr format of the documents this scope reads."""
+        ...
 
-    def claimant(self, kind: type[D], name: str) -> D | None: ...
+    def claimant(self, kind: type[D], name: str) -> D | None:
+        """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -1084,7 +1088,7 @@ ResolvedDeclaration = TypeAliasType(
 """One declaration as a scope read it: accepted by the definition that claims its name, unclaimed, or refused."""
 
 
-# The three rebuild functions keep their `_field` names: a pickle looks them
+# The three rebuild functions keep their `_declaration` names: a pickle looks them
 # up by name, so renaming them would break existing pickles.
 def _accepted_field(
     json: JSONValue,
@@ -1396,7 +1400,7 @@ def resolve(
     else raises `TypeError`.
     """
     if not _is_scope(context):
-        msg = f"a declaration is read in a scope, such as CORE_AND_EXTENSIONS, got {described(context)}"
+        msg = f"a declaration is read in a scope, such as CORE_AND_EXTENSIONS_CONTEXT, got {described(context)}"
         raise TypeError(msg)
     asked = as_kind(kind)
     _check_format(asked, context)

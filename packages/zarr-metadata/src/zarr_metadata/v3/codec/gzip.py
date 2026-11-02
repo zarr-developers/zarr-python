@@ -33,14 +33,27 @@ class GzipCodecConfiguration(TypedDict, closed=True):
     """
 
     level: Annotated[int, Interval(ge=0, le=9)]
+    """The compression level, an integer from 0 to 9.
+
+    0 turns compression off; 1 is the fastest and compresses least, 9 the
+    slowest and compresses most.
+    """
 
 
 class GzipCodecObject(TypedDict, closed=True):
     """`gzip` codec metadata in object form."""
 
     name: GzipCodecName
+    """The codec's name, `"gzip"`."""
     configuration: GzipCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 GzipCodecMetadata = GzipCodecObject
