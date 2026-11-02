@@ -61,6 +61,7 @@ class DataTypeStrategy(DefinitionStrategy):
     """How to draw a data type's configurations, and the fill values an array of one takes."""
 
     kind: ClassVar[type[Definition[Any]]] = DataTypeDefinition
+    """The kind of definition it draws configurations of: a data type."""
 
     configurations: Configurations
     """Configurations its definition accepts."""
@@ -68,6 +69,7 @@ class DataTypeStrategy(DefinitionStrategy):
     """Fill values of the data type a configuration describes."""
 
     def unconstrained(self) -> Configurations:
+        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
         return self.configurations
 
 
@@ -76,6 +78,7 @@ class ChunkGridStrategy(DefinitionStrategy):
     """How to draw a chunk grid's configurations over an array of a shape."""
 
     kind: ClassVar[type[Definition[Any]]] = ChunkGridDefinition
+    """The kind of definition it draws configurations of: a chunk grid."""
 
     configurations: Callable[[tuple[int, ...] | None], Configurations]
     """Configurations of grids that fit an array of the shape.
@@ -85,6 +88,7 @@ class ChunkGridStrategy(DefinitionStrategy):
     """
 
     def unconstrained(self) -> Configurations:
+        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
         return self.configurations(None)
 
 
@@ -93,11 +97,13 @@ class ChunkKeyEncodingStrategy(DefinitionStrategy):
     """How to draw a chunk key encoding's configurations."""
 
     kind: ClassVar[type[Definition[Any]]] = ChunkKeyEncodingDefinition
+    """The kind of definition it draws configurations of: a chunk key encoding."""
 
     configurations: Configurations
     """Configurations its definition accepts."""
 
     def unconstrained(self) -> Configurations:
+        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
         return self.configurations
 
 
@@ -110,6 +116,7 @@ class CodecStrategy(DefinitionStrategy):
     """
 
     kind: ClassVar[type[Definition[Any]]] = CodecDefinition
+    """The kind of definition it draws configurations of: a codec."""
 
     configurations: Callable[[Chunk], Configurations | None]
     """Configurations of the codec handed the chunk; None when no configuration takes it.
@@ -124,6 +131,7 @@ class CodecStrategy(DefinitionStrategy):
             raise ValueError(msg)
 
     def unconstrained(self) -> Configurations:
+        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
         return cast("Configurations", self.configurations(NOTHING_KNOWN))
 
 

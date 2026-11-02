@@ -15,6 +15,7 @@ class ZarrV2VLenArrayParameters(TypedDict, closed=True):
     """`numcodecs.VLenArray(dtype)`: the element type of each array."""
 
     dtype: ReadOnly[str]
+    """The dtype of the elements of each variable-length array."""
 
 
 def _vlen_array_canonical(configuration: ZarrV2VLenArrayParameters) -> ZarrV2VLenArrayParameters:

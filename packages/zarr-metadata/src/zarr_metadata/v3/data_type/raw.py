@@ -62,6 +62,10 @@ class RawBytesConfiguration(TypedDict, closed=True):
     """
 
     bits: int
+    """The size in bits that the name writes, `16` for `r16`.
+
+    A positive multiple of 8.
+    """
 
 
 def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:

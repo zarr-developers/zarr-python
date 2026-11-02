@@ -32,24 +32,25 @@ ZarrPythonRawBytesDataTypeName = Literal["raw_bytes"]
 
 
 class ZarrPythonRawBytesConfiguration(TypedDict, closed=True):
-    """
-    Configuration for zarr-python's `raw_bytes` data type.
-
-    Attributes
-    ----------
-    length_bytes
-        The size in bytes of every value, at least 1.
-    """
+    """Configuration for zarr-python's `raw_bytes` data type."""
 
     length_bytes: ReadOnly[int]
+    """The size in bytes of every value, at least 1."""
 
 
 class ZarrPythonRawBytes(TypedDict, closed=True):
     """zarr-python's `raw_bytes` data type metadata."""
 
     name: ZarrPythonRawBytesDataTypeName
+    """The data type's name, `"raw_bytes"`."""
     configuration: ZarrPythonRawBytesConfiguration
+    """The data type's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this data type must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 ZarrPythonRawBytesFillValue = Base64Bytes

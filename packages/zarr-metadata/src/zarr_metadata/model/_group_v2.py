@@ -248,6 +248,10 @@ class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
     """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes, which a store holds in `.zattrs`.
+
+    `UNSET` removes it, so the group has no `.zattrs`.
+    """
 
 
 class ZarrV2GroupMetadata(Keyed):
@@ -275,7 +279,12 @@ class ZarrV2GroupMetadata(Keyed):
     _shown: Mapping[str, JSONValue]
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `2`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
+    """The kind of node, `"group"`. A class constant: comparing it narrows a union of models.
+
+    A v2 document does not write this member: its `.zgroup` key says the node is a group.
+    """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2_CONTEXT)
@@ -485,6 +494,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     _metadata: dict[str, ZarrV2NodeMetadata]
 
     zarr_consolidated_format: Final = 1
+    """The version of the consolidated metadata format, `1`."""
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         context = scoped(context, CORE_V2_CONTEXT)

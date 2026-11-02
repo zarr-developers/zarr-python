@@ -36,15 +36,33 @@ class ZstdCodecConfiguration(TypedDict, closed=True):
     """
 
     level: Annotated[int, Interval(ge=ZSTD_MIN_LEVEL, le=ZSTD_MAX_LEVEL)]
+    """The compression level, an integer from `ZSTD_MIN_LEVEL` (-131072) to `ZSTD_MAX_LEVEL` (22).
+
+    0 means zstd's default level; otherwise a higher level compresses more,
+    more slowly. It has no effect on decoding.
+    """
     checksum: NotRequired[bool]
+    """Whether a checksum is stored when writing and verified when reading.
+
+    Absent means `false`; the registry says to omit it rather than write
+    `false`.
+    """
 
 
 class ZstdCodecObject(TypedDict, closed=True):
     """`zstd` codec metadata in object form."""
 
     name: ZstdCodecName
+    """The codec's name, `"zstd"`."""
     configuration: ZstdCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 ZstdCodecMetadata = ZstdCodecObject

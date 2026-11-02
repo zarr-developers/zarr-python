@@ -262,6 +262,7 @@ from zarr_metadata.v3.group import (
 )
 
 __version__ = version("zarr-metadata")
+"""The installed version of the `zarr-metadata` distribution."""
 
 
 __all__ = [
