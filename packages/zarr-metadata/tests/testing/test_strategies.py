@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3 import ZarrV3DeclarationJSON
 
-_HOLDING_FIELDS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DATA_TYPE})
+_HOLDING_DECLARATIONS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DATA_TYPE})
 """The definitions whose configurations hold other declarations, which have no strategy yet."""
 
 _IN_SCOPE = frozenset(
@@ -113,14 +113,14 @@ def _read(definition: Definition[Any], declaration: object) -> Any:  # noqa: ANN
 
 def test_every_definition_has_a_strategy() -> None:
     """Each definition in scope has a strategy, but those that hold other declarations; and none is out of scope."""
-    assert _IN_SCOPE - frozenset(DEFAULT_STRATEGIES) == _HOLDING_FIELDS
+    assert _IN_SCOPE - frozenset(DEFAULT_STRATEGIES) == _HOLDING_DECLARATIONS
     assert frozenset(DEFAULT_STRATEGIES) <= _IN_SCOPE
 
 
 @pytest.mark.parametrize("spellings", get_args(Spellings))
 @pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
 @given(data=st.data())
-def test_fields_read(
+def test_declarations_read(
     definition: Definition[Any], spellings: Spellings, data: st.DataObject
 ) -> None:
     """A drawn declaration reads by its definition, through JSON too; a canonical one is its own simplest spelling."""
@@ -221,7 +221,7 @@ def _configuration_targets(
 def _declaration_forms(definition: Definition[Any]) -> list[DeclarationForm]:
     """The envelopes the spec allows a declaration of `definition` to be written in."""
     if definition in _CORE_DATA_TYPES:
-        return []  # only ever bare, which `test_fields_read` asserts
+        return []  # only ever bare, which `test_declarations_read` asserts
     if definition.requires_configuration:
         return ["configured", "must_understand"]
     return ["bare", "object", "configured", "must_understand"]

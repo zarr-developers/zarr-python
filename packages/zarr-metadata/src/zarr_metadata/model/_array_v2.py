@@ -119,7 +119,7 @@ def _is_canonical_dtype_v2(value: object) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class ArrayMembersV2:
-    """The fields that hold no declaration in a v2 array document that a read found no problems with, refined as the model holds them."""
+    """The members that hold no declaration in a v2 array document that a read found no problems with, refined as the model holds them."""
 
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
@@ -638,7 +638,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def _plain_key(
         self, dtype: AcceptedDeclaration[ZarrV2DataTypeDefinition[Any]] | UnclaimedDeclaration
     ) -> tuple[object, ...]:
-        """The fields that hold no declaration, which `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
+        """The members that hold no declaration, which `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
         members = self._members
         return (
             members.shape,

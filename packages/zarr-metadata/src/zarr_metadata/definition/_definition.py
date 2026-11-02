@@ -1088,7 +1088,7 @@ ResolvedDeclaration = TypeAliasType(
 """One declaration as a scope read it: accepted by the definition that claims its name, unclaimed, or refused."""
 
 
-# The three rebuild functions keep their `_declaration` names: a pickle looks them
+# The three rebuild functions keep their `_field` names: a pickle looks them
 # up by name, so renaming them would break existing pickles.
 def _accepted_field(
     json: JSONValue,

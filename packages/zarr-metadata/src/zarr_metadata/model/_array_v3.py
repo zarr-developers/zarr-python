@@ -211,7 +211,7 @@ def _array_reading(values: dict[str, Any]) -> ZarrV3ArrayMetadataReading:
 
 @dataclass(frozen=True, slots=True)
 class ArrayMembersV3:
-    """The fields that hold no declaration in a v3 array document that a read found no problems with, refined as the model holds them."""
+    """The members that hold no declaration in a v3 array document that a read found no problems with, refined as the model holds them."""
 
     shape: tuple[int, ...]
     fill_value: JSONValue
@@ -605,7 +605,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def _plain_key(
         self, data_type: AcceptedDeclaration[DataTypeDefinition[Any]] | UnclaimedDeclaration
     ) -> tuple[object, ...]:
-        """The fields that hold no declaration, which `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
+        """The members that hold no declaration, which `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
         members = self._members
         return (
             members.shape,
