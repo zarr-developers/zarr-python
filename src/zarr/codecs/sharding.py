@@ -653,28 +653,6 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
-        self._validate_inner_codecs(dtype)
-
-    def _validate_inner_codecs(self, dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
-        """Validate the codecs that encode each inner chunk, as array metadata validates
-        its codecs: each against the chunk the codecs before it leave it, a regular
-        grid of one inner chunk. A sharding codec among them is thereby checked against
-        the chunk it splits, which `validate` of the outer codec alone does not see.
-        """
-        spec = ArraySpec(
-            shape=self.chunk_shape,
-            dtype=dtype,
-            fill_value=dtype.default_scalar(),
-            config=ArrayConfig.from_dict({}),
-            prototype=default_buffer_prototype(),
-        )
-        for codec in self.codecs:
-            codec.validate(
-                shape=spec.shape,
-                dtype=spec.dtype,
-                chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
-            )
-            spec = codec.resolve_metadata(spec)
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.
