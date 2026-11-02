@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from zarr_metadata._typed_json import Loc
 
 ZarrV2DataTypeDeclaration = TypeAliasType("ZarrV2DataTypeDeclaration", ZarrV2DataTypeMetadata)
-"""A declaration of a v2 dtype: the value of a document's `dtype` field, or the type of a struct record. It is read in the same scope as its container."""
+"""A declaration of a v2 dtype: the value of a document's `dtype` member, or the type of a struct record. It is read in the same scope as its container."""
 
 STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""

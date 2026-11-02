@@ -623,7 +623,7 @@ class Chunk:
     lengths: Lengths | None = None
     """For each axis, the chunk lengths along it; None when even the number of axes is unknown."""
     data_type: ResolvedDeclaration[DataTypeDefinition[Any]] | None = None
-    """The data type declaration of the values, as a scope read it. None when no field declares the data type: a document with no data type (its reading holds `UNSET`) passes the pipeline a chunk of unknown type."""
+    """The data type declaration of the values, as a scope read it. None when no member declares the data type: a document with no data type (its reading holds `UNSET`) passes the pipeline a chunk of unknown type."""
 
     def __post_init__(self) -> None:
         lengths = cast("object", self.lengths)

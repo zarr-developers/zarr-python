@@ -757,7 +757,7 @@ class ZarrV3ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every field that holds no declaration must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(

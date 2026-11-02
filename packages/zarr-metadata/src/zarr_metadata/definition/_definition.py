@@ -712,7 +712,7 @@ def _as_written(declaration: _NestedDeclaration) -> JSONValue:
 
 
 def _envelope_keys_only(declaration: _NestedDeclaration) -> JSONValue:
-    """A nested declaration restored as it was written, except for the fields its envelope TypedDict does not declare. Those are reported and left out, in the same way the checker leaves out a key that a closed TypedDict does not declare."""
+    """A nested declaration restored as it was written, except for the members its envelope TypedDict does not declare. Those are reported and left out, in the same way the checker leaves out a key that a closed TypedDict does not declare."""
     if not isinstance(declaration.json, Mapping):
         return declaration.json
     envelope = cast("Mapping[str, JSONValue]", declaration.json)
@@ -880,7 +880,7 @@ def _nothing_nested() -> Nested:
 class AcceptedDeclaration(Generic[D]):
     """A declaration that a definition in scope read: the name it is written with, the definition, and the configuration the definition allowed.
 
-    A problem with the envelope (an extra field, a `must_understand` of
+    A problem with the envelope (an extra envelope member, a `must_understand` of
     `false`) is reported with the declaration, and the declaration is still read. The
     same applies to a problem in a nested declaration, which belongs to that
     nested declaration, as `nested` shows. Two declarations are equal when they read
@@ -1383,7 +1383,7 @@ def resolve(
     """Read `data` (one declaration) as a `kind` in `context`. Return the result of the reading, and every problem.
 
     This runs all three steps for one declaration. `data` is refined to JSON and
-    its envelope is checked. An extra field, a `configuration` that is not
+    its envelope is checked. An extra envelope member, a `configuration` that is not
     an object, and a `must_understand` that is not a boolean or is `false`
     are each a problem. The name is mapped to a definition in `context`.
     The configuration is checked against its TypedDict and by its rules.

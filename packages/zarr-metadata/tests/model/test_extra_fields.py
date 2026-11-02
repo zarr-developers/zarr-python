@@ -216,7 +216,7 @@ def test_error_a_non_finite_number_in_an_extra_field_that_holds_no_user_data() -
         (GroupExtraFieldDefinition, "node_type"),
     ],
 )
-def test_error_an_extra_field_named_after_a_field_the_spec_defines(kind: Any, name: str) -> None:  # noqa: ANN401 - either extra-field kind
+def test_error_an_extra_field_named_after_a_member_the_spec_defines(kind: Any, name: str) -> None:  # noqa: ANN401 - either extra-field kind
     """A member the spec defines is never an extra field, so a definition named after one would never read anything: it is refused when it is built, as a data type named like raw bits is."""
     with pytest.raises(TypeError, match="the spec defines"):
         kind(name=name, configuration=AcmeTilingConfiguration)
@@ -230,7 +230,7 @@ def test_error_an_extra_field_named_after_a_field_the_spec_defines(kind: Any, na
     ],
     ids=["array-shape", "group-node-type"],
 )
-def test_error_resolve_a_field_the_spec_defines_as_an_extra_field(
+def test_error_resolve_a_member_the_spec_defines_as_an_extra_field(
     kind: Any,  # noqa: ANN401 - either extra-field kind
     member: dict[str, Any],
 ) -> None:

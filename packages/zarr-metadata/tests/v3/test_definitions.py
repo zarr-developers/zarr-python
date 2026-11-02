@@ -972,7 +972,7 @@ def test_error_a_rule_reads_the_declarations_the_configuration_holds_as_the_scop
     assert ACME_STACK.read_configuration(declaration["configuration"])[1] == ()
 
 
-def test_error_a_nested_field_is_not_a_declaration() -> None:
+def test_error_a_nested_member_is_not_a_declaration() -> None:
     resolved, found = resolve(
         {"name": "acme.stack", "configuration": {"codecs": [5]}}, CodecDefinition, CONTEXT
     )
@@ -1113,7 +1113,7 @@ def test_error_check_judges_a_nested_envelope() -> None:
     assert [found.loc for found in problems] == [("codecs", 0, "configuration")]
 
 
-def test_read_configuration_leaves_out_a_field_a_nested_declaration_s_envelope_does_not_declare() -> (
+def test_read_configuration_leaves_out_a_member_a_nested_declaration_s_envelope_does_not_declare() -> (
     None
 ):
     # The member is reported as an unknown key and left out, as the checker
@@ -1381,7 +1381,7 @@ def test_error_a_configuration_says_what_its_other_keys_are() -> None:
         CodecDefinition(name="acme.loose", configuration=Loose, kind="bytes_bytes", size="dynamic")
 
 
-def test_error_a_field_typed_as_plain_declaration_json_is_refused() -> None:
+def test_error_a_member_typed_as_plain_declaration_json_is_refused() -> None:
     # It would be checked only as JSON, and its name would never be matched to a definition.
     with pytest.raises(TypeError, match="annotate it with the declaration alias of its kind"):
         CodecDefinition(

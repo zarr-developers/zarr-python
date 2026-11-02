@@ -261,7 +261,7 @@ def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
     [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
     ids=["v3-array", "v3-group", "v2-array"],
 )
-def test_a_field_named_extra_fields_is_set_and_removed_through_extra_fields(
+def test_a_member_named_extra_fields_is_set_and_removed_through_extra_fields(
     kind: Any,  # noqa: ANN401 - a model class
 ) -> None:
     """A document may hold a member that is itself named `extra_fields`. The spec does not define it, so `update` and `create_default` take it in the `extra_fields` mapping, as any other such member."""
@@ -275,7 +275,7 @@ def test_a_field_named_extra_fields_is_set_and_removed_through_extra_fields(
     [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
     ids=["v3-array", "v3-group", "v2-array"],
 )
-def test_fields_the_spec_does_not_define_are_set_and_removed_through_extra_fields(
+def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fields(
     kind: Any,  # noqa: ANN401 - a model class
 ) -> None:
     """`create_default` and `update` take the members the spec does not define in `extra_fields`. Each member given there is set, each given as `UNSET` is removed, and the other members are kept."""
@@ -310,7 +310,7 @@ def test_error_a_member_update_does_not_take_is_refused(kind: Any) -> None:  # n
     ],
     ids=["v3-array", "v3-group", "v2-array"],
 )
-def test_error_extra_fields_refuses_a_field_the_spec_defines(kind: Any, member: str) -> None:  # noqa: ANN401 - a model class
+def test_error_extra_fields_refuses_a_member_the_spec_defines(kind: Any, member: str) -> None:  # noqa: ANN401 - a model class
     """`extra_fields` holds only the members the spec does not define. A member the spec defines is given by its own name, so giving it in `extra_fields` is a `TypeError`."""
     with pytest.raises(TypeError, match=repr(member)):
         kind.create_default(extra_fields={member: 1})
@@ -347,7 +347,7 @@ def test_error_extra_fields_takes_values_as_json() -> None:
         ARRAY.update(extra_fields={"bytes": ARRAY.codecs[0]})  # pyright: ignore[reportArgumentType]
 
 
-def test_error_extra_fields_refuses_a_field_update_takes_by_name() -> None:
+def test_error_extra_fields_refuses_a_member_update_takes_by_name() -> None:
     """A member that `update` takes by name, such as a group's `consolidated_metadata`, is refused in `extra_fields`, so one member is never given twice, and a listing given by name is never replaced unchecked."""
     with pytest.raises(TypeError, match="give it by name"):
         GROUP.update(extra_fields={"consolidated_metadata": UNSET})

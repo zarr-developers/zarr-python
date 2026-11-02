@@ -782,7 +782,7 @@ class ZarrV2ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every field that holds no declaration must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every other member must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if (self.compressor is None) != (other.compressor is None):

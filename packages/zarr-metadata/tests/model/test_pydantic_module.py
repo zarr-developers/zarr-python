@@ -221,7 +221,7 @@ def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> N
     _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadataField, doc)
 
 
-def test_declaration_schema_rejects_unknown_fields() -> None:
+def test_declaration_schema_rejects_unknown_members() -> None:
     """Named-configuration envelopes are closed in both runtime and schema validation."""
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
     doc["codecs"] = [{"name": "bytes", "unexpected": 1}]

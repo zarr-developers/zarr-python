@@ -1011,7 +1011,7 @@ def test_declaration_must_understand_must_be_boolean(value: object) -> None:
     ]
 
 
-def test_declaration_rejects_unknown_envelope_field() -> None:
+def test_declaration_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
     _, problems = resolve(
         {"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
@@ -1959,7 +1959,7 @@ def test_a_model_is_written_as_deep_as_it_is_read() -> None:
     assert copy.deepcopy(model) == model
 
 
-def test_a_declaration_s_configuration_field_is_counted_from_the_declaration_s_root() -> None:
+def test_a_declaration_s_configuration_member_is_counted_from_the_declaration_s_root() -> None:
     # `resolve` reads a declaration on its own, from the declaration's root. A member
     # of its configuration is two levels down, and the cap counts from the
     # root, not from the member.
