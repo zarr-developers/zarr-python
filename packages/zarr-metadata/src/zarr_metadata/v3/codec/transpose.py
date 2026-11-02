@@ -9,8 +9,12 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import Chunk, CodecDefinition, Nested
+from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import (
+    Chunk,
+    CodecDefinition,
+)
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -51,16 +55,16 @@ form is not permitted by the spec for this codec.
 def _rules(
     configuration: TransposeCodecConfiguration, nested: Nested
 ) -> Iterator[ValidationProblem]:
-    """`order` permutes its own axes.
+    """Check that `order` is a permutation of its own indices.
 
-    Whether it permutes the axes of the chunk the codec is handed is a
-    chunk rule.
+    A chunk rule checks whether `order` matches the axes of the input
+    chunk.
     """
     order = configuration["order"]
     if sorted(order) != list(range(len(order))):
         yield ValidationProblem(
             ("order",),
-            f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
+            f"expected a permutation of 0..{len(order) - 1}, got {shown(order)}",
             "invalid_value",
         )
 
@@ -68,7 +72,7 @@ def _rules(
 def _chunk_rules(
     configuration: TransposeCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Iterator[ValidationProblem]:
-    """`order` has an entry for each axis of the chunk the codec is handed.
+    """Check that `order` has one entry for each axis of the input chunk.
 
     "a permutation of 0, 1, ..., n-1, where n is the number of dimensions
     in the decoded chunk representation provided as input to this codec"
@@ -85,12 +89,13 @@ def _chunk_rules(
 
 
 def _transition(configuration: TransposeCodecConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
-    """The chunk's axes in `order`, its data type the same.
+    """Return the chunk with its axes reordered by `order`. The data type does not change.
 
-    "B_shape[i] = A_shape[order[i]]", where A is the chunk the codec is
-    handed and B the one it hands on, of "the same data type as A"
+    "B_shape[i] = A_shape[order[i]]", where A is the input chunk and B is
+    the output chunk, with "the same data type as A"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/transpose/index.rst#L73-L79).
-    An order of another number of axes leaves the lengths unknown.
+    If `order` has a different number of axes than the chunk, the output
+    lengths are unknown.
     """
     lengths = chunk.lengths
     order = configuration["order"]

@@ -1,28 +1,48 @@
-"""Private input types used only to generate accurate Pydantic JSON schemas."""
+"""Private input types used only to generate accurate Pydantic JSON schemas.
+
+These repeat the document TypedDicts in a stricter form: extension names
+match the spec's pattern, `must_understand` is `true` at an extension
+point, and `codecs` is not empty. They exist because pydantic builds a
+schema from Python types and cannot embed a JSON Schema that has its own
+`$defs`, such as the ones `zarr_metadata.json_schema` writes; the v3
+document schemas are recursive, so they cannot be inlined either.
+`test_the_pydantic_schema_agrees_with_the_package_schema` checks that the
+two schemas accept the same documents.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping  # noqa: TC003  # resolved by Pydantic at runtime
+import re
+from collections.abc import Mapping  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
 from pydantic import Field
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2.array import (  # noqa: TC001  # resolved by Pydantic at runtime
-    ZarrV2DataTypeMetadata,
-)
+from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v2.codec import (  # resolved by Pydantic at runtime
     ZarrV2CodecMetadata,
 )
+from zarr_metadata.v2.data_type import (  # resolved by Pydantic at runtime
+    ZarrV2DataTypeMetadata,
+)
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
+ExtensionName = Annotated[str, Field(pattern=re.compile(EXTENSION_NAME_SCHEMA_PATTERN))]
+"""An extension name as the spec defines it: the pattern `well_named` accepts. With it, the schema pydantic generates rejects the same names the reader rejects.
+
+The pattern is compiled so that pydantic matches it with Python's `re`.
+The pattern ends in a look-ahead, which `re` supports and pydantic's own
+regex engine does not. pydantic writes the pattern into the schema
+unchanged.
+"""
 
 
 class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """Closed v3 named configuration read on its own, outside a document, where `must_understand` may be `false`."""
 
-    name: str
+    name: ExtensionName
     configuration: NotRequired[Mapping[str, JSONValue]]
     must_understand: NotRequired[bool]
 
@@ -30,13 +50,13 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
 class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
     """Closed named configuration at an extension point of a document, where understanding is mandatory."""
 
-    name: str
+    name: ExtensionName
     configuration: NotRequired[Mapping[str, JSONValue]]
     must_understand: NotRequired[Literal[True]]
 
 
-ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
-ZarrV3MandatoryMetadataFieldJSON = str | ZarrV3MandatoryNamedConfigJSON
+ZarrV3MetadataFieldJSON = ExtensionName | ZarrV3NamedConfigJSON
+ZarrV3MandatoryMetadataFieldJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
 ZarrV3CodecPipelineJSON = Annotated[
     tuple[ZarrV3MandatoryMetadataFieldJSON, ...], Field(min_length=1)
 ]
@@ -59,8 +79,16 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
+class ZarrV3ConsolidatedMetadataEnvelopeJSON(TypedDict, closed=True):
+    """Schema input for a group's consolidated-metadata envelope, whose entries a group does not read."""
+
+    kind: Literal["inline"]
+    must_understand: Literal[False]
+    metadata: Mapping[str, JSONValue]
+
+
 class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
-    """Schema input for the closed inline consolidated-metadata envelope."""
+    """Schema input for the closed inline consolidated-metadata envelope, with each entry read."""
 
     kind: Literal["inline"]
     must_understand: Literal[False]
@@ -73,7 +101,7 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=JSONValue):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON | None]
+    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataEnvelopeJSON]
 
 
 class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
@@ -116,6 +144,7 @@ __all__ = [
     "ZarrV2ConsolidatedMetadataJSON",
     "ZarrV2GroupMetadataJSON",
     "ZarrV3ArrayMetadataJSON",
+    "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3MetadataFieldJSON",

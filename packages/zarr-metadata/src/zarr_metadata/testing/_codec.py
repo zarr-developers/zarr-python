@@ -1,0 +1,194 @@
+"""Strategies for each codec this package defines that holds no other field.
+
+A codec handed an array draws what fits the chunk: a `bytes` codec an
+`endian` for a type whose values take several bytes, a `transpose` an
+`order` with an entry for each axis. Handed `Chunk()`, nothing is known
+of the chunk, and what is drawn is what the codec's rules accept.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Final
+
+from hypothesis import strategies as st
+
+from zarr_metadata.definition._definition import AcceptedField, EmptyConfiguration
+from zarr_metadata.testing._data_type import (
+    COMPLEX_WIDTHS,
+    FLOAT_WIDTHS,
+    INTEGER_RANGES,
+    FloatWidth,
+    finite_floats,
+    float_spellings,
+)
+from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, MAX_RANK, CodecStrategy
+from zarr_metadata.v3._definition import Chunk, storage_of
+from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
+from zarr_metadata.v3.codec.blosc import BLOSC_CNAME, BLOSC_CODEC, BLOSC_NO_SHUFFLE, BLOSC_SHUFFLE
+from zarr_metadata.v3.codec.bytes import BYTES_CODEC, ENDIANNESS
+from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
+from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
+from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC
+from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC
+from zarr_metadata.v3.codec.zstd import ZSTD_CODEC, ZSTD_MAX_LEVEL, ZSTD_MIN_LEVEL
+from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
+from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from zarr_metadata._common import JSONValue
+    from zarr_metadata.v3._definition import CodecDefinition
+
+_BLOSC_MAX_TYPESIZE: Final = 255
+"""The widest element c-blosc takes: `BLOSC_MAX_TYPESIZE`."""
+
+_BLOSC_MAX_BLOCKSIZE: Final = 2**31 - 1
+"""The largest block c-blosc takes, a signed 32-bit size; 0 lets it choose."""
+
+_ENDIAN: Final = st.sampled_from(ENDIANNESS)
+
+_NUMPY_TIMES: Final = frozenset({NUMPY_DATETIME64_DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE})
+"""The numpy time types, each stored as a signed 64-bit integer."""
+
+_NUMPY_TIME_RANGE: Final = (-(2**63) + 1, 2**63 - 1)
+"""The signed 64-bit integers but the least, which numpy reads as `NaT`: the finite numpy times."""
+
+
+def _bytes(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
+    """An `endian`, required for a data type whose values take several bytes; None for one whose values vary in size."""
+    storage = None if chunk.data_type is None else storage_of(chunk.data_type)
+    if storage == "variable_length":
+        return None
+    if storage == "multi_byte":
+        return st.fixed_dictionaries({"endian": _ENDIAN})
+    return st.fixed_dictionaries({}, optional={"endian": _ENDIAN})
+
+
+@st.composite
+def _blosc(draw: st.DrawFn) -> Mapping[str, JSONValue]:
+    """A compressor, a level, a shuffle and a block size; and a `typesize`, which only `noshuffle` may leave out.
+
+    Under `noshuffle` the spec says `typesize` "is ignored", so it is
+    drawn there too, a spelling that is not the simplest.
+    """
+    shuffle = draw(st.sampled_from(BLOSC_SHUFFLE))
+    typesize = st.integers(1, _BLOSC_MAX_TYPESIZE)
+    required: dict[str, st.SearchStrategy[JSONValue]] = {
+        "cname": st.sampled_from(BLOSC_CNAME),
+        "clevel": st.integers(0, 9),
+        "shuffle": st.just(shuffle),
+        "blocksize": st.integers(0, _BLOSC_MAX_BLOCKSIZE),
+    }
+    if shuffle == BLOSC_NO_SHUFFLE:
+        return draw(st.fixed_dictionaries(required, optional={"typesize": typesize}))
+    return draw(st.fixed_dictionaries({**required, "typesize": typesize}))
+
+
+def _order(rank: int) -> st.SearchStrategy[Mapping[str, JSONValue]]:
+    return st.permutations(range(rank)).map(lambda order: {"order": tuple(order)})
+
+
+def _transpose(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]]:
+    """A permutation of the chunk's axes; of some number of axes, when the chunk does not say."""
+    if chunk.rank is not None:
+        return _order(chunk.rank)
+    return st.integers(0, MAX_RANK).flatmap(_order)
+
+
+def _finite_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+    """A finite float of `width` bits, as a number or the hex string of its bits."""
+    return finite_floats(width).flatmap(lambda value: float_spellings(value, width))
+
+
+def _non_zero_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+    """A finite, non-zero float of `width` bits, as a number or the hex string of its bits."""
+    return (
+        finite_floats(width)
+        .filter(lambda value: value != 0)
+        .flatmap(lambda value: float_spellings(value, width))
+    )
+
+
+def _scale_offset(chunk: Chunk) -> st.SearchStrategy[Mapping[str, JSONValue]] | None:
+    """An `offset` and a `scale`, each a finite value of the data type the codec is handed, the scale not zero; None for a data type whose values are not numbers.
+
+    Each is a fill value of the chunk's data type
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43),
+    a float's as a number or the hex string of its bits, a complex
+    number's as a pair of them. Each is drawn finite, and the scale
+    non-zero, so that decoding never divides by zero; a scale small
+    enough that decoding overflows is still drawn. A numpy time is drawn
+    as the signed 64-bit integer it is stored as, never `NaT`, since it
+    "is compatible with any codec that supports arrays of signed 64-bit
+    integers"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
+    A data type this package does not define, whose values it cannot
+    draw, takes only the configuration with neither, the identity.
+    Handed a chunk whose data type is unknown, the values are small
+    non-negative integers, which every integer and float type holds.
+    """
+    data_type = chunk.data_type
+    definition = data_type.definition if isinstance(data_type, AcceptedField) else None
+    if definition is None:
+        offset: st.SearchStrategy[JSONValue] = st.integers(0, 127)
+        scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)
+    elif definition.name in NOT_NUMBERS:
+        return None
+    elif definition in INTEGER_RANGES or definition in _NUMPY_TIMES:
+        low, high = INTEGER_RANGES.get(definition, _NUMPY_TIME_RANGE)
+        offset = st.integers(low, high)
+        scale = st.integers(low, high).filter(lambda value: value != 0)
+    elif definition in FLOAT_WIDTHS:
+        offset = _finite_float_values(FLOAT_WIDTHS[definition])
+        scale = _non_zero_float_values(FLOAT_WIDTHS[definition])
+    elif definition in COMPLEX_WIDTHS:
+        width = COMPLEX_WIDTHS[definition]
+        offset = st.tuples(_finite_float_values(width), _finite_float_values(width))
+        # Non-zero in either part is a non-zero complex number.
+        scale = st.one_of(
+            st.tuples(_non_zero_float_values(width), _finite_float_values(width)),
+            st.tuples(_finite_float_values(width), _non_zero_float_values(width)),
+        )
+    else:
+        return EMPTY_CONFIGURATIONS
+    return st.fixed_dictionaries({}, optional={"offset": offset, "scale": scale})
+
+
+def _vlen(definition: CodecDefinition[Any]) -> CodecStrategy:
+    """A codec with nothing to configure that takes only some data types: none for a chunk of another, which its own chunk rules say."""
+    return CodecStrategy(
+        configurations=lambda chunk: (
+            None
+            if any(definition.chunk_rules(EmptyConfiguration(), {}, chunk))
+            else EMPTY_CONFIGURATIONS
+        )
+    )
+
+
+def _unchunked(configurations: st.SearchStrategy[Mapping[str, JSONValue]]) -> CodecStrategy:
+    """A codec whose configurations do not depend on the chunk it is handed."""
+    return CodecStrategy(configurations=lambda _chunk: configurations)
+
+
+CODEC_STRATEGIES: Final[Mapping[CodecDefinition[Any], CodecStrategy]] = {
+    BLOSC_CODEC: _unchunked(_blosc()),
+    BYTES_CODEC: CodecStrategy(configurations=_bytes),
+    CRC32C_CODEC: _unchunked(EMPTY_CONFIGURATIONS),
+    GZIP_CODEC: _unchunked(st.fixed_dictionaries({"level": st.integers(0, 9)})),
+    SCALE_OFFSET_CODEC: CodecStrategy(configurations=_scale_offset),
+    TRANSPOSE_CODEC: CodecStrategy(configurations=_transpose),
+    VLEN_BYTES_CODEC: _vlen(VLEN_BYTES_CODEC),
+    VLEN_UTF8_CODEC: _vlen(VLEN_UTF8_CODEC),
+    ZSTD_CODEC: _unchunked(
+        st.fixed_dictionaries(
+            {"level": st.integers(ZSTD_MIN_LEVEL, ZSTD_MAX_LEVEL)},
+            optional={"checksum": st.booleans()},
+        )
+    ),
+}
+"""A strategy for each codec that holds no other field."""
+
+__all__ = ["CODEC_STRATEGIES"]

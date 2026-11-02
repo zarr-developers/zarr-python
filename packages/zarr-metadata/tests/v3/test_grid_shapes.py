@@ -1,25 +1,33 @@
-"""Chunk grids, judged against the shape of the array they chunk.
+"""Chunk grids, checked against the shape of the array they chunk.
 
-Each grid's definition says what the spec disallows in a grid of its
-configuration over an array of a given shape, and the lengths its chunks
-take along each axis of one it fits; `chunk_grid_lengths` reads both of
-a grid field a scope read, and the v3 array validators judge a
-document's `chunk_grid` against its `shape`.
+Each grid's definition declares two things: what the spec disallows for
+a grid with its configuration over an array of a given shape, and, for a
+shape the grid fits, the lengths its chunks take along each axis.
+`chunk_grid_lengths` reports both for a grid field that a scope read. The
+v3 array validators check a document's `chunk_grid` against its `shape`.
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
-from zarr_metadata.v3.codec.crc32c import Empty
-from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
-    ChunkGridDefinition,
-    JSONValue,
-    chunk_grid_lengths,
-    resolve,
+from zarr_metadata.definition import EmptyConfiguration, resolve
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    read_array_metadata_v3,
 )
+from zarr_metadata.v3._definition import (
+    chunk_grid_lengths,
+)
+from zarr_metadata.v3.definition import (
+    CORE_AND_EXTENSIONS_CONTEXT,
+    ChunkGridDefinition,
+)
+
+if TYPE_CHECKING:
+    from zarr_metadata import JSONValue
 
 
 def _regular(*lengths: int) -> JSONValue:
@@ -31,10 +39,10 @@ def _rectilinear(*specs: JSONValue) -> JSONValue:
 
 
 def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str | int, ...], str]]:
-    resolved, found = resolve(grid, ChunkGridDefinition, CORE_AND_EXTENSIONS)
+    resolved, found = resolve(grid, ChunkGridDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
     lengths, problems = chunk_grid_lengths(resolved, shape)
-    # A grid that does not fit the shape says no lengths along any axis.
+    # A grid that does not fit the shape gives no lengths along any axis.
     assert lengths == (None,) * len(shape)
     return [(problem.loc, problem.kind) for problem in problems]
 
@@ -44,22 +52,22 @@ def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str |
     [
         (_regular(), (), ()),
         (_regular(4, 4), (10, 3), ({4}, {4})),
-        # A chunk longer than its dimension, and a chunk length of 0 for a
-        # dimension of length 0.
-        (_regular(8, 0), (3, 0), ({8}, {0})),
+        # A chunk longer than its dimension, and a chunk along a dimension of
+        # length 0.
+        (_regular(8, 1), (3, 0), ({8}, {1})),
         # A bare integer repeats until it covers its dimension.
         (_rectilinear(4), (10,), ({4},)),
         (_rectilinear([4, 4, 2]), (10,), ({4, 2},)),
-        # Overflowing the dimension is allowed, and the chunk past the edge
-        # counts.
+        # Chunks may extend past the end of the dimension, and the lengths
+        # include the chunk past the edge.
         (_rectilinear([4, 4, 4]), (10,), ({4},)),
         (_rectilinear([4, 4, 2, 7]), (10,), ({4, 2, 7},)),
         (_rectilinear([[4, 2], 2]), (10,), ({4, 2},)),
-        # Nothing to cover, and no chunk.
+        # A dimension of length 0 and no chunks.
         (_rectilinear([]), (0,), (set(),)),
         (_rectilinear(2, [3, 3]), (7, 6), ({2}, {3})),
-        # A grid nothing in scope claims, or one that is not read, is left
-        # unjudged, its lengths unknown along each axis of the array.
+        # A grid that nothing in scope claims, or one that is not read, is
+        # not checked, and its lengths are unknown along each axis.
         ({"name": "acme.grid", "configuration": {"x": 1}}, (3, 2), (None, None)),
         (_regular(-1), (3,), (None,)),
     ],
@@ -67,7 +75,7 @@ def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str |
 def test_every_chunk_grid_gives_the_lengths_of_its_chunks_over_a_shape_it_fits(
     grid: JSONValue, shape: tuple[int, ...], lengths: tuple[set[int] | None, ...]
 ) -> None:
-    resolved, _ = resolve(grid, ChunkGridDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(grid, ChunkGridDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     expected = tuple(None if axis is None else frozenset(axis) for axis in lengths)
     assert chunk_grid_lengths(resolved, shape) == (expected, ())
 
@@ -77,12 +85,6 @@ def test_every_chunk_grid_gives_the_lengths_of_its_chunks_over_a_shape_it_fits(
 )
 def test_error_a_regular_grid_of_another_rank(grid: JSONValue, shape: tuple[int, ...]) -> None:
     assert _problems(grid, shape) == [(("configuration", "chunk_shape"), "invalid_value")]
-
-
-def test_error_a_regular_chunk_length_of_0_for_a_dimension_that_is_not_empty() -> None:
-    assert _problems(_regular(4, 0), (4, 3)) == [
-        (("configuration", "chunk_shape", 1), "invalid_value")
-    ]
 
 
 @pytest.mark.parametrize(
@@ -100,28 +102,34 @@ def test_error_rectilinear_chunks_that_do_not_cover_their_dimension(spec: JSONVa
 
 
 def test_a_grid_that_says_nothing_of_the_shape_fits_every_one_its_lengths_unknown() -> None:
-    lenient = ChunkGridDefinition(name="acme.grid", configuration=Empty)
-    scope = CORE_AND_EXTENSIONS.extended_with(lenient)
-    resolved, _ = resolve("acme.grid", ChunkGridDefinition, scope)
+    lenient = ChunkGridDefinition(name="acme.grid", configuration=EmptyConfiguration)
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), lenient]
+    )
+    resolved, _ = resolve("acme.grid", ChunkGridDefinition, context)
     assert chunk_grid_lengths(resolved, (3, 4)) == ((None, None), ())
 
 
 def test_error_a_grid_whose_chunk_lengths_have_another_number_of_axes() -> None:
-    # A fault in the definition, not the field.
+    # This is a bug in the definition, not in the field, so it raises.
     flat = ChunkGridDefinition(
-        name="acme.grid", configuration=Empty, chunk_lengths=lambda c, n, s: (frozenset({1}),)
+        name="acme.grid",
+        configuration=EmptyConfiguration,
+        chunk_lengths=lambda c, n, s: (frozenset({1}),),
     )
-    scope = CORE_AND_EXTENSIONS.extended_with(flat)
-    resolved, _ = resolve("acme.grid", ChunkGridDefinition, scope)
+    context = CORE_AND_EXTENSIONS_CONTEXT.update(
+        chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), flat]
+    )
+    resolved, _ = resolve("acme.grid", ChunkGridDefinition, context)
     with pytest.raises(ValueError, match="'acme.grid': its chunk_lengths gave 1 axes"):
         chunk_grid_lengths(resolved, (3, 4))
 
 
 def test_error_an_array_document_s_chunk_grid_that_does_not_fit_its_shape() -> None:
-    # Located in the document's grid.
+    # The problem is located in the document's grid.
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["chunk_grid"] = _regular(4)
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("chunk_grid", "configuration", "chunk_shape"), "invalid_value")
     ]
 
@@ -130,7 +138,7 @@ def test_error_an_array_document_s_shape_that_is_not_read_leaves_its_grid_unjudg
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
     document["chunk_grid"] = _regular(4)
     document["shape"] = (4, -1)
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+    assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("shape",), "invalid_value")
     ]
 
@@ -145,13 +153,19 @@ def test_error_an_array_document_s_shape_that_is_not_read_leaves_its_grid_unjudg
 def test_error_a_grid_whose_chunk_lengths_give_something_else_or_raise(
     chunk_lengths: object, match: str
 ) -> None:
-    # A fault in the definition, and an error raised says whose.
+    # A bug in the definition raises, and a raised error names the definition.
     odd = ChunkGridDefinition(
         name="acme.grid",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         chunk_lengths=chunk_lengths,  # pyright: ignore[reportArgumentType]
     )
-    resolved, _ = resolve("acme.grid", ChunkGridDefinition, CORE_AND_EXTENSIONS.extended_with(odd))
+    resolved, _ = resolve(
+        "acme.grid",
+        ChunkGridDefinition,
+        CORE_AND_EXTENSIONS_CONTEXT.update(
+            chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), odd]
+        ),
+    )
     with pytest.raises((TypeError, KeyError), match=match) as raised:
         chunk_grid_lengths(resolved, (3, 4), ("chunk_grid",))
     if isinstance(raised.value, KeyError):

@@ -78,9 +78,6 @@ class TestInt16(BaseTestZDType):
 class TestInt32(BaseTestZDType):
     test_cls = Int32
     scalar_type = np.int32
-    # The behavior of some tests associated with this class variable are
-    # order-dependent -- np.dtype('i') correctly fails certain tests only if it's not
-    # in the last position of the tuple. I have no idea how this is possible!
     valid_dtype = (np.dtype("i"), np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -228,9 +225,6 @@ class TestUInt32(BaseTestZDType):
     # However, np.dtype('u') raises a TypeError.
     uint_dtype = (np.array([1], dtype=np.uint32) & 1).dtype
 
-    # The behavior of some tests associated with this class variable are
-    # order-dependent -- uint_dtype correctly fails certain tests only if it's not
-    # in the last position of the tuple. I have no idea how this is possible!
     valid_dtype = (uint_dtype, np.dtype(">u4"), np.dtype("<u4"))
     invalid_dtype = (
         np.dtype(np.int8),

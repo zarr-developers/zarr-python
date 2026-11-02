@@ -8,6 +8,14 @@ title: v3
 
 ::: zarr_metadata.v3.ZarrV3MetadataFieldJSON
 
+::: zarr_metadata.v3.ZarrV3NamedConfigJSON
+
+::: zarr_metadata.v3.ZarrV3ExtensionField
+
+::: zarr_metadata.v3.NodeName
+
+::: zarr_metadata.v3.NodePath
+
 ::: zarr_metadata.v3.array
 
 ::: zarr_metadata.v3.group

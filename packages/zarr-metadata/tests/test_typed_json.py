@@ -1,43 +1,82 @@
-"""The checker: parsers compiled from annotations for the shapes JSON takes.
+"""The checker: parsers compiled from annotations for the shapes that JSON values take.
 
-Tested on its own, with no metadata field in sight. A leaf stands in for
-whatever a caller adds -- the definition layer adds the shape of a member
-holding another metadata field -- and `no_leaf` adds nothing.
+These tests use the checker on its own, without any metadata field. A
+leaf stands in for whatever a caller adds (the definition layer adds the
+shape of a member that holds another metadata field), and `no_leaf` adds
+nothing.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import itertools
+import json
 import math
 import pkgutil
 import sys
 import textwrap
 import types
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Literal, NewType, NotRequired, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Final,
+    Generic,
+    Literal,
+    NewType,
+    NotRequired,
+    Required,
+    TypeVar,
+    cast,
+)
 
+import pydantic
 import pytest
-from typing_extensions import ReadOnly, TypeAliasType, TypedDict, is_typeddict
+from annotated_types import (
+    BaseMetadata,
+    Ge,
+    Gt,
+    Interval,
+    Le,
+    Len,
+    Lt,
+    MinLen,
+    MultipleOf,
+    Predicate,
+    Timezone,
+)
+from typing_extensions import Doc, ReadOnly, TypeAliasType, TypedDict, is_typeddict
 
+import zarr_metadata.definition
 import zarr_metadata.v2
 import zarr_metadata.v3
-from zarr_metadata._common import JSONValue
 from zarr_metadata._typed_json import (
-    Loc,
     Parsed,
     Parser,
+    Unread,
+    UnreadConstraintError,
     describe,
     no_leaf,
     parser,
     parser_for,
     shape_of,
     typeddict_keys,
+    unread_in,
 )
-from zarr_metadata.model import ZarrV2ArrayMetadata, ZarrV3ArrayMetadata
-from zarr_metadata.typed_json import check
-from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2DataTypeMetadata
+from zarr_metadata.model import (
+    ZarrV2ArrayMetadata,
+    ZarrV3ArrayMetadata,
+)
+from zarr_metadata.typed_json import (
+    JSONValue,
+    Loc,
+    check,
+)
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.data_type import ZarrV2DataTypeMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.data_type.float32 import Float32FillValue
 
 if TYPE_CHECKING:
     from _pytest.mark import ParameterSet
@@ -157,8 +196,8 @@ def _found(parsed: Parsed) -> list[tuple[Loc, str]]:
 def test_a_value_of_the_shape_reads_as_itself(
     annotation: object, value: object, parsed: object
 ) -> None:
-    # The shapes JSON takes and no others, each compiled once from its
-    # annotation; an array comes back as a tuple, the rest as it came.
+    # The shapes JSON values take, and no others, each compiled once from its
+    # annotation. An array is returned as a tuple; other values unchanged.
     assert _read(annotation, value) == (parsed, ())
 
 
@@ -171,7 +210,8 @@ def test_a_value_of_the_shape_reads_as_itself(
         (str, 1, (), "invalid_type"),
         (None, 0, (), "invalid_type"),
         (Literal["a"], "b", (), "invalid_value"),
-        (Literal[1], True, (), "invalid_value"),
+        (Literal[1], True, (), "invalid_type"),
+        (Literal["0.5"], 0.5, (), "invalid_type"),
         (tuple[int, ...], (1, "x"), (1,), "invalid_type"),
         (tuple[int, ...], 5, (), "invalid_type"),
         (int | str, 2.5, (), "invalid_type"),
@@ -184,6 +224,7 @@ def test_a_value_of_the_shape_reads_as_itself(
             "invalid_type",
         ),
         (Blosc | Gzip, {"name": "zstd", "configuration": {}}, ("name",), "invalid_value"),
+        (Blosc | Gzip, {"name": 5, "configuration": {}}, ("name",), "invalid_type"),
         (Blosc | Gzip, {"configuration": {}}, ("name",), "missing_key"),
         (Triple | Pair, {"a": 1, "b": "x"}, ("b",), "invalid_type"),
     ],
@@ -195,6 +236,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         "zero-is-not-null",
         "literal-other",
         "literal-bool-is-not-int",
+        "literal-of-another-type",
         "element",
         "not-a-sequence",
         "no-branch",
@@ -202,6 +244,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         "not-json",
         "a-tag-picks-the-branch-that-reports",
         "a-tag-no-branch-has",
+        "a-tag-of-another-type",
         "a-tag-missing",
         "untagged-the-closest-branch-reports",
     ],
@@ -261,9 +304,10 @@ def test_error_a_value_of_another_shape_is_located(
 def test_an_object_reads_as_what_its_typeddict_admits(
     annotation: object, value: object, parsed: dict[str, object], found: list[tuple[Loc, str]]
 ) -> None:
-    # A new dict of the keys the type admits, in the order they came: a
-    # closed TypedDict reports a key it does not declare and leaves it
-    # out, `extra_items` types every other key, an open one keeps them.
+    # The result is a new dict of the keys the type allows, in input order.
+    # A closed TypedDict reports a key it does not declare and leaves it
+    # out. `extra_items` gives the type of every other key. An open
+    # TypedDict keeps other keys.
     result = _read(annotation, value)
     assert result[0] == parsed
     assert list(cast_dict(result[0])) == list(parsed)
@@ -303,11 +347,11 @@ def _declared(
     monkeypatch: pytest.MonkeyPatch,
     typeddicts: str = "typing_extensions",
 ) -> types.ModuleType:
-    """The module `source` defines, written with or without `from __future__ import annotations`.
+    """The module defined by `source`, written with or without `from __future__ import annotations`.
 
-    Registered in `sys.modules`, because a string annotation is resolved
-    in the module its class was defined in. `typeddicts` is the module the
-    `TypedDict` it declares with comes from.
+    The module is registered in `sys.modules`, because a string annotation
+    is resolved in the module where its class was defined. `typeddicts` is
+    the module that provides the `TypedDict` used in the declaration.
     """
     name = f"tests._typeddicts_{next(_modules)}"
     module = types.ModuleType(name)
@@ -588,7 +632,7 @@ _DECLARATIONS = [
 
 
 def _under_both_typeddicts(declarations: list[ParameterSet]) -> list[ParameterSet]:
-    """Each declaration with `typing_extensions.TypedDict`, and with `typing.TypedDict` where it can say it."""
+    """Each declaration using `typing_extensions.TypedDict`, and also using `typing.TypedDict` where it can express the declaration."""
     both: list[ParameterSet] = []
     for declaration in declarations:
         source = cast("str", declaration.values[0])
@@ -613,12 +657,12 @@ def test_typeddict_keys_follow_the_typing_spec(
     postponed: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Written as strings, as `from __future__ import annotations` writes
-    # every annotation, a qualifier is invisible to `__required_keys__`,
-    # as it is to `typing.TypedDict` on 3.11 under `ReadOnly` or
-    # `Annotated`; read off the evaluated annotations it is not, so every
-    # spelling of a declaration reads alike. Openness is inherited, which
-    # the runtime does not record.
+    # When annotations are strings, as `from __future__ import annotations`
+    # writes every annotation, `__required_keys__` does not see a qualifier.
+    # Neither does `typing.TypedDict` on 3.11 under `ReadOnly` or
+    # `Annotated`. The evaluated annotations do show it, so every spelling
+    # of a declaration is read the same way. Openness is inherited, but the
+    # runtime does not record that.
     module = _declared(source, postponed=postponed, monkeypatch=monkeypatch, typeddicts=typeddicts)
     keys = typeddict_keys(module.T)
     assert set(keys.members) == members
@@ -645,8 +689,8 @@ def test_a_key_reads_where_its_class_was_written(
     base_postponed: bool, child_postponed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The subclass's module never imports `_Hidden`, and the runtime ties a
-    # string to its module only at the top of an annotation; each key still
-    # reads in the module of the class that declared it.
+    # string to its module only at the top level of an annotation. Each key
+    # is still resolved in the module of the class that declared it.
     base = _declared(_WRITTEN_WHERE, postponed=base_postponed, monkeypatch=monkeypatch)
     child = _declared(
         f"from {base.__name__} import Base\nclass T(Base):\n    own: int\n    kept: ReadOnly[int]\n",
@@ -698,8 +742,9 @@ def test_a_typeddict_may_name_a_class_written_after_it(
 def test_a_name_reads_as_the_module_that_wrote_it_means_it(
     base_source: str, postponed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The subclass's module means something else by `Foo`; the keys still
-    # read as their base wrote them, at the top of an annotation or inside.
+    # In the subclass's module, `Foo` means something else. The keys are
+    # still read as the base class declared them, at the top level of an
+    # annotation or nested inside it.
     base = _declared(base_source, postponed=postponed, monkeypatch=monkeypatch)
     child = _declared(
         f"from {base.__name__} import Base\nFoo = str\nclass T(Base):\n    pass\n",
@@ -715,7 +760,7 @@ def test_a_name_reads_as_the_module_that_wrote_it_means_it(
 
 
 def test_error_a_key_both_required_and_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The spec allows one; the runtime and other checkers disagree on which wins.
+    # The spec allows only one; the runtime and other checkers disagree on which wins.
     module = _declared(
         "class T(TypedDict):\n    a: Required[NotRequired[int]]\n",
         postponed=True,
@@ -728,7 +773,7 @@ def test_error_a_key_both_required_and_not_required(monkeypatch: pytest.MonkeyPa
 def test_error_a_typeddict_whose_runtime_keys_are_not_its_annotations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Were they to disagree, a key would stop being required unnoticed.
+    # If the two disagreed, a key could stop being required without notice.
     module = _declared(
         "class T(TypedDict):\n    a: int\n", postponed=False, monkeypatch=monkeypatch
     )
@@ -760,8 +805,8 @@ def test_error_a_typeddict_whose_bases_disagree_on_other_keys(
 def test_error_a_typeddict_whose_annotations_do_not_resolve(
     name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Named by the TypedDict that holds the annotation, at any depth: a
-    # parser compiled around it cannot be.
+    # The error names the TypedDict that holds the annotation, at any depth,
+    # not an outer TypedDict whose parser would contain it.
     module = _declared(
         """
             class T(TypedDict):
@@ -779,7 +824,8 @@ def test_error_a_typeddict_whose_annotations_do_not_resolve(
 def test_error_a_key_that_does_not_resolve_where_it_was_written_names_its_class(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Asked through a subclass elsewhere, the class that wrote it is named.
+    # When asked through a subclass in another module, the error names the
+    # class that declared the key.
     base = _declared(
         "class Base(TypedDict):\n    items: tuple['Missing', ...]\n",
         postponed=False,
@@ -795,7 +841,7 @@ def test_error_a_key_that_does_not_resolve_where_it_was_written_names_its_class(
 
 
 def test_error_a_typeddict_written_in_a_function_resolves_only_in_its_module() -> None:
-    # This module postpones annotations, and `Local` is no name of it.
+    # This module postpones annotations, and `Local` is not a module-level name here.
     class Local(TypedDict, closed=True):
         x: int
 
@@ -825,6 +871,16 @@ def test_error_an_annotation_outside_the_shapes_has_no_parser(annotation: object
 
 
 @pytest.mark.skipif(sys.version_info < (3, 12), reason="the `type` statement is 3.12 syntax")
+def test_error_a_type_statement_alias_that_names_what_is_not_defined(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `type` statement evaluates its value when it is read. A name in it that is not defined is a `TypeError` naming the alias, as for an alias made with `TypeAliasType`, not a `NameError`."""
+    module = _declared("type Flag = Missing | bool\n", postponed=False, monkeypatch=monkeypatch)
+    with pytest.raises(TypeError, match="Flag: name 'Missing' is not defined"):
+        parser(module.Flag, no_leaf)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="the `type` statement is 3.12 syntax")
 def test_a_type_statement_alias_may_hold_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _declared(
         "type Nested = int | tuple[Nested, ...]\n", postponed=False, monkeypatch=monkeypatch
@@ -833,8 +889,8 @@ def test_a_type_statement_alias_may_hold_itself(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_a_leaf_is_asked_first_at_every_depth() -> None:
-    # The one hook: a caller's own shapes, consulted before the built-in
-    # ones, inside an array or an object as at the top.
+    # The only hook: a caller's own shapes, checked before the built-in ones,
+    # inside an array or an object as well as at the top level.
     class Marker:
         pass
 
@@ -871,11 +927,656 @@ def test_a_shape_is_what_a_union_dispatches_on(annotation: object, shape: str | 
     assert shape_of(annotation) == shape
 
 
+@pytest.mark.parametrize(
+    ("annotation", "value", "message"),
+    [
+        (Blosc | Gzip, 3, "expected an object, got 3"),
+        (Literal["0.5"], 0.5, 'expected "0.5", got 0.5'),
+        (Literal["C", "F"], "Q", 'expected one of ["C", "F"], got "Q"'),
+        (tuple[str, ...], "nuclei", 'expected an array, got "nuclei"'),
+        (str, None, "expected a string, got null"),
+        (
+            tuple[str, int, int] | tuple[str, int],
+            ["a"],
+            'expected an array of 2 or 3 elements, got ["a"]',
+        ),
+        (tuple[str, int, int] | tuple[str, int], [5, 1], "expected a string, got 5"),
+    ],
+    ids=[
+        "a-union-of-objects",
+        "one-value",
+        "values",
+        "array",
+        "null",
+        "arrays-of-no-length-given",
+        "array-of-a-length-given",
+    ],
+)
+def test_a_message_names_what_was_expected_and_shows_the_json_it_got(
+    annotation: object, value: object, message: str
+) -> None:
+    assert [problem.message for problem in _read(annotation, value)[1]] == [message]
+
+
+@pytest.mark.parametrize(
+    "annotation", [Literal[0, 1, 2], Literal[0, 1, 2] | bool], ids=["alone", "in-a-union"]
+)
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [(1.0, "invalid_type"), (5, "invalid_value"), ("1", "invalid_type")],
+    ids=["integral-float", "other-integer", "string"],
+)
+def test_error_a_value_outside_an_integer_literal_has_one_kind_wherever_the_literal_is(
+    annotation: object, value: object, kind: str
+) -> None:
+    """A float is the wrong type for an integer `Literal`, as it is for an `int`, whether the `Literal` stands alone or in a union. Another integer is the wrong value."""
+    assert _found(_read(annotation, value)) == [((), kind)]
+
+
 def test_a_shape_is_described_as_a_message_would_name_it() -> None:
-    assert describe(Literal[0, "auto"]) == "one of ('auto', 0)"
+    assert describe(Literal[0, "auto"]) == 'one of ["auto", 0]'
+    assert describe(Literal["0.5"]) == '"0.5"'
     assert describe(int | None) == "an integer or null"
+    assert describe(Blosc | Gzip) == "an object"
+    assert describe(float | int | None) == "a number or null"
+    # An array's elements are named in the plural.
+    assert describe(tuple[int, ...]) == "an array of integers"
+    assert describe(tuple[int | None, ...]) == "an array of integers or nulls"
+    assert describe(tuple[tuple[str, ...], ...]) == "an array of arrays of strings"
+    assert describe(tuple[Literal["C", "F"], ...]) == 'an array of values in ["C", "F"]'
+    assert describe(int | tuple[int, ...]) == "an integer or an array of integers"
+    # Arrays of fixed lengths are named by their lengths.
+    assert describe(tuple[str, int, int] | tuple[str, int] | None) == (
+        "an array of 2 or 3 elements or null"
+    )
+    # A broader shape includes a narrower one: "a string" covers the hex
+    # string spelling of a float32 and the strings of its non-finite values.
+    assert describe(Float32FillValue) == "a number or a string"
+    assert describe(Literal["C", "F"] | None) == 'one of ["C", "F"] or null'
     assert describe(Width) == "an integer"
     assert describe(ZarrV2DataTypeMetadata) == "a ZarrV2DataTypeMetadata"
+
+
+# --- constraints ------------------------------------------------------------
+
+Digit = Annotated[int, Interval(ge=0, le=9)]
+
+
+class Bounded(TypedDict, extra_items=Annotated[int, Ge(0)]):
+    level: Digit
+    shape: ReadOnly[NotRequired[tuple[Annotated[int, Ge(1)], ...]]]
+    name: Annotated[NotRequired[Annotated[str, "the inner note"]], Doc("the outer note")]
+
+
+class Noted(TypedDict, extra_items=Annotated[object, "any JSON"]):
+    level: int
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "found"),
+    [
+        (Digit, 9, []),
+        (Digit, 10, [((), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})]),
+        (Digit, -1, [((), "expected an integer in [0, 9], got -1", {"ge": 0, "le": 9})]),
+        (Annotated[int, Gt(0)], 0, [((), "expected an integer > 0, got 0", {"gt": 0})]),
+        (Annotated[float, Lt(1)], 1, [((), "expected a number < 1, got 1", {"lt": 1})]),
+        (Annotated[float, Le(0.5)], 0.5, []),
+        (
+            Annotated[float, Interval(gt=0, le=0.5)],
+            0.0,
+            [((), "expected a number in (0, 0.5], got 0.0", {"gt": 0, "le": 0.5})],
+        ),
+        (
+            Annotated[float, Interval(ge=0.0, le=9.0)],
+            10,
+            [((), "expected a number in [0, 9], got 10", {"ge": 0, "le": 9})],
+        ),
+        (Annotated[int, Ge(True)], 0, [((), "expected an integer >= 1, got 0", {"ge": 1})]),
+        (
+            tuple[Digit, ...],
+            [0, 10, 9],
+            [((1,), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})],
+        ),
+        (Annotated[Width, Le(9)], 10, [((), "expected an integer <= 9, got 10", {"le": 9})]),
+        (Digit | str, "ten", []),
+        (Digit | str, 10, [((), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})]),
+        (Digit, "nine", [((), 'expected an integer, got "nine"', {})]),
+        (Annotated[int, "a note", Doc("another")], -1, []),
+    ],
+    ids=[
+        "within",
+        "above",
+        "below",
+        "exclusive-lower",
+        "exclusive-upper",
+        "inclusive-upper",
+        "half-open",
+        "an-integral-bound-is-an-integer",
+        "a-bool-bound-is-the-integer-it-equals",
+        "each-element-at-its-index",
+        "on-an-alias",
+        "a-branch-it-does-not-bound",
+        "the-branch-it-bounds",
+        "a-value-of-another-type-is-that-problem-alone",
+        "notes",
+    ],
+)
+def test_a_value_is_held_to_the_bounds_its_type_carries(
+    annotation: object, value: object, found: list[tuple[Loc, str, dict[str, JSONValue]]]
+) -> None:
+    # annotated-types bounds, read as pydantic reads them. A value outside
+    # any bound gives one problem that says what the type allows, with the
+    # bounds in the problem's `ctx`. Bounds are checked only for a value of
+    # the type. A bound is compared as the number it equals, whichever of
+    # the equal values Python's `Annotated` cache returns.
+    _, problems = _read(annotation, value)
+    assert [(problem.loc, problem.message, dict(problem.ctx)) for problem in problems] == found
+    assert all(problem.kind == "invalid_value" for problem in problems if problem.ctx)
+
+
+def test_a_key_s_type_keeps_the_metadata_its_annotation_carries() -> None:
+    # Qualifiers are removed wherever they sit among the `Annotated` layers.
+    # The metadata is kept, inner layer first, as `Annotated` flattens
+    # nested layers. A note on `object` leaves the type open.
+    keys = typeddict_keys(Bounded)
+    assert keys.members["level"] == (Digit, True)
+    assert keys.members["shape"] == (tuple[Annotated[int, Ge(1)], ...], False)
+    assert keys.members["name"] == (
+        Annotated[str, "the inner note", Doc("the outer note")],
+        False,
+    )
+    assert keys.extra_items == Annotated[int, Ge(0)]
+    typed, problems = check({"level": 3, "shape": [0], "other": -1}, Bounded)
+    assert typed is None
+    assert [(problem.loc, problem.input, dict(problem.ctx)) for problem in problems] == [
+        (("other",), -1, {"ge": 0}),
+        (("shape", 0), 0, {"ge": 1}),
+    ]
+    assert typeddict_keys(Noted).open
+    assert check({"level": 1, "more": [None]}, Noted) == ({"level": 1, "more": (None,)}, ())
+
+
+def test_error_a_bound_on_what_is_not_a_number() -> None:
+    with pytest.raises(TypeError, match="ge: a bound is on a number, and a string is not one"):
+        parser(Annotated[str, Ge(0)], no_leaf)
+
+
+def test_error_a_bound_on_the_values_an_open_typeddict_takes() -> None:
+    class Loose(TypedDict, extra_items=Annotated[object, Ge(0)]):
+        level: int
+
+    with pytest.raises(TypeError, match="ge: a bound is on a number, and a value is not one"):
+        parser(Loose, no_leaf)
+
+
+@dataclasses.dataclass(frozen=True)
+class Later(BaseMetadata):
+    """A constraint that a later release of annotated-types might add."""
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    [
+        MinLen(1),
+        Len(1, 3),
+        MultipleOf(2),
+        Predicate(str.isdigit),
+        Timezone(None),
+        Later(),
+        pydantic.Field(ge=0),
+        pydantic.StringConstraints(pattern="^[a-z]+$"),
+    ],
+    ids=[
+        "min-len",
+        "len",
+        "multiple-of",
+        "predicate",
+        "timezone",
+        "one-a-later-release-adds",
+        "pydantic-field",
+        "pydantic-string-constraints",
+    ],
+)
+def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> None:
+    # If the checker ignored a constraint, the type would promise something
+    # that is not checked, and pydantic and the checker would disagree.
+    with pytest.raises(UnreadConstraintError, match="is not a constraint the checker reads"):
+        parser(Annotated[str, constraint], no_leaf)
+
+
+class _ConstrainedMember(TypedDict, closed=True):
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _HoldsAConstrainedMember(TypedDict, closed=True):
+    inner: _ConstrainedMember
+
+
+class _NotAJSONShape(TypedDict, closed=True):
+    a: set[int]
+
+
+class _HoldsAMemberNotAJSONShape(TypedDict, closed=True):
+    inner: _NotAJSONShape
+
+
+class _Readable(TypedDict, closed=True):
+    a: int
+
+
+# `_Missing` is not defined on purpose: the TypedDict cannot be read at all.
+class _Unresolvable(TypedDict, closed=True):
+    a: "_Missing"  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
+class _HoldsAnUnresolvableTypedDict(TypedDict, closed=True):
+    inner: _Unresolvable
+
+
+class _ConstraintOnAReadableMember(TypedDict, closed=True):
+    inner: Annotated[_Readable, MultipleOf(2)]
+
+
+class _ConstraintOnAConstrainedMember(TypedDict, closed=True):
+    inner: Annotated[_ConstrainedMember, MultipleOf(2)]
+
+
+class _SelfReferentialWithAConstraint(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialWithAConstraint]
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _SelfReferentialNotAJSONShape(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialNotAJSONShape]
+    a: set[int]
+
+
+class _SelfReferentialConstraintOnItself(TypedDict, closed=True):
+    parent: NotRequired[Annotated[_SelfReferentialConstraintOnItself, MultipleOf(2)]]
+    a: int
+
+
+class _CycleOut(TypedDict, closed=True):
+    b: _CycleBack
+
+
+class _CycleBack(TypedDict, closed=True):
+    a: NotRequired[_CycleOut]
+    x: set[int]
+
+
+class _OuterWithAConstraintAfterACycle(TypedDict, closed=True):
+    inner: _InnerLeadingBackToAConstraint
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _InnerLeadingBackToAConstraint(TypedDict, closed=True):
+    back: NotRequired[_OuterWithAConstraintAfterACycle]
+
+
+class _OuterNotAJSONShapeAfterACycle(TypedDict, closed=True):
+    inner: _InnerLeadingBackToAShape
+    a: set[int]
+
+
+class _InnerLeadingBackToAShape(TypedDict, closed=True):
+    back: NotRequired[_OuterNotAJSONShapeAfterACycle]
+
+
+class _OuterWithAConstraintOnTheCycle(TypedDict, closed=True):
+    inner: Annotated[_InnerLeadingBackToTheConstraint, MultipleOf(2)]
+    a: int
+
+
+class _InnerLeadingBackToTheConstraint(TypedDict, closed=True):
+    back: NotRequired[_OuterWithAConstraintOnTheCycle]
+
+
+class _SelfReferentialTwiceWithAConstraintOnTheSecond(TypedDict, closed=True):
+    plain: NotRequired[_SelfReferentialTwiceWithAConstraintOnTheSecond]
+    constrained: NotRequired[
+        Annotated[_SelfReferentialTwiceWithAConstraintOnTheSecond, MultipleOf(2)]
+    ]
+
+
+class _DocumentedThenConstrainedBackReferences(TypedDict, closed=True):
+    documented: NotRequired[Annotated[_DocumentedThenConstrainedBackReferences, Doc("parent")]]
+    constrained: NotRequired[Annotated[_DocumentedThenConstrainedBackReferences, MultipleOf(2)]]
+
+
+class _OuterWithAConstraintAfterAnOptionalCycle(TypedDict, closed=True):
+    inner: _InnerLeadingBackOptionally
+    a: Annotated[int, MultipleOf(2)]
+
+
+class _InnerLeadingBackOptionally(TypedDict, closed=True):
+    back: _OuterWithAConstraintAfterAnOptionalCycle | None
+
+
+class _HoldsAnOptionalNotAJSONShape(TypedDict, closed=True):
+    inner: _NotAJSONShape | None
+
+
+class _HoldsATupleOfAConstrainedMember(TypedDict, closed=True):
+    inner: tuple[_ConstrainedMember, ...]
+
+
+class _ConstraintOnANotAJSONShapeMember(TypedDict, closed=True):
+    inner: Annotated[_NotAJSONShape, MultipleOf(2)]
+
+
+_Children = TypeAliasType("_Children", "tuple[_SelfReferentialThroughAnAlias, ...]")
+
+
+class _SelfReferentialThroughAnAlias(TypedDict, closed=True):
+    children: NotRequired[_Children]
+    a: set[int]
+
+
+class _BoundOnATupleThatLeadsBack(TypedDict, closed=True):
+    children: NotRequired[Annotated[tuple[_BoundOnATupleThatLeadsBack, ...], Ge(0)]]
+    a: int
+
+
+class _BoundOnATupleThatLeadsBackBeforeANotAJSONShape(TypedDict, closed=True):
+    children: NotRequired[
+        Annotated[tuple[_BoundOnATupleThatLeadsBackBeforeANotAJSONShape, ...], Ge(0)]
+    ]
+    a: set[int]
+
+
+class _SelfReferentialThroughANewType(TypedDict, closed=True):
+    parent: NotRequired[_ParentOfANode]
+    a: set[int]
+
+
+# A type checker refuses a NewType of a TypedDict, but the checker reads
+# one at run time, so `unread_in` must follow it too.
+_ParentOfANode = NewType("_ParentOfANode", _SelfReferentialThroughANewType)  # pyright: ignore[reportGeneralTypeIssues]
+
+# `_MissingType` is not defined on purpose: the alias cannot be resolved.
+_UndefinedAlias = TypeAliasType("_UndefinedAlias", "_MissingType")  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
+class _HoldsAnUndefinedAlias(TypedDict, closed=True):
+    a: _UndefinedAlias
+
+
+class _SelfReferentialReadable(TypedDict, closed=True):
+    parent: NotRequired[_SelfReferentialReadable]
+    a: int
+
+
+@pytest.mark.parametrize(
+    ("typeddict", "unread"),
+    [
+        (
+            _ConstrainedMember,
+            Unread(
+                "_ConstrainedMember.a: MultipleOf(multiple_of=2) is not a constraint the checker "
+                "reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _HoldsAConstrainedMember,
+            Unread(
+                "_HoldsAConstrainedMember.inner: _ConstrainedMember.a: MultipleOf(multiple_of=2) is "
+                "not a constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _NotAJSONShape,
+            Unread(
+                "_NotAJSONShape: a is not a shape JSON takes; write it as one -- a number, string, "
+                "boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _HoldsAMemberNotAJSONShape,
+            Unread(
+                "_HoldsAMemberNotAJSONShape.inner: _NotAJSONShape: a is not a shape JSON takes; "
+                "write it as one -- a number, string, boolean, null, array, object, or an alias of "
+                "one",
+                constraint=False,
+            ),
+        ),
+        (
+            _HoldsAnUnresolvableTypedDict,
+            Unread(
+                "_HoldsAnUnresolvableTypedDict.inner: _Unresolvable: name '_Missing' is not "
+                "defined; its annotations must resolve in its module",
+                constraint=False,
+            ),
+        ),
+        (
+            _ConstraintOnAReadableMember,
+            Unread(
+                "_ConstraintOnAReadableMember.inner: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _ConstraintOnAConstrainedMember,
+            Unread(
+                "_ConstraintOnAConstrainedMember.inner: _ConstrainedMember.a: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _SelfReferentialWithAConstraint,
+            Unread(
+                "_SelfReferentialWithAConstraint.a: MultipleOf(multiple_of=2) is not a constraint "
+                "the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _SelfReferentialNotAJSONShape,
+            Unread(
+                "_SelfReferentialNotAJSONShape: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialConstraintOnItself,
+            Unread(
+                "_SelfReferentialConstraintOnItself.parent: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _CycleOut,
+            Unread(
+                "_CycleOut.b: _CycleBack: x is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _OuterWithAConstraintAfterACycle,
+            Unread(
+                "_OuterWithAConstraintAfterACycle.a: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _OuterNotAJSONShapeAfterACycle,
+            Unread(
+                "_OuterNotAJSONShapeAfterACycle: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _OuterWithAConstraintOnTheCycle,
+            Unread(
+                "_OuterWithAConstraintOnTheCycle.inner: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _SelfReferentialTwiceWithAConstraintOnTheSecond,
+            Unread(
+                "_SelfReferentialTwiceWithAConstraintOnTheSecond.constrained: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _DocumentedThenConstrainedBackReferences,
+            Unread(
+                "_DocumentedThenConstrainedBackReferences.constrained: MultipleOf(multiple_of=2) "
+                "is not a constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _OuterWithAConstraintAfterAnOptionalCycle,
+            Unread(
+                "_OuterWithAConstraintAfterAnOptionalCycle.a: MultipleOf(multiple_of=2) is not a "
+                "constraint the checker reads, which are Gt, Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _HoldsAnOptionalNotAJSONShape,
+            Unread(
+                "_HoldsAnOptionalNotAJSONShape.inner: _NotAJSONShape: a is not a shape JSON takes; "
+                "write it as one -- a number, string, boolean, null, array, object, or an alias of "
+                "one",
+                constraint=False,
+            ),
+        ),
+        (
+            _HoldsATupleOfAConstrainedMember,
+            Unread(
+                "_HoldsATupleOfAConstrainedMember.inner: _ConstrainedMember.a: "
+                "MultipleOf(multiple_of=2) is not a constraint the checker reads, which are Gt, "
+                "Ge, Lt and Le",
+                constraint=True,
+            ),
+        ),
+        (
+            _ConstraintOnANotAJSONShapeMember,
+            Unread(
+                "_ConstraintOnANotAJSONShapeMember.inner: _NotAJSONShape: a is not a shape JSON "
+                "takes; write it as one -- a number, string, boolean, null, array, object, or an "
+                "alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialThroughAnAlias,
+            Unread(
+                "_SelfReferentialThroughAnAlias: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _BoundOnATupleThatLeadsBack,
+            Unread(
+                "_BoundOnATupleThatLeadsBack.children: ge: a bound is on a number, and an array of "
+                "objects is not one",
+                constraint=False,
+            ),
+        ),
+        (
+            _BoundOnATupleThatLeadsBackBeforeANotAJSONShape,
+            Unread(
+                "_BoundOnATupleThatLeadsBackBeforeANotAJSONShape.children: ge: a bound is on a "
+                "number, and an array of objects is not one",
+                constraint=False,
+            ),
+        ),
+        (
+            _SelfReferentialThroughANewType,
+            Unread(
+                "_SelfReferentialThroughANewType: a is not a shape JSON takes; write it as one -- a "
+                "number, string, boolean, null, array, object, or an alias of one",
+                constraint=False,
+            ),
+        ),
+        (
+            _HoldsAnUndefinedAlias,
+            Unread(
+                "_HoldsAnUndefinedAlias.a: _UndefinedAlias: name '_MissingType' is not defined; "
+                "its value must resolve in its module",
+                constraint=False,
+            ),
+        ),
+        (_SelfReferentialReadable, None),
+        (_Readable, None),
+    ],
+    ids=[
+        "a-constraint",
+        "a-constraint-in-a-nested-typeddict",
+        "not-a-json-shape",
+        "not-a-json-shape-in-a-nested-typeddict",
+        "a-nested-typeddict-that-cannot-be-read",
+        "a-constraint-on-a-member-that-is-a-typeddict",
+        "a-constraint-on-the-member-and-inside-its-typeddict",
+        "self-referential-with-a-constraint",
+        "self-referential-not-a-json-shape",
+        "self-referential-with-a-constraint-on-the-reference",
+        "a-cycle-of-two-typeddicts",
+        "a-constraint-after-a-member-that-leads-back",
+        "not-a-json-shape-after-a-member-that-leads-back",
+        "a-constraint-on-a-member-that-leads-back",
+        "a-constraint-on-a-second-member-that-leads-back",
+        "a-documented-member-that-leads-back-before-a-constrained-one",
+        "a-constraint-after-a-member-that-leads-back-optionally",
+        "a-typeddict-in-a-union",
+        "a-typeddict-in-a-tuple",
+        "a-constraint-on-a-member-whose-typeddict-is-not-a-json-shape",
+        "self-referential-through-an-alias",
+        "a-bound-on-a-tuple-that-leads-back",
+        "a-bound-on-a-tuple-that-leads-back-before-a-member-not-a-json-shape",
+        "self-referential-through-a-newtype",
+        "an-alias-that-does-not-resolve",
+        "self-referential-and-readable",
+        "readable",
+    ],
+)
+def test_unread_in_names_the_part_without_a_parser_and_whether_it_is_a_constraint(
+    typeddict: type, unread: Unread | None
+) -> None:
+    """`unread_in` names the first part of a TypedDict that the checker has no parser for, down to the TypedDict that contains it, also through a union or a container, and says whether it is a constraint the checker does not read, so a definition can advise checking it in its `rules`. A member that is not a JSON shape is not such a constraint. A nested TypedDict that cannot be read at all is named with the reason. When both a member and the TypedDict it holds have such a part, the one inside is named first, as the checker meets it first. A TypedDict that holds itself, directly or through another, is named where its own members are unread, and a member that leads back, also through a union, is named only when nothing else is, unless metadata of its own, such as a constraint but not a `Doc`, is unread. A TypedDict the checker reads whole has no unread part."""
+    assert unread_in(typeddict, no_leaf) == unread
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Annotated[Digit, Ge(1)],
+        Annotated[int, Ge(0), Gt(0)],
+        Annotated[int, Interval(le=9), Lt(5)],
+    ],
+    ids=["narrowing-an-alias", "gt-and-ge", "interval-and-lt"],
+)
+def test_error_a_second_bound_from_one_side(annotation: object) -> None:
+    # Pydantic uses the last bound given; write only one.
+    with pytest.raises(TypeError, match="is a second bound from (below|above)"):
+        parser(annotation, no_leaf)
+
+
+@pytest.mark.parametrize(
+    "bound", ["0", math.nan, math.inf, None], ids=["string", "nan", "infinity", "null"]
+)
+def test_error_a_bound_that_is_not_a_finite_number(bound: object) -> None:
+    with pytest.raises(TypeError, match="a bound is a finite number"):
+        parser(Annotated[int, Ge(bound)], no_leaf)  # pyright: ignore[reportArgumentType]
 
 
 # --- check: the public door ------------------------------------------------
@@ -910,8 +1611,8 @@ class Holds(TypedDict, closed=True):
 def test_check_gives_a_value_of_the_typeddict(
     value: dict[str, object], shape: type, found: list[tuple[Loc, str]]
 ) -> None:
-    # Any TypedDict the package declares, and any other: a value of it,
-    # arrays as tuples, holding what it admits and nothing else.
+    # For any TypedDict, from the package or not, the result is a value of
+    # it, with arrays as tuples, holding only what the TypedDict allows.
     typed, problems = check(value, shape)
     assert [(problem.loc, problem.kind) for problem in problems] == found
     assert typed is not None
@@ -925,7 +1626,7 @@ def test_error_check_is_asked_of_a_typeddict() -> None:
 
 
 def test_error_check_names_what_no_parser_reads() -> None:
-    # Down to the TypedDict that holds it, at any depth.
+    # The error names the path down to the TypedDict that holds it, at any depth.
     with pytest.raises(TypeError, match=r"Holds.unreadable: Unreadable: members is not a shape"):
         check({}, Holds)
 
@@ -950,15 +1651,15 @@ def test_error_check_names_what_no_parser_reads() -> None:
 def test_error_check_locates_a_value_that_is_not_json(
     value: dict[object, object], loc: Loc, kind: str
 ) -> None:
-    # Refused before any TypedDict is asked: what `check` compares is JSON.
+    # Rejected before any TypedDict is checked: `check` compares only JSON values.
     typed, problems = check(value, Options)
     assert typed is None
     assert [(problem.loc, problem.kind) for problem in problems] == [(loc, kind)]
 
 
 def test_error_check_refuses_null() -> None:
-    # JSON's null is JSON, and not an object: refined, it is None with no
-    # problem, which is not a verdict.
+    # JSON null is valid JSON but not an object. Refining it gives `None`
+    # with no problem, which would not be a usable result.
     typed, problems = check(None, Options)
     assert typed is None
     assert [(problem.loc, problem.kind) for problem in problems] == [((), "invalid_type")]
@@ -970,10 +1671,14 @@ def test_error_check_refuses_a_value_of_another_type() -> None:
     assert [(problem.loc, problem.kind) for problem in problems] == [(("level",), "invalid_type")]
 
 
+_NOT_DOCUMENTS: Final = frozenset({"ZarrV3ContextSlots", "ZarrV2ContextSlots"})
+"""TypedDicts that describe no document: the keyword arguments of a scope class, which hold definitions, not JSON."""
+
+
 def _declared_typeddicts() -> list[type]:
-    """Every TypedDict a public module of the package's JSON types exports."""
+    """Every TypedDict that describes a document, exported by a public module of the package's JSON types or of its definitions."""
     found: dict[type, None] = {}
-    for package in (zarr_metadata.v2, zarr_metadata.v3):
+    for package in (zarr_metadata.definition, zarr_metadata.v2, zarr_metadata.v3):
         modules = [package.__name__] + [
             info.name
             for info in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")
@@ -983,7 +1688,11 @@ def _declared_typeddicts() -> list[type]:
             module = importlib.import_module(name)
             for exported in getattr(module, "__all__", ()):
                 value = getattr(module, exported)
-                if isinstance(value, type) and is_typeddict(value):
+                if (
+                    isinstance(value, type)
+                    and is_typeddict(value)
+                    and exported not in _NOT_DOCUMENTS
+                ):
                     found[value] = None
     return list(found)
 
@@ -992,6 +1701,106 @@ def _declared_typeddicts() -> list[type]:
     "typeddict", _declared_typeddicts(), ids=lambda typeddict: typeddict.__name__
 )
 def test_every_typeddict_the_package_declares_compiles(typeddict: type) -> None:
-    # A declaration no parser reads would be a document type `check` could
-    # not be asked about.
+    # A declaration that no parser can read would be a document type that
+    # `check` cannot check.
     assert parser_for(typeddict, no_leaf) is not None
+
+
+def test_a_union_of_a_string_and_another_shape_names_both() -> None:
+    # "a string" absorbs only the string Literals, not the other branches.
+    assert describe(str | int) == "a string or an integer"
+    assert describe(str | None) == "a string or null"
+    (problem,) = parser(str | int, no_leaf)(None, ())[1]
+    assert problem.message == "expected a string or an integer, got null"
+
+
+_PQ = TypeAliasType("_PQ", Literal["p", "q"])
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "message", "kind", "expected"),
+    [
+        (
+            float | Literal["NaN"] | None,
+            "abc",
+            'expected a number or "NaN" or null, got "abc"',
+            "invalid_value",
+            ("NaN",),
+        ),
+        (
+            Literal[-1, 0, 1, 2] | bool,
+            3,
+            "expected one of [-1, 0, 1, 2] or a boolean, got 3",
+            "invalid_value",
+            (-1, 0, 1, 2),
+        ),
+        (
+            Literal[1, "a"] | None,
+            True,
+            'expected one of ["a", 1] or null, got true',
+            "invalid_type",
+            ("a", 1),
+        ),
+        (
+            _PQ | None,
+            "r",
+            'expected one of ["p", "q"] or null, got "r"',
+            "invalid_value",
+            ("p", "q"),
+        ),
+        (
+            _PQ | Literal[3],
+            4,
+            'expected one of ["p", "q"] or 3, got 4',
+            "invalid_value",
+            ("p", "q", 3),
+        ),
+        (
+            Literal[3] | _PQ,
+            4,
+            'expected 3 or one of ["p", "q"], got 4',
+            "invalid_value",
+            (3, "p", "q"),
+        ),
+        (_PQ | Literal[3], None, 'expected one of ["p", "q"] or 3, got null', "invalid_type", None),
+        (
+            Literal[0, 1, 2] | Literal[False, True],  # noqa: PYI030 - two branches on purpose
+            5,
+            "expected one of [0, 1, 2] or one of [false, true], got 5",
+            "invalid_value",
+            (0, 1, 2, False, True),
+        ),
+    ],
+    ids=[
+        "string-outside-the-literal",
+        "number-outside-the-literal",
+        "mixed-literal",
+        "literal-behind-an-alias",
+        "literals-of-two-types",
+        "literals-in-the-order-the-message-names-them",
+        "a-shape-no-literal-has",
+        "numbers-and-booleans",
+    ],
+)
+def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
+    annotation: object,
+    value: object,
+    message: str,
+    kind: str,
+    expected: tuple[object, ...] | None,
+) -> None:
+    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. When only `Literal` branches tried the value, the `ctx` holds every value the `Literal` branches allow under `expected`, in the order the message names them, as one `Literal`'s problem does. A value of a shape no branch has is not refused by a closed set of values, so its problem has no `expected`."""
+    (problem,) = parser(annotation, no_leaf)(value, ())[1]
+    assert (problem.message, problem.kind) == (message, kind)
+    # Compare as JSON, since `0 == False` in Python.
+    assert json.dumps(dict(problem.ctx)) == json.dumps(
+        {} if expected is None else {"expected": expected}
+    )
+
+
+class _Three(TypedDict, closed=True):
+    x: Annotated[Required[Annotated[ReadOnly[Annotated[int, "inner"]], "middle"]], "outer"]
+
+
+def test_metadata_of_three_annotated_layers_is_kept_in_order() -> None:
+    assert typeddict_keys(_Three).members["x"] == (Annotated[int, "inner", "middle", "outer"], True)
