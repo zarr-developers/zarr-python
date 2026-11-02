@@ -57,7 +57,7 @@ def _public_objects() -> dict[str, griffe.Object]:
     for module_name in PUBLIC_MODULES:
         module = _griffe(module_name)
         found[module.path] = module
-        for name in importlib.import_module(module_name).__all__:
+        for name in getattr(importlib.import_module(module_name), "__all__", ()):
             target = _griffe(f"{module_name}.{name}")
             found[target.path] = target
             if target.is_class:

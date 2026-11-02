@@ -23,25 +23,26 @@ _CODE_POINT_BYTES: Final = 4
 
 
 class FixedLengthUtf32Configuration(TypedDict, closed=True):
-    """
-    Configuration for the `fixed_length_utf32` data type.
-
-    Attributes
-    ----------
-    length_bytes
-        The size in bytes of every value: a positive multiple of 4, since
-        each code point takes 4 bytes.
-    """
+    """Configuration for the `fixed_length_utf32` data type."""
 
     length_bytes: ReadOnly[int]
+    """The size in bytes of every value: a positive multiple of 4, since
+    each code point takes 4 bytes."""
 
 
 class FixedLengthUtf32(TypedDict, closed=True):
     """`fixed_length_utf32` data type metadata."""
 
     name: FixedLengthUtf32DataTypeName
+    """The data type's name, `"fixed_length_utf32"`."""
     configuration: FixedLengthUtf32Configuration
+    """The data type's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this data type must refuse the document.
+
+    Absent means `true`. The spec does not permit `false` for a data type
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
+    """
 
 
 FixedLengthUtf32FillValue = str
