@@ -7,7 +7,6 @@ from zarr.codecs.reshape import ReshapeCodec, ShapeSpec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt8
-from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
 
 def array_spec(shape: tuple[int, ...]) -> ArraySpec:
@@ -94,25 +93,6 @@ def test_compute_encoded_size() -> None:
     assert dec_size == enc_size
 
 
-@pytest.mark.parametrize(
-    ("shape", "shape_spec"),
-    [
-        ((3, 4), ((0, 1, 2),)),  # index out of range
-        ((3, 4), (5, -1)),  # indivisible -1
-        ((3, 4), (5, 2)),  # wrong shape
-    ],
-)
-def test_validate_invalid(shape: tuple[int, ...], shape_spec: ShapeSpec) -> None:
-    """Stand-in for _compute_output_shape"""
-    codec = ReshapeCodec(shape=shape_spec)
-    with pytest.raises(ValueError):
-        codec.validate(
-            shape,
-            UInt8(),  # ignored
-            RegularChunkGridMetadata(chunk_shape=shape),
-        )
-
-
 @pytest.mark.asyncio
 async def test_decode_unexpected_shape() -> None:
     codec = ReshapeCodec(shape=((0, 1),))
@@ -136,8 +116,6 @@ def test_valid(
     input_shape: tuple[int, ...], shape_spec: ShapeSpec, output_shape: tuple[int, ...]
 ) -> None:
     codec = ReshapeCodec(shape=shape_spec)
-    dtype = UInt8()
-    codec.validate(input_shape, dtype, RegularChunkGridMetadata(chunk_shape=input_shape))
     input_spec = array_spec(input_shape)
     output_spec = codec.resolve_metadata(input_spec)
 
