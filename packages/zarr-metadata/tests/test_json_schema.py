@@ -735,7 +735,9 @@ def test_every_example_declaration_is_one_its_schema_accepts(key: str, declarati
 
 @_PROPERTY
 @given(st.data())
-def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
+def test_a_declaration_read_without_a_problem_is_one_its_schema_accepts(
+    data: st.DataObject,
+) -> None:
     # Each example is changed in one place and read in one of four scopes.
     # If the scope still reads it without a problem, the schema accepts it.
     key, example = data.draw(st.sampled_from(_DECLARATION_BASES), label="example")
