@@ -17,10 +17,11 @@ The tests below pin both sides of that trade-off.
 
 from __future__ import annotations
 
+import pickle
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Self, cast
-from unittest.mock import create_autospec
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import numpy as np
 import pytest
@@ -39,6 +40,7 @@ from zarr.core.metadata.v3 import (
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
     _declared_chunk_grid,
+    validate_chunk_specs,
 )
 from zarr.registry import _codec_registries, register_codec
 
@@ -290,9 +292,9 @@ def test_chunk_local_defers_other_shard_shapes_to_run_time() -> None:
     """The documented cost of chunk-local validation: after an undeclared codec
     on a rectilinear grid, an inner shard size dividing the representative
     chunk (6,5) but not the smaller (4,5) is accepted when the array is created.
-    The non-dividing shard is rejected when it is first encoded, instead of
-    being floor-divided and silently written with the wrong layout, and the
-    dividing shard still round-trips."""
+    A write to the non-dividing shard is rejected, instead of being floor-divided
+    and silently written with the wrong layout, and the dividing shard still
+    round-trips."""
     with zarr.config.set({"array.rectilinear_chunks": True}):
         array = zarr.create_array(
             {},
@@ -305,8 +307,90 @@ def test_chunk_local_defers_other_shard_shapes_to_run_time() -> None:
         )
         array[4:] = 1
         np.testing.assert_array_equal(array[4:], np.ones((6, 5), dtype="i4"))
-        with pytest.raises(ValueError, match="not divisible by the shard's inner chunk shape"):
+        with pytest.raises(ValueError, match="not divisible"):
             array[:4] = 1
+
+
+def _chunk_local_array() -> zarr.Array[Any]:
+    """A chunk-local array with a dividing shard at [4, 10) and a non-dividing one at [0, 4)."""
+    return zarr.create_array(
+        {},
+        shape=(10,),
+        chunks=[[4, 6]],
+        dtype="i4",
+        filters=[OpaqueCodec()],
+        serializer=ShardingCodec(chunk_shape=(3,)),
+        compressors=None,
+    )
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda a: a.__setitem__(slice(None), 1),
+        lambda a: a.oindex.__setitem__(np.array([1, 5]), 1),
+        lambda a: a.vindex.__setitem__(np.array([1, 5]), 1),
+        lambda a: a.vindex.__setitem__(np.arange(10) % 2 == 0, 1),
+        lambda a: a.blocks.__setitem__(0, 1),
+        # the fill value is never stored, but the shard is still not writable
+        lambda a: a.__setitem__(slice(0, 4), 0),
+    ],
+    ids=["basic", "orthogonal", "coordinate", "mask", "block", "fill-value"],
+)
+def test_write_touching_a_bad_chunk_stores_nothing(
+    write: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every kind of write that touches the non-dividing shard raises before the codec
+    pipeline runs, so the dividing shard in the same write is not stored either."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        array = _chunk_local_array()
+        pipeline_write = AsyncMock()
+        monkeypatch.setattr(type(array._async_array.codec_pipeline), "write", pipeline_write)
+        with pytest.raises(ValueError, match="not divisible"):
+            write(array)
+    pipeline_write.assert_not_called()
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize(
+    ("filters", "chunks", "chunk_local"),
+    [
+        ([OpaqueCodec()], [[6, 6]], True),
+        ([TransposeCodec(order=(0,))], [[6, 6]], False),
+        (None, [[6, 6]], False),
+        ([OpaqueCodec()], (6,), False),
+    ],
+    ids=["undeclared-rectilinear", "declared-rectilinear", "no-filter", "undeclared-regular"],
+)
+def test_only_chunk_local_arrays_check_chunks_on_write(
+    filters: Any, chunks: Any, chunk_local: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check before a write runs only when metadata validation was not exact, so it
+    costs nothing elsewhere, and a write that avoids bad chunks succeeds."""
+    check = MagicMock(wraps=validate_chunk_specs)
+    monkeypatch.setattr("zarr.core.array.validate_chunk_specs", check)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        array = zarr.create_array(
+            {},
+            shape=(12,),
+            chunks=chunks,
+            dtype="i4",
+            filters=filters,
+            serializer=ShardingCodec(chunk_shape=(3,)),
+            compressors=None,
+        )
+        array[6:12] = 1
+        np.testing.assert_array_equal(array[6:12], np.ones(6, dtype="i4"))
+    assert check.called is chunk_local
+    metadata = array.metadata
+    assert isinstance(metadata, ArrayV3Metadata)
+    assert replace(metadata, attributes={"a": 1})._chunk_local is chunk_local
+    assert pickle.loads(pickle.dumps(metadata))._chunk_local is chunk_local
 
 
 def test_chunk_local_does_not_enumerate_to_find_codec_errors() -> None:

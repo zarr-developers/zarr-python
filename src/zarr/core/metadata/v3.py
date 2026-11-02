@@ -192,6 +192,37 @@ def evolve_and_validate_codecs(
 ) -> tuple[Codec, ...]:
     """Evolve each codec against the chunk spec it sees, and validate it.
 
+    See `_thread_codec_chain`, which also reports whether validation was exact.
+    """
+    return _thread_codec_chain(codecs, shape=shape, chunk_grid=chunk_grid, chunk_spec=chunk_spec)[0]
+
+
+def validate_chunk_specs(codecs: Iterable[Codec], chunk_specs: Iterable[ArraySpec]) -> None:
+    """Validate `codecs` against each chunk spec, as if it were the only chunk shape.
+
+    This is the exact check that chunk-local validation skips when metadata is
+    created. Its cost grows with the number of specs, so callers pass the distinct
+    chunk shapes of the region they are about to use.
+    """
+    chain = tuple(codecs)
+    for spec in chunk_specs:
+        evolve_and_validate_codecs(
+            chain,
+            shape=spec.shape,
+            chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
+            chunk_spec=spec,
+        )
+
+
+def _thread_codec_chain(
+    codecs: Iterable[Codec],
+    *,
+    shape: tuple[int, ...],
+    chunk_grid: ChunkGridMetadata,
+    chunk_spec: ArraySpec,
+) -> tuple[tuple[Codec, ...], bool]:
+    """Evolve and validate a codec chain, and report whether it became chunk-local.
+
     Every codec is validated against the geometry produced by the codecs
     before it: a sharding codec placed after a transpose must divide the
     transposed chunks, not the array's chunk grid. That geometry is threaded
@@ -227,7 +258,9 @@ def evolve_and_validate_codecs(
     correctness depends on the chunk shape must therefore check it again at
     run time, as `ShardingCodec` does; a codec that skips that check can
     silently corrupt data. A codec author avoids the chunk-local path entirely
-    by implementing `resolve_chunk_grid`.
+    by implementing `resolve_chunk_grid`. Array writes check the chunks they touch
+    before any I/O (`validate_chunk_specs`), so a write that includes a bad chunk
+    stores nothing.
 
     Only rectilinear grids can become chunk-local; a chain on a regular grid is
     always validated exactly.
@@ -267,7 +300,7 @@ def evolve_and_validate_codecs(
                 grid = None
             spec = resolved
         out.append(evolved)
-    return tuple(out)
+    return tuple(out), grid is None
 
 
 def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
@@ -655,6 +688,9 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
+    _chunk_local: ClassVar[bool] = False
+    """Whether codec validation saw only one representative chunk (set on the instance
+    by `__init__`), so that writes must check the chunks they touch."""
     _stored_document: ClassVar[ArrayDocument | None] = None
     """The stored document `from_dict` read this metadata from, if it had to repair it
     (set on the instance by `mark_repaired`): the store may still hold it."""
@@ -700,13 +736,16 @@ class ArrayV3Metadata(Metadata):
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
-        codecs_parsed = evolve_and_validate_codecs(
+        codecs_parsed, chunk_local = _thread_codec_chain(
             codecs_parsed_partial,
             shape=shape_parsed,
             chunk_grid=chunk_grid_parsed,
             chunk_spec=chunk_spec,
         )
         validate_codecs(codecs_parsed_partial, data_type)
+
+        if chunk_local:
+            object.__setattr__(self, "_chunk_local", True)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type)

@@ -85,17 +85,18 @@ following consequences:
   a codec that rejects it would fail on that chunk. The chunk may lie past the array's
   current extent, because a grid may declare edges beyond it.
 - **Acceptance is incomplete.** A chain that is invalid only for some *other* chunk
-  shape is accepted when the array is created, and the error surfaces when a chunk of
-  that shape is first encoded or decoded. A chunk holding only the fill value is not
-  stored, so it never reaches the codec. Suppose a sharding codec follows an undeclared
+  shape is accepted when the array is created, and the error surfaces when a write
+  touches a chunk of that shape, or when such a chunk is read from the store. An array
+  write calls `validate` for each distinct chunk shape it touches before storing anything,
+  so a write that includes a bad chunk stores nothing. Suppose a sharding codec follows an undeclared
   filter on a grid with chunk edges `[4, 6]`. An inner chunk size of `3` divides the
-  representative edge `6`, so the array is created, but writing data other than the fill
-  value to a chunk with edge `4` raises an error.
+  representative edge `6`, so the array is created, but writing to a chunk with edge `4`
+  raises an error.
 - **Size-sensitive codecs must check at run time.** Any codec whose correctness depends on
-  the chunk shape (for example, requiring it to divide evenly) must repeat that check
-  when encoding and decoding, because metadata validation may have seen only the
-  representative chunk. `ShardingCodec` does this. A codec that skips the check can
-  silently corrupt data on the chunks that validation never saw.
+  the chunk shape (for example, requiring it to divide evenly) must check it in `validate`
+  and repeat that check when encoding and decoding, because metadata validation may have
+  seen only the representative chunk. `ShardingCodec` does this. A codec that skips the
+  check can silently corrupt data on the chunks that validation never saw.
 
 Zarr uses a declared grid only when it can trust it. A declaration is ignored, and the
 codec treated as returning `None`, if a subclass overrides `resolve_metadata` without

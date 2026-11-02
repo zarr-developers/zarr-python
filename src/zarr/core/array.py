@@ -142,6 +142,7 @@ from zarr.core.metadata.v3 import (
     create_chunk_grid_metadata,
     parse_node_type_array,
     representative_chunk_shape,
+    validate_chunk_specs,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -1687,6 +1688,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
     ) -> None:
         if product(indexer.shape) > 0:
+            _check_chunks_before_write(
+                self.metadata, self._chunk_grid, indexer, self.config, prototype
+            )
             # Chunks are about to be stored under the repaired metadata, so store it
             # first: every reader of the store then agrees with them.
             await self._store_repaired_document()
@@ -5651,6 +5655,30 @@ def _get_chunk_spec(
         config=array_config,
         prototype=prototype,
     )
+
+
+def _check_chunks_before_write(
+    metadata: ArrayMetadata,
+    chunk_grid: ChunkGrid,
+    indexer: Indexer,
+    array_config: ArrayConfig,
+    prototype: BufferPrototype,
+) -> None:
+    """Raise before any I/O if a write would touch a chunk its codecs reject.
+
+    Only metadata validated chunk-locally needs this: every other chain was validated
+    for every chunk when the metadata was created. Without it, a write spanning good and
+    bad chunks raises on the bad one while the good ones are stored.
+    """
+    if not (isinstance(metadata, ArrayV3Metadata) and metadata._chunk_local):
+        return
+    specs_by_shape: dict[tuple[int, ...], ArraySpec] = {}
+    for projection in indexer:
+        spec = _get_chunk_spec(
+            metadata, chunk_grid, projection.chunk_coords, array_config, prototype
+        )
+        specs_by_shape.setdefault(spec.shape, spec)
+    validate_chunk_specs(metadata.codecs, specs_by_shape.values())
 
 
 async def _get_selection(

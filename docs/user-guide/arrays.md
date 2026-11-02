@@ -820,8 +820,8 @@ print(z.info)
     created, as long as each filter before the sharding codec describes how it maps
     the chunk grid. All built-in filters that keep the chunk shape, and `transpose`, do.
     A filter that changes chunk metadata without describing its grid limits that check
-    to the largest shard. A smaller shard that is not divisible is then reported only
-    when non-fill data is first written to it or its stored bytes are first read. See
+    to the largest shard. A smaller shard that is not divisible is then reported when
+    a write touches it, before anything is stored, or when its stored bytes are read. See
     [Chunk geometry and validation](extending.md#chunk-geometry-and-validation).
 
 ### Metadata format
