@@ -30,6 +30,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.testing._draw import scope_with
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
     DEFAULT_STRATEGIES,
@@ -782,12 +783,16 @@ _WITH_PLAIN_GZIP = DEFAULT_STRATEGIES | {
 }
 
 
-def test_a_definition_named_as_a_default_is_read_as_itself() -> None:
-    """It claims its name in the scope its draw is read in, though the strategies hold another."""
-    declaration = find(
-        declarations(_PLAIN_GZIP, st.just({})), lambda _declaration: True, settings=_ONCE
-    )
-    assert declaration == GZIP_CODEC.name
+@given(declaration=declarations(_PLAIN_GZIP, st.just({})))
+def test_a_definition_named_as_a_default_is_read_as_itself(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """It claims its name in the scope its draw is read in, though the strategies hold another, whose rules refuse an empty configuration."""
+    scope = scope_with(_PLAIN_GZIP, DEFAULT_STRATEGIES)
+    read, problems = resolve(declaration, CodecDefinition, scope)
+    assert problems == ()
+    assert isinstance(read, AcceptedDeclaration)
+    assert read.definition is _PLAIN_GZIP
 
 
 def test_a_definition_shadowed_in_the_strategies_is_read_as_itself() -> None:
