@@ -246,7 +246,7 @@ def consolidated_group_documents(
 
     It lists every node by its path, in one flat listing, and the parent
     of each node is a group it also lists. A listed group has no listing
-    of its own. Each array is drawn as `array_documents` draws it, and
+    of its own, or an empty one, as the reference implementation writes. Each array is drawn as `array_documents` draws it, and
     raises as it raises.
     """
     strategies = briefly(strategies)

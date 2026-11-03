@@ -15,6 +15,7 @@ import pytest
 from hypothesis import find, given, settings
 from hypothesis import strategies as st
 
+from tests.testing._shares import share_of
 from zarr_metadata.definition import AcceptedDeclaration, Definition, resolve
 from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.model import (
@@ -241,6 +242,13 @@ _LISTING_REACH: dict[str, Callable[[Mapping[str, Any]], bool]] = {
     "an array": lambda d: any(node["node_type"] == "array" for node in _listed(d).values()),
     "a group": lambda d: any(node["node_type"] == "group" for node in _listed(d).values()),
     "a node below a listed group": lambda d: any("/" in path for path in _listed(d)),
+    "a listed group with an empty listing of its own": lambda d: any(
+        "consolidated_metadata" in node for node in _listed(d).values()
+    ),
+    "a listed group with no listing of its own": lambda d: any(
+        node["node_type"] == "group" and "consolidated_metadata" not in node
+        for node in _listed(d).values()
+    ),
 }
 
 
@@ -329,3 +337,39 @@ _NOTHING_ENCODES_STRINGS: Strategies = {
 def test_a_data_type_no_codec_takes_is_not_drawn(document: Mapping[str, Any]) -> None:
     """Without `vlen-utf8`, nothing encodes a `string`, so no document holds one."""
     assert document["data_type"] == "int8"
+
+
+_DOCUMENT_SHARES: dict[str, tuple[Callable[[Mapping[str, Any]], bool], float, float]] = {
+    "no axes": (lambda d: d["shape"] == (), 0.03, 0.25),
+    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.1, 1),
+    "a zero-length axis": (lambda d: 0 in d["shape"], 0.1, 1),
+    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.1, 1),
+    "the first data type": (lambda d: _name(d["data_type"]) == "bool", 0, 0.12),
+}
+"""What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets."""
+
+
+@pytest.mark.parametrize("target", _DOCUMENT_SHARES)
+def test_array_documents_share(target: str) -> None:
+    counts, low, high = _DOCUMENT_SHARES[target]
+    assert low <= share_of(array_documents(), counts) <= high
+
+
+def _empty_listings(document: Mapping[str, Any]) -> list[Any]:
+    return [
+        node["consolidated_metadata"]
+        for node in _listed(document).values()
+        if "consolidated_metadata" in node
+    ]
+
+
+def test_listed_groups_do_not_share_an_empty_listing() -> None:
+    """A test that changes one listing changes no other."""
+    document: Mapping[str, Any] = find(
+        consolidated_group_documents(),
+        lambda drawn: len(_empty_listings(drawn)) >= 2,
+        settings=_REACH,
+    )
+    first, second, *_ = _empty_listings(document)
+    assert first is not second
+    assert first["metadata"] is not second["metadata"]

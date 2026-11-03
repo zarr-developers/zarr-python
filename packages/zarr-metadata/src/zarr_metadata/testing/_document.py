@@ -26,7 +26,7 @@ from zarr_metadata.testing._draw import (
     scope_of,
     strategy_for,
 )
-from zarr_metadata.testing._strategy import CHARACTERS, MAX_RANK, NOTHING_KNOWN
+from zarr_metadata.testing._strategy import CHARACTERS, NOTHING_KNOWN
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
     Chunk,
@@ -82,8 +82,16 @@ _JSON: Final = st.recursive(
 
 _ATTRIBUTES: Final = st.dictionaries(_TEXT, _JSON, max_size=_MAX_MEMBERS)
 
-SHAPES: Final = st.lists(st.integers(0, 2**16), max_size=MAX_RANK).map(tuple)
-"""The shape of an array: no axes, or some, each of length 0 or more."""
+_MAX_SHAPE_RANK: Final = 8
+"""The most axes an array is drawn with."""
+
+_AXIS_LENGTHS: Final = st.one_of(st.just(0), st.integers(1, 64), st.integers(65, 2**63 - 1))
+"""The length of an axis: none, short, or long enough to overflow a 32-bit size."""
+
+SHAPES: Final = st.integers(0, _MAX_SHAPE_RANK).flatmap(
+    lambda rank: st.tuples(*([_AXIS_LENGTHS] * rank))
+)
+"""The shape of an array: each number of axes about as likely as any other, each axis of any length."""
 
 
 def _spelled(
@@ -159,10 +167,12 @@ def array_document(
     strategies: Strategies,
 ) -> ZarrV3ArrayMetadataJSON:
     """An array document, each of whose members fits the others; a `ValueError` when its definitions refuse it."""
-    shape = draw(shapes)
-    chunk_grid, lengths = draw(_chunk_grid(shape, spellings, strategies))
+    # The data type is drawn first: Hypothesis draws the first of many
+    # options far more often when a draw of variable length comes before it.
     data_type = draw(data_type_declarations(data_type_names(strategies), strategies))
     read_data_type = read(data_type, DataTypeDefinition, strategies)
+    shape = draw(shapes)
+    chunk_grid, lengths = draw(_chunk_grid(shape, spellings, strategies))
     pipeline = pipelines_for(Chunk(lengths, read_data_type), strategies)
     if pipeline is None:
         reject()  # no array -> bytes codec the strategies hold takes this data type
@@ -255,6 +265,16 @@ def consolidated_group_document(
         metadata[path] = draw(
             group_document() if is_group else array_document(shapes, spellings, strategies)
         )
+        if is_group and draw(st.booleans()):
+            # The empty listing the reference implementation writes on each group it lists.
+            metadata[path] = {
+                **metadata[path],
+                ZARR_V3_CONSOLIDATED_METADATA_KEY: {
+                    "kind": "inline",
+                    "must_understand": False,
+                    "metadata": {},
+                },
+            }
     listing: ZarrV3ConsolidatedMetadataJSON = {
         "kind": "inline",
         "must_understand": False,
