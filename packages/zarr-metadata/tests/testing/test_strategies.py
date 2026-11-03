@@ -762,3 +762,10 @@ def test_cast_value_reaches_scalars_in_each_direction(direction: str) -> None:
         lambda configuration: len(configuration.get("scalar_map", {}).get(direction, ())) != 0,
         settings=_REACH,
     )
+
+
+@given(declaration=declarations(CAST_VALUE_CODEC))
+def test_cast_value_draws_only_real_number_data_types(declaration: ZarrV3DeclarationJSON) -> None:
+    """The reach test above says each of these is drawn; this says nothing else is."""
+    target = _read(CAST_VALUE_CODEC, declaration).nested[("data_type",)]
+    assert target.definition in _REAL_NUMBERS
