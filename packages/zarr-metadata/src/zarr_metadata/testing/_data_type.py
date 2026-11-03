@@ -260,9 +260,10 @@ def _struct(strategies: Strategies, *, depth: int) -> st.SearchStrategy[StructCo
 
     The field types are drawn from the same strategies but for a struct,
     which holds one level fewer, or is not drawn: structs drawn without
-    end would nest without end.
+    end would nest without end. So is any definition named as a struct,
+    which would otherwise claim the name in the scope the fields are read in.
     """
-    inner = {d: s for d, s in strategies.items() if d is not STRUCT_DATA_TYPE}
+    inner = {d: s for d, s in strategies.items() if d.name != STRUCT_DATA_TYPE.name}
     if depth > 0:
         inner[STRUCT_DATA_TYPE] = _structs(depth - 1)
     member = st.tuples(

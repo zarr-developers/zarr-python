@@ -404,14 +404,16 @@ def _sharding(
     asked of a chunk of that data type and nothing else known, since the
     inner lengths are drawn after. Its inner codecs are drawn from the
     same strategies but for a shard, which holds one level fewer, or is
-    not drawn: shards drawn without end would nest without end.
+    not drawn: shards drawn without end would nest without end. So is any
+    definition named as a shard, which would otherwise claim the name in the
+    scope the inner codecs are read in.
     """
     handed = SHARDING_INDEXED_CODEC.pipelines(_NO_SHAPE, {}, Chunk(None, chunk.data_type))
     if pipelines_for(Chunk(None, handed["codecs"].data_type), strategies) is None:
         return None
     if pipelines_for(Chunk(None, handed["index_codecs"].data_type), strategies, _STATIC) is None:
         return None
-    inner = {d: s for d, s in strategies.items() if d is not SHARDING_INDEXED_CODEC}
+    inner = {d: s for d, s in strategies.items() if d.name != SHARDING_INDEXED_CODEC.name}
     if depth > 0:
         inner[SHARDING_INDEXED_CODEC] = _shards(depth - 1)
     return _sharding_configuration(chunk, strategies, briefly(inner))

@@ -812,3 +812,48 @@ def test_a_later_definition_replaces_a_default_of_its_name(pipeline: tuple[Any, 
         field for field in pipeline if isinstance(field, dict) and field["name"] == GZIP_CODEC.name
     ]
     assert [field.get("configuration", {}) for field in gzips] == [{}] * len(gzips)
+
+
+_PLAIN_STRUCT = DataTypeDefinition(name=STRUCT_DATA_TYPE.name, configuration=EmptyConfiguration)
+"""A data type named as the struct the defaults hold, with a configuration of its own."""
+
+_PLAIN_SHARD = CodecDefinition(
+    name=SHARDING_INDEXED_CODEC.name,
+    configuration=EmptyConfiguration,
+    kind="array_bytes",
+    size="dynamic",
+)
+"""A codec named as the shard the defaults hold, with a configuration of its own."""
+
+
+@given(
+    declaration=declarations(
+        STRUCT_DATA_TYPE,
+        strategies=DEFAULT_STRATEGIES
+        | {
+            _PLAIN_STRUCT: DataTypeStrategy(
+                configurations=lambda _strategies: EMPTY_CONFIGURATIONS,
+                fill_values=lambda _configuration, _strategies: st.just(0),
+            )
+        },
+    )
+)
+def test_a_struct_holds_no_other_definition_of_its_name(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """Its field types are read as the struct asked for, not the one named as it in the strategies."""
+    assert _read(STRUCT_DATA_TYPE, declaration).definition is STRUCT_DATA_TYPE
+
+
+@given(
+    declaration=declarations(
+        SHARDING_INDEXED_CODEC,
+        strategies=DEFAULT_STRATEGIES
+        | {_PLAIN_SHARD: CodecStrategy(configurations=lambda _chunk, _s: EMPTY_CONFIGURATIONS)},
+    )
+)
+def test_a_shard_holds_no_other_definition_of_its_name(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """Its inner codecs are read as the shard asked for, not the one named as it in the strategies."""
+    assert _read(SHARDING_INDEXED_CODEC, declaration).definition is SHARDING_INDEXED_CODEC
