@@ -21,7 +21,7 @@ from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
 )
-from zarr_metadata.v3.codec._arithmetic import COMPLEX, FLOATING_POINT, NOT_NUMBERS
+from zarr_metadata.v3.codec._arithmetic import FLOATING_POINT, NO_REAL_NUMBERS
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -145,10 +145,6 @@ the short-hand-name form is not permitted by the spec for this codec.
 """
 
 
-_NO_REAL_NUMBERS: Final = NOT_NUMBERS | COMPLEX
-"""The data types the codec accepts neither as input nor as output, because none of them models real numbers."""
-
-
 def _scalars(
     configuration: CastValueCodecConfiguration, side: Literal["source", "target"]
 ) -> Iterator[tuple[tuple[str | int, ...], JSONValue]]:
@@ -190,7 +186,7 @@ def _rules(
     if not isinstance(target, AcceptedDeclaration):
         return
     name, written = target.definition.name, target.name
-    if name in _NO_REAL_NUMBERS:
+    if name in NO_REAL_NUMBERS:
         yield ValidationProblem(
             ("data_type",),
             f"expected a data type that models real numbers, got {shown(written)}",
@@ -221,7 +217,7 @@ def _chunk_rules(
     source = chunk.data_type
     if not isinstance(source, AcceptedDeclaration):
         return
-    if source.definition.name in _NO_REAL_NUMBERS:
+    if source.definition.name in NO_REAL_NUMBERS:
         yield ValidationProblem(
             (),
             f"expected a chunk of a data type that models real numbers, got {shown(source.name)}",

@@ -68,4 +68,8 @@ spec leaves open whether `scale_offset` accepts them.
 """
 
 
-__all__ = ["COMPLEX", "FLOATING_POINT", "NOT_NUMBERS"]
+NO_REAL_NUMBERS: Final = NOT_NUMBERS | COMPLEX
+"""The data types that model no real number, which `cast_value` takes neither from nor to."""
+
+
+__all__ = ["COMPLEX", "FLOATING_POINT", "NOT_NUMBERS", "NO_REAL_NUMBERS"]

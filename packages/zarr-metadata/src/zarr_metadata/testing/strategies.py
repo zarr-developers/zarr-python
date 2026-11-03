@@ -21,12 +21,17 @@ What a configuration depends on, each kind's function takes:
 the shape of the array, `codec_configurations` the `Chunk` the codec is
 handed. Left out, nothing is known of it, and what is drawn is what the
 definition's rules accept. `declarations` wraps configurations in the
-envelopes a document writes them in.
+envelopes a document writes them in. `pipelines` draws a whole codec
+pipeline for a chunk, each codec drawn for what the one before it hands
+on.
 
 How each definition's configurations are drawn is a value,
 `Strategies`, keyed by the definition: `DEFAULT_STRATEGIES` holds one
-for each definition this package defines that holds no other declaration. An
-extension author adds their own with
+for each definition this package defines. A configuration that holds
+other declarations -- a struct's field types, the data type a
+`cast_value` casts to, a shard's codecs -- draws them from the same
+value, so they are drawn from every definition it holds, and read in a
+scope of those definitions. An extension author adds their own with
 `DEFAULT_STRATEGIES | {MY_CODEC: CodecStrategy(...)}`.
 
 Configurations are drawn at the data level the TypedDicts declare, JSON
@@ -41,14 +46,19 @@ from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, TypeVar, cast
 
-from hypothesis import strategies as st
-
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import Definition, as_kind, canonicalize, kind_of
 from zarr_metadata.testing._chunk_grid import CHUNK_GRID_STRATEGIES
 from zarr_metadata.testing._chunk_key_encoding import CHUNK_KEY_ENCODING_STRATEGIES
 from zarr_metadata.testing._codec import CODEC_STRATEGIES
 from zarr_metadata.testing._data_type import DATA_TYPE_STRATEGIES
+from zarr_metadata.testing._draw import (
+    any_spelling,
+    briefly,
+    pipelines_for,
+    scope_with,
+    strategy_for,
+)
 from zarr_metadata.testing._strategy import (
     NOTHING_KNOWN,
     ChunkGridStrategy,
@@ -59,9 +69,6 @@ from zarr_metadata.testing._strategy import (
     DefinitionStrategy,
     Strategies,
 )
-from zarr_metadata.v3._context import ZarrV3Context
-from zarr_metadata.v3._core import CORE_CONTEXT
-from zarr_metadata.v3._definition import Chunk, DataTypeDefinition
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -70,11 +77,13 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3 import ZarrV3DeclarationJSON
-    from zarr_metadata.v3._context import ZarrV3ContextSlots
+    from zarr_metadata.v3._context import ZarrV3Context
     from zarr_metadata.v3._definition import (
+        Chunk,
         ChunkGridDefinition,
         ChunkKeyEncodingDefinition,
         CodecDefinition,
+        DataTypeDefinition,
     )
 
 C = TypeVar("C")
@@ -98,30 +107,16 @@ DEFAULT_STRATEGIES: Final[MappingProxyType[Definition[Any], DefinitionStrategy]]
         **CODEC_STRATEGIES,
     }
 )
-"""A strategy for each definition this package defines that holds no other declaration."""
-
-
-def _strategy_for(definition: Definition[Any], strategies: Strategies) -> DefinitionStrategy:
-    """The strategy `strategies` holds for `definition`, which draws configurations of its kind."""
-    found = strategies.get(definition)
-    if found is None:
-        msg = f"no strategy for {definition.name!r}; pass one in `strategies`"
-        raise LookupError(msg)
-    if not isinstance(definition, found.kind):
-        msg = (
-            f"the strategy for {definition.name!r}, a {type(definition).__name__}, draws "
-            f"configurations of a {found.kind.__name__}: {found!r}"
-        )
-        raise TypeError(msg)
-    return found
+"""A strategy for each definition this package defines."""
 
 
 def data_type_configurations(
     definition: DataTypeDefinition[C], *, strategies: Strategies = DEFAULT_STRATEGIES
 ) -> SearchStrategy[C]:
     """Configurations of the data type `definition` defines."""
-    found = cast("DataTypeStrategy", _strategy_for(definition, strategies))
-    return cast("SearchStrategy[C]", found.configurations)
+    strategies = briefly(strategies)
+    found = cast("DataTypeStrategy", strategy_for(definition, strategies))
+    return cast("SearchStrategy[C]", found.configurations(strategies))
 
 
 def fill_values(
@@ -131,8 +126,9 @@ def fill_values(
     strategies: Strategies = DEFAULT_STRATEGIES,
 ) -> SearchStrategy[JSONValue]:
     """Fill values of the data type `definition` and `configuration` describe, in every spelling the spec gives them."""
-    found = cast("DataTypeStrategy", _strategy_for(definition, strategies))
-    return found.fill_values(cast("Mapping[str, JSONValue]", configuration))
+    strategies = briefly(strategies)
+    found = cast("DataTypeStrategy", strategy_for(definition, strategies))
+    return found.fill_values(cast("Mapping[str, JSONValue]", configuration), strategies)
 
 
 def chunk_grid_configurations(
@@ -145,16 +141,18 @@ def chunk_grid_configurations(
 
     With no shape, what is drawn is what the grid's rules accept.
     """
-    found = cast("ChunkGridStrategy", _strategy_for(definition, strategies))
-    return cast("SearchStrategy[C]", found.configurations(shape))
+    strategies = briefly(strategies)
+    found = cast("ChunkGridStrategy", strategy_for(definition, strategies))
+    return cast("SearchStrategy[C]", found.configurations(shape, strategies))
 
 
 def chunk_key_encoding_configurations(
     definition: ChunkKeyEncodingDefinition[C], *, strategies: Strategies = DEFAULT_STRATEGIES
 ) -> SearchStrategy[C]:
     """Configurations of the chunk key encoding `definition` defines."""
-    found = cast("ChunkKeyEncodingStrategy", _strategy_for(definition, strategies))
-    return cast("SearchStrategy[C]", found.configurations)
+    strategies = briefly(strategies)
+    found = cast("ChunkKeyEncodingStrategy", strategy_for(definition, strategies))
+    return cast("SearchStrategy[C]", found.configurations(strategies))
 
 
 def codec_configurations(
@@ -168,61 +166,27 @@ def codec_configurations(
     With no chunk, nothing is known of it, and what is drawn is what the
     codec's rules accept.
     """
-    found = cast("CodecStrategy", _strategy_for(definition, strategies))
-    return cast("SearchStrategy[C] | None", found.configurations(chunk))
+    strategies = briefly(strategies)
+    found = cast("CodecStrategy", strategy_for(definition, strategies))
+    return cast("SearchStrategy[C] | None", found.configurations(chunk, strategies))
 
 
-def _written_bare(definition: Definition[Any]) -> bool:
-    """Whether the spec has the declaration written as its bare name: a data type it defines itself.
+def pipelines(
+    chunk: Chunk = NOTHING_KNOWN, *, strategies: Strategies = DEFAULT_STRATEGIES
+) -> SearchStrategy[tuple[ZarrV3DeclarationJSON, ...]] | None:
+    """Codec pipelines handed `chunk`, as an array's `codecs` holds them; None when none is drawn for it.
 
-    "If the data type is defined in this specification, then the value
-    must be the data type identifier provided as a string"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L509-L512).
+    Array -> array codecs, then one array -> bytes codec, then bytes ->
+    bytes codecs, each drawn for the chunk the codec before it hands on,
+    as its definition's `transition` says: a `transpose` hands on the
+    chunk's axes permuted, a `cast_value` the data type it casts to. A
+    codec that holds pipelines of its own, as a shard does, has each drawn
+    the same way, handed the chunk its definition's `pipelines` says.
+    None when no array -> bytes codec takes the chunk, as none takes a
+    `string` one when the strategies hold no `vlen-utf8`.
     """
-    if not isinstance(definition, DataTypeDefinition):
-        return False
-    return CORE_CONTEXT.claimant(DataTypeDefinition, definition.name) is definition
-
-
-@st.composite
-def _any_spelling(
-    draw: st.DrawFn, definition: Definition[Any], configurations: SearchStrategy[Any]
-) -> ZarrV3DeclarationJSON:
-    """A configuration of `definition` in one of the envelopes the spec allows it.
-
-    A configuration with nothing in it is written as the bare name, an
-    object without one, or an object with an empty one; any object may
-    say `must_understand` is `true`, which is what absence means. A name
-    that carries the configuration, as `r16` does, and a data type the
-    spec defines itself, are written as the bare name.
-    """
-    configuration = cast("Mapping[str, JSONValue]", draw(configurations))
-    carried = definition._carrying_name(configuration)  # pyright: ignore[reportPrivateUsage]
-    if carried is not None:
-        return carried
-    if _written_bare(definition):
-        return definition.name
-    empty = len(configuration) == 0
-    if empty and draw(st.booleans()):
-        return definition.name
-    declaration: dict[str, JSONValue] = {"name": definition.name}
-    if not empty or draw(st.booleans()):
-        declaration["configuration"] = configuration
-    if draw(st.booleans()):
-        declaration["must_understand"] = True
-    return cast("ZarrV3DeclarationJSON", declaration)
-
-
-def _scope_of(definition: Definition[Any]) -> ZarrV3Context:
-    """The scope that claims `definition` and nothing else; a `TypeError` for a definition no slot of a Zarr v3 scope holds."""
-    for slot, kind in ZarrV3Context.kinds.items():
-        if isinstance(definition, kind):
-            return ZarrV3Context(**cast("ZarrV3ContextSlots", {slot: (definition,)}))
-    msg = (
-        f"{definition.name!r} is a {type(definition).__name__}, "
-        "which no slot of a Zarr v3 scope holds"
-    )
-    raise TypeError(msg)
+    strategies = briefly(strategies)
+    return pipelines_for(chunk, strategies)
 
 
 def _checked(
@@ -258,14 +222,16 @@ def declarations(
     once it is known not to be None. `spellings` says whether every
     spelling the spec allows is drawn, or only the simplest.
 
-    Each declaration is read in a scope of its definition alone, with no chunk
-    known, and one its definition's rules refuse, as they refuse one
-    drawn from `configurations` they do not accept, raises a
-    `ValueError`. A codec's chunk rules are not checked: what fits the
-    chunk is what `codec_configurations` draws.
+    Each declaration is read in the strategies' scope, with `definition`
+    in it whether or not they hold it, and with no chunk known; one its
+    definition's rules refuse, as they refuse one drawn from
+    `configurations` they do not accept, raises a `ValueError`. A
+    codec's chunk rules are not checked: what fits the chunk is what
+    `codec_configurations` draws.
     """
+    strategies = briefly(strategies)
     drawn: Configurations | SearchStrategy[C] = (
-        _strategy_for(definition, strategies).unconstrained()
+        strategy_for(definition, strategies).unconstrained(strategies)
         if configurations is UNSET
         else configurations
     )
@@ -273,10 +239,10 @@ def declarations(
         _checked,
         definition=definition,
         kind=as_kind(kind_of(definition)),
-        scope=_scope_of(definition),
+        scope=scope_with(definition, strategies),
         spellings=spellings,
     )
-    return _any_spelling(definition, drawn).map(checked)
+    return any_spelling(definition, drawn).map(checked)
 
 
 __all__ = [
@@ -296,4 +262,5 @@ __all__ = [
     "data_type_configurations",
     "declarations",
     "fill_values",
+    "pipelines",
 ]

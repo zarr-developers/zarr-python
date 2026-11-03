@@ -14,13 +14,17 @@ from typing import TYPE_CHECKING, Any, Final
 from hypothesis import strategies as st
 
 from zarr_metadata.testing._strategy import MAX_RANK, ChunkGridStrategy
-from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
-from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
+from zarr_metadata.v3.chunk_grid.rectilinear import (
+    RECTILINEAR_CHUNK_GRID,
+    RectilinearChunkGridConfiguration,
+    RectilinearDimSpec,
+)
+from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID, RegularChunkGridConfiguration
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata._common import JSONValue
+    from zarr_metadata.testing._strategy import Strategies
     from zarr_metadata.v3._definition import ChunkGridDefinition
 
 _MAX_LENGTH: Final = 16
@@ -40,16 +44,18 @@ def _length(extent: int | None) -> st.SearchStrategy[int]:
     return st.integers(1, 2 * extent)
 
 
-def _regular(shape: tuple[int, ...] | None) -> st.SearchStrategy[Mapping[str, JSONValue]]:
+def _regular(
+    shape: tuple[int, ...] | None, _strategies: Strategies
+) -> st.SearchStrategy[RegularChunkGridConfiguration]:
     """A chunk length for each dimension."""
     if shape is None:
         lengths = st.lists(_length(None), max_size=MAX_RANK).map(tuple)
     else:
         lengths = st.tuples(*(_length(extent) for extent in shape))
-    return lengths.map(lambda chunk_shape: {"chunk_shape": chunk_shape})
+    return lengths.map(lambda chunk_shape: RegularChunkGridConfiguration(chunk_shape=chunk_shape))
 
 
-def _spelled_run(draw: st.DrawFn, size: int, count: int) -> list[JSONValue]:
+def _spelled_run(draw: st.DrawFn, size: int, count: int) -> list[int | tuple[int, int]]:
     """`count` chunks of `size`: one `[size, count]` pair, or the size written once for each."""
     if draw(st.booleans()):
         return [(size, count)]
@@ -57,7 +63,7 @@ def _spelled_run(draw: st.DrawFn, size: int, count: int) -> list[JSONValue]:
 
 
 @st.composite
-def _edges(draw: st.DrawFn, extent: int | None) -> JSONValue:
+def _edges(draw: st.DrawFn, extent: int | None) -> tuple[int | tuple[int, int], ...]:
     """Edge lengths along a dimension, covering `extent`, in runs spelled as pairs or written out.
 
     Runs are drawn apart, so two of one size can sit side by side and a
@@ -76,24 +82,30 @@ def _edges(draw: st.DrawFn, extent: int | None) -> JSONValue:
     covered = sum(size * count for size, count in runs)
     if extent is not None and covered < extent:
         runs.append((extent - covered, 1))
-    spelled: list[JSONValue] = []
+    spelled: list[int | tuple[int, int]] = []
     for size, count in runs:
         spelled.extend(_spelled_run(draw, size, count))
     return tuple(spelled)
 
 
-def _rectilinear_dimension(extent: int | None) -> st.SearchStrategy[JSONValue]:
+def _rectilinear_dimension(extent: int | None) -> st.SearchStrategy[RectilinearDimSpec]:
     """A bare length, which repeats until it covers the dimension, or edges that cover it."""
     return _length(extent) | _edges(extent)
 
 
-def _rectilinear(shape: tuple[int, ...] | None) -> st.SearchStrategy[Mapping[str, JSONValue]]:
+def _rectilinear(
+    shape: tuple[int, ...] | None, _strategies: Strategies
+) -> st.SearchStrategy[RectilinearChunkGridConfiguration]:
     """Inline chunk shapes, one entry for each dimension."""
     if shape is None:
         dimensions = st.lists(_rectilinear_dimension(None), max_size=MAX_RANK).map(tuple)
     else:
         dimensions = st.tuples(*(_rectilinear_dimension(extent) for extent in shape))
-    return dimensions.map(lambda chunk_shapes: {"kind": "inline", "chunk_shapes": chunk_shapes})
+    return dimensions.map(
+        lambda chunk_shapes: RectilinearChunkGridConfiguration(
+            kind="inline", chunk_shapes=chunk_shapes
+        )
+    )
 
 
 CHUNK_GRID_STRATEGIES: Final[Mapping[ChunkGridDefinition[Any], ChunkGridStrategy]] = {
