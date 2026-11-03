@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
 
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_grids import is_regular_1d, is_regular_nd
+from zarr.core.chunk_grids import ChunkGrid, is_regular_1d, is_regular_nd
 from zarr.core.config import config
 from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
@@ -20,6 +20,8 @@ from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
     ArrayV3Metadata,
+    RegularChunkGridMetadata,
+    create_chunk_grid_metadata,
     parse_codecs,
     parse_dimension_names,
     parse_node_type_array,
@@ -110,9 +112,6 @@ def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 # Chunk-grid regularity helpers
 # ---------------------------------------------------------------------------
 
-# Cases used for both list/tuple (Python-sequence path) and ndarray (vectorized
-# path) of `is_regular_1d`. Parametrizing the input form ensures both branches
-# are exercised by the same suite of edge cases.
 _REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
     Expect(input=[], output=True, id="empty"),
     Expect(input=[10], output=True, id="single-chunk"),
@@ -129,17 +128,9 @@ _REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
 
 @pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
 def test_is_regular_1d_sequence(case: Expect[list[int], bool]) -> None:
-    """`is_regular_1d` accepts plain Python sequences and uses the iterative path."""
-    # list and tuple both go through the non-ndarray branch.
+    """`is_regular_1d` accepts plain Python sequences."""
     assert is_regular_1d(case.input) is case.output
     assert is_regular_1d(tuple(case.input)) is case.output
-
-
-@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
-def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
-    """`is_regular_1d` accepts int64 ndarrays and uses the vectorized path."""
-    arr = np.asarray(case.input, dtype=np.int64)
-    assert is_regular_1d(arr) is case.output
 
 
 @pytest.mark.parametrize(
@@ -156,8 +147,22 @@ def test_is_regular_1d_ndarray(case: Expect[list[int], bool]) -> None:
 def test_is_regular_nd_sequence(case: Expect[list[list[int]], bool]) -> None:
     """`is_regular_nd` returns True iff every per-dim spec is regular."""
     assert is_regular_nd(case.input) is case.output
-    # Same result via ndarray inputs.
-    assert is_regular_nd([np.asarray(d, dtype=np.int64) for d in case.input]) is case.output
+
+
+def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
+    """`create_chunk_grid_metadata` rejects dimension grids it does not recognize."""
+    grid = ChunkGrid(dimensions=(object(),))  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="Unknown dimension grid type"):
+        create_chunk_grid_metadata(grid)
+
+
+def test_regular_chunk_grid_rejects_edge_lists() -> None:
+    """A regular chunk grid only accepts integer chunk edge lengths."""
+    with pytest.raises(
+        TypeError,
+        match=re.escape("Dimension 1: chunk edge length must be an int, got (5, 10, 5)"),
+    ):
+        RegularChunkGridMetadata(chunk_shape=(2, (5, 10, 5)))  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +321,23 @@ def test_array_metadata_extra_fields_rejected(case: ExpectFail[dict[str, Any]]) 
     """from_dict rejects extra fields that don't conform to the spec."""
     with case.raises():
         ArrayV3Metadata.from_dict(case.input)
+
+
+@pytest.mark.parametrize("value", [{"must_understand": True}, {}, 42])
+def test_init_extra_fields_disallowed(value: object) -> None:
+    """Extra field values that are not objects with `must_understand: false` are rejected."""
+    with pytest.raises(MetadataValidationError, match="disallowed extra fields"):
+        ArrayV3Metadata(
+            shape=(10,),
+            data_type=UInt8(),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": (10,)}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
+            fill_value=0,
+            codecs=({"name": "bytes", "configuration": {"endian": "little"}},),
+            attributes={},
+            dimension_names=None,
+            extra_fields={"my_ext": value},  # type: ignore[dict-item]
+        )
 
 
 def test_init_extra_fields_collision() -> None:

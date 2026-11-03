@@ -217,12 +217,33 @@ def _decode_float(
     return result
 
 
+def _in_native_byte_order(
+    arr: np.ndarray[tuple[Any, ...], np.dtype[Any]],
+) -> np.ndarray[tuple[Any, ...], np.dtype[Any]]:
+    """View-or-copy `arr` in the host byte order; a no-op for native input.
+
+    The arithmetic below must see native arrays: numpy returns native results, so a
+    byte-swapped input would trip the dtype-preservation check, and a byte-swapped dtype
+    compares unequal to its native twin (`>u8 != uint64` on a little-endian host).
+    """
+    return arr.astype(arr.dtype.newbyteorder("="), copy=False)
+
+
 def _encode(
     arr: np.ndarray[tuple[Any, ...], np.dtype[Any]],
     offset: np.generic,
     scale: np.generic,
 ) -> np.ndarray[tuple[Any, ...], np.dtype[Any]]:
     """Compute ``(arr - offset) * scale`` without silent overflow, returning ``arr.dtype``."""
+    return _encode_native(_in_native_byte_order(arr), offset, scale).astype(arr.dtype, copy=False)
+
+
+def _encode_native(
+    arr: np.ndarray[tuple[Any, ...], np.dtype[Any]],
+    offset: np.generic,
+    scale: np.generic,
+) -> np.ndarray[tuple[Any, ...], np.dtype[Any]]:
+    """`_encode` for an `arr` in the host byte order."""
     # uint64 is split out first because its full range (up to 2**64-1) doesn't fit in int64,
     # so the widening strategy used for every other integer dtype would itself overflow.
     if arr.dtype == np.uint64:
@@ -253,6 +274,20 @@ def _decode(
     scale_repr: object,
 ) -> np.ndarray[tuple[Any, ...], np.dtype[Any]]:
     """Compute ``arr / scale + offset`` without silent overflow, returning ``arr.dtype``."""
+    native = _in_native_byte_order(arr)
+    return _decode_native(native, offset, scale, scale_repr=scale_repr).astype(
+        arr.dtype, copy=False
+    )
+
+
+def _decode_native(
+    arr: np.ndarray[tuple[Any, ...], np.dtype[Any]],
+    offset: np.generic,
+    scale: np.generic,
+    *,
+    scale_repr: object,
+) -> np.ndarray[tuple[Any, ...], np.dtype[Any]]:
+    """`_decode` for an `arr` in the host byte order."""
     # uint64: same reasoning as _encode — its range exceeds int64, so the Python-int path is the
     # only correct option. Exactness check runs first so non-divisible inputs fail before the
     # slower object-dtype arithmetic.
@@ -355,15 +390,18 @@ class ScaleOffset(ArrayArrayCodec):
                 f"scale_offset codec only supports integer and floating-point data types. "
                 f"Got {dtype}."
             )
-        if self.scale == 0:
-            raise ValueError("scale_offset scale must be non-zero.")
+        parsed: dict[str, Any] = {}
         for name, value in [("offset", self.offset), ("scale", self.scale)]:
             try:
-                dtype.from_json_scalar(value, zarr_format=3)
+                parsed[name] = dtype.from_json_scalar(value, zarr_format=3)
             except (TypeError, ValueError, OverflowError) as e:
                 raise ValueError(
                     f"scale_offset {name} value {value!r} is not representable in dtype {native}."
                 ) from e
+        # ``scale`` may be given as a string, and no string is ever ``== 0``, so this has to
+        # compare the parsed scalar rather than the value as supplied.
+        if parsed["scale"] == 0:
+            raise ValueError("scale_offset scale must be non-zero.")
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         zdtype = chunk_spec.dtype

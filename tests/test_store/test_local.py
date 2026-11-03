@@ -1,23 +1,219 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+import io
+import os
 import pathlib
 import re
+import time
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 import zarr
+import zarr.storage._local
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
-from zarr.storage._local import _atomic_write
+from zarr.storage._local import _RETRY_DELAYS, _atomic_write, _move_with_retry
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+
+_LOCAL_STORE_FILE = zarr.storage._local.__file__
+_ASYNC_CODE_FLAGS = inspect.CO_COROUTINE | inspect.CO_ASYNC_GENERATOR
+
+try:
+    import coverage as _coverage
+except ImportError:  # pragma: no cover
+    _COVERAGE_DIR = None
+else:
+    # coverage.py canonicalizes a source file's path (os.path.realpath, hence os.lstat) the
+    # first time its tracer sees code from that file, and it does so on whatever thread is
+    # running that code. Such calls carry coverage's own frames and are not LocalStore's.
+    _COVERAGE_DIR = os.path.dirname(_coverage.__file__) + os.sep
+
+# The syscall-level entry points that pathlib / os.path / shutil helpers bottom out in.
+# Patching these, rather than each Path method, catches a blocking call no matter which
+# helper made it. The list is deliberately wider than what LocalStore uses today.
+_FILESYSTEM_CALLS: tuple[tuple[Any, str], ...] = (
+    (os, "stat"),
+    (os, "lstat"),
+    (os, "access"),
+    (os, "scandir"),
+    (os, "listdir"),
+    (os, "mkdir"),
+    (os, "rmdir"),
+    (os, "unlink"),
+    (os, "remove"),
+    (os, "link"),
+    (os, "rename"),
+    (os, "replace"),
+    (os, "utime"),
+    (os, "open"),
+    (os, "fsync"),
+    (io, "open"),
+    # On Windows these are builtins (nt._path_isfile and friends) that never reach
+    # os.stat, and from Python 3.14 Path.is_file, is_dir and exists call them.
+    (os.path, "isfile"),
+    (os.path, "isdir"),
+    (os.path, "islink"),
+    (os.path, "exists"),
+    (os.path, "lexists"),
+)
+
+
+@dataclass
+class _FilesystemCalls:
+    """What the patched filesystem entry points saw from LocalStore code during one test."""
+
+    off_loop: set[tuple[str, str]] = field(default_factory=set)
+    """``(outermost LocalStore function, op)`` pairs made from a thread with no running loop."""
+    on_loop: list[str] = field(default_factory=list)
+    """Calls made on an event loop's thread from inside a LocalStore coroutine: violations."""
+
+    def record(self, op: str) -> None:
+        frame = inspect.currentframe()
+        innermost = outermost = None
+        while frame is not None:
+            if _COVERAGE_DIR is not None and frame.f_code.co_filename.startswith(_COVERAGE_DIR):
+                return  # the coverage tracer resolving a filename, not LocalStore doing I/O
+            if frame.f_code.co_filename == _LOCAL_STORE_FILE:
+                if innermost is None:
+                    innermost = frame
+                outermost = frame
+            frame = frame.f_back
+        if outermost is None or innermost is None:
+            return  # not LocalStore's doing (pytest, tmp_path, the test body, ...)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # A worker thread, such as the one asyncio.to_thread uses: blocking is fine here.
+            self.off_loop.add((outermost.f_code.co_name, op))
+            return
+        if not outermost.f_code.co_flags & _ASYNC_CODE_FLAGS:
+            return  # a synchronous LocalStore method: its caller chose to block the loop
+        site = (
+            f"LocalStore.{outermost.f_code.co_name} called {op} at _local.py:{innermost.f_lineno}"
+        )
+        if site not in self.on_loop:
+            self.on_loop.append(site)
+
+
+async def _collect(keys: AsyncIterator[str]) -> list[str]:
+    return [key async for key in keys]
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
+
+    async def test_delete_dir_on_a_file_raises(self, tmp_path: pathlib.Path) -> None:
+        """`delete_dir` refuses a prefix that names a file rather than a directory."""
+        store = await LocalStore.open(tmp_path)
+        await store.set("file", self.buffer_cls.from_bytes(b"x"))
+        with pytest.raises(ValueError, match="that is a file"):
+            await store.delete_dir("file")
+        assert await store.exists("file")
+
+    @pytest.fixture(autouse=True)
+    def filesystem_calls(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[_FilesystemCalls]:
+        """Fail if any LocalStore coroutine does filesystem I/O on the event loop thread.
+
+        Every async method must hand its filesystem work to ``asyncio.to_thread``;
+        doing it inline stalls every other task sharing the loop.
+        """
+        calls = _FilesystemCalls()
+
+        def patch(module: Any, name: str) -> None:
+            original = getattr(module, name)
+
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                calls.record(f"{module.__name__}.{name}")
+                return original(*args, **kwargs)
+
+            monkeypatch.setattr(module, name, wrapper)
+
+        for module, name in _FILESYSTEM_CALLS:
+            patch(module, name)
+        yield calls
+        assert not calls.on_loop, "filesystem calls on the event loop thread:\n" + "\n".join(
+            calls.on_loop
+        )
+
+    @pytest.mark.parametrize(
+        ("method", "helper"),
+        [
+            ("open", "_ensure_root"),
+            ("lazy_open", "_ensure_root"),
+            ("get", "_get"),
+            ("get_partial_values", "_get"),
+            ("set", "_put"),
+            ("set_if_not_exists", "_put"),
+            ("exists", "_exists"),
+            ("getsize", "_getsize"),
+            ("delete", "_delete"),
+            ("delete_dir", "_delete_dir"),
+            ("list", "_list_files"),
+            ("list_prefix", "_list_files"),
+            ("list_dir", "_list_dir"),
+            ("clear", "_clear"),
+            ("move", "_move"),
+        ],
+    )
+    async def test_filesystem_calls_are_observed(
+        self,
+        store: LocalStore,
+        filesystem_calls: _FilesystemCalls,
+        tmp_path_factory: pytest.TempPathFactory,
+        method: str,
+        helper: str,
+    ) -> None:
+        """The detector must see each async method's I/O, or its silence means nothing."""
+        data = self.buffer_cls.from_bytes(b"x")
+        await self.set(store, "a/b", data)
+        ops: dict[str, Callable[[], Awaitable[object]]] = {
+            "open": lambda: LocalStore.open(store.root),
+            "lazy_open": lambda: LocalStore(store.root).get("a/b"),
+            "get": lambda: store.get("a/b"),
+            "get_partial_values": lambda: store.get_partial_values(
+                cpu.buffer_prototype, [("a/b", None)]
+            ),
+            "set": lambda: store.set("a/c", data),
+            "set_if_not_exists": lambda: store.set_if_not_exists("a/c", data),
+            "exists": lambda: store.exists("a/b"),
+            "getsize": lambda: store.getsize("a/b"),
+            "delete": lambda: store.delete("a/b"),
+            "delete_dir": lambda: store.delete_dir("a"),
+            "list": lambda: _collect(store.list()),
+            "list_prefix": lambda: _collect(store.list_prefix("a")),
+            "list_dir": lambda: _collect(store.list_dir("a")),
+            "clear": store.clear,
+            "move": lambda: store.move(tmp_path_factory.mktemp("dest") / "moved"),
+        }
+        await ops[method]()
+        assert helper in {function for function, _ in filesystem_calls.off_loop}
+
+    async def test_concurrent_lazy_open(self, store_not_open: LocalStore) -> None:
+        """Concurrent first calls on an unopened store all succeed.
+
+        Opening now suspends (the root check runs in a thread), so every caller that
+        finds the store closed races to open it; none of them may hit
+        ``Store._open``'s "already open" error.
+        """
+        data = self.buffer_cls.from_bytes(b"x")
+        keys = [f"k{i}" for i in range(8)]
+        await asyncio.gather(
+            store_not_open.get("missing"), *(store_not_open.set(k, data) for k in keys)
+        )
+        assert store_not_open._is_open
+        for key in keys:
+            assert_bytes_equal(await store_not_open.get(key), data)
 
     async def get(self, store: LocalStore, key: str) -> Buffer:
         return self.buffer_cls.from_bytes((store.root / key).read_bytes())
@@ -164,3 +360,104 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+def _oserror(winerror: int) -> OSError:
+    """An OSError shaped like the one a failed MoveFileEx produces."""
+    error = OSError(13, "Access is denied")
+    error.winerror = winerror  # type: ignore[attr-defined]
+    return error
+
+
+class _FlakyMove:
+    """A move that raises `error` the first `failures` times it is called."""
+
+    def __init__(self, failures: int, error: OSError) -> None:
+        self.failures = failures
+        self.error = error
+        self.attempts = 0
+
+    def __call__(self, src: pathlib.Path, dst: pathlib.Path) -> None:
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise self.error
+        src.replace(dst)
+
+
+@pytest.fixture
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the delays `_move_with_retry` would sleep for instead of sleeping."""
+    recorded: list[float] = []
+    monkeypatch.setattr(time, "sleep", recorded.append)
+    return recorded
+
+
+@pytest.mark.parametrize("winerror", [5, 32])
+@pytest.mark.parametrize("failures", [1, 2, 3])
+def test_move_with_retry_recovers(
+    tmp_path: pathlib.Path, sleeps: list[float], winerror: int, failures: int
+) -> None:
+    """A destination that is briefly busy is retried, not reported."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    move = _FlakyMove(failures, _oserror(winerror))
+
+    _move_with_retry(src, dst, move)
+
+    assert dst.read_bytes() == b"abc"
+    assert move.attempts == failures + 1
+    assert sleeps == list(_RETRY_DELAYS[:failures])
+
+
+def test_move_with_retry_gives_up(tmp_path: pathlib.Path, sleeps: list[float]) -> None:
+    """A destination that never frees still raises, after a bounded wait."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    move = _FlakyMove(len(_RETRY_DELAYS) + 1, _oserror(5))
+
+    with pytest.raises(OSError, match="Access is denied"):
+        _move_with_retry(src, dst, move)
+
+    assert move.attempts == len(_RETRY_DELAYS) + 1
+    assert sleeps == list(_RETRY_DELAYS)
+    assert sum(sleeps) < 1.0
+
+
+@pytest.mark.parametrize("winerror", [2, 183, None])
+def test_move_with_retry_does_not_retry_other_errors(
+    tmp_path: pathlib.Path, sleeps: list[float], winerror: int | None
+) -> None:
+    """Only a busy destination is transient; everything else fails at once.
+
+    183 is the case that matters: `ERROR_ALREADY_EXISTS` is how the
+    `exclusive` path reports that a node is already there, and retrying it
+    would overwrite what `_safe_move` refused to touch.
+    """
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    error = OSError(17, "boom")
+    if winerror is not None:
+        error.winerror = winerror  # type: ignore[attr-defined]
+    move = _FlakyMove(1, error)
+
+    with pytest.raises(OSError, match="boom"):
+        _move_with_retry(src, dst, move)
+
+    assert move.attempts == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_atomic_write_onto_directory(
+    tmp_path: pathlib.Path, sleeps: list[float], exclusive: bool
+) -> None:
+    """Writing a key whose destination is a directory fails and leaves no temp file."""
+    path = tmp_path / "node"
+    path.mkdir()
+    with pytest.raises(OSError), _atomic_write(path, "wb", exclusive=exclusive) as f:
+        f.write(b"abc")
+    assert path.is_dir()
+    assert list(tmp_path.iterdir()) == [path]  # no temp files

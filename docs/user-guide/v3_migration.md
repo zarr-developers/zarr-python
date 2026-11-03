@@ -165,6 +165,13 @@ The following stores have been renamed or changed:
 | `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
 | `FSStore`          | [`zarr.storage.FsspecStore`][]         |
 | `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
+| `LRUStoreCache`    | [`zarr.experimental.cache_store.CacheStore`][] (experimental) |
+
+`LRUStoreCache` has no stable equivalent in Zarr-Python 3. The experimental
+[`CacheStore`](experimental.md#cachestore) wraps a store and caches its contents in a second
+store, evicting the least recently used entries once `max_size` is reached. For remote data read
+through [`FsspecStore`][zarr.storage.FsspecStore], fsspec's caching filesystems
+(`fsspec.implementations.cached`, e.g. a `simplecache::s3://...` URL) are another option.
 
 A number of deprecated stores were also removed.
 See [issue #1274](https://github.com/zarr-developers/zarr-python/issues/1274) for more details on the removal of these stores.

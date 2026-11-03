@@ -219,7 +219,7 @@ arrays over one shared axis:
     ```
 
 **`image[broadcast_rows, broadcast_columns]`** — query. NumPy broadcasting,
-materialized: each map carries the full `(2, 3)` block:
+kept compact: singleton axes retain the independent dependencies:
 
 === "Python"
 
@@ -227,8 +227,8 @@ materialized: each map carries the full `(2, 3)` block:
     IndexTransform(
         domain=IndexDomain.from_shape((2, 3)),
         output=(
-            ArrayMap(np.broadcast_to(broadcast_rows, (2, 3))),
-            ArrayMap(np.broadcast_to(broadcast_columns, (2, 3))),
+            ArrayMap(broadcast_rows.reshape(2, 1)),
+            ArrayMap(broadcast_columns.reshape(1, 3)),
         ),
     )
     ```
@@ -242,8 +242,8 @@ materialized: each map carries the full `(2, 3)` block:
      "input_exclusive_max": [2, 3],
      "input_labels": ["", ""],
      "output": [
-      {"offset": 0, "stride": 1, "index_array": [[0, 0, 0], [3, 3, 3]], "index_array_bounds": ["-inf", "+inf"]},
-      {"offset": 0, "stride": 1, "index_array": [[1, 4, 6], [1, 4, 6]], "index_array_bounds": ["-inf", "+inf"]}
+      {"offset": 0, "stride": 1, "index_array": [[0], [3]], "index_array_bounds": ["-inf", "+inf"]},
+      {"offset": 0, "stride": 1, "index_array": [[1, 4, 6]], "index_array_bounds": ["-inf", "+inf"]}
      ]
     }
     ```
@@ -302,17 +302,18 @@ so they equal the zero-origin models after `translate_domain_to`:
 --8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
 
-`LazyArray` adds nothing to these semantics: it is a regular array-like API
-whose `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors compile the same
-dialects to the same transforms — the only difference is the return type, a
-view instead of an array. The test suite holds the wrapper to this matrix.
+`LazyArray` exposes the transform machinery through a positional array-like
+API. Its `[...]`, `.oindex[...]`, and `.vindex[...]` operations return views and
+normalize positions before composition. This boundary differs from the literal
+coordinate semantics of `IndexTransform`, as the following table shows. The
+executable matrix checks the documented cases, not every possible NumPy expression.
 
 ## Positions vs literal coordinates
 
 | Surface | Meaning of an integer index | Meaning of `-1` |
 | --- | --- | --- |
 | `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The address `-1`, when the domain contains it |
-| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before transform composition |
+| `LazyArray` | A NumPy-style position in the current view | The last position, normalized before transform composition |
 
 The wrapper's three indexing modes all use positions in the current view. Each
 derived view begins at position zero, while the transform algebra underneath
@@ -322,6 +323,6 @@ that distinction with non-zero and negative-origin domains.
 
 ---
 
-<nav aria-label="Reference page navigation">
-  <strong>Next:</strong> <a href="../integrations/">Integration boundaries</a>
+<nav aria-label="Reference page navigation" markdown>
+**Next:** [Integration boundaries](integrations.md)
 </nav>

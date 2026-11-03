@@ -4,16 +4,31 @@ Zarr v3 `r<N>` raw-bytes data type (parameterised by bit count).
 The `data_type` value is a string of the form `r<N>` where `N` is a
 positive multiple of 8 (e.g. `r8`, `r16`, `r24`).
 
-See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html
+See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47; fill value: https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L97-L99)
 """
 
-import re
+from collections.abc import Iterator
 from typing import Final, NewType
 
-RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
-"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`)."""
+from typing_extensions import TypedDict
 
-_RAW_BYTES_RE: Final = re.compile(r"^r(\d+)$")
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import (
+    RAW_BYTES_NAME,
+    RAW_BYTES_NAME_PATTERN,
+    DataTypeDefinition,
+    StorageClass,
+)
+from zarr_metadata.v3.data_type._byte import ByteValue
+
+RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
+"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
+
+"raw bits, variable size given by *, limited to be a multiple of 8":
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47
+"""
 
 
 def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
@@ -22,7 +37,7 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     Raises ValueError if `value` is not `r` followed by a positive
     multiple of 8.
     """
-    match = _RAW_BYTES_RE.fullmatch(value)
+    match = RAW_BYTES_NAME_PATTERN.fullmatch(value)
     if match is None:
         raise ValueError(f"Expected 'r' followed by a positive integer, got {value!r}")
     bits = int(match.group(1))
@@ -31,14 +46,87 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     return RawBytesDataTypeName(value)
 
 
-RawBytesFillValue = tuple[int, ...]
+RawBytesFillValue = tuple[ByteValue, ...]
 """Permitted JSON shape of the `fill_value` field for `r<N>`.
 
 A JSON array of N/8 integers in `[0, 255]` (one per byte).
 """
 
 
+class RawBytesConfiguration(TypedDict, closed=True):
+    """The configuration that a raw-bytes name carries: its size in bits, such as `{"bits": 16}` for `r16`.
+
+    A document writes the name, never this object. The definition of `r*`
+    reads a name into this object, and the simplest spelling writes it
+    back as the name.
+    """
+
+    bits: int
+    """The size in bits that the name writes, `16` for `r16`.
+
+    A positive multiple of 8.
+    """
+
+
+def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
+    """Check the size: "raw bits, variable size given by *, limited to be a multiple of 8". Zero bits is not a valid type."""
+    bits = configuration["bits"]
+    if bits == 0 or bits % 8 != 0:
+        yield ValidationProblem(
+            ("bits",),
+            f"expected a size in bits that is a positive multiple of 8, got {bits}",
+            "invalid_value",
+        )
+
+
+def _fill_value_rules(
+    configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
+) -> Iterator[ValidationProblem]:
+    """Check that the fill value has one byte value for each 8 bits of the size.
+
+    The spec text says `N` values for `r<N>`, but `N` counts bits
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
+    and one value is one byte.
+    """
+    expected = configuration["bits"] // 8
+    if len(value) != expected:
+        yield ValidationProblem(
+            (), f"expected {expected} byte values, got {len(value)}", "invalid_value"
+        )
+
+
+def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:
+    """Return single-byte storage for `r8`. Return None (unknown) for wider raw bits, because the spec does not yet say anything about their byte order.
+
+    "r8, r16, and r24 should be understood as fall-back types of
+    respectively 1, 2, and 3 byte length". About byte order, the spec
+    says only that it looks for "more feedback and prototypes of code
+    using the r*, raw bits, for various endianness"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L908).
+    """
+    return "single_byte" if configuration["bits"] == 8 else None
+
+
+RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
+    name=RAW_BYTES_NAME,
+    configuration=RawBytesConfiguration,
+    rules=_rules,
+    fill_value=RawBytesFillValue,
+    fill_value_rules=_fill_value_rules,
+    storage=_storage,
+)
+"""Raw bits, `r*`: a single data type whose name carries its size.
+
+`r16` reads as `r*` with `{"bits": 16}`. A size that is not a positive
+multiple of 8 is a problem of the declaration that names it. The simplest
+spelling writes the size back into the name in decimal, so `r008`
+becomes `r8`.
+"""
+
+
 __all__ = [
+    "RAW_BYTES_DATA_TYPE",
+    "RawBytesConfiguration",
     "RawBytesDataTypeName",
     "RawBytesFillValue",
     "raw_bytes_dtype_name",

@@ -23,7 +23,7 @@ explicit retry. The reader owns cache state and source reads, but not result
 shape or assembly.
 
 Each request calls `view.parts()` once and keeps the resulting tuple. The cache
-pins the tuple's chunk coordinates, then materializes with
+queues the tuple's chunk coordinates and defers eviction, then materializes with
 `view.result(parts=parts)`, so scheduling and assembly reuse one plan. Every
 reader call consumes the exact projection attached to its `ReadContext`; the
 reader does not invoke the chunk planner again.
@@ -33,6 +33,12 @@ viewport requests that reuse resident chunks, eviction under capacity pressure,
 a retained failure that does not retry implicitly, and an explicit retry after
 the source is repaired. The integration guide contains the detailed request
 table.
+
+Capacity counts resident chunks, not bytes, and is enforced after a successful
+request. A request can temporarily exceed it; a failed request skips that eviction
+step. Records, event history, and output/coordinate buffers are outside this count.
+The example assumes an unchanged source and one source/grid per reader; it has no
+cache invalidation for source mutation, and its mutable state is not thread-safe.
 
 This is synchronous system-memory reference architecture, not a
 production-ready cache, scheduler, renderer, or complete napari integration.

@@ -7,9 +7,12 @@ from typing import TYPE_CHECKING, get_args
 import numpy as np
 import pytest
 
+from tests.conftest import Expect
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    ceildiv,
+    concurrent_foreach,
     concurrent_iter,
     parse_bool,
     parse_int,
@@ -22,6 +25,61 @@ from zarr.core.config import parse_indexing_order
 
 if TYPE_CHECKING:
     from typing import Any, Literal
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [(0, 0, 0), (7, 3, 3), (7.5, 2, 4), (2**62 - 1, 1, 2**62)],
+)
+def test_ceildiv(a: float, b: float, expected: int) -> None:
+    """The original helper retains its floating-point division behavior."""
+    assert ceildiv(a, b) == expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(0, 3), output=0, id="zero"),
+        Expect(input=(7, 3), output=3, id="round-up"),
+        Expect(input=(9, 3), output=3, id="exact"),
+        Expect(input=(-7, 3), output=-2, id="negative-numerator"),
+        Expect(input=(7, -3), output=-2, id="negative-divisor"),
+        Expect(input=(-7, -3), output=3, id="both-negative"),
+        Expect(input=(2**62 - 1, 1), output=2**62 - 1, id="large-exact"),
+        Expect(input=(2**62 + 1, 2), output=2**61 + 1, id="large-round-up"),
+        Expect(input=(2**60 + 3, 1), output=2**60 + 3, id="large-low-bits"),
+        Expect(
+            input=(np.int64(2**62 - 1), np.int64(1)),
+            output=2**62 - 1,
+            id="numpy-signed",
+        ),
+        Expect(
+            input=(np.int64(-(2**63)), np.int64(-1)),
+            output=2**63,
+            id="numpy-signed-minimum",
+        ),
+        Expect(
+            input=(np.uint64(2**64 - 1), np.uint64(2)),
+            output=2**63,
+            id="numpy-unsigned-maximum",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_ceildiv_int(case: Expect[tuple[int, int], int]) -> None:
+    from zarr.core.common import ceildiv_int
+
+    result = ceildiv_int(*case.input)
+    assert result == case.output
+    assert isinstance(result, int)
+
+
+@pytest.mark.parametrize("numerator", [0, 1])
+def test_ceildiv_int_zero_divisor(numerator: int) -> None:
+    from zarr.core.common import ceildiv_int
+
+    with pytest.raises(ZeroDivisionError):
+        ceildiv_int(numerator, 0)
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])
@@ -64,6 +122,101 @@ async def test_concurrent_iter_schedules_eagerly() -> None:
 
 # todo: test
 def test_concurrent_map() -> None: ...
+
+
+class _Abort(BaseException):
+    """A BaseException that is neither KeyboardInterrupt nor SystemExit."""
+
+
+@pytest.mark.parametrize(("n_items", "limit"), [(0, 1), (1, 4), (7, 1), (7, 3), (7, 7), (7, 50)])
+async def test_concurrent_foreach(n_items: int, limit: int) -> None:
+    """Every item is processed exactly once, lazily, with at most `limit` in flight."""
+    seen: list[int] = []
+    in_flight = 0
+    peak = 0
+    pulled = 0
+
+    def items() -> Iterable[tuple[int]]:
+        nonlocal pulled
+        for i in range(n_items):
+            pulled += 1
+            yield (i,)
+
+    async def work(i: int) -> None:
+        nonlocal in_flight, peak
+        # Laziness: an item is pulled only when a worker is free to take it.
+        assert pulled <= i + limit
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0)
+        in_flight -= 1
+        seen.append(i)
+
+    await concurrent_foreach(items(), work, limit)
+    assert sorted(seen) == list(range(n_items))
+    assert peak == min(n_items, limit)
+
+
+async def test_concurrent_foreach_rejects_non_positive_limit() -> None:
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        await concurrent_foreach([(0,)], asyncio.sleep, 0)
+
+
+async def test_concurrent_foreach_single_failure_is_raised_bare() -> None:
+    """One failing call surfaces as itself and stops the rest of the stream."""
+    started: list[int] = []
+
+    async def work(i: int) -> None:
+        started.append(i)
+        await asyncio.sleep(0)
+        if i == 2:
+            raise OSError("boom")
+
+    with pytest.raises(OSError, match="boom") as info:
+        await concurrent_foreach(((i,) for i in range(100)), work, 2)
+    assert info.value.__cause__ is None
+    assert info.value.__suppress_context__
+    assert len(started) < 100
+
+
+async def test_concurrent_foreach_fast_failure_is_not_repeated() -> None:
+    """A call that fails before its first await stops the other workers from
+    taking items, so a read-only store raises once, not once per worker."""
+    calls = 0
+
+    async def work(i: int) -> None:
+        nonlocal calls
+        calls += 1
+        raise PermissionError("read only")
+
+    with pytest.raises(PermissionError, match="read only") as info:
+        await concurrent_foreach(((i,) for i in range(100)), work, 8)
+    assert calls == 1
+    assert info.value.__suppress_context__
+
+
+async def test_concurrent_foreach_simultaneous_failures_keep_the_group() -> None:
+    """Failures from the same loop iteration are all kept on the raised exception."""
+
+    async def work(i: int) -> None:
+        await asyncio.sleep(0)
+        if i == 0:
+            raise OSError("first")
+        raise ValueError("second")
+
+    with pytest.raises(OSError, match="first") as info:
+        await concurrent_foreach([(0,), (1,)], work, 2)
+    group = info.value.__cause__
+    assert isinstance(group, ExceptionGroup)
+    assert {type(e) for e in group.exceptions} == {OSError, ValueError}
+
+
+async def test_concurrent_foreach_base_exception_is_raised_bare() -> None:
+    async def work(i: int) -> None:
+        raise _Abort
+
+    with pytest.raises(_Abort):
+        await concurrent_foreach([(0,), (1,)], work, 1)
 
 
 # todo: test

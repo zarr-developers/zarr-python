@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -426,20 +427,41 @@ class FsspecStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        prefix = f"{self.path}/{prefix.rstrip('/')}"
+        # A store path of "" or "/" is the root of the filesystem. Joining it with a
+        # leading "/" gives "/a" or "//a", which ReferenceFileSystem does not find,
+        # since it keys entries by bare names like "a/zarr.json".
+        root = self.path.rstrip("/")
+        prefix = f"{root}/{prefix.rstrip('/')}" if root else prefix.rstrip("/")
         try:
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
-        for onefile in (a.replace(f"{prefix}/", "") for a in allfiles):
-            yield onefile.removeprefix(self.path).removeprefix("/")
+        seen: set[str] = set()
+        for onefile in allfiles:
+            name = onefile.replace(f"{prefix}/", "").removeprefix(self.path).removeprefix("/")
+            if onefile.startswith(("http://", "https://")):
+                # An HTTP listing is scraped from the links on an HTML page. In-page anchors
+                # and queries name the page itself, not an object, and relative links such
+                # as "./a" need normalizing.
+                if "#" in name or "?" in name:
+                    continue
+                name = posixpath.normpath(name)
+            # Only direct children, each once: an HTTP listing marks directories with a
+            # trailing "/", and a link back to the listed directory reduces to "" or ".".
+            name = name.rstrip("/")
+            if name in ("", ".", "..") or "/" in name or name in seen:
+                continue
+            seen.add(name)
+            yield name
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        # Same root handling as list_dir.
+        root = self.path.rstrip("/")
         for onefile in await self.fs._find(
-            f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False
+            f"{root}/{prefix}" if root else prefix, detail=False, maxdepth=None, withdirs=False
         ):
-            yield onefile.removeprefix(f"{self.path}/")
+            yield onefile.removeprefix(f"{root}/") if root else onefile.removeprefix("/")
 
     async def getsize(self, key: str) -> int:
         path = _dereference_path(self.path, key)

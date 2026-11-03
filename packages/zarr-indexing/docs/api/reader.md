@@ -11,9 +11,14 @@ ownership.
 
 `Reader.read_into(source, context, out)` receives a `ReadContext` whose
 `transform` maps zero-origin output-buffer coordinates to global coordinates in
-`source`, with `context.transform.domain.shape == out.shape`. Its optional
-`projection` is the existing plan for a partitioned read. The projection's
-`chunk_transform` remains chunk-local, its `cell_transform` describes result
+`source`, with `context.transform.domain.shape == out.shape`. A view's
+transform keeps its literal domain; `ReadContext` re-bases it to origin zero on
+construction, so readers never see a view's coordinates. Its optional
+`projection` describes one planned read. `LazyArray.result()` always supplies
+it, including for partition views and unpartitioned reads. Direct callers of
+the reader protocol may omit it when their reader supports that. The projection's
+`chunk_transform` remains chunk-local, its `cell_transform` places cells in the
+zero-origin result buffer of the view that planned the read, which is what result
 placement, and its `chunk_domain` describes the grid cell. The global read
 transform and the projection's chunk transform deliberately use different
 coordinate frames.
@@ -34,7 +39,7 @@ class RecordingReader:
         self.calls = []
 
     def read_into(self, source, context, out, /):
-        self.calls.append((source, context, out))
+        self.calls.append((source, context, out.shape, out.dtype))
         self.inner.read_into(source, context, out)
 
 
@@ -44,7 +49,8 @@ view = LazyArray.from_numpy(array).with_reader(outer)
 values = view.result()
 ```
 
-Both wrappers observe the same three objects, in outer-to-inner order. This
+Both wrappers observe the same arguments, in outer-to-inner order, and log
+output metadata without retaining the output buffer. This
 delegation pattern supports policies such as logging and caching without
 library-defined wrapper primitives.
 

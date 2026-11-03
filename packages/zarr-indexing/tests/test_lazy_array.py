@@ -26,8 +26,10 @@ from zarr_indexing import (
     ChunkProjection,
     ConstantMap,
     DimensionMap,
+    EagerArrayAdapter,
     EdgeDimensionGrid,
     FixedDimension,
+    IndexDomain,
     IndexTransform,
     LazyArray,
     ReadContext,
@@ -276,11 +278,7 @@ def test_array_map_dependent_axis_reports_no_axis() -> None:
 
 
 def test_scalar_on_a_fancy_axis_collapses_to_a_constant() -> None:
-    """The degenerate-collapse rule: an all-singleton ArrayMap becomes a ConstantMap.
-
-    Without it the map keeps an `input_dimension` naming an axis the integer
-    index just removed, which after renumbering aliases a different axis.
-    """
+    """Scalar selection collapses an all-singleton ArrayMap to a ConstantMap."""
     view = IndexTransform.from_shape((7, 5)).oindex[np.array([3, 1]), slice(None)][0]
     assert view.output[0] == ConstantMap(offset=3)
     assert isinstance(view.output[1], DimensionMap)
@@ -345,27 +343,27 @@ TRAILING_MASK = (reference()[0] % 3) == 0
 CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] = [
     (
         "basic-strided-and-int-drop",
-        lambda a: a.lazy[1:6:2, :, -1],
+        lambda a: a[1:6:2, :, -1],
         lambda r: r[1:6:2, :, -1],
     ),
-    ("basic-ellipsis", lambda a: a.lazy[..., -2], lambda r: r[..., -2]),
-    ("basic-negative-scalar", lambda a: a.lazy[-3], lambda r: r[-3]),
-    ("basic-newaxis", lambda a: a.lazy[None, :, :, None], lambda r: r[None, :, :, None]),
-    ("basic-empty", lambda a: a.lazy[:, 2:2, :], lambda r: r[:, 2:2, :]),
-    ("basic-all-scalars", lambda a: a.lazy[-1, 0, 2], lambda r: r[-1, 0, 2]),
+    ("basic-ellipsis", lambda a: a[..., -2], lambda r: r[..., -2]),
+    ("basic-negative-scalar", lambda a: a[-3], lambda r: r[-3]),
+    ("basic-newaxis", lambda a: a[None, :, :, None], lambda r: r[None, :, :, None]),
+    ("basic-empty", lambda a: a[:, 2:2, :], lambda r: r[:, 2:2, :]),
+    ("basic-all-scalars", lambda a: a[-1, 0, 2], lambda r: r[-1, 0, 2]),
     (
         "oindex-unsorted-duplicates-multi-axis",
-        lambda a: a.lazy.oindex[[4, 0, 0, 2], :, [3, 1]],
+        lambda a: a.oindex[[4, 0, 0, 2], :, [3, 1]],
         lambda r: outer(r, ([4, 0, 0, 2], slice(None), [3, 1])),
     ),
     (
         "oindex-negative-and-slice",
-        lambda a: a.lazy.oindex[:, [-1, 0], 1:4],
+        lambda a: a.oindex[:, [-1, 0], 1:4],
         lambda r: outer(r, (slice(None), [-1, 0], slice(1, 4))),
     ),
     (
         "oindex-boolean-axis",
-        lambda a: a.lazy.oindex[np.array([True, False, True, False, False, False, True]), :, :],
+        lambda a: a.oindex[np.array([True, False, True, False, False, False, True]), :, :],
         lambda r: outer(
             r,
             (np.array([True, False, True, False, False, False, True]), slice(None), slice(None)),
@@ -373,115 +371,111 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     ),
     (
         "vindex-coordinates",
-        lambda a: a.lazy.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])],
+        lambda a: a.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])],
         lambda r: r[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])],
     ),
     (
         "vindex-broadcast-pair",
-        lambda a: a.lazy.vindex[np.array([[0], [6]]), np.array([1, 4]), np.array([2, 0])],
+        lambda a: a.vindex[np.array([[0], [6]]), np.array([1, 4]), np.array([2, 0])],
         lambda r: r[np.array([[0], [6]]), np.array([1, 4]), np.array([2, 0])],
     ),
     (
         "vindex-negative-coordinates",
-        lambda a: a.lazy.vindex[np.array([-1, -7]), np.array([-2, 0]), np.array([0, -1])],
+        lambda a: a.vindex[np.array([-1, -7]), np.array([-2, 0]), np.array([0, -1])],
         lambda r: r[np.array([-1, -7]), np.array([-2, 0]), np.array([0, -1])],
     ),
-    ("vindex-mask", lambda a: a.lazy.vindex[MASK], lambda r: r[MASK]),
+    ("vindex-mask", lambda a: a.vindex[MASK], lambda r: r[MASK]),
     (
         "compose-basic-then-oindex",
-        lambda a: a.lazy[1:6].lazy.oindex[[3, 0, 0], [4, 1], :],
+        lambda a: a[1:6].oindex[[3, 0, 0], [4, 1], :],
         lambda r: outer(r[1:6], ([3, 0, 0], [4, 1], slice(None))),
     ),
     (
         "compose-oindex-then-basic-other-axis",
-        lambda a: a.lazy.oindex[[4, 0, 2], :, :].lazy[:, 1:4, ::2],
+        lambda a: a.oindex[[4, 0, 2], :, :][:, 1:4, ::2],
         lambda r: outer(r, ([4, 0, 2], slice(None), slice(None)))[:, 1:4, ::2],
     ),
     (
         "compose-basic-then-basic",
-        lambda a: a.lazy[2:, 1:].lazy[::2, -1],
+        lambda a: a[2:, 1:][::2, -1],
         lambda r: r[2:, 1:][::2, -1],
     ),
     (
         "compose-basic-then-vindex",
-        lambda a: a.lazy[1:6, :, 1:].lazy.vindex[
-            np.array([0, 4]), np.array([2, 0]), np.array([1, 2])
-        ],
+        lambda a: a[1:6, :, 1:].vindex[np.array([0, 4]), np.array([2, 0]), np.array([1, 2])],
         lambda r: r[1:6, :, 1:][np.array([0, 4]), np.array([2, 0]), np.array([1, 2])],
     ),
     # Scalar integers are basic indices in the positional dialect: they drop the
     # axis, in every mode, exactly as NumPy does.
-    ("oindex-scalar-drops-axis", lambda a: a.lazy.oindex[0], lambda r: r[0]),
+    ("oindex-scalar-drops-axis", lambda a: a.oindex[0], lambda r: r[0]),
     (
         "oindex-scalar-with-arrays",
-        lambda a: a.lazy.oindex[0, [1, 2], :],
+        lambda a: a.oindex[0, [1, 2], :],
         lambda r: outer(r, (0, [1, 2], slice(None))),
     ),
     (
         "oindex-scalar-middle-axis",
-        lambda a: a.lazy.oindex[[3, 1], -1, :],
+        lambda a: a.oindex[[3, 1], -1, :],
         lambda r: outer(r, ([3, 1], -1, slice(None))),
     ),
-    ("oindex-all-scalars", lambda a: a.lazy.oindex[0, 1, 2], lambda r: r[0, 1, 2]),
-    ("vindex-all-scalars", lambda a: a.lazy.vindex[0, 1, 2], lambda r: r[0, 1, 2]),
+    ("oindex-all-scalars", lambda a: a.oindex[0, 1, 2], lambda r: r[0, 1, 2]),
+    ("vindex-all-scalars", lambda a: a.vindex[0, 1, 2], lambda r: r[0, 1, 2]),
     (
         "vindex-scalar-with-arrays",
-        lambda a: a.lazy.vindex[0, [1, 2], [3, 0]],
+        lambda a: a.vindex[0, [1, 2], [3, 0]],
         lambda r: r[0, [1, 2], [3, 0]],
     ),
     (
         "vindex-scalar-on-middle-axis",
-        lambda a: a.lazy.vindex[[1, 2], 0, [3, 0]],
+        lambda a: a.vindex[[1, 2], 0, [3, 0]],
         lambda r: r[[1, 2], 0, [3, 0]],
     ),
     # Scalar applied to a previously fancy-indexed axis, both orders.
     (
         "compose-oindex-then-scalar",
-        lambda a: a.lazy.oindex[[3, 1], :, :].lazy[0],
+        lambda a: a.oindex[[3, 1], :, :][0],
         lambda r: outer(r, ([3, 1], slice(None), slice(None)))[0],
     ),
     (
         "compose-oindex-then-scalar-negative",
-        lambda a: a.lazy.oindex[[3, 1, 1], :, :].lazy[-1, 2],
+        lambda a: a.oindex[[3, 1, 1], :, :][-1, 2],
         lambda r: outer(r, ([3, 1, 1], slice(None), slice(None)))[-1, 2],
     ),
     (
         "compose-scalar-then-oindex",
-        lambda a: a.lazy[0].lazy.oindex[[3, 1], :],
+        lambda a: a[0].oindex[[3, 1], :],
         lambda r: outer(r[0], ([3, 1], slice(None))),
     ),
     (
         "compose-vindex-then-scalar",
-        lambda a: a.lazy.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])].lazy[
-            1
-        ],
+        lambda a: a.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])][1],
         lambda r: r[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])][1],
     ),
     # Partial vindex whose coordinate arrays are NOT on the leading axes: NumPy
     # inserts the gathered axis where the (adjacent) advanced indices sat.
     (
         "vindex-trailing-arrays",
-        lambda a: a.lazy.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
+        lambda a: a.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
         lambda r: r[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
     ),
     (
         "vindex-single-trailing-array",
-        lambda a: a.lazy.vindex[..., np.array([3, 0, 1])],
+        lambda a: a.vindex[..., np.array([3, 0, 1])],
         lambda r: r[..., np.array([3, 0, 1])],
     ),
     (
         "vindex-trailing-mask",
-        lambda a: a.lazy.vindex[..., TRAILING_MASK],
+        lambda a: a.vindex[..., TRAILING_MASK],
         lambda r: r[..., TRAILING_MASK],
     ),
     (
         "vindex-leading-partial",
-        lambda a: a.lazy.vindex[np.array([1, 2, 2])],
+        lambda a: a.vindex[np.array([1, 2, 2])],
         lambda r: r[np.array([1, 2, 2])],
     ),
     (
         "compose-basic-then-vindex-trailing",
-        lambda a: a.lazy[2:, 1:].lazy.vindex[..., np.array([1, 3, 0])],
+        lambda a: a[2:, 1:].vindex[..., np.array([1, 3, 0])],
         lambda r: r[2:, 1:][..., np.array([1, 3, 0])],
     ),
     # A ConstantMap sitting between a slice and the coordinate arrays: NumPy
@@ -489,7 +483,7 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     # front of the chunk block even though the arrays are trailing.
     (
         "compose-vindex-trailing-then-scalar",
-        lambda a: a.lazy.vindex[..., np.array([3, 0])].lazy[2],
+        lambda a: a.vindex[..., np.array([3, 0])][2],
         lambda r: r[..., np.array([3, 0])][2],
     ),
     # Two fancy axes, then a scalar on the first: the surviving ArrayMap ends up
@@ -497,57 +491,57 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     # advanced rule bites.
     (
         "compose-oindex-two-axes-then-scalar",
-        lambda a: a.lazy.oindex[[3, 1, 0], 3:5, [2, 0, 2]].lazy[0],
+        lambda a: a.oindex[[3, 1, 0], 3:5, [2, 0, 2]][0],
         lambda r: outer(r, ([3, 1, 0], slice(3, 5), [2, 0, 2]))[0],
     ),
     # Negative steps: the positional dialect is NumPy's, including the empty
     # cases NumPy allows where the transform algebra alone would object.
-    ("reverse", lambda a: a.lazy[::-1], lambda r: r[::-1]),
-    ("reverse-every-axis", lambda a: a.lazy[::-1, ::-1, ::-1], lambda r: r[::-1, ::-1, ::-1]),
-    ("reverse-strided", lambda a: a.lazy[::-2], lambda r: r[::-2]),
-    ("reverse-nondivisible", lambda a: a.lazy[::-3], lambda r: r[::-3]),
-    ("reverse-bounded", lambda a: a.lazy[5:1:-1], lambda r: r[5:1:-1]),
-    ("reverse-negative-start", lambda a: a.lazy[-1:None:-1], lambda r: r[-1:None:-1]),
-    ("reverse-past-the-start", lambda a: a.lazy[:-8:-1], lambda r: r[:-8:-1]),
-    ("reverse-empty", lambda a: a.lazy[2:2:-1], lambda r: r[2:2:-1]),
+    ("reverse", lambda a: a[::-1], lambda r: r[::-1]),
+    ("reverse-every-axis", lambda a: a[::-1, ::-1, ::-1], lambda r: r[::-1, ::-1, ::-1]),
+    ("reverse-strided", lambda a: a[::-2], lambda r: r[::-2]),
+    ("reverse-nondivisible", lambda a: a[::-3], lambda r: r[::-3]),
+    ("reverse-bounded", lambda a: a[5:1:-1], lambda r: r[5:1:-1]),
+    ("reverse-negative-start", lambda a: a[-1:None:-1], lambda r: r[-1:None:-1]),
+    ("reverse-past-the-start", lambda a: a[:-8:-1], lambda r: r[:-8:-1]),
+    ("reverse-empty", lambda a: a[2:2:-1], lambda r: r[2:2:-1]),
     # NumPy reads a reversed *positional* interval as empty; only the literal
     # layer calls it a direction error.
-    ("reverse-inverted-is-empty", lambda a: a.lazy[2:5:-1], lambda r: r[2:5:-1]),
-    ("reverse-with-int-drop", lambda a: a.lazy[::-2, 2, ::-1], lambda r: r[::-2, 2, ::-1]),
-    ("reverse-trailing-axis", lambda a: a.lazy[..., ::-1], lambda r: r[..., ::-1]),
+    ("reverse-inverted-is-empty", lambda a: a[2:5:-1], lambda r: r[2:5:-1]),
+    ("reverse-with-int-drop", lambda a: a[::-2, 2, ::-1], lambda r: r[::-2, 2, ::-1]),
+    ("reverse-trailing-axis", lambda a: a[..., ::-1], lambda r: r[..., ::-1]),
     (
         "compose-reverse-then-reverse",
-        lambda a: a.lazy[::-1].lazy[::-1],
+        lambda a: a[::-1][::-1],
         lambda r: r[::-1][::-1],
     ),
     (
         "compose-strided-then-reverse",
-        lambda a: a.lazy[::2].lazy[::-1],
+        lambda a: a[::2][::-1],
         lambda r: r[::2][::-1],
     ),
     (
         "compose-reverse-then-strided",
-        lambda a: a.lazy[::-1].lazy[::2],
+        lambda a: a[::-1][::2],
         lambda r: r[::-1][::2],
     ),
     (
         "compose-reverse-then-oindex",
-        lambda a: a.lazy[::-1].lazy.oindex[[3, 0, 0], :, :],
+        lambda a: a[::-1].oindex[[3, 0, 0], :, :],
         lambda r: outer(r[::-1], ([3, 0, 0], slice(None), slice(None))),
     ),
     (
         "compose-oindex-then-reverse",
-        lambda a: a.lazy.oindex[[3, 1, 2], :, :].lazy[::-1],
+        lambda a: a.oindex[[3, 1, 2], :, :][::-1],
         lambda r: outer(r, ([3, 1, 2], slice(None), slice(None)))[::-1],
     ),
     (
         "compose-reverse-then-vindex",
-        lambda a: a.lazy[::-1].lazy.vindex[..., np.array([1, 3, 0])],
+        lambda a: a[::-1].vindex[..., np.array([1, 3, 0])],
         lambda r: r[::-1][..., np.array([1, 3, 0])],
     ),
     (
         "compose-vindex-trailing-then-scalar-and-slice",
-        lambda a: a.lazy.vindex[..., np.array([3, 0, 1])].lazy[-1, 1:4],
+        lambda a: a.vindex[..., np.array([3, 0, 1])][-1, 1:4],
         lambda r: r[..., np.array([3, 0, 1])][-1, 1:4],
     ),
     # A downward walk that begins off the front of the axis selects nothing.
@@ -555,17 +549,17 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     # carried by an index array rather than by the domain.
     (
         "compose-oindex-then-empty-downward-walk",
-        lambda a: a.lazy.oindex[np.array([3, 1, 4]), :, :].lazy[-8::-1],
+        lambda a: a.oindex[np.array([3, 1, 4]), :, :][-8::-1],
         lambda r: r[np.array([3, 1, 4])][-8::-1],
     ),
     (
         "compose-vindex-then-empty-downward-walk",
-        lambda a: a.lazy.vindex[np.array([3, 1]), np.array([2, 0])].lazy[-9::-2],
+        lambda a: a.vindex[np.array([3, 1]), np.array([2, 0])][-9::-2],
         lambda r: r[np.array([3, 1]), np.array([2, 0])][-9::-2],
     ),
     (
         "empty-downward-walk-on-a-plain-axis",
-        lambda a: a.lazy[-11::-1],
+        lambda a: a[-11::-1],
         lambda r: r[-11::-1],
     ),
     # A fancy *spelling* whose entries are all slices is not a fancy selection:
@@ -574,22 +568,22 @@ CASES: list[tuple[str, Callable[[LazyArray], LazyArray], Callable[[Any], Any]]] 
     # broadcast (singleton) axes of the existing index array would truncate it.
     (
         "compose-oindex-then-oindex-slices-only",
-        lambda a: a.lazy.oindex[[4, 0, 0], :, :].lazy.oindex[:, 2:5, 1:],
+        lambda a: a.oindex[[4, 0, 0], :, :].oindex[:, 2:5, 1:],
         lambda r: outer(r, ([4, 0, 0], slice(None), slice(None)))[:, 2:5, 1:],
     ),
     (
         "compose-oindex-then-oindex-slices-only-strided",
-        lambda a: a.lazy.oindex[:, [3, 1, 1], :].lazy.oindex[1::2, :, ::-1],
+        lambda a: a.oindex[:, [3, 1, 1], :].oindex[1::2, :, ::-1],
         lambda r: outer(r, (slice(None), [3, 1, 1], slice(None)))[1::2, :, ::-1],
     ),
     (
         "compose-vindex-then-oindex-slices-only",
-        lambda a: a.lazy.vindex[np.array([4, 0, 2]), np.array([1, 3, 0])].lazy.oindex[1:, 2:],
+        lambda a: a.vindex[np.array([4, 0, 2]), np.array([1, 3, 0])].oindex[1:, 2:],
         lambda r: r[np.array([4, 0, 2]), np.array([1, 3, 0])][1:, 2:],
     ),
     (
         "compose-oindex-then-oindex-array-on-its-own-axis",
-        lambda a: a.lazy.oindex[[4, 0, 0], :, :].lazy.oindex[[2, 0], 3:, :],
+        lambda a: a.oindex[[4, 0, 0], :, :].oindex[[2, 0], 3:, :],
         lambda r: outer(
             outer(r, ([4, 0, 0], slice(None), slice(None))),
             ([2, 0], slice(3, None), slice(None)),
@@ -611,7 +605,7 @@ def test_selection_matches_numpy(
     assert view.shape == expected.shape
     assert view.ndim == expected.ndim
     np.testing.assert_array_equal(np.asarray(view.result()), expected)
-    # `__getitem__` is eager, and `__array__` routes through `result()`.
+    # NumPy conversion routes through `result()`.
     np.testing.assert_array_equal(np.asarray(view), expected)
 
 
@@ -724,10 +718,10 @@ def _apply_oracle(
 
 def _apply_view(view: LazyArray, mode: str, selection: tuple[Any, ...]) -> LazyArray:
     if mode == "basic":
-        return view.lazy[selection]
+        return view[selection]
     if mode == "orthogonal":
-        return view.lazy.oindex[selection]
-    return view.lazy.vindex[selection]
+        return view.oindex[selection]
+    return view.vindex[selection]
 
 
 def _random_slices_only(rng: np.random.Generator, shape: tuple[int, ...]) -> tuple[Any, ...]:
@@ -851,9 +845,7 @@ def test_a_slice_only_fancy_step_after_a_fancy_step_reads_real_data() -> None:
     expected = base[np.ix_([0, 2], range(8))][:, 2:8]
 
     for parts in (None, (2, 4), (1, 8), (3, 3)):
-        view = (
-            repartition(LazyArray(base), parts).lazy.oindex[np.array([0, 2]), :].lazy.oindex[:, 2:8]
-        )
+        view = repartition(LazyArray(base), parts).oindex[np.array([0, 2]), :].oindex[:, 2:8]
         assert view.shape == expected.shape, f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
 
@@ -869,28 +861,28 @@ def test_a_fancy_step_composes_onto_any_axis_of_a_fancy_view() -> None:
     rows, cols = np.array([0, 2]), np.array([1, 3, 3])
 
     for parts in (None, (2, 4), (1, 8), (3, 3)):
-        view = repartition(LazyArray(base), parts).lazy.oindex[rows, :]
+        view = repartition(LazyArray(base), parts).oindex[rows, :]
 
-        composed = view.lazy.oindex[:, cols]
+        composed = view.oindex[:, cols]
         expected = base[np.ix_(rows, cols)]
         assert composed.shape == expected.shape, f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(composed.result()), expected, err_msg=f"{parts}")
 
-        gathered = view.lazy.vindex[np.array([0, 1]), np.array([7, 0])]
+        gathered = view.vindex[np.array([0, 1]), np.array([7, 0])]
         np.testing.assert_array_equal(
             np.asarray(gathered.result()),
             base[np.ix_(rows, range(8))][[0, 1], [7, 0]],
             err_msg=f"{parts}",
         )
 
-        pointwise = repartition(LazyArray(base), parts).lazy.vindex[[0, 1, 2], [0, 2, 3]]
+        pointwise = repartition(LazyArray(base), parts).vindex[[0, 1, 2], [0, 2, 3]]
         np.testing.assert_array_equal(
-            np.asarray(pointwise.lazy.oindex[[2, 0]].result()),
+            np.asarray(pointwise.oindex[[2, 0]].result()),
             base[[0, 1, 2], [0, 2, 3]][[2, 0]],
             err_msg=f"{parts}",
         )
         np.testing.assert_array_equal(
-            np.asarray(pointwise.lazy.vindex[[1, 1, 0]].result()),
+            np.asarray(pointwise.vindex[[1, 1, 0]].result()),
             base[[0, 1, 2], [0, 2, 3]][[1, 1, 0]],
             err_msg=f"{parts}",
         )
@@ -907,8 +899,8 @@ def test_a_partial_vindex_after_an_oindex_resolves_the_mixed_transform() -> None
     expected = base[:, :, [4, 0]][[0, 2], [1, 3]]
 
     for parts in (None, (2, 2, 2), (3, 4, 5), (1, 1, 1)):
-        view = repartition(LazyArray(base), parts).lazy.oindex[:, :, [4, 0]]
-        composed = view.lazy.vindex[np.array([0, 2]), np.array([1, 3])]
+        view = repartition(LazyArray(base), parts).oindex[:, :, [4, 0]]
+        composed = view.vindex[np.array([0, 2]), np.array([1, 3])]
         assert composed.shape == expected.shape, f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(composed.result()), expected, err_msg=f"{parts}")
 
@@ -919,35 +911,32 @@ def test_a_boolean_mask_composes_onto_a_fancy_view() -> None:
     expected = base[[0, 1, 2]][mask]
 
     for parts in (None, (2, 2, 2), (1, 4, 5)):
-        view = repartition(LazyArray(base), parts).lazy.oindex[[0, 1, 2], :, :]
+        view = repartition(LazyArray(base), parts).oindex[[0, 1, 2], :, :]
         np.testing.assert_array_equal(
-            np.asarray(view.lazy.oindex[mask].result()), expected, err_msg=f"{parts}"
+            np.asarray(view.oindex[mask].result()), expected, err_msg=f"{parts}"
         )
 
 
 def test_an_ellipsis_only_vindex_step_preserves_a_correlated_gather() -> None:
-    """Regression: a slice-only vindex step misread correlated maps as orthogonal.
+    """Ellipsis-only vectorized selection preserves correlated coordinates.
 
-    `vindex[...]` (and `vindex[..., scalar]`, whose remainder after the scalar
-    is split off is ellipsis-only) used to stamp each correlated map with its
-    block axis as an orthogonal binding. Two "orthogonal" maps then shared one
-    input axis, and the partition walk rejected its own transform mid-read.
-    """
+    This also applies after scalar indices have been split off. The selected
+    values must agree across partitionings."""
     base = np.arange(16).reshape(4, 4)
 
     for parts in (None, (2, 2), (4, 4), (1, 3)):
-        pointwise = repartition(LazyArray(base), parts).lazy.vindex[[0, 1, 2], [0, 2, 3]]
+        pointwise = repartition(LazyArray(base), parts).vindex[[0, 1, 2], [0, 2, 3]]
         np.testing.assert_array_equal(
-            np.asarray(pointwise.lazy.vindex[...].result()),
+            np.asarray(pointwise.vindex[...].result()),
             base[[0, 1, 2], [0, 2, 3]],
             err_msg=f"{parts}",
         )
 
-        planar = repartition(LazyArray(base), parts).lazy.vindex[
+        planar = repartition(LazyArray(base), parts).vindex[
             np.array([[0], [1]]), np.array([[1], [3]])
         ]
         np.testing.assert_array_equal(
-            np.asarray(planar.lazy.vindex[..., np.array(0)].result()),
+            np.asarray(planar.vindex[..., np.array(0)].result()),
             base[[0, 1], [1, 3]],
             err_msg=f"{parts}",
         )
@@ -972,27 +961,27 @@ UNREFERENCED_AXIS_CASES: list[
 ] = [
     (
         "leading-singleton-row",
-        lambda a: a.lazy.vindex[np.array([[2, 0]])].lazy[:, 0],
+        lambda a: a.vindex[np.array([[2, 0]])][:, 0],
         lambda r: r[np.array([[2, 0]])][:, 0],
     ),
     (
         "trailing-singleton-column",
-        lambda a: a.lazy.vindex[np.array([[2], [0]])].lazy[0],
+        lambda a: a.vindex[np.array([[2], [0]])][0],
         lambda r: r[np.array([[2], [0]])][0],
     ),
     (
         "repeated-coordinates-over-a-singleton",
-        lambda a: a.lazy.vindex[np.array([[1, 1]]), np.array([[3, 3]])].lazy[:, 0],
+        lambda a: a.vindex[np.array([[1, 1]]), np.array([[3, 3]])][:, 0],
         lambda r: r[np.array([[1, 1]]), np.array([[3, 3]])][:, 0],
     ),
     (
         "unreferenced-axis-emptied",
-        lambda a: a.lazy.vindex[np.array([[2, 0]])].lazy[0:0, 0],
+        lambda a: a.vindex[np.array([[2, 0]])][0:0, 0],
         lambda r: r[np.array([[2, 0]])][0:0, 0],
     ),
     (
         "partial-vindex-with-a-residual-slice",
-        lambda a: a.lazy.vindex[np.array([[2, 0]]), np.array([[1, 3]])].lazy[:, 0, 1:4],
+        lambda a: a.vindex[np.array([[2, 0]]), np.array([[1, 3]])][:, 0, 1:4],
         lambda r: r[np.array([[2, 0]]), np.array([[1, 3]])][:, 0, 1:4],
     ),
 ]
@@ -1040,7 +1029,7 @@ def test_an_unreferenced_domain_axis_of_extent_zero_stays_empty() -> None:
     data = np.arange(140, dtype=np.int64).reshape(7, 5, 4)
     coords = np.array([[6], [3], [0]])
     for parts in (None, (1, 1, 1), (3, 2, 3), (7, 5, 4)):
-        view = repartition(LazyArray(data), parts).lazy.vindex[coords, -4].lazy[0, 0:0]
+        view = repartition(LazyArray(data), parts).vindex[coords, -4][0, 0:0]
         expected = data[coords, -4][0, 0:0]
         assert view.shape == expected.shape == (0, 4), f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
@@ -1053,11 +1042,7 @@ def test_a_zero_length_axis_resolves_the_same_way_under_every_partitioning() -> 
     expected = base[np.ix_([1, 0, 0], np.arange(0, dtype=int))]
 
     for parts in (None, ((1, 1, 1), ()), ((3,), ())):
-        view = (
-            repartition(LazyArray(base), parts)
-            .lazy.oindex[np.array([1, -3, -3]), :]
-            .lazy.oindex[:, :]
-        )
+        view = repartition(LazyArray(base), parts).oindex[np.array([1, -3, -3]), :].oindex[:, :]
         assert view.shape == expected.shape, f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=f"{parts}")
         assert list(view.parts()) == []
@@ -1074,7 +1059,7 @@ def test_an_empty_slice_of_a_length_one_correlated_axis_has_no_parts() -> None:
     mask = np.array([False, True, False, False, False])
 
     for parts in PARTITIONINGS_1D:
-        view = repartition(LazyArray(base), parts).lazy.vindex[mask].lazy[1:-2]
+        view = repartition(LazyArray(base), parts).vindex[mask][1:-2]
         assert view.shape == (0,), f"parts={parts}"
         assert list(view.parts()) == [], f"parts={parts}"
         np.testing.assert_array_equal(np.asarray(view.result()), base[mask][1:-2])
@@ -1085,9 +1070,7 @@ def test_an_empty_slice_of_a_length_one_vindex_pair_has_no_parts() -> None:
     base = np.arange(35).reshape(7, 5)
 
     for parts in (None, (2, 2), (7, 5)):
-        view = (
-            repartition(LazyArray(base), parts).lazy.vindex[np.array([6]), np.array([0])].lazy[0:0]
-        )
+        view = repartition(LazyArray(base), parts).vindex[np.array([6]), np.array([0])][0:0]
         assert view.shape == (0,), f"parts={parts}"
         assert list(view.parts()) == [], f"parts={parts}"
         np.testing.assert_array_equal(
@@ -1113,7 +1096,7 @@ def test_a_correlated_view_narrowed_to_one_point_has_parts_of_the_views_rank() -
     for parts in (None, (2, 2, 2), (3, 3, 3), (7, 5, 4)):
         for selection, tail in cases:
             expected = base[selection][tail]
-            view = repartition(LazyArray(base), parts).lazy.vindex[selection].lazy[tail]
+            view = repartition(LazyArray(base), parts).vindex[selection][tail]
             assert view.shape == expected.shape, f"parts={parts}, {selection}"
 
             assembled = np.zeros(view.shape, dtype=view.dtype)
@@ -1128,8 +1111,9 @@ def test_a_correlated_view_narrowed_to_one_point_has_parts_of_the_views_rank() -
             np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=err)
 
 
-def test_eager_getitem_returns_data(source: LazyArray) -> None:
-    """`arr[...]` reads immediately, like `numpy.ndarray.__getitem__`."""
+def test_getitem_returns_a_view(source: LazyArray) -> None:
+    """`arr[...]` returns a view that materializes to the selected values."""
+    assert isinstance(source[1:3, ::2, -1], LazyArray)
     np.testing.assert_array_equal(np.asarray(source[1:3, ::2, -1]), reference()[1:3, ::2, -1])
 
 
@@ -1149,7 +1133,7 @@ def test_forwards_array_attributes(source: LazyArray) -> None:
 
 def test_view_shape_comes_from_the_transform(source: LazyArray) -> None:
     """A view reports its own shape, not the wrapped array's."""
-    view = source.lazy[1:6:2, :, -1]
+    view = source[1:6:2, :, -1]
     assert view.shape == (3, 5)
     assert view.ndim == 2
     assert view.size == 15
@@ -1176,7 +1160,7 @@ def test_scalar_is_basic_even_when_a_slice_separates_it_from_the_arrays() -> Non
     selection reads as `x[0][:, i]`.
     """
     data = reference()
-    view = make_source("numpy-uniform-parts").lazy.vindex[0, ..., np.array([3, 0])]
+    view = make_source("numpy-uniform-parts").vindex[0, ..., np.array([3, 0])]
     np.testing.assert_array_equal(np.asarray(view.result()), data[0][..., np.array([3, 0])])
     assert view.shape == data[0][..., np.array([3, 0])].shape
     assert view.shape != data[0, ..., np.array([3, 0])].shape
@@ -1184,7 +1168,7 @@ def test_scalar_is_basic_even_when_a_slice_separates_it_from_the_arrays() -> Non
 
 def test_zero_dimensional_result_is_an_array(source: LazyArray) -> None:
     """Both resolvers agree on the kind of a zero-rank result."""
-    result = source.lazy[0, 1, 2].result()
+    result = source[0, 1, 2].result()
     assert isinstance(result, np.ndarray)
     assert result.ndim == 0
     assert result[()] == reference()[0, 1, 2]
@@ -1211,7 +1195,7 @@ def test_reader_wrappers_forward_the_read_contract_unchanged() -> None:
     data = reference()
     inner = RecordingDelegatingReader("inner", numpy_reader)
     outer = RecordingDelegatingReader("outer", inner)
-    view = LazyArray(data).with_reader(outer).lazy[1:6:2, ::-1, 1].unpartitioned()
+    view = LazyArray(data).with_reader(outer)[1:6:2, ::-1, 1].unpartitioned()
 
     result = view.result()
 
@@ -1219,7 +1203,8 @@ def test_reader_wrappers_forward_the_read_contract_unchanged() -> None:
     outer_call, inner_call = events
     assert outer_call[1] is inner_call[1] is data
     assert outer_call[2] is inner_call[2]
-    assert outer_call[3] is inner_call[3] is result
+    assert outer_call[3] is inner_call[3]
+    assert np.shares_memory(outer_call[3], result)
     np.testing.assert_array_equal(result, data[1:6:2, ::-1, 1])
 
 
@@ -1245,7 +1230,7 @@ def test_view_operations_preserve_the_reader_without_reading() -> None:
     reader = RecordingReader()
     base = LazyArray(data).with_reader(reader)
     views = (
-        base.lazy[1:5],
+        base[1:5],
         base.with_parts((2, 2, 2)),
         base.with_parts_per_axis(((3, 3, 1), (2, 3), (1, 3))),
         base.unpartitioned(),
@@ -1266,10 +1251,12 @@ class ReturningReader:
         return np.empty(context.transform.domain.shape, dtype=source.dtype)
 
 
-def test_result_rejects_a_reader_that_returns_a_value() -> None:
+@pytest.mark.parametrize("independent", [False, True])
+def test_result_rejects_a_reader_that_returns_a_value(independent: bool) -> None:
     view = LazyArray(reference()).with_reader(ReturningReader())
+    target = next(view.parts()).view if independent else view
     with pytest.raises(TypeError, match="must return None"):
-        view.result()
+        target.result()
 
 
 class BufferRecordingReader(RecordingReader):
@@ -1285,7 +1272,7 @@ class BufferRecordingReader(RecordingReader):
 def test_reader_is_called_once_per_touched_part() -> None:
     data = np.arange(48).reshape(6, 8)
     reader = RecordingReader()
-    view = LazyArray(data).with_reader(reader).with_parts((3, 4)).lazy[1:5, 2]
+    view = LazyArray(data).with_reader(reader).with_parts((3, 4))[1:5, 2]
     np.testing.assert_array_equal(view.result(), data[1:5, 2])
     assert len(reader.calls) == len(tuple(view.parts())) == 2
     assert all(
@@ -1307,14 +1294,14 @@ def test_partition_reader_receives_global_transform_and_existing_projection() ->
 
 def test_an_empty_result_does_not_call_the_reader() -> None:
     reader = RecordingReader()
-    result = LazyArray(reference()).with_reader(reader).lazy[:, 0:0, :].result()
+    result = LazyArray(reference()).with_reader(reader)[:, 0:0, :].result()
     assert result.shape == (7, 0, 4)
     assert reader.calls == []
 
 
 def test_rectangular_parts_write_into_result_views() -> None:
     reader = BufferRecordingReader()
-    view = LazyArray(reference()).with_reader(reader).with_parts((2, 2, 2)).lazy[1:6, 1:4]
+    view = LazyArray(reference()).with_reader(reader).with_parts((2, 2, 2))[1:6, 1:4]
     view.result()
     assert reader.owns_data
     assert not any(reader.owns_data)
@@ -1322,25 +1309,23 @@ def test_rectangular_parts_write_into_result_views() -> None:
 
 def test_fancy_part_placement_uses_owned_dense_temporaries() -> None:
     reader = BufferRecordingReader()
-    view = (
-        LazyArray(reference())
-        .with_reader(reader)
-        .with_parts((2, 2, 2))
-        .lazy.oindex[[6, 1, 1], :, :]
-    )
+    view = LazyArray(reference()).with_reader(reader).with_parts((2, 2, 2)).oindex[[6, 1, 1], :, :]
     np.testing.assert_array_equal(view.result(), reference()[np.ix_([6, 1, 1], range(5), range(4))])
     assert any(reader.owns_data)
 
 
-def test_reader_exception_propagates_unchanged() -> None:
+@pytest.mark.parametrize("independent", [False, True])
+def test_reader_exception_propagates_unchanged(independent: bool) -> None:
     error = RuntimeError("backend failed")
 
     class FailingReader:
         def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
             raise error
 
+    view = LazyArray(reference()).with_reader(FailingReader())
+    target = next(view.parts()).view if independent else view
     with pytest.raises(RuntimeError) as caught:
-        LazyArray(reference()).with_reader(FailingReader()).result()
+        target.result()
     assert caught.value is error
 
 
@@ -1373,7 +1358,7 @@ def test_malformed_discovered_parts_are_ignored() -> None:
     for bogus in (((3, 3), (5,), (4,)), (3, 2), "nope", (3.5, 2, 2)):
         wrapped = LazyArray(ForeignArray(data, bogus))
         assert len(list(wrapped.parts())) == 1
-        np.testing.assert_array_equal(np.asarray(wrapped.lazy[1:3].result()), data[1:3])
+        np.testing.assert_array_equal(np.asarray(wrapped[1:3].result()), data[1:3])
 
 
 def test_discovered_parts_come_from_the_source_vocabulary() -> None:
@@ -1392,37 +1377,37 @@ def test_discovered_parts_come_from_the_source_vocabulary() -> None:
 # intervals of the wrapped (7, 5, 4) array, computed by hand.
 BOX_CASES: list[tuple[str, Callable[[LazyArray], LazyArray], bool, Any]] = [
     ("identity", lambda a: a, True, ((0, 7), (0, 5), (0, 4))),
-    ("basic-slice", lambda a: a.lazy[1:6, :, 1:3], True, ((1, 6), (0, 5), (1, 3))),
+    ("basic-slice", lambda a: a[1:6, :, 1:3], True, ((1, 6), (0, 5), (1, 3))),
     # Stride 2 over axis 1 touches 0, 2, 4; the hull is the closed span.
-    ("strided", lambda a: a.lazy[::3, ::2, :], True, ((0, 7), (0, 5), (0, 4))),
-    ("int-drop", lambda a: a.lazy[2, :, -1], True, ((2, 3), (0, 5), (3, 4))),
-    ("all-scalars", lambda a: a.lazy[0, 1, 2], True, ((0, 1), (1, 2), (2, 3))),
-    ("negative-and-open", lambda a: a.lazy[-2:], True, ((5, 7), (0, 5), (0, 4))),
+    ("strided", lambda a: a[::3, ::2, :], True, ((0, 7), (0, 5), (0, 4))),
+    ("int-drop", lambda a: a[2, :, -1], True, ((2, 3), (0, 5), (3, 4))),
+    ("all-scalars", lambda a: a[0, 1, 2], True, ((0, 1), (1, 2), (2, 3))),
+    ("negative-and-open", lambda a: a[-2:], True, ((5, 7), (0, 5), (0, 4))),
     (
         "oindex",
-        lambda a: a.lazy.oindex[[4, 0, 0], :, [3, 1]],
+        lambda a: a.oindex[[4, 0, 0], :, [3, 1]],
         False,
         ((0, 5), (0, 5), (1, 4)),
     ),
     (
         "vindex",
-        lambda a: a.lazy.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])],
+        lambda a: a.vindex[np.array([0, 6, 3]), np.array([1, 4, 0]), np.array([2, 0, 1])],
         False,
         ((0, 7), (0, 5), (0, 3)),
     ),
-    ("mask", lambda a: a.lazy.vindex[MASK], False, ((0, 7), (0, 5), (0, 4))),
+    ("mask", lambda a: a.vindex[MASK], False, ((0, 7), (0, 5), (0, 4))),
     # Composition preserves the category in both directions.
-    ("box-of-box", lambda a: a.lazy[1:6].lazy[:, 1:3], True, ((1, 6), (1, 3), (0, 4))),
+    ("box-of-box", lambda a: a[1:6][:, 1:3], True, ((1, 6), (1, 3), (0, 4))),
     (
         "box-after-fancy",
-        lambda a: a.lazy.oindex[[4, 0, 2], :, :].lazy[0:2],
+        lambda a: a.oindex[[4, 0, 2], :, :][0:2],
         False,
         ((0, 5), (0, 5), (0, 4)),
     ),
-    ("empty", lambda a: a.lazy[2:2], True, None),
+    ("empty", lambda a: a[2:2], True, None),
     (
         "empty-fancy",
-        lambda a: a.lazy.oindex[np.array([], dtype=np.intp), :, :],
+        lambda a: a.oindex[np.array([], dtype=np.intp), :, :],
         False,
         None,
     ),
@@ -1449,7 +1434,7 @@ def test_is_box_and_bounding_box(
 def test_a_unit_stride_box_is_dense_in_its_bounding_box() -> None:
     """Stride 1 everywhere: the hull is exactly what the view selects."""
     data = reference()
-    view = make_source("numpy-uniform-parts").lazy[1:6, :, 1:3]
+    view = make_source("numpy-uniform-parts")[1:6, :, 1:3]
     assert view.is_box
     assert view.strides() == (1, 1, 1)
     bounds = view.bounding_box()
@@ -1463,7 +1448,7 @@ def test_a_unit_stride_box_is_dense_in_its_bounding_box() -> None:
 def test_a_strided_box_is_sparse_in_its_bounding_box() -> None:
     """Stride > 1: the hull is a superset, and `strides()` is what says by how much."""
     data = reference()
-    view = make_source("numpy-uniform-parts").lazy[1:6, ::2, :]
+    view = make_source("numpy-uniform-parts")[1:6, ::2, :]
     assert view.is_box
     assert view.strides() == (1, 2, 1)
     bounds = view.bounding_box()
@@ -1483,20 +1468,20 @@ def test_a_strided_box_is_sparse_in_its_bounding_box() -> None:
 
 
 def test_strides_are_none_for_a_query() -> None:
-    view = make_source("numpy-uniform-parts").lazy.oindex[[5, 1], :, :]
+    view = make_source("numpy-uniform-parts").oindex[[5, 1], :, :]
     assert not view.is_box
     assert view.strides() is None
 
 
 def test_an_integer_indexed_dimension_has_stride_one() -> None:
-    view = make_source("numpy-uniform-parts").lazy[2, ::3, :]
+    view = make_source("numpy-uniform-parts")[2, ::3, :]
     assert view.strides() == (1, 3, 1)
     assert view.bounding_box() == ((2, 3), (0, 4), (0, 4))
 
 
 def test_a_query_bounding_box_is_only_a_hull() -> None:
     """For a fancy selection the box is a superset, and `is_box` says so."""
-    view = make_source("numpy-uniform-parts").lazy.oindex[[5, 1], :, :]
+    view = make_source("numpy-uniform-parts").oindex[[5, 1], :, :]
     assert not view.is_box
     assert view.bounding_box() == ((1, 6), (0, 5), (0, 4))
     # The hull spans 5 rows; the selection touches 2 of them.
@@ -1516,7 +1501,7 @@ class _ReadMustNotRun:
 def test_prepared_part_validation_allocates_boolean_coverage_bitmap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    view = LazyArray.from_numpy(reference()).with_parts(PART_SHAPE).lazy[1:6, ::2, 1:]
+    view = LazyArray.from_numpy(reference()).with_parts(PART_SHAPE)[1:6, ::2, 1:]
     parts = tuple(view.parts())
     allocations: list[tuple[tuple[int, ...], np.dtype[Any]]] = []
     real_zeros = np.zeros
@@ -1539,35 +1524,35 @@ def test_prepared_part_validation_allocates_boolean_coverage_bitmap(
         pytest.param(
             np.arange(8),
             (3,),
-            lambda array: array.lazy[1:7:2],
+            lambda array: array[1:7:2],
             np.array([1, 3, 5]),
             id="basic-reordered-parts",
         ),
         pytest.param(
             np.arange(8),
             (3,),
-            lambda array: array.lazy[3],
+            lambda array: array[3],
             np.array(3),
             id="scalar",
         ),
         pytest.param(
             np.arange(20).reshape(4, 5),
             (2, 3),
-            lambda array: array.lazy.oindex[[3, 1, 1], [4, 0]],
+            lambda array: array.oindex[[3, 1, 1], [4, 0]],
             np.array([[19, 15], [9, 5], [9, 5]]),
             id="orthogonal-fancy",
         ),
         pytest.param(
             np.arange(20).reshape(4, 5),
             (2, 3),
-            lambda array: array.lazy.vindex[[3, 1, 1], [4, 0, 4]],
+            lambda array: array.vindex[[3, 1, 1], [4, 0, 4]],
             np.array([19, 5, 9]),
             id="correlated-fancy",
         ),
         pytest.param(
             np.arange(8),
             (3,),
-            lambda array: array.lazy[2:2],
+            lambda array: array[2:2],
             np.array([], dtype=np.int64),
             id="empty",
         ),
@@ -1594,9 +1579,9 @@ def test_result_accepts_prepared_parts_from_the_same_view(
 def test_result_rejects_prepared_parts_owned_by_another_view() -> None:
     data = reference()
     base = LazyArray.from_numpy(data).with_reader(_ReadMustNotRun()).with_parts(PART_SHAPE)
-    view = base.lazy[1:6, ::2, 1:]
+    view = base[1:6, ::2, 1:]
     owned_parts = tuple(view.parts())
-    foreign_parts = tuple(base.lazy[1:6, ::2, 1:].parts())
+    foreign_parts = tuple(base[1:6, ::2, 1:].parts())
     mixed_parts = (owned_parts[0], *foreign_parts[1:])
 
     with pytest.raises(ValueError, match="prepared parts do not belong to this view"):
@@ -1608,8 +1593,7 @@ def test_result_rejects_prepared_parts_that_do_not_tile_the_view() -> None:
     view = (
         LazyArray.from_numpy(data)
         .with_reader(_ReadMustNotRun())
-        .with_parts(PART_SHAPE)
-        .lazy[1:6, ::2, 1:]
+        .with_parts(PART_SHAPE)[1:6, ::2, 1:]
     )
     parts = tuple(view.parts())
 
@@ -1659,9 +1643,7 @@ def test_result_rejects_empty_prepared_parts_for_a_nonempty_view() -> None:
 
 
 def test_result_accepts_empty_prepared_parts_for_an_empty_view() -> None:
-    view = (
-        LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,)).lazy[0:0]
-    )
+    view = LazyArray.from_numpy(np.arange(8)).with_reader(_ReadMustNotRun()).with_parts((4,))[0:0]
 
     np.testing.assert_array_equal(view.result(parts=()), np.array([], dtype=np.int64))
 
@@ -1671,14 +1653,14 @@ def test_result_accepts_empty_prepared_parts_for_an_empty_view() -> None:
     "build",
     [
         lambda a: a,
-        lambda a: a.lazy[1:6, :, 1:],
-        lambda a: a.lazy.oindex[[4, 0, 0], :, [3, 1]],
-        lambda a: a.lazy.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
+        lambda a: a[1:6, :, 1:],
+        lambda a: a.oindex[[4, 0, 0], :, [3, 1]],
+        lambda a: a.vindex[..., np.array([1, 4, 0]), np.array([2, 0, 1])],
         # A reversing view drives the negative-stride branches of
         # `_intersect_dimension_map` and chunk projection, which were
         # written defensively long before anything could reach them.
-        lambda a: a.lazy[::-1, ::-2, :],
-        lambda a: a.lazy[5:1:-1, :, ::-1],
+        lambda a: a[::-1, ::-2, :],
+        lambda a: a[5:1:-1, :, ::-1],
     ],
     ids=["identity", "basic", "oindex", "vindex", "reversed", "reversed-bounded"],
 )
@@ -1725,8 +1707,8 @@ def _transform_point(transform: IndexTransform, point: tuple[int, ...]) -> tuple
 @pytest.mark.parametrize(
     "build",
     [
-        lambda array: array.lazy.oindex[[6, 0, 2], :, [3, 1]],
-        lambda array: array.lazy.vindex[..., np.array([4, 0, 4]), np.array([3, 1, 1])],
+        lambda array: array.oindex[[6, 0, 2], :, [3, 1]],
+        lambda array: array.vindex[..., np.array([4, 0, 4]), np.array([3, 1, 1])],
     ],
     ids=["orthogonal", "vectorized"],
 )
@@ -1776,24 +1758,29 @@ def test_nonfirst_partition_transform_directly_addresses_its_array() -> None:
     part = list(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
 
     assert part.box == ((4, 8),)
-    assert part.view.transform.apply((0,)) == (4,)
-    assert part.view.array[part.view.transform.apply((0,))] == 4
+    # A box part keeps the request's literal coordinates, so its domain says
+    # where it sits; the transform addresses the raw source from there.
+    assert part.view.transform.domain == IndexDomain((4,), (8,))
+    assert part.view.transform.apply((4,)) == (4,)
+    assert part.view.array[part.view.transform.apply((4,))] == 4
     assert part.view.result()[0] == 4
+    assert part.view[0].result() == 4
     assert part.projection.chunk_transform.apply((0,)) == (0,)
 
 
 def test_partition_token_encodes_its_public_global_transform() -> None:
+    pytest.importorskip("dask.base")
     source = np.arange(8)
     base = LazyArray.from_numpy(source)
     partition_view = list(base.with_parts((4,)).parts())[1].view
-    direct_view = base.lazy[4:8]
+    direct_view = base[4:8]
 
     assert partition_view.__dask_tokenize__() == direct_view.__dask_tokenize__()
 
 
 def test_parts_resolve_independently_and_concurrently() -> None:
     """Each part's `array` is a standalone `LazyArray` with no shared mutable state."""
-    view = make_source("zarr").lazy[1:7, :, 1:].with_parts((2, 2, 2))
+    view = make_source("zarr")[1:7, :, 1:].with_parts((2, 2, 2))
     parts = list(view.parts())
     assert len(parts) > 1
 
@@ -1812,15 +1799,15 @@ def test_parts_report_completeness() -> None:
     assert all(part.is_complete for part in array.parts())
     # Boxes along axis 2 are [0, 3) and [3, 4); dropping column 0 leaves the
     # first partially covered and the second whole.
-    trimmed = {part.base_coords[2]: part.is_complete for part in array.lazy[:, :, 1:].parts()}
+    trimmed = {part.base_coords[2]: part.is_complete for part in array[:, :, 1:].parts()}
     assert trimmed == {0: False, 1: True}
     # A fancy axis is always reported incomplete.
-    assert not any(part.is_complete for part in array.lazy.oindex[[4, 0, 0], :, :].parts())
+    assert not any(part.is_complete for part in array.oindex[[4, 0, 0], :, :].parts())
 
 
 def test_partition_boxes_are_global_and_tile_the_base() -> None:
     """Both the selected hull and the whole partition box use global coordinates."""
-    view = make_source("numpy-uniform-parts").lazy[1:6, :, 1:]
+    view = make_source("numpy-uniform-parts")[1:6, :, 1:]
     parts = {part.base_coords: part for part in view.parts()}
 
     # The reviewer's repro: two parts of the same view now expose distinct
@@ -1867,7 +1854,7 @@ def test_an_unpartitioned_wrapper_has_a_single_whole_array_part() -> None:
 
 
 def test_with_parts_keeps_the_view_and_the_base() -> None:
-    view = make_source("zarr").lazy[1:6, ::2]
+    view = make_source("zarr")[1:6, ::2]
     repartitioned = view.with_parts((2, 1, 4))
     assert repartitioned.shape == view.shape
     assert repartitioned.array is view.array
@@ -1880,7 +1867,7 @@ def test_with_parts_keeps_the_view_and_the_base() -> None:
 
 
 def test_with_parts_none_forces_one_shot_resolution() -> None:
-    view = make_source("zarr").lazy.oindex[[4, 0, 0], :, :]
+    view = make_source("zarr").oindex[[4, 0, 0], :, :]
     whole = view.unpartitioned()
     assert len(list(whole.parts())) == 1
     np.testing.assert_array_equal(np.asarray(whole.result()), np.asarray(view.result()))
@@ -1914,22 +1901,24 @@ def test_with_parts_validates_strictly(parts: Any, match: str) -> None:
 
 def test_dask_token_is_deterministic_and_discriminating() -> None:
     """Same data and same view token alike; a different selection differs."""
+    pytest.importorskip("dask.base")
     data = reference()
     base = LazyArray(data)
     assert base.__dask_tokenize__() == LazyArray(reference()).__dask_tokenize__()
 
     tokens = {
         "base": base.__dask_tokenize__(),
-        "view": base.lazy[1:3].__dask_tokenize__(),
-        "other view": base.lazy[2:4].__dask_tokenize__(),
+        "view": base[1:3].__dask_tokenize__(),
+        "other view": base[2:4].__dask_tokenize__(),
         "other data": LazyArray(data + 1).__dask_tokenize__(),
     }
     assert len({repr(token) for token in tokens.values()}) == len(tokens)
     # Equivalent transforms reached different ways still token alike.
-    assert base.lazy[1:5].lazy[0:2].__dask_tokenize__() == base.lazy[1:3].__dask_tokenize__()
+    assert base[1:5][0:2].__dask_tokenize__() == base[1:3].__dask_tokenize__()
 
 
 def test_reader_and_partitioning_do_not_change_dask_identity() -> None:
+    pytest.importorskip("dask.base")
     base = LazyArray(reference())
     token = base.__dask_tokenize__()
     assert base.with_reader(numpy_reader).__dask_tokenize__() == token
@@ -1939,27 +1928,28 @@ def test_reader_and_partitioning_do_not_change_dask_identity() -> None:
 
 @pytest.mark.parametrize("reader", [basic_reader, numpy_reader, DelegatingReader(numpy_reader)])
 def test_reader_survives_pickle(reader: Reader) -> None:
-    view = LazyArray(reference()).with_reader(reader).lazy[1:5, ::2]
+    view = LazyArray(reference()).with_reader(reader)[1:5, ::2]
     restored = pickle.loads(pickle.dumps(view))
     assert type(restored.reader) is type(reader)
     np.testing.assert_array_equal(restored.result(), view.result())
 
 
-def test_iteration_yields_eager_slices(source: LazyArray) -> None:
-    rows = list(source.lazy[2:5])
+def test_iteration_yields_lazy_slices(source: LazyArray) -> None:
+    rows = list(source[2:5])
     assert len(rows) == 3
     for row, expected in zip(rows, reference()[2:5], strict=True):
+        assert isinstance(row, LazyArray)
         np.testing.assert_array_equal(np.asarray(row), expected)
 
 
 def test_iteration_over_a_zero_dimensional_view_is_rejected() -> None:
     with pytest.raises(TypeError, match="iteration over a 0-d array"):
-        iter(make_source("numpy-uniform-parts").lazy[0, 0, 0])
+        iter(make_source("numpy-uniform-parts")[0, 0, 0])
 
 
 def test_len_of_a_zero_dimensional_view_is_rejected() -> None:
     with pytest.raises(TypeError, match="len\\(\\) of unsized object"):
-        len(make_source("numpy-uniform-parts").lazy[0, 0, 0])
+        len(make_source("numpy-uniform-parts")[0, 0, 0])
 
 
 @pytest.mark.parametrize(
@@ -1976,7 +1966,7 @@ def test_len_of_a_zero_dimensional_view_is_rejected() -> None:
 def test_scalar_conversions_match_numpy(convert: Any, selection: Any) -> None:
     """Size-1 conversions delegate to NumPy, values and all."""
     data = reference()
-    view = make_source("numpy-uniform-parts").lazy[selection]
+    view = make_source("numpy-uniform-parts")[selection]
     assert convert(view) == convert(data[selection])
 
 
@@ -1995,7 +1985,7 @@ def test_scalar_conversions_raise_what_numpy_raises(
     convert: Any, selection: Any, error: type[Exception]
 ) -> None:
     data = reference()
-    view = make_source("numpy-uniform-parts").lazy[selection]
+    view = make_source("numpy-uniform-parts")[selection]
     with pytest.raises(error):
         convert(view)
     with pytest.raises(error):
@@ -2004,10 +1994,9 @@ def test_scalar_conversions_raise_what_numpy_raises(
 
 def test_pickle_round_trip() -> None:
     """A wrapper over a picklable base survives a round trip, view and parts intact."""
-    view = LazyArray(reference()).with_parts((2, 2, 2)).lazy[1:6, ::2].lazy.oindex[[3, 0, 0], :, :]
+    view = LazyArray(reference()).with_parts((2, 2, 2))[1:6, ::2].oindex[[3, 0, 0], :, :]
     restored = pickle.loads(pickle.dumps(view))
     assert restored.shape == view.shape
-    assert restored.__dask_tokenize__() == view.__dask_tokenize__()
     np.testing.assert_array_equal(np.asarray(restored.result()), np.asarray(view.result()))
 
 
@@ -2017,16 +2006,16 @@ def test_pickle_round_trip() -> None:
 
 
 def test_dask_from_array_roundtrip() -> None:
-    """A `LazyArray` is a drop-in dask source — no translation ceremony."""
+    """Dask can tokenize and read a wrapper over a Zarr source."""
     da = pytest.importorskip("dask.array")
     source = make_source("zarr")
 
-    lazy = da.from_array(source)
+    lazy = da.from_array(EagerArrayAdapter(source))
     np.testing.assert_array_equal(lazy.compute(), reference())
 
     # dask chooses its own blocks; the wrapper reads each of them through its
     # own parts, so the two partitionings need not agree.
-    blocked = da.from_array(source, chunks=(4, 3, 3))
+    blocked = da.from_array(EagerArrayAdapter(source), chunks=(4, 3, 3))
     assert blocked.chunks == ((4, 3), (3, 2), (3, 1))
     np.testing.assert_array_equal(blocked[2:, ::2].compute(), reference()[2:, ::2])
 
@@ -2038,7 +2027,7 @@ def test_dask_from_array_roundtrip() -> None:
 
 def test_boolean_scalar_is_rejected() -> None:
     with pytest.raises(IndexError, match="boolean scalars are not valid indices"):
-        make_source("numpy-uniform-parts").lazy[True]
+        make_source("numpy-uniform-parts")[True]
 
 
 @pytest.mark.parametrize(
@@ -2060,9 +2049,9 @@ def test_positional_selectors_support_the_index_protocol(
 ) -> None:
     source = LazyArray.from_numpy(np.arange(8))
     if mode == "basic":
-        view = source.lazy[selection]
+        view = source[selection]
     else:
-        view = getattr(source.lazy, "oindex" if mode == "orthogonal" else "vindex")[selection]
+        view = getattr(source, "oindex" if mode == "orthogonal" else "vindex")[selection]
 
     result = np.asarray(view.result())
     assert result.shape == expected.shape
@@ -2071,52 +2060,62 @@ def test_positional_selectors_support_the_index_protocol(
 
 def test_positional_selector_rejects_int_only_objects() -> None:
     with pytest.raises(IndexError, match="unsupported selection type"):
-        LazyArray.from_numpy(np.arange(8)).lazy[IntOnly()]
+        LazyArray.from_numpy(np.arange(8))[IntOnly()]
 
 
 def test_positional_selector_propagates_malformed_index_protocol() -> None:
     with pytest.raises(TypeError, match="__index__ returned non-int"):
-        LazyArray.from_numpy(np.arange(8)).lazy[BadIndex()]
+        LazyArray.from_numpy(np.arange(8))[BadIndex()]
 
 
 def test_positional_slice_propagates_malformed_index_protocol() -> None:
     with pytest.raises(TypeError, match="__index__ returned non-int"):
-        LazyArray.from_numpy(np.arange(8)).lazy[:: BadIndex()]
+        LazyArray.from_numpy(np.arange(8))[:: BadIndex()]
 
 
 def test_protocol_objects_inside_an_index_array_remain_invalid() -> None:
     selection = np.array([IndexLike(2)], dtype=object)
     with pytest.raises(IndexError, match="integer or boolean"):
-        LazyArray.from_numpy(np.arange(8)).lazy.oindex[selection]
+        LazyArray.from_numpy(np.arange(8)).oindex[selection]
 
 
 def test_mask_shape_must_match_the_view() -> None:
     array = make_source("numpy-uniform-parts")
     with pytest.raises(IndexError, match="boolean index has shape"):
-        array.lazy.vindex[np.ones((2, 2, 2), dtype=bool)]
+        array.vindex[np.ones((2, 2, 2), dtype=bool)]
 
 
 def test_scalar_index_out_of_bounds() -> None:
     with pytest.raises(IndexError, match="index 7 is out of bounds for axis 0 with size 7"):
-        make_source("numpy-uniform-parts").lazy[7]
+        make_source("numpy-uniform-parts")[7]
 
 
 def test_scalar_index_out_of_bounds_in_a_view() -> None:
     """Bounds are the *view's*, not the wrapped array's."""
-    array = make_source("numpy-uniform-parts").lazy[1:4]
+    array = make_source("numpy-uniform-parts")[1:4]
     with pytest.raises(IndexError, match="index 3 is out of bounds for axis 0 with size 3"):
-        array.lazy[3]
+        array[3]
 
 
 def test_index_array_out_of_bounds() -> None:
     array = make_source("numpy-uniform-parts")
     with pytest.raises(IndexError, match="index 99 is out of bounds for axis 0 with size 7"):
-        array.lazy.oindex[[0, 99], :, :]
+        array.oindex[[0, 99], :, :]
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+def test_unsigned_index_array_beyond_intp_is_out_of_bounds(mode: str) -> None:
+    """A uint64 value past the intp range must not wrap to a negative index."""
+    array = make_source("numpy-uniform-parts")
+    index = np.array([2**64 - 1], dtype=np.uint64)
+    selection = (index, 0, 0) if mode == "vindex" else (index, slice(None), slice(None))
+    with pytest.raises(IndexError, match=f"index {2**64 - 1} is out of bounds for axis 0"):
+        getattr(array, mode)[selection]
 
 
 def test_too_many_indices() -> None:
     with pytest.raises(IndexError, match="too many indices"):
-        make_source("numpy-uniform-parts").lazy[0, 0, 0, 0]
+        make_source("numpy-uniform-parts")[0, 0, 0, 0]
 
 
 def test_copy_false_conversion_is_rejected() -> None:
@@ -2132,32 +2131,33 @@ def test_copy_false_conversion_is_rejected() -> None:
 
 def test_reversed_box_reports_a_positive_stride(source: LazyArray) -> None:
     """A reversal is still a box; `strides()` is magnitudes, so it matches the forward twin."""
-    reversed_view = source.lazy[::-2]
-    forward = source.lazy[::2]
+    reversed_view = source[::-2]
+    forward = source[::2]
     assert reversed_view.is_box
     assert reversed_view.strides() == forward.strides() == (2, 1, 1)
     assert reversed_view.bounding_box() == ((0, 7), (0, 5), (0, 4))
 
 
-def test_a_reversed_view_is_re_based_to_origin_zero() -> None:
-    """The literal domain of a reversal is negative; the positional dialect hides it."""
-    view = make_source("numpy-whole").lazy[::-1]
-    # The algebra's own answer keeps the source frame.
+def test_a_reversed_view_keeps_its_negative_literal_domain() -> None:
+    """The literal domain of a reversal is negative; positional keys hide it."""
+    view = make_source("numpy-whole")[::-1]
+    # The algebra's answer keeps the source frame, and so does the wrapper.
     assert IndexTransform.from_shape(SHAPE)[::-1].domain.inclusive_min[0] == -6
-    # The wrapper re-bases, so positions start at 0 as NumPy expects.
-    assert view.transform.domain.inclusive_min == (0, 0, 0)
+    assert view.transform.domain.inclusive_min == (-6, 0, 0)
     assert view.shape == SHAPE
     np.testing.assert_array_equal(np.asarray(view.result()), reference()[::-1])
+    # Position 0 is still the first element, whatever the domain says.
+    np.testing.assert_array_equal(view[0].result(), reference()[-1])
 
 
 def test_zero_step_is_rejected() -> None:
     with pytest.raises(ValueError, match="step cannot be zero"):
-        make_source("numpy-whole").lazy[::0]
+        make_source("numpy-whole")[::0]
 
 
 def test_reversed_positional_interval_is_empty_not_an_error() -> None:
     """NumPy's rule at the boundary; the literal layer keeps TensorStore's."""
-    view = make_source("numpy-uniform-parts").lazy[2:5:-1]
+    view = make_source("numpy-uniform-parts")[2:5:-1]
     assert view.shape == (0, 5, 4)
     np.testing.assert_array_equal(np.asarray(view.result()), reference()[2:5:-1])
     # Literal coordinates, on the other hand, call it a direction error.
@@ -2167,7 +2167,7 @@ def test_reversed_positional_interval_is_empty_not_an_error() -> None:
 
 def test_negative_step_over_a_fancy_axis_reverses_the_coordinates(source: LazyArray) -> None:
     """Reversing a gathered axis materializes, rather than attaching a stride."""
-    view = source.lazy.oindex[[3, 1, 2], :, :].lazy[::-1]
+    view = source.oindex[[3, 1, 2], :, :][::-1]
     expected = outer(reference(), ([3, 1, 2], slice(None), slice(None)))[::-1]
     np.testing.assert_array_equal(np.asarray(view.result()), expected)
     m = view.transform.output[0]
@@ -2213,8 +2213,8 @@ class RecordingSource(MinimalSource):
 @pytest.mark.parametrize(
     "build",
     [
-        lambda a: a.lazy[:, 2:2, :],
-        lambda a: a.lazy.vindex[np.array([[6], [3], [0]]), -4].lazy[0, 0:0],
+        lambda a: a[:, 2:2, :],
+        lambda a: a.vindex[np.array([[6], [3], [0]]), -4][0, 0:0],
     ],
     ids=["ordinary", "unreferenced-axis"],
 )
@@ -2261,10 +2261,10 @@ class NumpyBackedSource:
 @pytest.mark.parametrize(
     ("build", "description"),
     [
-        (lambda a: a.lazy[1:3, :, :], "a basic slice"),
-        (lambda a: a.lazy[:, :, :], "the whole array"),
-        (lambda a: a.lazy[::-1, :, :], "a reversal"),
-        (lambda a: a.lazy.oindex[[2, 0], :, :], "a gather"),
+        (lambda a: a[1:3, :, :], "a basic slice"),
+        (lambda a: a[:, :, :], "the whole array"),
+        (lambda a: a[::-1, :, :], "a reversal"),
+        (lambda a: a.oindex[[2, 0], :, :], "a gather"),
     ],
 )
 def test_materializing_never_hands_back_the_wrapped_array(
@@ -2300,9 +2300,9 @@ def test_materializing_never_hands_back_the_wrapped_array(
         np.testing.assert_array_equal(data, before, err_msg=description)
 
 
-def test_an_eager_getitem_never_hands_back_the_wrapped_array() -> None:
+def test_eager_adapter_getitem_never_hands_back_the_wrapped_array() -> None:
     data = reference()
-    block = LazyArray(data)[1:3]
+    block = EagerArrayAdapter(LazyArray(data))[1:3]
     block[...] = -1
     np.testing.assert_array_equal(data, reference())
 
@@ -2316,7 +2316,7 @@ def test_result_refuses_to_return_a_partly_written_buffer(
     the parts tile the view. This is the guard that turns any future break of
     that contract into a failure instead of into plausible-looking numbers.
     """
-    view = LazyArray(reference()).with_parts(PART_SHAPE).lazy[:, 1:, :]
+    view = LazyArray(reference()).with_parts(PART_SHAPE)[:, 1:, :]
     complete = LazyArray.parts
 
     def drop_one(self: LazyArray) -> Any:
@@ -2329,7 +2329,7 @@ def test_result_refuses_to_return_a_partly_written_buffer(
 
 def test_result_refuses_a_partition_of_the_wrong_rank(monkeypatch: pytest.MonkeyPatch) -> None:
     """A part addressing fewer axes than the view has is caught by name."""
-    view = LazyArray(reference()).with_parts(PART_SHAPE).lazy[:, 1:, :]
+    view = LazyArray(reference()).with_parts(PART_SHAPE)[:, 1:, :]
     complete = LazyArray.parts
 
     def truncate(self: LazyArray) -> Any:
@@ -2374,13 +2374,13 @@ class DuckBlock:
 @pytest.mark.parametrize(
     ("build", "oracle"),
     [
-        (lambda a: a.lazy[1:5, ::2, :], lambda r: r[1:5, ::2, :]),
+        (lambda a: a[1:5, ::2, :], lambda r: r[1:5, ::2, :]),
         (
-            lambda a: a.lazy.oindex[[4, 0, 0], :, :],
+            lambda a: a.oindex[[4, 0, 0], :, :],
             lambda r: r[np.ix_([4, 0, 0], range(5), range(4))],
         ),
-        (lambda a: a.lazy.vindex[[4, 0], [1, 1]], lambda r: r[[4, 0], [1, 1]]),
-        (lambda a: a.lazy[::-1, :, :], lambda r: r[::-1, :, :]),
+        (lambda a: a.vindex[[4, 0], [1, 1]], lambda r: r[[4, 0], [1, 1]]),
+        (lambda a: a[::-1, :, :], lambda r: r[::-1, :, :]),
     ],
     ids=["basic", "oindex", "vindex", "reversal"],
 )
@@ -2416,51 +2416,26 @@ def test_numpy_matrix_is_refused() -> None:
 @pytest.mark.parametrize("parts", [None, (2, 2), (1, 4), (3, 4)])
 def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> None:
     data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
-    got = repartition(LazyArray(data), parts).lazy[:, 1:].result()
+    view = repartition(LazyArray(data), parts)[:, 1:]
+    got = view.result()
     expected = data[:, 1:]
     assert isinstance(got, np.ma.MaskedArray), parts
     np.testing.assert_array_equal(np.ma.getmaskarray(got), np.ma.getmaskarray(expected))
     np.testing.assert_array_equal(np.ma.filled(got, 0), np.ma.filled(expected, 0))
+    assembled = np.ma.masked_all(view.shape, dtype=view.dtype)
+    for part in view.parts():
+        assembled[part.out_selection] = part.view.result()
+    np.testing.assert_array_equal(np.ma.getmaskarray(assembled), np.ma.getmaskarray(expected))
+    np.testing.assert_array_equal(np.ma.filled(assembled, 0), np.ma.filled(expected, 0))
 
 
 @pytest.mark.parametrize("parts", [None, (2, 2), (3, 4)])
 def test_a_masked_source_keeps_its_mask_when_the_view_is_empty(parts: Any) -> None:
-    """An empty result is still a result, and its type must not depend on the parts.
-
-    An empty view is answered without reading the source at all, and that
-    shortcut reached for the array namespace's own `empty` — which knows nothing
-    about masks — so an unpartitioned empty view came back a plain array while
-    the same view partitioned came back masked. No cells either way, so nothing
-    about the values changed; the caller just got a different type depending on
-    how the read had been divided.
-    """
+    """Empty views of masked sources return masked arrays for every partitioning."""
     data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
-    got = repartition(LazyArray(data), parts).lazy[:, 2:2].result()
+    got = repartition(LazyArray(data), parts)[:, 2:2].result()
     assert isinstance(got, np.ma.MaskedArray), parts
     assert np.asarray(got).shape == (3, 0), parts
-
-
-def test_a_large_array_without_dask_refuses_to_claim_equality(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Above the digest limit the fallback must miss a cache rather than lie.
-
-    Two arrays differing in one element used to token identically, because the
-    fallback described the shape and dtype and gave up on the contents.
-    """
-    import sys
-
-    monkeypatch.setitem(sys.modules, "dask.base", None)
-    big = np.zeros(1 << 19, dtype=np.int64)
-    other = big.copy()
-    other[0] = 1
-
-    assert LazyArray(big).__dask_tokenize__() != LazyArray(other).__dask_tokenize__()
-    assert LazyArray(big).__dask_tokenize__() != LazyArray(big).__dask_tokenize__()
-
-    # Below the limit the contents are digested, so equal data still tokens alike.
-    small = np.zeros(8, dtype=np.int64)
-    assert LazyArray(small).__dask_tokenize__() == LazyArray(small.copy()).__dask_tokenize__()
 
 
 # ---------------------------------------------------------------------------
@@ -2471,8 +2446,8 @@ def test_a_large_array_without_dask_refuses_to_claim_equality(
 def test_a_reversing_view_covers_its_parts() -> None:
     """A reversal reads every cell of every box, back to front."""
     data = np.arange(48).reshape(8, 6)
-    forward = LazyArray(data).with_parts((2, 2)).lazy[:, :]
-    reversed_view = LazyArray(data).with_parts((2, 2)).lazy[::-1, ::-1]
+    forward = LazyArray(data).with_parts((2, 2))[:, :]
+    reversed_view = LazyArray(data).with_parts((2, 2))[::-1, ::-1]
     assert [part.is_complete for part in reversed_view.parts()] == [
         part.is_complete for part in forward.parts()
     ]
@@ -2481,7 +2456,7 @@ def test_a_reversing_view_covers_its_parts() -> None:
 
 def test_a_strided_reversal_is_still_incomplete() -> None:
     data = np.arange(48).reshape(8, 6)
-    view = LazyArray(data).with_parts((2, 2)).lazy[::-2, :]
+    view = LazyArray(data).with_parts((2, 2))[::-2, :]
     assert not any(part.is_complete for part in view.parts())
 
 
@@ -2511,17 +2486,9 @@ def test_a_zero_chunk_on_a_nonempty_axis_is_still_rejected() -> None:
 def test_the_coverage_count_agrees_with_numpy_for_reversed_selections(
     selection: tuple[Any, ...],
 ) -> None:
-    """The safety net behind `result()`'s coverage assertion, checked on its own.
-
-    `_out_selection_cell_count` sizes a partition's `out_selection` without
-    materializing it, and `result()` trusts that count to decide whether the
-    walk covered the view. Nothing pinned it for a reversed slice, so dropping
-    its `start <= stop` guard — or wrapping the subtraction in `abs()` — left
-    the suite green. A net nobody tests only matters once something else breaks,
-    which is exactly when it needs to be right.
-    """
+    """Coverage counts match NumPy selection sizes for reversed slices."""
     data = reference()
-    view = LazyArray(data).with_parts((2, 2, 2)).lazy[selection]
+    view = LazyArray(data).with_parts((2, 2, 2))[selection]
     out_shape = view.shape
     for part in view.parts():
         counted = _out_selection_cell_count(part.out_selection, out_shape)
@@ -2546,49 +2513,32 @@ def test_the_coverage_count_agrees_with_numpy_for_reversed_selections(
 def test_the_coverage_count_matches_numpy_for_intervals_the_fast_path_declines(
     selection: tuple[Any, ...], out_shape: tuple[int, ...], expected: int
 ) -> None:
-    """The guard on `result()`'s safety net, exercised where the walk cannot reach it.
-
-    A partition walk only ever produces concrete forward in-bounds intervals, so
-    the guard that keeps everything else off the subtraction fast path is not
-    reachable through `parts()` at all — which is why removing it left the whole
-    suite green. It is the net's own contract, so it is checked directly.
-    """
+    """Coverage counts match NumPy for intervals outside the subtraction fast path."""
     counted = _out_selection_cell_count(selection, out_shape)
     assert counted == np.empty(out_shape)[selection].size
     assert counted == expected
 
 
 def test_a_zero_dimensional_index_array_drops_its_axis_like_a_scalar() -> None:
-    """`a[np.array(2), :]` is `a[2, :]` in NumPy, and now here too.
-
-    Only Python and NumPy integers counted as scalars, so a 0-d array fell
-    through to the fancy path and was widened into a length-1 index array —
-    keeping an axis NumPy drops. That was a third answer, agreeing with neither
-    NumPy nor eager zarr, which rejects it.
-    """
+    """Zero-dimensional integer arrays drop axes in orthogonal and vectorized selections."""
     data = np.arange(20).reshape(4, 5)
     for mode, expected in (
         ("oindex", data[np.array(2), :]),
         ("vindex", data[np.array(2), np.array(3)]),
     ):
         view = (
-            LazyArray(data).lazy.oindex[np.array(2), slice(None)]
+            LazyArray(data).oindex[np.array(2), slice(None)]
             if mode == "oindex"
-            else LazyArray(data).lazy.vindex[np.array(2), np.array(3)]
+            else LazyArray(data).vindex[np.array(2), np.array(3)]
         )
         assert view.shape == expected.shape, mode
         np.testing.assert_array_equal(np.asarray(view.result()), expected, err_msg=mode)
 
 
 def test_a_multidimensional_array_in_an_orthogonal_selection_is_refused() -> None:
-    """The rule belongs to the selection, so the message speaks its vocabulary.
-
-    Left to the engine, this surfaced as a rank complaint about an `index_array`
-    the caller never wrote — the transform layer's words for a mistake made two
-    layers above it.
-    """
+    """Reject multidimensional orthogonal index arrays with a selection-level error."""
     with pytest.raises(IndexError, match="must be 1-dimensional"):
-        LazyArray(np.arange(20).reshape(4, 5)).lazy.oindex[[[0, 1], [2, 3]], slice(None)]
+        LazyArray(np.arange(20).reshape(4, 5)).oindex[[[0, 1], [2, 3]], slice(None)]
 
 
 def test_with_parts_rejects_a_bare_integer() -> None:
@@ -2601,18 +2551,72 @@ def test_with_parts_rejects_a_bare_integer() -> None:
 
 
 def test_fancy_composition_over_an_empty_axis() -> None:
-    """Regression: composing fancy steps over an empty axis stays unpinned.
-
-    The empty-domain branch of `compose` produces index arrays that are
-    singleton on every non-empty axis; pinning one to an axis it merely
-    broadcasts along made a later basic step index a size-1 axis positionally
-    and raise, deep inside a legal chain.
-    """
+    """Fancy composition over an empty axis preserves shape through later selections."""
     base = np.empty((3, 0, 6), dtype=np.int64)
-    view = LazyArray(base).lazy.oindex[[2, 1], :, [5, 0, 3]]
+    view = LazyArray(base).oindex[[2, 1], :, [5, 0, 3]]
     assert view.shape == (2, 0, 3)
-    composed = view.lazy.oindex[[1, 0], :, [2, 2]]
+    composed = view.oindex[[1, 0], :, [2, 2]]
     assert composed.shape == (2, 0, 2)
-    scalar = composed.lazy.vindex[..., np.array(1)]
+    scalar = composed.vindex[..., np.array(1)]
     assert scalar.shape == (2, 0)
     assert np.asarray(scalar.result()).shape == (2, 0)
+
+
+@pytest.mark.parametrize("kind", ["numpy", "object", "masked", "registered", "hook"])
+def test_source_token_uses_dask_policy(kind: str) -> None:
+    dask_base = pytest.importorskip("dask.base")
+
+    class RegisteredArray(ForeignArray):
+        pass
+
+    class VersionedArray(ForeignArray):
+        def __dask_tokenize__(self) -> Any:
+            return ("versioned-source", 1)
+
+    dask_base.normalize_token.register(RegisteredArray, lambda source: ("registered-source", 1))
+    data = np.arange(4)
+    sources = {
+        "numpy": data,
+        "object": data.astype(object),
+        "masked": np.ma.masked_greater(data, 2),
+        "registered": RegisteredArray(data, None),
+        "hook": VersionedArray(data, None),
+    }
+    source = sources[kind]
+    assert LazyArray(source).__dask_tokenize__()[1] == dask_base.tokenize(source)
+
+
+def test_source_token_preserves_dask_determinism_requirement() -> None:
+    dask_base = pytest.importorskip("dask.base")
+    dask_tokenize = pytest.importorskip("dask.tokenize")
+
+    class UnserializableArray(ForeignArray):
+        def __reduce_ex__(self, protocol: int) -> Any:
+            raise TypeError("cannot serialize source")
+
+    source = UnserializableArray(np.arange(4), None)
+    for value in (source, LazyArray(source)):
+        with pytest.raises(dask_tokenize.TokenizationError):
+            dask_base.tokenize(value, ensure_deterministic=True)
+
+
+def test_source_token_preserves_hook_failure() -> None:
+    pytest.importorskip("dask.base")
+
+    class RefusingArray(ForeignArray):
+        def __dask_tokenize__(self) -> Any:
+            raise RuntimeError("source version unavailable")
+
+    with pytest.raises(RuntimeError, match="source version unavailable"):
+        LazyArray(RefusingArray(np.arange(4), None)).__dask_tokenize__()
+
+
+def test_dask_is_only_required_for_tokenization(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "dask.base", None)
+    data = np.arange(4)
+    view = LazyArray(data)[1:]
+    np.testing.assert_array_equal(view.result(), data[1:])
+    with pytest.raises(ModuleNotFoundError):
+        view.__dask_tokenize__()

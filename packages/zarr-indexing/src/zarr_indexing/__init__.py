@@ -14,12 +14,14 @@ Key types:
 - `IndexTransform.compose` — chain two transforms into one
 
 `LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
-indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
+indexing through `view[...]`, yielding its reads as `Partition`s. Other
 backends use an explicit `Reader` adapter.
 
 `plan_chunks` projects a transform through a caller-selected chunk grid without
-coupling the result to a storage backend or scheduler. `selection_to_transform`
-is also exported for consumers starting with a NumPy-style selection. The
+coupling the result to a storage backend or scheduler; `ChunkPlan.partition`
+exposes the plan's factored, columnar form as a `GridPartition` of
+`StridedSet`, `IndexedSet` and `JointSet` tables. Consumers starting from a
+NumPy-style selection translate it with `zarr_indexing.boundary`. The
 `DimensionGridLike` Protocol describes the narrow grid surface chunk resolution
 consumes without importing zarr.
 """
@@ -30,9 +32,14 @@ from zarr_indexing.chunk_resolution import (
     ChunkCoverage,
     ChunkPlan,
     ChunkProjection,
+    GridPartition,
+    IndexedSet,
+    JointSet,
+    StridedSet,
     plan_chunks,
 )
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.eager import EagerArrayAdapter
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.grid import (
     ChunkGrid,
@@ -87,12 +94,16 @@ __all__ = [
     "DimensionGrid",
     "DimensionGridLike",
     "DimensionMap",
+    "EagerArrayAdapter",
     "EdgeDimensionGrid",
     "FixedDimension",
+    "GridPartition",
     "IndexDomain",
     "IndexDomainJSON",
     "IndexTransform",
     "IndexTransformJSON",
+    "IndexedSet",
+    "JointSet",
     "LazyArray",
     "NdselError",
     "NumPyReader",
@@ -101,6 +112,7 @@ __all__ = [
     "Partition",
     "ReadContext",
     "Reader",
+    "StridedSet",
     "UnitStepReader",
     "VaryingDimension",
     "VindexInvalidSelectionError",

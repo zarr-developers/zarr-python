@@ -149,7 +149,6 @@ def sync[T](
     finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
     if len(unfinished) > 0:
         raise TimeoutError(f"Coroutine {coro} failed to finish within {timeout} s")
-    assert len(finished) == 1
     return_result = next(iter(finished)).result()
 
     if isinstance(return_result, BaseException):
@@ -163,20 +162,21 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
-    if loop[0] is None:
+    current = loop[0]
+    if current is None:
         with _get_lock():
             # repeat the check just in case the loop got filled between the
             # previous two calls from another thread
-            if loop[0] is None:
+            current = loop[0]
+            if current is None:
                 logger.debug("Creating Zarr event loop")
-                new_loop = asyncio.new_event_loop()
-                loop[0] = new_loop
-                iothread[0] = threading.Thread(target=new_loop.run_forever, name="zarr_io")
-                assert iothread[0] is not None
-                iothread[0].daemon = True
-                iothread[0].start()
-    assert loop[0] is not None
-    return loop[0]
+                current = asyncio.new_event_loop()
+                loop[0] = current
+                thread = threading.Thread(target=current.run_forever, name="zarr_io")
+                thread.daemon = True
+                iothread[0] = thread
+                thread.start()
+    return current
 
 
 async def _collect_aiterator[T](data: AsyncIterator[T]) -> tuple[T, ...]:

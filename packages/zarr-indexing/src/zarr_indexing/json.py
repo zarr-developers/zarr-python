@@ -1,7 +1,7 @@
 """The canonical ndsel wire vocabulary, and the rules for lowering it.
 
-This is the **engine layer**. Where `messages.py` is pure JSON→JSON and imposes
-no array constraints, this module holds the JSON shapes a canonical ndsel body
+This is the **engine layer**. Where `messages.py` is pure JSON→JSON,
+this module holds the JSON shapes a canonical ndsel body
 takes (spec section 4.3, as produced by `zarr_indexing.messages.normalize_ndsel`)
 together with the lowering rules that turn one into the numpy-backed engine
 representation.
@@ -10,10 +10,13 @@ The conversions themselves are **methods on the types**, since each type owns
 its one serialization: `IndexTransform.to_json` / `from_json`,
 `IndexDomain.to_json` / `from_json`, and `to_json` on each output map kind,
 with `output_index_map_from_json` in `zarr_indexing.output_map` dispatching the
-wire's tagged union back to the right kind. This module is what they share.
+wire's structurally discriminated union back to the right kind. This module is what they share.
 
-Three engine constraints live **here and only here**:
+The engine lowering rules include:
 
+- **Validated index arrays.** Raw index values must satisfy the inclusive
+  `index_array_bounds` before offset and stride are applied. Lowering checks
+  all supplied values eagerly; validated immutable maps need not retain bounds.
 - **Finite bounds.** An `IndexDomain` addresses a finite array, so a canonical
   body carrying a `"-inf"`/`"+inf"` bound cannot be lowered; `from_json` raises.
 - **Implicit bounds lower by value.** The `[n]`-bracket implicit/explicit flag
@@ -42,10 +45,10 @@ so there is nothing to reconstruct on load. On serialize (`to_json`):
    dimension is — the full-rank invariant makes every axis either 1 or the
    domain's extent — so nothing is ever read through it and the emptiness is
    carried by the domain, which is emitted separately. TensorStore does the
-   same: `t[ts.d[0][[]]]` is `out[0] = 0`, emitted as `{}`. Emitting the array
-   instead would produce a document neither implementation could load, because
-   `ndarray.tolist()` renders every empty array as `[]` once the leading axis
-   is the zero-length one, and nested lists cannot spell the shape back —
+   same: `t[ts.d[0][[]]]` is `out[0] = 0`, emitted as `{}`. This avoids losing
+   trailing shape information: `ndarray.tolist()` renders every empty array as
+   `[]` once the leading axis is zero-length, and nested lists cannot spell
+   the shape back —
    `[[]]` is `(1, 0)` and nothing spells `(0, 1)`.
 3. Non-degenerate `index_array` maps are emitted with their array and bounds
    only.
@@ -130,7 +133,12 @@ class OutputIndexMapJSON(TypedDict, total=False):
     """Nested lists of output coordinates, one nesting level per input dimension."""
 
     index_array_bounds: list[IndexValueJSON]
-    """Bounds the `index_array` values are promised to lie in; `["-inf", "+inf"]` if unconstrained."""
+    """Wire bounds on index-array values; `["-inf", "+inf"]` if unconstrained.
+
+    The message layer preserves these inclusive constraints on raw index values.
+    Engine lowering validates all values eagerly before offset and stride.
+    Serialization emits unconstrained bounds for validated non-degenerate maps.
+    """
 
 
 class IndexTransformJSON(TypedDict, total=False):

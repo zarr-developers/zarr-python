@@ -1,0 +1,1 @@
+`zarr_metadata.v3.data_type`, `zarr_metadata.v3.codec`, `zarr_metadata.v3.chunk_grid` and `zarr_metadata.v3.chunk_key_encoding` re-export every name their submodules export, so `from zarr_metadata.v3.data_type import BoolDataTypeName, Uint8DataTypeName` works again, as it did before 0.6.0. Each name is the same object as in its submodule, which stays its documented home.

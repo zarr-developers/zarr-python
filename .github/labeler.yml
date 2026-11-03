@@ -2,3 +2,21 @@ needs release notes:
   - all:
     - changed-files:
       - all-globs-to-all-files: '!changes/*.md'
+
+# Subpackage labels: a pull request whose changes all live under one package
+# directory gets that package's label, which .github/release.yml uses to keep
+# subpackage work out of the generated `zarr` release notes.
+zarr-metadata:
+  - all:
+    - changed-files:
+      - all-globs-to-all-files: 'packages/zarr-metadata/**'
+
+zarr-indexing:
+  - all:
+    - changed-files:
+      - all-globs-to-all-files: 'packages/zarr-indexing/**'
+
+zarr-http-server:
+  - all:
+    - changed-files:
+      - all-globs-to-all-files: 'packages/zarr-http-server/**'

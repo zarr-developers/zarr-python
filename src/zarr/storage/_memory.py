@@ -118,7 +118,6 @@ class MemoryStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             self._is_open = True
-        assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
@@ -130,7 +129,6 @@ class MemoryStore(Store):
         self._check_writable()
         if not self._is_open:
             self._is_open = True
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -157,7 +155,6 @@ class MemoryStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
@@ -186,7 +183,6 @@ class MemoryStore(Store):
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -305,7 +301,6 @@ class GpuMemoryStore(MemoryStore):
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -317,7 +312,6 @@ class GpuMemoryStore(MemoryStore):
     def set_sync(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."

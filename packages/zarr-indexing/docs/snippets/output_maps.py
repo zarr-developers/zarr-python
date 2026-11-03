@@ -54,11 +54,9 @@ assert resolve(gather, source).tolist() == source[[4, 1, 1]].tolist()
 # --8<-- [end:array-map]
 
 # --8<-- [start:constant-map]
-# ConstantMap reads one source coordinate for every request cell. No NumPy
-# selection spells this operation: source[0] drops the axis, and a repeated
-# fancy index source[[0, 0, 0, 0]] matches the values but degrades the
-# description to a coordinate list. The value-faithful counterpart is a
-# broadcast.
+# ConstantMap reads one source coordinate for every request cell. NumPy can
+# express the same values with source[[0, 0, 0, 0]] or with a broadcast.
+# The constant map represents the repeated coordinate without storing a list.
 repeat = IndexTransform(
     domain=IndexDomain.from_shape((4,)),
     output=(ConstantMap(offset=0),),

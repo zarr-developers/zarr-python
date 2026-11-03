@@ -5,8 +5,8 @@ keeps working unchanged whichever library raised.
 
 `zarr.errors` defines classes of the same names, and they are *not* these
 objects: `zarr.errors.BoundsCheckError is BoundsCheckError` is false. Catching
-zarr's around a call into this package therefore catches nothing but their
-shared `IndexError` base. Import these from here.
+zarr's class does not catch this package's errors. Import these from here,
+or catch their shared built-in `IndexError` base to handle both libraries.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class VindexInvalidSelectionError(IndexError):
     >>> import numpy as np
     >>> from zarr_indexing import LazyArray
     >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
-    >>> view.lazy.vindex[np.array([0, 2]), :]
+    >>> view.vindex[np.array([0, 2]), :]
     Traceback (most recent call last):
         ...
     zarr_indexing.errors.VindexInvalidSelectionError: ...

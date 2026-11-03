@@ -14,6 +14,7 @@ from zarr.core.dtype.common import (
     HasItemSize,
     HasLength,
     HasObjectCodec,
+    check_dtype_spec_no_object_codec_v2,
     check_dtype_spec_v2,
     v3_unstable_dtype_warning,
 )
@@ -267,10 +268,9 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         """
 
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and isinstance(data["name"], str)
             and re.match(r"^\|S\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -669,10 +669,9 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         """
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and isinstance(data["name"], str)
             and re.match(r"^\|V\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
