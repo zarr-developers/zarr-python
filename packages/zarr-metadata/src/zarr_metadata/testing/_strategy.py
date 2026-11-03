@@ -15,7 +15,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, TypeAlias
 
 from hypothesis import strategies as st
 
@@ -34,6 +34,17 @@ if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
     from zarr_metadata.definition._definition import Definition
 
+Spellings = Literal["all", "canonical"]
+"""How declarations are written: every spelling the spec allows, or only the simplest.
+
+`"all"` draws each envelope the spec gives a declaration -- a bare name, an
+object without a configuration, an empty configuration, a
+`must_understand` of `true` -- and configurations that say what a
+simpler one says, as a `blosc` `typesize` under `noshuffle` does.
+`"canonical"` draws each in the spelling `canonicalize` gives it, which
+is what a writer that writes the fewest words writes.
+"""
+
 Configurations: TypeAlias = "SearchStrategy[Mapping[str, JSONValue]]"
 """Configurations of one definition, each the mapping every configuration is."""
 
@@ -42,6 +53,9 @@ NOTHING_KNOWN: Final = Chunk()
 
 MAX_RANK: Final = 5
 """The most axes drawn where the number of axes is not known."""
+
+CHARACTERS: Final = st.characters(exclude_categories=("Cs",))
+"""Characters a JSON document can hold: no lone surrogate, which is no Unicode scalar value."""
 
 EMPTY_CONFIGURATIONS: Final = st.builds(EmptyConfiguration)
 """A fresh empty configuration for each draw, so a test that changes one changes no other."""
@@ -147,6 +161,7 @@ invariant, so `{MY_CODEC: CodecStrategy(...)}`, a mapping keyed by a
 """
 
 __all__ = [
+    "CHARACTERS",
     "NOTHING_KNOWN",
     "ChunkGridStrategy",
     "ChunkKeyEncodingStrategy",
@@ -154,5 +169,6 @@ __all__ = [
     "Configurations",
     "DataTypeStrategy",
     "DefinitionStrategy",
+    "Spellings",
     "Strategies",
 ]

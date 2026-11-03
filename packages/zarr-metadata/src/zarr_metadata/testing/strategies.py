@@ -1,4 +1,4 @@
-"""Hypothesis strategies for valid Zarr v3 metadata declarations.
+"""Hypothesis strategies for valid Zarr v3 metadata declarations and documents.
 
 Every strategy here draws metadata its definition accepts, and that the
 spec allows: a reader, writer or converter can test itself against the
@@ -23,7 +23,9 @@ handed. Left out, nothing is known of it, and what is drawn is what the
 definition's rules accept. `declarations` wraps configurations in the
 envelopes a document writes them in. `pipelines` draws a whole codec
 pipeline for a chunk, each codec drawn for what the one before it hands
-on.
+on. `array_documents`, `group_documents` and
+`consolidated_group_documents` draw whole documents, each member drawn
+for what it depends on.
 
 How each definition's configurations are drawn is a value,
 `Strategies`, keyed by the definition: `DEFAULT_STRATEGIES` holds one
@@ -45,7 +47,7 @@ from __future__ import annotations
 
 from functools import partial
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import Definition, as_kind, canonicalize, kind_of
@@ -53,6 +55,14 @@ from zarr_metadata.testing._chunk_grid import CHUNK_GRID_STRATEGIES
 from zarr_metadata.testing._chunk_key_encoding import CHUNK_KEY_ENCODING_STRATEGIES
 from zarr_metadata.testing._codec import CODEC_STRATEGIES
 from zarr_metadata.testing._data_type import DATA_TYPE_STRATEGIES
+from zarr_metadata.testing._document import (
+    SHAPES,
+    array_document,
+    check_arrays_can_be_drawn,
+    consolidated_group_document,
+    group_document,
+    spelled_pipeline,
+)
 from zarr_metadata.testing._draw import (
     any_spelling,
     briefly,
@@ -68,6 +78,7 @@ from zarr_metadata.testing._strategy import (
     Configurations,
     DataTypeStrategy,
     DefinitionStrategy,
+    Spellings,
     Strategies,
 )
 
@@ -86,19 +97,10 @@ if TYPE_CHECKING:
         CodecDefinition,
         DataTypeDefinition,
     )
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+    from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 C = TypeVar("C")
-
-Spellings = Literal["all", "canonical"]
-"""How declarations are written: every spelling the spec allows, or only the simplest.
-
-`"all"` draws each envelope the spec gives a declaration -- a bare name, an
-object without a configuration, an empty configuration, a
-`must_understand` of `true` -- and configurations that say what a
-simpler one says, as a `blosc` `typesize` under `noshuffle` does.
-`"canonical"` draws each in the spelling `canonicalize` gives it, which
-is what a writer that writes the fewest words writes.
-"""
 
 DEFAULT_STRATEGIES: Final[MappingProxyType[Definition[Any], DefinitionStrategy]] = MappingProxyType(
     {
@@ -173,7 +175,10 @@ def codec_configurations(
 
 
 def pipelines(
-    chunk: Chunk = NOTHING_KNOWN, *, strategies: Strategies = DEFAULT_STRATEGIES
+    chunk: Chunk = NOTHING_KNOWN,
+    *,
+    spellings: Spellings = "all",
+    strategies: Strategies = DEFAULT_STRATEGIES,
 ) -> SearchStrategy[tuple[ZarrV3DeclarationJSON, ...]] | None:
     """Codec pipelines handed `chunk`, as an array's `codecs` holds them; None when none is drawn for it.
 
@@ -184,10 +189,69 @@ def pipelines(
     codec that holds pipelines of its own, as a shard does, has each drawn
     the same way, handed the chunk its definition's `pipelines` says.
     None when no array -> bytes codec takes the chunk, as none takes a
-    `string` one when the strategies hold no `vlen-utf8`.
+    `string` one when the strategies hold no `vlen-utf8`. `spellings` says
+    whether every spelling the spec allows is drawn, or only the simplest.
     """
     strategies = briefly(strategies)
-    return pipelines_for(chunk, strategies)
+    drawn = pipelines_for(chunk, strategies)
+    if drawn is None:
+        return None
+    return drawn.map(partial(spelled_pipeline, spellings=spellings, strategies=strategies))
+
+
+def array_documents(
+    *,
+    shapes: SearchStrategy[tuple[int, ...]] = SHAPES,
+    spellings: Spellings = "all",
+    strategies: Strategies = DEFAULT_STRATEGIES,
+) -> SearchStrategy[ZarrV3ArrayMetadataJSON]:
+    """Array documents, as a `zarr.json` holds them, each of whose members fits the others.
+
+    The chunk grid is drawn for a shape from `shapes`, the fill value for
+    the data type, and the codecs for the grid's chunks of that data
+    type. `spellings` says how the declarations are written; a fill value
+    is drawn in every spelling its data type's spec gives it, whichever
+    is asked for. A member the spec does not define is one that says
+    `must_understand` is `false`.
+
+    A document its definitions refuse raises a `ValueError`. Strategies
+    that hold nothing to draw a data type, a chunk grid, a chunk key
+    encoding or an array -> bytes codec from raise a `LookupError`. A data
+    type no array -> bytes codec they hold takes is not drawn; if that is
+    every data type they hold, Hypothesis reports the strategy as
+    unsatisfiable.
+    """
+    strategies = briefly(strategies)
+    check_arrays_can_be_drawn(strategies)
+    return array_document(shapes, spellings, strategies)
+
+
+def group_documents() -> SearchStrategy[ZarrV3GroupMetadataJSON]:
+    """Group documents, as a `zarr.json` holds them, with no consolidated metadata.
+
+    A member the spec does not define is one that says `must_understand`
+    is `false`.
+    """
+    return group_document()
+
+
+def consolidated_group_documents(
+    *,
+    shapes: SearchStrategy[tuple[int, ...]] = SHAPES,
+    max_nodes: int = 4,
+    spellings: Spellings = "all",
+    strategies: Strategies = DEFAULT_STRATEGIES,
+) -> SearchStrategy[ZarrV3GroupMetadataJSON]:
+    """Group documents whose `consolidated_metadata` lists up to `max_nodes` nodes below the group.
+
+    It lists every node by its path, in one flat listing, and the parent
+    of each node is a group it also lists. A listed group has no listing
+    of its own. Each array is drawn as `array_documents` draws it, and
+    raises as it raises.
+    """
+    strategies = briefly(strategies)
+    check_arrays_can_be_drawn(strategies)
+    return consolidated_group_document(shapes, max_nodes, spellings, strategies)
 
 
 def _checked(
@@ -257,11 +321,14 @@ __all__ = [
     "DefinitionStrategy",
     "Spellings",
     "Strategies",
+    "array_documents",
     "chunk_grid_configurations",
     "chunk_key_encoding_configurations",
     "codec_configurations",
+    "consolidated_group_documents",
     "data_type_configurations",
     "declarations",
     "fill_values",
+    "group_documents",
     "pipelines",
 ]
