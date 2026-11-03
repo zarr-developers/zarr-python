@@ -1,8 +1,10 @@
-"""How often a strategy draws something, in the 100 examples a test runs by default.
+"""How often a strategy draws something, in a few hundred examples.
 
 A reach test asks whether a target can be drawn at all, in as many examples
-as it takes, which says nothing of whether a test ever meets it. Runs are
-derandomized, so a share is the same on every run of a test.
+as it takes, which says nothing of whether a test, at the 100 examples it
+runs by default, ever meets it. Runs are derandomized, which keeps most shares
+fixed, but a share can still move a few points between processes, so a bound
+needs room: this is no place to bound what is drawn a few percent of the time.
 """
 
 from __future__ import annotations

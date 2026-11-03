@@ -28,7 +28,10 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._definition import ChunkGridDefinition
 
 _MAX_LENGTH: Final = 16
-"""The longest chunk drawn along a dimension whose length is unknown."""
+"""The longest chunk drawn along a dimension whose length is unknown, before any factor its edges share."""
+
+_MAX_CHUNK_LENGTH: Final = 2**63 - 1
+"""The longest chunk drawn at all: what a signed 64-bit size holds, as readers index with."""
 
 _MAX_RUNS: Final = 5
 """The most runs of equal lengths a rectilinear dimension is drawn with."""
@@ -47,10 +50,10 @@ _MANY_CHUNKS: Final = 2**20
 
 
 def _length(extent: int | None) -> st.SearchStrategy[int]:
-    """A chunk length along a dimension of `extent`: at least 1, and up to twice the extent when it is known and not 0."""
+    """A chunk length along a dimension of `extent`: at least 1, and up to twice the extent when it is known and not 0, within a signed 64-bit size."""
     if extent is None or extent == 0:
         return st.integers(1, _MAX_LENGTH)
-    return st.integers(1, 2 * extent)
+    return st.integers(1, min(2 * extent, _MAX_CHUNK_LENGTH))
 
 
 def _regular(

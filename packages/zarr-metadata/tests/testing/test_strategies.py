@@ -611,7 +611,9 @@ _RECTILINEAR_SPELLINGS: dict[str, tuple[tuple[int, ...] | None, Callable[[object
     "a run that covers a long dimension": (
         (2**16,),
         lambda dimension: any(
-            _is_pair(entry) and math.prod(cast("tuple[int, int]", entry)) >= 2**15
+            _is_pair(entry)
+            and cast("tuple[int, int]", entry)[1] > 1
+            and math.prod(cast("tuple[int, int]", entry)) >= 2**15
             for entry in _entries(dimension)
         ),
     ),
@@ -1004,6 +1006,38 @@ def _edge_factor(configuration: Mapping[str, Any]) -> int:
     if isinstance(dimension, int):
         return dimension
     return math.gcd(*(entry if isinstance(entry, int) else entry[0] for entry in dimension))
+
+
+_LONGEST_AXES = st.lists(
+    st.integers(0, 2**63 - 1) | st.just(2**63 - 1), min_size=1, max_size=3
+).map(tuple)
+
+
+def _chunk_lengths_of(configuration: Mapping[str, Any]) -> list[int]:
+    if "chunk_shape" in configuration:
+        return list(configuration["chunk_shape"])
+    return [
+        length
+        for dimension in configuration["chunk_shapes"]
+        for length in (
+            [dimension]
+            if isinstance(dimension, int)
+            else (entry if isinstance(entry, int) else entry[0] for entry in dimension)
+        )
+    ]
+
+
+@pytest.mark.parametrize("definition", _CHUNK_GRIDS, ids=_id)
+@given(data=st.data(), shape=_LONGEST_AXES)
+def test_chunk_lengths_fit_a_signed_64_bit_size(
+    definition: ChunkGridDefinition[Any], data: st.DataObject, shape: tuple[int, ...]
+) -> None:
+    """However long an axis is, and however a grid's chunks run past it."""
+    configuration = data.draw(chunk_grid_configurations(definition, shape))
+    assert max(_chunk_lengths_of(configuration), default=0) <= 2**63 - 1
+    declaration = data.draw(declarations(definition, st.just(configuration)))
+    _, problems = chunk_grid_lengths(_read(definition, declaration), shape)
+    assert problems == ()
 
 
 def test_a_long_dimension_keeps_its_edge_factor() -> None:
