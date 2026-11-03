@@ -23,6 +23,7 @@ import pytest
 from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
 
+from tests.testing._shares import share_of
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
     AcceptedDeclaration,
@@ -635,7 +636,7 @@ def test_rectilinear_dimensions_reach(spelling: str) -> None:
     )
 
 
-@given(data=st.data(), shape=st.lists(st.integers(0, 2**32), max_size=3).map(tuple))
+@given(data=st.data(), shape=st.lists(st.integers(0, 2**63 - 1), max_size=3).map(tuple))
 def test_chunk_grids_fit_a_long_shape(data: st.DataObject, shape: tuple[int, ...]) -> None:
     """However long an axis is, a grid covers it without a list as long as the axis."""
     configurations = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape)
@@ -934,3 +935,103 @@ def test_a_shard_holds_no_other_definition_of_its_name(
 ) -> None:
     """Its inner codecs are read as the shard asked for, not the one named as it in the strategies."""
     assert _read(SHARDING_INDEXED_CODEC, declaration).definition is SHARDING_INDEXED_CODEC
+
+
+def _float_class(value: object) -> str | None:
+    """What the bits of a `float64` fill value written in hex are; None for any other spelling."""
+    if not isinstance(value, str) or not value.startswith("0x"):
+        return None
+    bits = int(value, 16)
+    exponent, mantissa = (bits >> 52) & 0x7FF, bits & (2**52 - 1)
+    if exponent == 0x7FF:
+        return "infinity" if mantissa == 0 else "NaN"
+    if exponent == 0:
+        return "zero" if mantissa == 0 else "subnormal"
+    return "normal"
+
+
+_HEX_FILL_VALUES = fill_values(FLOAT64_DATA_TYPE, {}).filter(
+    lambda value: _float_class(value) is not None
+)
+
+
+@pytest.mark.parametrize(("kind", "at_least"), [("normal", 0.2), ("NaN", 0.1), ("infinity", 0.01)])
+def test_hex_fill_values_are_not_only_small_numbers(kind: str, at_least: float) -> None:
+    """Bits drawn as an integer alone are nearly all subnormal."""
+    assert share_of(_HEX_FILL_VALUES, lambda value: _float_class(value) == kind) >= at_least
+
+
+@pytest.mark.parametrize(
+    ("definition", "beyond"),
+    [(FLOAT32_DATA_TYPE, 2**11), (FLOAT64_DATA_TYPE, 2**24)],
+    ids=_id,
+)
+def test_integer_fill_values_reach_past_a_narrower_float(
+    definition: DataTypeDefinition[Any], beyond: int
+) -> None:
+    """Each width draws the integers it holds, not only those the narrowest does."""
+    find(
+        fill_values(definition, {}),
+        lambda value: isinstance(value, int) and abs(value) > beyond,
+        settings=_REACH,
+    )
+
+
+@st.composite
+def _shard_inner_lengths(draw: st.DrawFn) -> tuple[int, ...]:
+    """The inner chunk lengths of a shard of a rectilinear grid's chunks."""
+    shape = draw(st.lists(st.integers(1, 256), min_size=1, max_size=3).map(tuple))
+    grid = _read(
+        RECTILINEAR_CHUNK_GRID,
+        draw(
+            declarations(
+                RECTILINEAR_CHUNK_GRID, chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape)
+            )
+        ),
+    )
+    lengths, _ = chunk_grid_lengths(grid, shape)
+    return draw(_drawn(codec_configurations(SHARDING_INDEXED_CODEC, Chunk(lengths))))["chunk_shape"]
+
+
+def test_shards_of_a_rectilinear_grid_are_often_divided() -> None:
+    """Edges drawn apart rarely share a factor, which leaves a shard only inner chunks of length 1."""
+    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.4
+
+
+def _edge_factor(configuration: Mapping[str, Any]) -> int:
+    """The largest factor every edge of a dimension shares; 0 for a dimension with no edges."""
+    dimension = configuration["chunk_shapes"][0]
+    if isinstance(dimension, int):
+        return dimension
+    return math.gcd(*(entry if isinstance(entry, int) else entry[0] for entry in dimension))
+
+
+def test_a_long_dimension_keeps_its_edge_factor() -> None:
+    """The edge that covers what the runs leave of a dimension shares their factor, or none would."""
+    edges = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, (2**16 + 1,)).filter(
+        lambda configuration: not isinstance(configuration["chunk_shapes"][0], int)
+    )
+    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.3
+
+
+def test_divisors_of_a_very_long_shard_are_found_quickly() -> None:
+    """A length of 2**64 has its divisors found without counting to its square root."""
+    configurations = codec_configurations(SHARDING_INDEXED_CODEC, Chunk((frozenset({2**64}),)))
+    assert configurations is not None
+    find(
+        configurations,
+        lambda configuration: configuration["chunk_shape"][0] > 2**32,
+        settings=_REACH,
+    )
+
+
+def _field_types(declaration: Any) -> list[str]:  # noqa: ANN401
+    return [
+        field["data_type"] if isinstance(field["data_type"], str) else field["data_type"]["name"]
+        for field in declaration["configuration"]["fields"]
+    ]
+
+
+def test_struct_fields_do_not_favor_the_first_data_type() -> None:
+    """A type drawn after a field's name would be `bool` a fifth of the time."""
+    assert share_of(declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool") <= 0.12

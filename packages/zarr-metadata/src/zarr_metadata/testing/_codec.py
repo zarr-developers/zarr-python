@@ -89,6 +89,9 @@ _BLOSC_MAX_TYPESIZE: Final = 255
 _BLOSC_MAX_BLOCKSIZE: Final = 2**31 - 1
 """The largest block c-blosc takes, a signed 32-bit size; 0 lets it choose."""
 
+_MAX_DIVISOR_SEARCH: Final = 2**12
+"""The largest divisor of a shard's length searched for: one of an axis longer than its square is still found by its pair."""
+
 _MAX_INNER_LENGTH: Final = 16
 """The longest inner chunk drawn along an axis whose shard lengths are unknown."""
 
@@ -346,8 +349,14 @@ def _divisors(lengths: frozenset[int] | None) -> st.SearchStrategy[int]:
     if common == 0:
         return st.integers(1, _MAX_INNER_LENGTH)
     # Divisors come in pairs, one of each no greater than the square root.
-    small = [n for n in range(1, math.isqrt(common) + 1) if common % n == 0]
-    return st.sampled_from(sorted({*small, *(common // n for n in small)}))
+    small = [
+        n for n in range(1, min(math.isqrt(common), _MAX_DIVISOR_SEARCH) + 1) if common % n == 0
+    ]
+    # 1 and the length itself go last: Hypothesis draws the first of several
+    # options far more often when a draw of variable length comes before it.
+    return st.sampled_from(
+        sorted({*small, *(common // n for n in small)}, key=lambda n: (n in (1, common), n))
+    )
 
 
 def _inner_chunk_shapes(lengths: Lengths | None) -> st.SearchStrategy[tuple[int, ...]]:

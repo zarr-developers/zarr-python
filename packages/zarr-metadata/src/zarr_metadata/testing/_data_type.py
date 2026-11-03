@@ -10,6 +10,7 @@ for each field, drawn by that field's own type.
 from __future__ import annotations
 
 import base64
+import math
 import struct
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal, cast, get_args
@@ -134,6 +135,41 @@ def float_spellings(value: float, width: FloatWidth) -> st.SearchStrategy[JSONVa
     return st.just(value) | _hex_spellings(struct.pack(_PACKED[width], value).hex())
 
 
+_EXACT_INTEGERS: Final[Mapping[FloatWidth, int]] = {16: 2**11, 32: 2**24, 64: 2**53}
+"""The magnitude up to which a float of each width holds every integer."""
+
+_MANTISSA_BITS: Final[Mapping[FloatWidth, int]] = {16: 10, 32: 23, 64: 52}
+"""How many of a float's bits, at the low end, are its mantissa; those above it are the exponent and the sign."""
+
+
+def _bits(value: int, width: FloatWidth) -> str:
+    """`value`, a float's `width` bits, as hex digits."""
+    return f"{value:0{width // 4}x}"
+
+
+def _nan_digits(width: FloatWidth) -> st.SearchStrategy[str]:
+    """The bits of a NaN of any sign and payload: the exponent all ones, and the mantissa not zero."""
+    mantissa_bits = _MANTISSA_BITS[width]
+    exponent = (2 ** (width - 1 - mantissa_bits) - 1) << mantissa_bits
+    return st.tuples(st.sampled_from((0, 1)), st.integers(1, 2**mantissa_bits - 1)).map(
+        lambda parts: _bits((parts[0] << (width - 1)) | exponent | parts[1], width)
+    )
+
+
+def _float_digits(width: FloatWidth) -> st.SearchStrategy[str]:
+    """The bits of a float in hex digits: of a number, an infinity or a NaN, or any bits at all.
+
+    Bits drawn as an integer alone are nearly all of small numbers, since
+    Hypothesis favors small integers: a high exponent is rarely drawn, and a
+    `float64` is then subnormal four times in five.
+    """
+    floats = (st.floats(width=width) | st.sampled_from((math.inf, -math.inf))).map(
+        lambda value: struct.pack(_PACKED[width], value).hex()
+    )
+    any_bits = st.integers(0, 2**width - 1).map(lambda value: _bits(value, width))
+    return st.one_of(floats, _nan_digits(width), any_bits)
+
+
 def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
     """A number, an integer the type holds exactly, a named non-finite value, or the bits in hex.
 
@@ -143,13 +179,10 @@ def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
     `float16` takes `1e300` by the letter of the spec, and a reader is
     free to make of it what it will.
     """
-    # Every integer of magnitude up to 2**11 is a float16, the narrowest type.
-    numbers = finite_floats(width) | st.integers(-(2**11), 2**11)
+    exact = _EXACT_INTEGERS[width]
+    numbers = finite_floats(width) | st.integers(-exact, exact)
     named = st.sampled_from(get_args(FloatSpecialFillValue))
-    bits = st.integers(0, 2**width - 1).flatmap(
-        lambda value: _hex_spellings(f"{value:0{width // 4}x}")
-    )
-    return st.one_of(numbers, named, bits)
+    return st.one_of(numbers, named, _float_digits(width).flatmap(_hex_spellings))
 
 
 def _fill_values_of(values: st.SearchStrategy[JSONValue]) -> DataTypeStrategy:
@@ -266,9 +299,11 @@ def _struct(strategies: Strategies, *, depth: int) -> st.SearchStrategy[StructCo
     inner = {d: s for d, s in strategies.items() if d.name != STRUCT_DATA_TYPE.name}
     if depth > 0:
         inner[STRUCT_DATA_TYPE] = _structs(depth - 1)
+    # The type is drawn before the name: Hypothesis draws the first of many
+    # options far more often when a draw of variable length comes before it.
     member = st.tuples(
-        st.text(_CHARACTERS, min_size=1, max_size=16), _fixed_size(briefly(inner))
-    ).map(lambda pair: StructField(name=pair[0], data_type=pair[1]))
+        _fixed_size(briefly(inner)), st.text(_CHARACTERS, min_size=1, max_size=16)
+    ).map(lambda pair: StructField(name=pair[1], data_type=pair[0]))
     members = st.lists(
         member, min_size=1, max_size=_MAX_STRUCT_FIELDS, unique_by=lambda entry: entry["name"]
     )

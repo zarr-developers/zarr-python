@@ -39,6 +39,9 @@ _FEW_CHUNKS: Final = 4
 _MAX_WRITTEN_OUT: Final = 64
 """The most chunks a run is written out with, one length for each; a longer run is always a pair."""
 
+_MAX_FACTOR: Final = 16
+"""The largest factor all of a dimension's edges are drawn to share."""
+
 _MANY_CHUNKS: Final = 2**20
 """The most chunks a run is drawn with along a dimension whose length is unknown or 0, into which it grows when the array is resized."""
 
@@ -81,16 +84,25 @@ def _edges(draw: st.DrawFn, extent: int | None) -> tuple[int | tuple[int, int], 
     Runs are drawn apart, so two of one size can sit side by side and a
     pair can count one chunk: spellings the canonical form merges. A run
     can be long, since a pair costs the same however many chunks it
-    counts, which is what the spelling is for. A
+    counts, which is what the spelling is for. Its edges often share a
+    factor, as they must for a shard to divide them into inner chunks
+    longer than 1; edges drawn apart rarely do. A
     dimension of length zero, or of a length not known, may be covered by
     no edges at all.
     """
     min_runs = 0 if extent is None or extent == 0 else 1
-    sizes = draw(st.lists(st.integers(1, _MAX_LENGTH), min_size=min_runs, max_size=_MAX_RUNS))
+    factor = draw(st.just(1) | st.integers(2, _MAX_FACTOR))
+    sizes = [
+        factor * size
+        for size in draw(
+            st.lists(st.integers(1, _MAX_LENGTH), min_size=min_runs, max_size=_MAX_RUNS)
+        )
+    ]
     runs = [(size, draw(_count(extent, size))) for size in sizes]
     covered = sum(size * count for size, count in runs)
     if extent is not None and covered < extent:
-        runs.append((extent - covered, 1))
+        # Rounded up to the factor, so the last edge shares it, and past the dimension if need be.
+        runs.append((-(-(extent - covered) // factor) * factor, 1))
     spelled: list[int | tuple[int, int]] = []
     for size, count in runs:
         spelled.extend(_spelled_run(draw, size, count))
