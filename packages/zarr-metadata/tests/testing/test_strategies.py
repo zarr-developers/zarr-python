@@ -30,6 +30,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
     DEFAULT_STRATEGIES,
     ChunkKeyEncodingStrategy,
@@ -769,3 +770,40 @@ def test_cast_value_draws_only_real_number_data_types(declaration: ZarrV3Declara
     """The reach test above says each of these is drawn; this says nothing else is."""
     target = _read(CAST_VALUE_CODEC, declaration).nested[("data_type",)]
     assert target.definition in _REAL_NUMBERS
+
+
+_PLAIN_GZIP = CodecDefinition(
+    name=GZIP_CODEC.name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+)
+"""A codec named as one the defaults hold, with a configuration of its own."""
+
+_WITH_PLAIN_GZIP = DEFAULT_STRATEGIES | {
+    _PLAIN_GZIP: CodecStrategy(configurations=lambda _chunk, _strategies: EMPTY_CONFIGURATIONS)
+}
+
+
+def test_a_definition_named_as_a_default_is_read_as_itself() -> None:
+    """It claims its name in the scope its draw is read in, though the strategies hold another."""
+    declaration = find(
+        declarations(_PLAIN_GZIP, st.just({})), lambda _declaration: True, settings=_ONCE
+    )
+    assert declaration == GZIP_CODEC.name
+
+
+def test_a_definition_shadowed_in_the_strategies_is_read_as_itself() -> None:
+    """Asked for by name, it claims that name over the one that replaced it."""
+    declaration = find(
+        declarations(GZIP_CODEC, strategies=_WITH_PLAIN_GZIP),
+        lambda _declaration: True,
+        settings=_ONCE,
+    )
+    assert _read(GZIP_CODEC, declaration).definition is GZIP_CODEC
+
+
+@given(pipeline=_drawn(pipelines(strategies=_WITH_PLAIN_GZIP)))
+def test_a_later_definition_replaces_a_default_of_its_name(pipeline: tuple[Any, ...]) -> None:
+    """A pipeline holds the later of two codecs with one name, so none has the earlier's `level`."""
+    gzips = [
+        field for field in pipeline if isinstance(field, dict) and field["name"] == GZIP_CODEC.name
+    ]
+    assert [field.get("configuration", {}) for field in gzips] == [{}] * len(gzips)

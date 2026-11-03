@@ -32,7 +32,8 @@ other declarations -- a struct's field types, the data type a
 `cast_value` casts to, a shard's codecs -- draws them from the same
 value, so they are drawn from every definition it holds, and read in a
 scope of those definitions. An extension author adds their own with
-`DEFAULT_STRATEGIES | {MY_CODEC: CodecStrategy(...)}`.
+`DEFAULT_STRATEGIES | {MY_CODEC: CodecStrategy(...)}`; one under a name
+the defaults hold replaces theirs, as the later of two with one name.
 
 Configurations are drawn at the data level the TypedDicts declare, JSON
 arrays as tuples; `json.dumps` takes them as they are.

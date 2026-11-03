@@ -97,9 +97,9 @@ def _slot_of(definition: Definition[Any]) -> str:
 
 def _scope(definitions: Iterable[Definition[Any]]) -> ZarrV3Context:
     """The scope that claims `definitions` and nothing else, each filed in the slot of its kind; of two with one name, the later."""
-    slots: dict[str, list[Definition[Any]]] = {}
+    slots: dict[str, dict[str, Definition[Any]]] = {}
     for definition in definitions:
-        slots.setdefault(_slot_of(definition), []).append(definition)
+        slots.setdefault(_slot_of(definition), {})[definition.name] = definition
     return ZarrV3Context(**cast("ZarrV3ContextSlots", slots))
 
 
@@ -130,9 +130,6 @@ def scope_of(strategies: Strategies) -> ZarrV3Context:
 
 def scope_with(definition: Definition[Any], strategies: Strategies) -> ZarrV3Context:
     """The scope a declaration of `definition` is read in: the strategies', with `definition` claiming its name whether or not they hold it."""
-    strategies = briefly(strategies)
-    if definition in strategies:
-        return strategies.scope
     return _scope((*strategies, definition))
 
 
@@ -198,7 +195,7 @@ def data_type_names(strategies: Strategies) -> list[str]:
     Hypothesis prints a definition with every member it has, so a list of
     them would make the strategy's repr as long as the scope is wide.
     """
-    return sorted(d.name for d in strategies if isinstance(d, DataTypeDefinition))
+    return sorted(scope_of(strategies).data_types)
 
 
 @st.composite
@@ -236,11 +233,10 @@ def _taking(
     out: what one of those takes depends on what its pipelines do.
     """
     taking: list[tuple[CodecDefinition[Any], Configurations]] = []
-    definitions: list[Definition[Any]] = sorted(strategies, key=lambda d: d.name)
-    for definition in definitions:
-        if not isinstance(definition, CodecDefinition) or definition.kind != kind:
+    for definition in sorted(scope_of(strategies).codecs.values(), key=lambda d: d.name):
+        if definition.kind != kind or definition.size not in sizes:
             continue
-        if definition.size not in sizes or (not holding and _holds_pipelines(definition)):
+        if not holding and _holds_pipelines(definition):
             continue
         found = cast("CodecStrategy", strategy_for(definition, strategies))
         configurations = found.configurations(chunk, strategies)
