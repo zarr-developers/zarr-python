@@ -15,6 +15,8 @@ configuration it simplifies.
 from __future__ import annotations
 
 import json
+import math
+from collections import Counter
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast, get_args, get_origin
 
 import pytest
@@ -82,7 +84,7 @@ from zarr_metadata.v3.definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3 import ZarrV3DeclarationJSON
@@ -554,18 +556,93 @@ def test_scale_offset_reaches_a_value_written_in_hex(
     )
 
 
-def _has_pair(configuration: Mapping[str, Any]) -> bool:
-    return any(
-        isinstance(entry, tuple)
-        for dimension in configuration["chunk_shapes"]
-        if isinstance(dimension, tuple)
-        for entry in cast("tuple[object, ...]", dimension)
+def _entries(dimension: object) -> tuple[object, ...]:
+    return cast("tuple[object, ...]", dimension) if isinstance(dimension, tuple) else ()
+
+
+def _is_pair(entry: object) -> bool:
+    return isinstance(entry, tuple)
+
+
+_RECTILINEAR_SPELLINGS: dict[str, tuple[tuple[int, ...] | None, Callable[[object], bool]]] = {
+    "a bare length": (None, lambda dimension: isinstance(dimension, int)),
+    "no edges": (None, lambda dimension: dimension == ()),
+    "only written-out lengths": (
+        None,
+        lambda dimension: (
+            len(_entries(dimension)) > 1
+            and not any(_is_pair(entry) for entry in _entries(dimension))
+        ),
+    ),
+    "only pairs": (
+        None,
+        lambda dimension: (
+            len(_entries(dimension)) > 1 and all(_is_pair(entry) for entry in _entries(dimension))
+        ),
+    ),
+    "pairs among written-out lengths": (
+        None,
+        lambda dimension: len({_is_pair(entry) for entry in _entries(dimension)}) == 2,
+    ),
+    "a long run written out": (
+        (64,),
+        lambda dimension: any(
+            count >= 16
+            for count in Counter(
+                entry for entry in _entries(dimension) if not _is_pair(entry)
+            ).values()
+        ),
+    ),
+    "a short run written as a pair": (
+        None,
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] <= 4
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run too long to write out": (
+        (2**16,),
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] > 64
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run that covers a long dimension": (
+        (2**16,),
+        lambda dimension: any(
+            _is_pair(entry) and math.prod(cast("tuple[int, int]", entry)) >= 2**15
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run of a million chunks past an unknown length": (
+        None,
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] >= 2**16
+            for entry in _entries(dimension)
+        ),
+    ),
+}
+"""What each spelling of a rectilinear dimension looks like, and the shape it is drawn over: spellings of one union, which no TypedDict target asks for."""
+
+
+@pytest.mark.parametrize("spelling", _RECTILINEAR_SPELLINGS)
+def test_rectilinear_dimensions_reach(spelling: str) -> None:
+    shape, reached = _RECTILINEAR_SPELLINGS[spelling]
+    find(
+        chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape),
+        lambda configuration: any(reached(d) for d in configuration["chunk_shapes"]),
+        settings=_REACH,
     )
 
 
-def test_rectilinear_edges_reach_a_run_written_as_a_pair() -> None:
-    """The `[size, count]` spelling, which no TypedDict target asks for: it is one arm of a union."""
-    find(chunk_grid_configurations(RECTILINEAR_CHUNK_GRID), _has_pair, settings=_REACH)
+@given(data=st.data(), shape=st.lists(st.integers(0, 2**32), max_size=3).map(tuple))
+def test_chunk_grids_fit_a_long_shape(data: st.DataObject, shape: tuple[int, ...]) -> None:
+    """However long an axis is, a grid covers it without a list as long as the axis."""
+    configurations = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape)
+    declaration = data.draw(declarations(RECTILINEAR_CHUNK_GRID, configurations))
+    _, problems = chunk_grid_lengths(_read(RECTILINEAR_CHUNK_GRID, declaration), shape)
+    assert problems == ()
+    assert len(json.dumps(declaration)) < 10_000
 
 
 FillValueSpelling = Literal[

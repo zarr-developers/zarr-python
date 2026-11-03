@@ -33,8 +33,14 @@ _MAX_LENGTH: Final = 16
 _MAX_RUNS: Final = 5
 """The most runs of equal lengths a rectilinear dimension is drawn with."""
 
-_MAX_COUNT: Final = 4
-"""The most chunks a run is drawn with."""
+_FEW_CHUNKS: Final = 4
+"""The most chunks a short run is drawn with."""
+
+_MAX_WRITTEN_OUT: Final = 64
+"""The most chunks a run is written out with, one length for each; a longer run is always a pair."""
+
+_MANY_CHUNKS: Final = 2**20
+"""The most chunks a run is drawn with along a dimension whose length is unknown or 0, into which it grows when the array is resized."""
 
 
 def _length(extent: int | None) -> st.SearchStrategy[int]:
@@ -55,9 +61,15 @@ def _regular(
     return lengths.map(lambda chunk_shape: RegularChunkGridConfiguration(chunk_shape=chunk_shape))
 
 
+def _count(extent: int | None, size: int) -> st.SearchStrategy[int]:
+    """How many chunks of `size` a run holds: a few, or as many as it takes to cover `extent`."""
+    many = _MANY_CHUNKS if extent is None or extent == 0 else max(extent // size, _FEW_CHUNKS)
+    return st.integers(1, _FEW_CHUNKS) | st.integers(1, many)
+
+
 def _spelled_run(draw: st.DrawFn, size: int, count: int) -> list[int | tuple[int, int]]:
-    """`count` chunks of `size`: one `[size, count]` pair, or the size written once for each."""
-    if draw(st.booleans()):
+    """`count` chunks of `size`: one `[size, count]` pair, or, for a run short enough, the size written once for each."""
+    if count > _MAX_WRITTEN_OUT or draw(st.booleans()):
         return [(size, count)]
     return [size] * count
 
@@ -67,18 +79,15 @@ def _edges(draw: st.DrawFn, extent: int | None) -> tuple[int | tuple[int, int], 
     """Edge lengths along a dimension, covering `extent`, in runs spelled as pairs or written out.
 
     Runs are drawn apart, so two of one size can sit side by side and a
-    pair can count one chunk: spellings the canonical form merges. A
+    pair can count one chunk: spellings the canonical form merges. A run
+    can be long, since a pair costs the same however many chunks it
+    counts, which is what the spelling is for. A
     dimension of length zero, or of a length not known, may be covered by
     no edges at all.
     """
     min_runs = 0 if extent is None or extent == 0 else 1
-    runs = draw(
-        st.lists(
-            st.tuples(st.integers(1, _MAX_LENGTH), st.integers(1, _MAX_COUNT)),
-            min_size=min_runs,
-            max_size=_MAX_RUNS,
-        )
-    )
+    sizes = draw(st.lists(st.integers(1, _MAX_LENGTH), min_size=min_runs, max_size=_MAX_RUNS))
+    runs = [(size, draw(_count(extent, size))) for size in sizes]
     covered = sum(size * count for size, count in runs)
     if extent is not None and covered < extent:
         runs.append((extent - covered, 1))
