@@ -526,7 +526,7 @@ def test_error_a_slot_refuses_a_definition_of_another_kind() -> None:
 
 
 def test_error_a_slot_refuses_two_definitions_under_one_name() -> None:
-    """Two different definitions under one name in a slot raise `ScopeConflictError` naming both, because the scope could not tell which one reads the name. `update` is the way to replace a definition."""
+    """Two different definitions under one name in a slot raise `ScopeConflictError` naming both, because the scope could not tell which one reads the name. `copy(update=...)` is the way to replace a definition."""
     with pytest.raises(ScopeConflictError) as raised:
         ZarrV3Context(codecs=[GZIP_CODEC, OTHER_GZIP])
     (conflict,) = raised.value.conflicts
