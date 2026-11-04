@@ -152,8 +152,8 @@ roots in a process that serves several users: the in-memory store is process-wid
 Zarr ships a read-only `zip:` adapter. It opens the ZIP archive that the pipeline to
 its left resolves to — a local file, an fsspec object such as `s3://bucket/data.zip`, a
 `memory:` entry, or a member of another archive (`outer.zip|zip:inner.zip|zip:`) — and its
-body is a path within the archive. The archive is read with byte-range requests, so a
-remote archive is not downloaded whole.
+body is a path within the archive. The archive is read in byte ranges, so a remote
+archive is never downloaded in full.
 
 ```python exec="true" session="storage" source="above" result="ansi"
 from pathlib import Path
