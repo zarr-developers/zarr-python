@@ -4,6 +4,10 @@ Each record holds what its kind's configurations depend on, the way
 each kind of definition does: a data type's fill values depend on its
 configuration, a chunk grid's on the shape of the array, a codec's on
 the chunk it is handed. A chunk key encoding's depend on nothing.
+
+Every function a record holds is also handed `Strategies`, every
+definition's strategy: a configuration that holds other declarations --
+a struct's field types, a shard's codecs -- draws them from it.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias
 
 from hypothesis import strategies as st
 
@@ -52,7 +56,7 @@ class DefinitionStrategy(ABC):
     """The kind of definition whose configurations it draws."""
 
     @abstractmethod
-    def unconstrained(self) -> Configurations:
+    def unconstrained(self, strategies: Strategies) -> Configurations:
         """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
 
 
@@ -63,14 +67,14 @@ class DataTypeStrategy(DefinitionStrategy):
     kind: ClassVar[type[Definition[Any]]] = DataTypeDefinition
     """The kind of definition it draws configurations of: a data type."""
 
-    configurations: Configurations
+    configurations: Callable[[Strategies], Configurations]
     """Configurations its definition accepts."""
-    fill_values: Callable[[Mapping[str, JSONValue]], SearchStrategy[JSONValue]]
+    fill_values: Callable[[Mapping[str, JSONValue], Strategies], SearchStrategy[JSONValue]]
     """Fill values of the data type a configuration describes."""
 
-    def unconstrained(self) -> Configurations:
+    def unconstrained(self, strategies: Strategies) -> Configurations:
         """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
-        return self.configurations
+        return self.configurations(strategies)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -80,16 +84,16 @@ class ChunkGridStrategy(DefinitionStrategy):
     kind: ClassVar[type[Definition[Any]]] = ChunkGridDefinition
     """The kind of definition it draws configurations of: a chunk grid."""
 
-    configurations: Callable[[tuple[int, ...] | None], Configurations]
+    configurations: Callable[[tuple[int, ...] | None, Strategies], Configurations]
     """Configurations of grids that fit an array of the shape.
 
     Handed None, no shape is known, and what is drawn is what the grid's
     rules accept, whatever shape it is put over.
     """
 
-    def unconstrained(self) -> Configurations:
+    def unconstrained(self, strategies: Strategies) -> Configurations:
         """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
-        return self.configurations(None)
+        return self.configurations(None, strategies)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -99,12 +103,12 @@ class ChunkKeyEncodingStrategy(DefinitionStrategy):
     kind: ClassVar[type[Definition[Any]]] = ChunkKeyEncodingDefinition
     """The kind of definition it draws configurations of: a chunk key encoding."""
 
-    configurations: Configurations
+    configurations: Callable[[Strategies], Configurations]
     """Configurations its definition accepts."""
 
-    def unconstrained(self) -> Configurations:
+    def unconstrained(self, strategies: Strategies) -> Configurations:
         """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
-        return self.configurations
+        return self.configurations(strategies)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -112,27 +116,26 @@ class CodecStrategy(DefinitionStrategy):
     """How to draw a codec's configurations, handed a chunk.
 
     Every codec takes `Chunk()`, a chunk nothing is known of, so a
-    strategy that draws nothing for it is refused when it is built.
+    strategy that draws nothing for it is refused when it is asked to.
     """
 
     kind: ClassVar[type[Definition[Any]]] = CodecDefinition
     """The kind of definition it draws configurations of: a codec."""
 
-    configurations: Callable[[Chunk], Configurations | None]
+    configurations: Callable[[Chunk, Strategies], Configurations | None]
     """Configurations of the codec handed the chunk; None when no configuration takes it.
 
     A `bytes` codec handed a `string` chunk is None, since the spec gives
     that data type a codec of its own.
     """
 
-    def __post_init__(self) -> None:
-        if self.configurations(NOTHING_KNOWN) is None:
+    def unconstrained(self, strategies: Strategies) -> Configurations:
+        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
+        found = self.configurations(NOTHING_KNOWN, strategies)
+        if found is None:
             msg = "a codec strategy draws configurations for Chunk(), a chunk nothing is known of; got None"
             raise ValueError(msg)
-
-    def unconstrained(self) -> Configurations:
-        """Configurations when nothing is known of what they depend on: what the definition's rules accept."""
-        return cast("Configurations", self.configurations(NOTHING_KNOWN))
+        return found
 
 
 Strategies: TypeAlias = Mapping[Any, DefinitionStrategy]
