@@ -73,10 +73,10 @@ In this example, our context object only contained one codec definition, for the
 After resolution the `gzip` codec was explicitly flagged as unrecognized. But we can actually check that codec declaration against a real codec definition by expanding our context to include the `GZIP_CODEC` definition:
 
 ```python test="true" session="context"
-new_context = context.update(codecs={**context.codecs, "gzip": GZIP_CODEC})
+new_context = context.union(ZarrV3Context(codecs=[GZIP_CODEC]))
 ```
 
-`update` returns a new context with the `codecs` slot replaced. We pass the codecs the old context already has, plus `gzip`, so the new context claims both `bytes` and `gzip`. The old context is unchanged.
+`union` returns a new context that files every definition of both, so the new context claims both `bytes` and `gzip`. The old context is unchanged. To replace a slot instead of adding to it, use `copy(update=...)`.
 
 Now read the same document in the new context. `read_array_metadata_v3` returns everything the read found, instead of raising, so we can look at each codec:
 
