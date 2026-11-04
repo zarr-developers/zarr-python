@@ -116,11 +116,6 @@ _MAX_STRUCT_DEPTH: Final = 1
 """How deep structs are drawn inside a struct: one inside another, and none inside that."""
 
 
-def finite_floats(width: FloatWidth) -> st.SearchStrategy[float]:
-    """Finite numbers a float of `width` bits holds exactly."""
-    return st.floats(width=width, allow_nan=False, allow_infinity=False)
-
-
 _PACKED: Final[Mapping[FloatWidth, str]] = {16: ">e", 32: ">f", 64: ">d"}
 """How `struct` packs a float of each width, most significant byte first."""
 
@@ -128,11 +123,6 @@ _PACKED: Final[Mapping[FloatWidth, str]] = {16: ">e", 32: ">f", 64: ">d"}
 def _hex_spellings(digits: str) -> st.SearchStrategy[str]:
     """`0x` and the digits, the letters in either case."""
     return st.sampled_from((f"0x{digits}", f"0x{digits.upper()}"))
-
-
-def float_spellings(value: float, width: FloatWidth) -> st.SearchStrategy[JSONValue]:
-    """`value`, a float of `width` bits, as a number or as the hex string of its bits."""
-    return st.just(value) | _hex_spellings(struct.pack(_PACKED[width], value).hex())
 
 
 _EXACT_INTEGERS: Final[Mapping[FloatWidth, int]] = {16: 2**11, 32: 2**24, 64: 2**53}
@@ -170,7 +160,7 @@ def _float_digits(width: FloatWidth) -> st.SearchStrategy[str]:
     return st.one_of(floats, _nan_digits(width), any_bits)
 
 
-def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
+def float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
     """A number, an integer the type holds exactly, a named non-finite value, or the bits in hex.
 
     A float's fill value is any of these
@@ -180,9 +170,20 @@ def _float_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
     free to make of it what it will.
     """
     exact = _EXACT_INTEGERS[width]
-    numbers = finite_floats(width) | st.integers(-exact, exact)
+    numbers = st.floats(width=width, allow_nan=False, allow_infinity=False) | st.integers(
+        -exact, exact
+    )
     named = st.sampled_from(get_args(FloatSpecialFillValue))
     return st.one_of(numbers, named, _float_digits(width).flatmap(_hex_spellings))
+
+
+def is_zero_float(value: JSONValue) -> bool:
+    """Whether `value`, a float fill value, is zero of either sign, as a number or as the hex string of its bits."""
+    if isinstance(value, str):
+        digits = value.removeprefix("0x")
+        # A hex string of zero has no bit set but perhaps the sign, the first.
+        return digits != value and int(digits, 16) in (0, 8 * 16 ** (len(digits) - 1))
+    return value == 0
 
 
 def _fill_values_of(values: st.SearchStrategy[JSONValue]) -> DataTypeStrategy:
@@ -213,7 +214,7 @@ def _base64(value: bytes) -> JSONValue:
 
 def _complex_fill_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
     """A pair of float fill values of `width` bits, real then imaginary."""
-    component = _float_fill_values(width)
+    component = float_fill_values(width)
     return st.tuples(component, component).map(lambda pair: cast("JSONValue", pair))
 
 
@@ -339,7 +340,7 @@ DATA_TYPE_STRATEGIES: Final[Mapping[DataTypeDefinition[Any], DataTypeStrategy]] 
         for definition, (low, high) in INTEGER_RANGES.items()
     },
     **{
-        definition: _fill_values_of(_float_fill_values(width))
+        definition: _fill_values_of(float_fill_values(width))
         for definition, width in FLOAT_WIDTHS.items()
     },
     **{
@@ -385,6 +386,6 @@ __all__ = [
     "FLOAT_WIDTHS",
     "INTEGER_RANGES",
     "FloatWidth",
-    "finite_floats",
-    "float_spellings",
+    "float_fill_values",
+    "is_zero_float",
 ]

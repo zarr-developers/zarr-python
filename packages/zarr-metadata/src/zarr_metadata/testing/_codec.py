@@ -24,9 +24,8 @@ from zarr_metadata.testing._data_type import (
     COMPLEX_WIDTHS,
     FLOAT_WIDTHS,
     INTEGER_RANGES,
-    FloatWidth,
-    finite_floats,
-    float_spellings,
+    float_fill_values,
+    is_zero_float,
 )
 from zarr_metadata.testing._draw import (
     briefly,
@@ -168,20 +167,6 @@ def _transpose(
     return st.integers(0, MAX_RANK).flatmap(_order)
 
 
-def _finite_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
-    """A finite float of `width` bits, as a number or the hex string of its bits."""
-    return finite_floats(width).flatmap(lambda value: float_spellings(value, width))
-
-
-def _non_zero_float_values(width: FloatWidth) -> st.SearchStrategy[JSONValue]:
-    """A finite, non-zero float of `width` bits, as a number or the hex string of its bits."""
-    return (
-        finite_floats(width)
-        .filter(lambda value: value != 0)
-        .flatmap(lambda value: float_spellings(value, width))
-    )
-
-
 @st.composite
 def _offsets_and_scales(
     draw: st.DrawFn, offsets: st.SearchStrategy[JSONValue], scales: st.SearchStrategy[JSONValue]
@@ -197,17 +182,17 @@ def _offsets_and_scales(
 def _scale_offset(
     chunk: Chunk, _strategies: Strategies
 ) -> st.SearchStrategy[ScaleOffsetCodecConfiguration] | None:
-    """An `offset` and a `scale`, each a finite value of the data type the codec is handed, the scale not zero; None for a data type whose values are not numbers.
+    """An `offset` and a `scale`, each a value of the data type the codec is handed, the scale not zero; None for a data type whose values are not numbers.
 
     Each is a fill value of the chunk's data type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43),
-    a float's as a number or the hex string of its bits, a complex
-    number's as a pair of them. Each is drawn finite, and the scale
-    non-zero, so that decoding never divides by zero; a scale small
-    enough that decoding overflows is still drawn. A numpy time is drawn
-    as the signed 64-bit integer it is stored as, never `NaT`, since it
-    "is compatible with any codec that supports arrays of signed 64-bit
-    integers"
+    so a float's is in every spelling a fill value takes, a `NaN` and an
+    infinity among them, and a complex number's is a pair of them. The
+    scale is drawn non-zero in any spelling, so that decoding never divides
+    by zero; a scale small enough that decoding overflows is still drawn. A
+    numpy time is drawn as the signed 64-bit integer it is stored as, never
+    `NaT`, since it "is compatible with any codec that supports arrays of
+    signed 64-bit integers"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
     A data type this package does not define, whose values it cannot
     draw, takes only the configuration with neither, the identity.
@@ -226,15 +211,14 @@ def _scale_offset(
         offset = st.integers(low, high)
         scale = st.integers(low, high).filter(lambda value: value != 0)
     elif definition in FLOAT_WIDTHS:
-        offset = _finite_float_values(FLOAT_WIDTHS[definition])
-        scale = _non_zero_float_values(FLOAT_WIDTHS[definition])
+        offset = float_fill_values(FLOAT_WIDTHS[definition])
+        scale = offset.filter(lambda value: not is_zero_float(value))
     elif definition in COMPLEX_WIDTHS:
-        width = COMPLEX_WIDTHS[definition]
-        offset = st.tuples(_finite_float_values(width), _finite_float_values(width))
+        part = float_fill_values(COMPLEX_WIDTHS[definition])
+        offset = st.tuples(part, part)
         # Non-zero in either part is a non-zero complex number.
-        scale = st.one_of(
-            st.tuples(_non_zero_float_values(width), _finite_float_values(width)),
-            st.tuples(_finite_float_values(width), _non_zero_float_values(width)),
+        scale = st.tuples(part, part).filter(
+            lambda pair: not (is_zero_float(pair[0]) and is_zero_float(pair[1]))
         )
     else:
         return st.builds(ScaleOffsetCodecConfiguration)

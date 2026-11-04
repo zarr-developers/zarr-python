@@ -539,22 +539,109 @@ def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:
         declarations(zlib, st.just({}))
 
 
-@pytest.mark.parametrize(
-    "definition", [FLOAT16_DATA_TYPE, FLOAT32_DATA_TYPE, FLOAT64_DATA_TYPE], ids=_id
-)
+_FLOAT_BITS = {FLOAT16_DATA_TYPE: 16, FLOAT32_DATA_TYPE: 32, FLOAT64_DATA_TYPE: 64}
+
+
+def _bits(value: object) -> int | None:
+    """The bits of a hex string; None for any other value."""
+    return int(value, 16) if isinstance(value, str) and value.startswith("0x") else None
+
+
+def _is_hex_of(value: object, width: int, *, exponent: bool, mantissa: bool) -> bool:
+    """Whether `value` is a float's bits in hex with its exponent all ones or not, and its mantissa not zero or zero."""
+    bits = _bits(value)
+    if bits is None:
+        return False
+    mantissa_bits = {16: 10, 32: 23, 64: 52}[width]
+    low = bits & (2**mantissa_bits - 1)
+    high = (bits >> mantissa_bits) & (2 ** (width - 1 - mantissa_bits) - 1)
+    return (high == 2 ** (width - 1 - mantissa_bits) - 1) == exponent and (low != 0) == mantissa
+
+
+_SCALE_OFFSET_VALUES: dict[str, Callable[[object, int], bool]] = {
+    "a number": lambda value, _width: isinstance(value, float) and value != 0.0,
+    "an integer": lambda value, _width: isinstance(value, int) and value != 0,
+    "NaN by name": lambda value, _width: value == "NaN",
+    "infinity by name": lambda value, _width: value == "Infinity",
+    "negative infinity by name": lambda value, _width: value == "-Infinity",
+    "hex of a number": lambda value, width: _is_hex_of(value, width, exponent=False, mantissa=True),
+    "hex of an infinity": lambda value, width: _is_hex_of(
+        value, width, exponent=True, mantissa=False
+    ),
+    "hex of a NaN": lambda value, width: _is_hex_of(value, width, exponent=True, mantissa=True),
+}
+"""Each spelling a fill value of a float takes, which `offset` and `scale` are."""
+
+
+@pytest.mark.parametrize("definition", _FLOAT_BITS, ids=_id)
 @pytest.mark.parametrize("member", ["offset", "scale"])
-def test_scale_offset_reaches_a_value_written_in_hex(
-    definition: DataTypeDefinition[Any], member: str
+@pytest.mark.parametrize("spelling", _SCALE_OFFSET_VALUES)
+def test_scale_offset_reaches_every_spelling_of_a_float(
+    definition: DataTypeDefinition[Any], member: str, spelling: str
 ) -> None:
-    """A float's `offset` and `scale` are fill values of its type, which the bits in hex spell too."""
+    """A float's `offset` and `scale` are fill values of its type, non-finite ones and the bits in hex too."""
+    chunk = Chunk(None, _read(definition, definition.name))
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    wanted = _SCALE_OFFSET_VALUES[spelling]
+    width = _FLOAT_BITS[definition]
+    find(
+        configurations,
+        lambda configuration: member in configuration and wanted(configuration[member], width),
+        settings=_REACH,
+    )
+
+
+@pytest.mark.parametrize("definition", [COMPLEX64_DATA_TYPE, COMPLEX128_DATA_TYPE], ids=_id)
+@pytest.mark.parametrize("member", ["offset", "scale"])
+@pytest.mark.parametrize("part", [0, 1])
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_scale_offset_reaches_a_non_finite_part_of_a_complex(
+    definition: DataTypeDefinition[Any], member: str, part: int, value: str
+) -> None:
+    """A complex number's `offset` and `scale` are pairs of float fill values, either of them non-finite."""
     chunk = Chunk(None, _read(definition, definition.name))
     configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
     assert configurations is not None
     find(
         configurations,
-        lambda configuration: isinstance(configuration.get(member), str),
+        lambda configuration: (
+            member in configuration
+            and cast("tuple[object, object]", configuration[member])[part] == value
+        ),
         settings=_REACH,
     )
+
+
+def _is_zero_spelled(value: object, width: int) -> bool:
+    """Whether a float fill value is zero of either sign, by its value alone."""
+    bits = _bits(value)
+    return value == 0 if bits is None else bits in (0, 2 ** (width - 1))
+
+
+@pytest.mark.parametrize(
+    ("definition", "width"),
+    [
+        *_FLOAT_BITS.items(),
+        (COMPLEX64_DATA_TYPE, 32),
+        (COMPLEX128_DATA_TYPE, 64),
+    ],
+    ids=str,
+)
+@given(data=st.data())
+def test_scale_offset_scale_is_never_zero(
+    definition: DataTypeDefinition[Any], width: int, data: st.DataObject
+) -> None:
+    """No spelling of a float, nor of both parts of a complex number, draws a scale of zero: decoding divides by it."""
+    chunk = Chunk(None, _read(definition, definition.name))
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    configuration = data.draw(configurations)
+    assert list(SCALE_OFFSET_CODEC.chunk_rules(configuration, {}, chunk)) == []
+    if "scale" in configuration:
+        scale = configuration["scale"]
+        parts = scale if isinstance(scale, tuple) else (scale,)
+        assert not all(_is_zero_spelled(part, width) for part in parts)
 
 
 def _entries(dimension: object) -> tuple[object, ...]:
