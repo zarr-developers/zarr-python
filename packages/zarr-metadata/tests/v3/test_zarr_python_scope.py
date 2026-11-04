@@ -106,13 +106,14 @@ def test_core_and_extensions_reads_the_registered_extensions() -> None:
 
 
 def test_zarr_python_is_core_and_extensions_with_zarr_python_s_own_data_types() -> None:
-    own = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-            NULL_TERMINATED_BYTES_DATA_TYPE,
-            VARIABLE_LENGTH_BYTES_DATA_TYPE,
-            ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
-        ]
+    own = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(
+            data_types=[
+                NULL_TERMINATED_BYTES_DATA_TYPE,
+                VARIABLE_LENGTH_BYTES_DATA_TYPE,
+                ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
+            ]
+        )
     )
     assert own == ZARR_PYTHON_CONTEXT
 

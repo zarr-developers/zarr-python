@@ -32,6 +32,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     ZarrV3CodecDeclaration,
+    ZarrV3Context,
     ZarrV3DataTypeDeclaration,
 )
 
@@ -64,9 +65,7 @@ ACME_SHUFFLE = CodecDefinition(
 )
 """An array -> array codec that does not declare its output chunk."""
 
-CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(
-    codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_TILE, ACME_SHUFFLE]
-)
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_TILE, ACME_SHUFFLE]))
 
 UINT8 = resolve("uint8", DataTypeDefinition, CONTEXT)[0]
 
@@ -368,9 +367,7 @@ def test_error_a_transition_that_gives_something_else() -> None:
         size="static",
         transition=lambda configuration, nested, chunk: "a chunk",  # pyright: ignore[reportArgumentType]
     )
-    codec = resolve(
-        "acme.lying", CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), lying])
-    )[0]
+    codec = resolve("acme.lying", CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[lying])))[0]
     with pytest.raises(TypeError, match="'acme.lying': its transition gives a Chunk"):
         read_pipeline([codec], CHUNK)
 
@@ -387,7 +384,7 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
         transition=transition,
     )
     codec = resolve(
-        "acme.raising", CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), raising])
+        "acme.raising", CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[raising]))
     )[0]
     with pytest.raises(KeyError) as raised:
         read_pipeline([codec], CHUNK, ("codecs",))
@@ -419,9 +416,7 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
         size="static",
         transition=transition,
     )
-    codec = resolve(
-        "acme.odd", CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), odd])
-    )[0]
+    codec = resolve("acme.odd", CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[odd])))[0]
     with pytest.raises(TypeError, match=match) as raised:
         read_pipeline([codec], CHUNK, ("codecs",))
     assert raised.value.__notes__ == [
@@ -502,9 +497,7 @@ def _holder(
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )
     declaration = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
-    return resolve(
-        declaration, CodecDefinition, CONTEXT.update(codecs=[*CONTEXT.codecs.values(), holder])
-    )[0]
+    return resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[holder])))[0]
 
 
 @pytest.mark.parametrize("given", ["a chunk", {"codecs": "a chunk"}, {("codecs",): Chunk()}])

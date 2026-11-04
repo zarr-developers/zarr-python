@@ -209,18 +209,19 @@ ACME_PAIRED = CodecDefinition(
     rules=acme_paired_rules,
 )
 
-CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.update(
-    codecs=[
-        *CORE_AND_EXTENSIONS_CONTEXT.codecs.values(),
-        ACME_STACK,
-        ACME_LEVEL,
-        ACME_TOTAL,
-        ACME_TREE,
-        ACME_FALLBACK,
-        ACME_ROUTES,
-        ACME_BOUNDED,
-        ACME_PAIRED,
-    ]
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(
+        codecs=[
+            ACME_STACK,
+            ACME_LEVEL,
+            ACME_TOTAL,
+            ACME_TREE,
+            ACME_FALLBACK,
+            ACME_ROUTES,
+            ACME_BOUNDED,
+            ACME_PAIRED,
+        ]
+    )
 )
 
 
@@ -802,7 +803,7 @@ def _ruled_by(
     rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
-    return CORE_CONTEXT.update(codecs=[*CORE_CONTEXT.codecs.values(), lying])
+    return CORE_CONTEXT.union(ZarrV3Context(codecs=[lying]))
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
@@ -1158,8 +1159,8 @@ def test_a_scope_takes_a_name_over() -> None:
             else []
         ),
     )
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        codecs={**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": strict}
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={"codecs": {**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": strict}}
     )
     _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, context)
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
@@ -1613,8 +1614,10 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
         cast("dict[str, object]", configuration)["level"] = -1
         yield from ()
 
-    context = CORE_CONTEXT.update(
-        codecs={**CORE_CONTEXT.codecs, "gzip": dataclasses.replace(GZIP_CODEC, rules=writes)}
+    context = CORE_CONTEXT.copy(
+        update={
+            "codecs": {**CORE_CONTEXT.codecs, "gzip": dataclasses.replace(GZIP_CODEC, rules=writes)}
+        }
     )
     with pytest.raises(TypeError, match="does not support item assignment") as raised:
         resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
@@ -1638,10 +1641,12 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         cast("dict[str, object]", configuration)["level"] = 0
         return configuration
 
-    context = CORE_CONTEXT.update(
-        codecs={
-            **CORE_CONTEXT.codecs,
-            "gzip": dataclasses.replace(GZIP_CODEC, canonical=folds_in_place),
+    context = CORE_CONTEXT.copy(
+        update={
+            "codecs": {
+                **CORE_CONTEXT.codecs,
+                "gzip": dataclasses.replace(GZIP_CODEC, canonical=folds_in_place),
+            }
         }
     )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
@@ -1653,8 +1658,13 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    context = CORE_CONTEXT.update(
-        codecs={**CORE_CONTEXT.codecs, "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses)}
+    context = CORE_CONTEXT.copy(
+        update={
+            "codecs": {
+                **CORE_CONTEXT.codecs,
+                "gzip": dataclasses.replace(GZIP_CODEC, canonical=refuses),
+            }
+        }
     )
     read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
