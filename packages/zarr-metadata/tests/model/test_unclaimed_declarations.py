@@ -21,6 +21,7 @@ from zarr_metadata.v3.definition import (
     ArrayExtraFieldDefinition,
     GroupExtraFieldDefinition,
     ZarrV3CodecDeclaration,
+    ZarrV3Context,
 )
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
@@ -36,19 +37,21 @@ class _MirrorConfiguration(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-MIRRORING = CORE_CONTEXT.update(
-    array_extra_fields=[
-        *CORE_CONTEXT.array_extra_fields.values(),
-        ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
-    ]
+MIRRORING = CORE_CONTEXT.union(
+    ZarrV3Context(
+        array_extra_fields=[
+            ArrayExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration)
+        ]
+    )
 )
 """`CORE_CONTEXT`, with a definition of an `acme.mirror` member that holds a codec."""
 
-GROUP_MIRRORING = CORE_CONTEXT.update(
-    group_extra_fields=[
-        *CORE_CONTEXT.group_extra_fields.values(),
-        GroupExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration),
-    ]
+GROUP_MIRRORING = CORE_CONTEXT.union(
+    ZarrV3Context(
+        group_extra_fields=[
+            GroupExtraFieldDefinition(name="acme.mirror", configuration=_MirrorConfiguration)
+        ]
+    )
 )
 """`CORE_CONTEXT`, with a definition of an `acme.mirror` member of a group that holds a codec."""
 

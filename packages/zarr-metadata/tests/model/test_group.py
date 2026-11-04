@@ -52,6 +52,7 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
     CodecDefinition,
+    ZarrV3Context,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -648,9 +649,7 @@ ACME_X = CodecDefinition(
 
 def test_group_update_keeps_the_documents_it_holds() -> None:
     """`update` does not read the consolidated documents again: a child read in an extended scope keeps each declaration as it was read, and the group keeps its scope."""
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_X]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_X]))
     child = ZarrV3ArrayMetadata.create_default(
         context=context, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
@@ -873,10 +872,12 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
         reads.append(configuration)
         yield from ()
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        codecs={
-            **CORE_AND_EXTENSIONS_CONTEXT.codecs,
-            "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={
+            "codecs": {
+                **CORE_AND_EXTENSIONS_CONTEXT.codecs,
+                "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+            }
         }
     )
     array = _array(codecs=[LITTLE, {"name": "gzip", "configuration": {"level": 5}}])
