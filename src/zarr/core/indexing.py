@@ -760,6 +760,29 @@ def sorted_run_ends(
     return a[run_starts].astype(np.intp, copy=False), run_ends
 
 
+def last_occurrences(a: npt.NDArray[np.intp]) -> npt.NDArray[np.intp] | None:
+    """Positions of the last occurrence of each value of a 1-D integer array, in increasing order.
+
+    Returns None when no value is repeated. Used to collapse a selection with repeated
+    indices into one that touches each element once, keeping the last value written to it,
+    which is what sequential (NumPy) assignment ends up with.
+    """
+    if a.size < 2:
+        return None
+    if bool((a[1:] >= a[:-1]).all()):
+        # sorted: repeats are adjacent
+        repeated = a[1:] == a[:-1]
+        if not repeated.any():
+            return None
+        return np.flatnonzero(np.append(~repeated, True)).astype(np.intp, copy=False)
+    _, first_in_reversed = np.unique(a[::-1], return_index=True)
+    if first_in_reversed.size == a.size:
+        return None
+    keep = (a.size - 1 - first_in_reversed).astype(np.intp, copy=False)
+    keep.sort()
+    return keep
+
+
 @dataclass(frozen=True)
 class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
@@ -941,6 +964,8 @@ class OrthogonalIndexer(Indexer):
     shape: tuple[int, ...]
     is_advanced: bool
     drop_axes: tuple[int, ...]
+    # the selection after ellipsis and list normalization, one selector per dimension
+    selection: SelectionNormalized = field(repr=False)
 
     def __init__(self, selection: Selection, shape: tuple[int, ...], chunk_grid: ChunkGrid) -> None:
         dim_grids = chunk_grid._dimensions
@@ -994,6 +1019,38 @@ class OrthogonalIndexer(Indexer):
         object.__setattr__(self, "shape", shape)
         object.__setattr__(self, "is_advanced", is_advanced)
         object.__setattr__(self, "drop_axes", drop_axes)
+        object.__setattr__(self, "selection", selection)
+
+    def without_repeats(
+        self, shape: tuple[int, ...], chunk_grid: ChunkGrid
+    ) -> tuple[OrthogonalIndexer, tuple[tuple[int, npt.NDArray[np.intp]], ...]] | None:
+        """Collapse repeated integer indices, keeping the last occurrence along each dimension.
+
+        Returns the collapsed indexer and, for each output axis that shrank, the positions
+        kept along it, so that a value array can be reduced to match. Returns None when no
+        dimension repeats an index. Negative and positive spellings of the same index count
+        as repeats.
+        """
+        selection = list(self.selection)
+        kept: list[tuple[int, npt.NDArray[np.intp]]] = []
+        out_axis = 0
+        for dim, (dim_sel, dim_indexer, dim_len) in enumerate(
+            zip(self.selection, self.dim_indexers, shape, strict=True)
+        ):
+            if isinstance(dim_indexer, IntDimIndexer):
+                continue
+            if isinstance(dim_indexer, IntArrayDimIndexer):
+                normalized = wraparound_indices(
+                    np.asarray(dim_sel).astype(np.intp, copy=False), dim_len
+                )
+                keep = last_occurrences(normalized)
+                if keep is not None:
+                    selection[dim] = normalized[keep]
+                    kept.append((out_axis, keep))
+            out_axis += 1
+        if not kept:
+            return None
+        return OrthogonalIndexer(tuple(selection), shape, chunk_grid), tuple(kept)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -1370,6 +1427,38 @@ class CoordinateIndexer(Indexer):
         object.__setattr__(self, "shape", shape)
         object.__setattr__(self, "drop_axes", ())
 
+    def without_repeats(
+        self, shape: tuple[int, ...], chunk_grid: ChunkGrid
+    ) -> tuple[CoordinateIndexer, npt.NDArray[np.intp]] | None:
+        """Collapse repeated points, keeping the last occurrence of each.
+
+        Returns the collapsed indexer, whose shape is one-dimensional, and the positions kept
+        in the flattened selection, so that a value array can be reduced to match. Returns
+        None when no point is repeated.
+        """
+        if shape == ():
+            return None
+        # self.selection is flat and non-negative, grouped by chunk; sel_sort maps each entry
+        # back to its position in the selection as given, which decides what "last" means.
+        linear = np.ravel_multi_index(self.selection, shape)
+        positions = (
+            np.arange(linear.size, dtype=np.intp) if self.sel_sort is None else self.sel_sort
+        )
+        if self.sel_sort is None:
+            keep = last_occurrences(linear)
+            if keep is None:
+                return None
+        else:
+            order = np.lexsort((positions, linear))
+            ordered = linear[order]
+            is_last = np.append(ordered[1:] != ordered[:-1], True)
+            if is_last.all():
+                return None
+            keep = np.sort(order[is_last])
+        kept_positions = positions[keep]
+        selection = tuple(dim_sel[keep] for dim_sel in self.selection)
+        return CoordinateIndexer(selection, shape, chunk_grid), kept_positions
+
     def __getattr__(self, name: str) -> npt.NDArray[np.intp]:
         if name != "chunk_nitems_cumsum":
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
@@ -1431,6 +1520,12 @@ class MaskIndexer(CoordinateIndexer):
 
         # delegate the rest to superclass
         super().__init__(selection_indices, shape, chunk_grid)
+
+    def without_repeats(
+        self, shape: tuple[int, ...], chunk_grid: ChunkGrid
+    ) -> tuple[CoordinateIndexer, npt.NDArray[np.intp]] | None:
+        # a mask selects each point at most once
+        return None
 
 
 @dataclass(frozen=True)
