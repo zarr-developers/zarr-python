@@ -26,9 +26,17 @@ class ZarrV2TimeConfiguration(TypedDict, closed=True):
     """The configuration that a time typestr carries. For example, `<M8[10ns]` is `{"byteorder": "<", "itemsize": 8, "unit": "ns", "scale_factor": 10}`."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
+    """The byte order that the typestr writes, `<` or `>`."""
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
+    """The size in bytes that the typestr writes, which must be 8."""
     unit: NotRequired[ReadOnly[str]]
+    """The NumPy time unit in brackets, such as `ns`. The canonical form writes `μs` as `us`.
+
+    An array's dtype must have one. Only a codec's dtype parameter may leave
+    it out, as in `<M8`.
+    """
     scale_factor: NotRequired[ReadOnly[NumpyTimeScaleFactor]]
+    """The number of units in one tick, such as the `10` of `[10ns]`, or 1 when the brackets write no number."""
 
 
 def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguration:

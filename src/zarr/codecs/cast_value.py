@@ -5,7 +5,7 @@ and back to the original data type during decoding, with configurable
 rounding, out-of-range handling, and explicit scalar mappings.
 
 Requires the optional ``cast-value-rs`` package for the actual casting
-logic. Install it with: ``pip install 'cast-value-rs>=0.4.2'``.
+logic. Install it with: ``pip install 'cast-value-rs>=0.5.1'``.
 """
 
 from __future__ import annotations
@@ -125,10 +125,12 @@ def parse_scalar_map(obj: ScalarMapJSON | ScalarMap) -> ScalarMap:
 # Backend: cast-value-rs
 # ---------------------------------------------------------------------------
 
-# Versions below this silently transpose input arrays that are not row-major -
+# Versions below 0.4.2 silently transpose input arrays that are not row-major -
 # the layout `transpose` hands to the next codec - writing corrupted data with
-# no error. Keep in sync with the `cast-value-rs` extra in pyproject.toml.
-CAST_VALUE_RS_MIN_VERSION: Final = "0.4.2"
+# no error. Versions below 0.5.0 give wrong results for some casts at integer
+# and float range limits. 0.5.0 was never published to PyPI, so the floor is
+# 0.5.1. Keep in sync with the `cast-value-rs` extra in pyproject.toml.
+CAST_VALUE_RS_MIN_VERSION: Final = "0.5.1"
 
 _INSTALL_HINT: Final = f"Install it with: pip install 'cast-value-rs>={CAST_VALUE_RS_MIN_VERSION}'"
 
@@ -144,8 +146,8 @@ def _check_backend_version() -> str | None:
     if Version(installed) < Version(CAST_VALUE_RS_MIN_VERSION):
         return (
             f"The cast_value codec requires cast-value-rs >= {CAST_VALUE_RS_MIN_VERSION}, "
-            f"but version {installed} is installed. Earlier versions silently corrupt data "
-            f"when the input array is not row-major. {_INSTALL_HINT}"
+            f"but version {installed} is installed. Earlier versions can write wrong "
+            f"values without raising an error. {_INSTALL_HINT}"
         )
     return None
 

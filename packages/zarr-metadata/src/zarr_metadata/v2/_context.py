@@ -1,4 +1,4 @@
-"""The scope a Zarr v2 document is read in: one slot for each kind of v2 field."""
+"""The scope a Zarr v2 document is read in: one slot for each kind of v2 declaration."""
 
 from __future__ import annotations
 
@@ -35,10 +35,10 @@ if TYPE_CHECKING:
     from zarr_metadata.definition._definition import D, Definition
 
 ZarrV2Kind: TypeAlias = ZarrV2DataTypeDefinition[Any] | ZarrV2CodecDefinition[Any]
-"""A definition of a kind of v2 field."""
+"""A definition of a kind of v2 declaration."""
 
 _K = TypeVar("_K", bound=ZarrV2Kind)
-"""A kind of v2 field, so a type checker refuses a kind of the other format."""
+"""A kind of v2 declaration, so a type checker refuses a kind of the other format."""
 
 _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
     get_origin(member) for member in get_args(ZarrV2Kind)
@@ -46,7 +46,7 @@ _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
 
 
 def is_v2_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV2Kind]]:
-    """Whether `kind` is a kind of v2 field: one of the kinds in `ZarrV2Kind`."""
+    """Whether `kind` is a kind of v2 declaration: one of the kinds in `ZarrV2Kind`."""
     return kind in _KINDS
 
 
@@ -73,7 +73,7 @@ class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
 class ZarrV2Context:
     """A scope that reads Zarr v2 documents. Every v2 reader takes one.
 
-    It implements `Context`, and has one slot for each kind of field a v2
+    It implements `Context`, and has one slot for each kind of declaration a v2
     document holds, as `ZarrV2ContextSlots` declares them: `data_types`,
     read from `dtype`, and `codecs`, read from `compressor` and `filters`.
     Each slot is a read-only mapping from name to definition. The
@@ -156,8 +156,8 @@ class ZarrV2Context:
         """The smallest scope that files everything this scope and each of `others` file.
 
         This is how to add definitions to a scope:
-        `CORE_V2.union(ZarrV2Context(codecs=[MY_CODEC]))` keeps every
-        definition of `CORE_V2` and adds `MY_CODEC`. Raises
+        `CORE_V2_CONTEXT.union(ZarrV2Context(codecs=[MY_CODEC]))` keeps every
+        definition of `CORE_V2_CONTEXT` and adds `MY_CODEC`. Raises
         `ScopeConflictError` when two of them file different definitions
         under one name in a slot. To replace a definition on purpose, use
         `copy`. Raises `TypeError` for a scope of another format.

@@ -1,7 +1,7 @@
 """How a data type's values are stored: in single bytes, in several bytes each, or each in as many bytes as it needs.
 
 Each data type's definition declares its storage. `storage_of` returns
-the storage of a data type field that a scope read. The `bytes` codec
+the storage of a data type declaration that a scope read. The `bytes` codec
 asks for the storage of the data type it receives, and a struct asks for
 the storage of each of its fields.
 """
@@ -18,7 +18,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
     StorageClass,
     ZarrV3Context,
@@ -77,7 +77,7 @@ DATETIME: JSONValue = {
 def test_every_data_type_says_how_its_values_are_stored(
     data_type: JSONValue, storage: StorageClass | None
 ) -> None:
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert storage_of(resolved) == storage
 
 
@@ -86,7 +86,7 @@ def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> Non
     resolved, _ = resolve(
         "acme.quiet",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.union(ZarrV3Context(data_types=[quiet])),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[quiet])),
     )
     assert storage_of(resolved) is None
 
@@ -100,7 +100,7 @@ def test_error_a_storage_that_gives_something_else() -> None:
     resolved, _ = resolve(
         "acme.lying",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.union(ZarrV3Context(data_types=[lying])),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[lying])),
     )
     with pytest.raises(TypeError, match="'acme.lying': its storage gives one of"):
         storage_of(resolved)
@@ -116,7 +116,7 @@ def test_error_a_storage_that_raises_says_whose_it_is() -> None:
     resolved, _ = resolve(
         "acme.raising",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS.union(ZarrV3Context(data_types=[raising])),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[raising])),
     )
     with pytest.raises(KeyError) as raised:
         storage_of(resolved)

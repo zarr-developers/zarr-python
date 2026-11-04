@@ -1,4 +1,4 @@
-"""The JSON Schema of a Zarr v3 field and of a whole v3 `zarr.json`, as a scope reads them."""
+"""The JSON Schema of a Zarr v3 declaration and of a whole v3 `zarr.json`, as a scope reads them."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from zarr_metadata.definition._definition import (
     Definition,
     EmptyConfiguration,
     as_kind,
-    field_kind,
+    declaration_kind,
 )
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._context import ZarrV3Context, ZarrV3Kind, is_v3_kind
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
 from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
@@ -34,9 +34,9 @@ if TYPE_CHECKING:
     from zarr_metadata._typed_json import JSONSchema, SchemaLeaf
 
 
-def kind_field(kind: type[Definition[Any]]) -> object:
-    """The field alias for a member that holds any field of `kind`: the first alias the kind declares that does not restrict the field. For example, `ZarrV3CodecField` instead of `ZarrV3StaticCodecField`."""
-    return next(alias for alias in kind.field_aliases if alias not in STATIC_SIZE_ALIASES)
+def kind_declaration(kind: type[Definition[Any]]) -> object:
+    """The declaration alias for a member that holds any declaration of `kind`: the first alias the kind declares that does not restrict the declaration. For example, `ZarrV3CodecDeclaration` instead of `ZarrV3StaticCodecDeclaration`."""
+    return next(alias for alias in kind.declaration_aliases if alias not in STATIC_SIZE_ALIASES)
 
 
 _RAW_BYTES_SCHEMA_PATTERN: Final = f"^{RAW_BYTES_NAME_PATTERN.pattern}(?![\\s\\S])"
@@ -49,63 +49,63 @@ valid name, would be read as raw bits.
 """
 
 
-def field_json_schema_v3(
+def declaration_json_schema_v3(
     kind: type[ZarrV3Kind], *, context: ZarrV3Context | None = None
 ) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
+    """The JSON Schema of one declaration read as `kind` in `context` (`CORE_AND_EXTENSIONS_CONTEXT` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader. An extra field is written as the member alone, `{key: value}`.
 
-    The schema accepts a field that one of the definitions in scope reads
+    The schema accepts a declaration that one of the definitions in scope reads
     (its name, its configuration as the TypedDict declares it, an optional
     `must_understand` of `true`, and its bare name when it needs no
     configuration). It also accepts a name that no definition claims, with
-    any configuration, which is what keeps the format open. A field inside
+    any configuration, which is what keeps the format open. A declaration inside
     a configuration is written the same way, in the same scope, and a
     member that accepts only codecs of static size accepts only those. The
     output is JSON Schema draft 2020-12, as `json_schema` writes it. The
-    nested fields and the configuration of each definition are in
-    `$defs`, under the name of the field alias or TypedDict. Constraints
+    nested declarations and the configuration of each definition are in
+    `$defs`, under the name of the declaration alias or TypedDict. Constraints
     that only a rule enforces (a blosc `typesize` checked against its
-    `shuffle`) are not in the schema, so a field it accepts may still have
+    `shuffle`) are not in the schema, so a declaration it accepts may still have
     a problem.
     """
     asked = as_kind(kind)
     if not is_v3_kind(asked):
         msg = (
             f"{asked.__name__} is a kind of another format; the JSON Schema writer writes "
-            "Zarr v3 fields only"
+            "Zarr v3 declarations only"
         )
         raise TypeError(msg)
-    context = scoped(context, CORE_AND_EXTENSIONS)
-    schemas = Schemas(field_schemas(context))
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
+    schemas = Schemas(declaration_schemas(context))
     if issubclass(asked, (ArrayExtraFieldDefinition, GroupExtraFieldDefinition)):
         return schemas.document(_extra_field_schema(asked, context, schemas))
-    return schemas.document(schemas.of(kind_field(asked)))
+    return schemas.document(schemas.of(kind_declaration(asked)))
 
 
-def field_schemas(context: ZarrV3Context) -> SchemaLeaf:
-    """The schema leaf that `field_json_schema_v3` uses. It writes each field alias as a field of its kind, as `context` reads it."""
+def declaration_schemas(context: ZarrV3Context) -> SchemaLeaf:
+    """The schema leaf that `declaration_json_schema_v3` uses. It writes each declaration alias as a declaration of its kind, as `context` reads it."""
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
-        kind = field_kind(annotation)
+        kind = declaration_kind(annotation)
         if kind is None or not is_alias(annotation):
             return None
         alias = annotation
         static = annotation in STATIC_SIZE_ALIASES
         return schemas.defined(
-            alias, alias.__name__, lambda: _field_schema(kind, static, context, schemas)
+            alias, alias.__name__, lambda: _declaration_schema(kind, static, context, schemas)
         )
 
     return leaf
 
 
-def _field_schema(
+def _declaration_schema(
     kind: type[Definition[Any]], static: bool, context: ZarrV3Context, schemas: Schemas
 ) -> JSONSchema:
-    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims.
+    """The schema of a declaration of `kind` as `context` reads it: a declaration that a definition in scope reads, or a declaration that none of them claims.
 
-    `kind` is always a v3 kind. The v3 document TypedDicts hold v3 fields
-    only, a v3 definition whose configuration holds a field of the other
-    format is refused when it is built, and `field_json_schema_v3` refuses
+    `kind` is always a v3 kind. The v3 document TypedDicts hold v3 declarations
+    only, a v3 definition whose configuration holds a declaration of the other
+    format is refused when it is built, and `declaration_json_schema_v3` refuses
     a kind of the other format before it writes anything. The check below
     only narrows `kind` for the type checker.
     """
@@ -154,7 +154,7 @@ def written_name(definition: Definition[Any]) -> JSONSchema:
 
 
 def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
-    """The schemas of the fields `definition` reads: an object with its name and configuration, and its bare name when it needs no configuration.
+    """The schemas of the declarations `definition` reads: an object with its name and configuration, and its bare name when it needs no configuration.
 
     The raw bits name encodes the configuration, so the configuration
     written next to it must be empty.
@@ -178,7 +178,7 @@ def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
 
 
 def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
-    """The schemas of the fields that no definition in `table` claims: a name that none of them uses, either bare or with any configuration."""
+    """The schemas of the declarations that no definition in `table` claims: a name that none of them uses, either bare or with any configuration."""
     claimed: list[JSONValue] = [written_name(definition) for definition in table.values()]
     name: JSONSchema = {"type": "string", "pattern": EXTENSION_NAME_SCHEMA_PATTERN}
     if len(claimed) != 0:
@@ -202,12 +202,12 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     Use it in an editor that validates a `zarr.json` while it is
     written, or in a validator written in another language. The schema
     is JSON Schema draft 2020-12, in the form `json_schema` writes. Each
-    extension point is a field as the scope `context` reads it: either a
+    extension point is a declaration as the scope `context` reads it: either a
     name that a definition in scope claims, with the configuration that
     definition declares, or a name that no definition claims. When the
     document names a data type in scope, the fill value must have the
     JSON shape that the data type's definition declares (for `int8`, an
-    integer in [-128, 127]). In a scope that claims it, as `CORE` does,
+    integer in [-128, 127]). In a scope that claims it, as `CORE_CONTEXT` does,
     a group's `consolidated_metadata` is the envelope the core spec
     fixes, with any JSON as the documents it lists, because the reader
     does not read them, and a `null` value, which zarr-python 3.0 and 3.1
@@ -226,7 +226,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     arrays as lists. A model's `to_json` returns tuples, and a Python
     validator does not accept tuples as arrays.
     """
-    context = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
     schemas = Schemas(_documents(context))
     array = schemas.of(ZarrV3ArrayMetadataJSON)
     group = schemas.of(ZarrV3GroupMetadataJSON)
@@ -234,8 +234,8 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
 
 
 def _documents(context: ZarrV3Context) -> SchemaLeaf:
-    """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, each field as `context` reads it, and each extra field that a definition in `context` claims."""
-    fields = field_schemas(context)
+    """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, each declaration as `context` reads it, and each extra field that a definition in `context` claims."""
+    declarations = declaration_schemas(context)
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
         if annotation is ZarrV3ArrayMetadataJSON:
@@ -250,7 +250,7 @@ def _documents(context: ZarrV3Context) -> SchemaLeaf:
                     schemas.object_of(ZarrV3GroupMetadataJSON), context.group_extra_fields, schemas
                 ),
             )
-        return fields(annotation, schemas)
+        return declarations(annotation, schemas)
 
     return leaf
 
@@ -307,8 +307,8 @@ def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
 
 
 __all__ = [
-    "field_json_schema_v3",
-    "field_schemas",
+    "declaration_json_schema_v3",
+    "declaration_schemas",
     "node_metadata_json_schema_v3",
     "written_name",
 ]

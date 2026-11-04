@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
+import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+from zarr.errors import DataTypeValidationError
 
 
 class TestInt8(BaseTestZDType):
@@ -78,9 +83,6 @@ class TestInt16(BaseTestZDType):
 class TestInt32(BaseTestZDType):
     test_cls = Int32
     scalar_type = np.int32
-    # The behavior of some tests associated with this class variable are
-    # order-dependent -- np.dtype('i') correctly fails certain tests only if it's not
-    # in the last position of the tuple. I have no idea how this is possible!
     valid_dtype = (np.dtype("i"), np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -117,7 +119,7 @@ class TestInt32(BaseTestZDType):
 class TestInt64(BaseTestZDType):
     test_cls = Int64
     scalar_type = np.int64
-    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"))
+    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"), np.dtype(np.longlong))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
@@ -228,9 +230,6 @@ class TestUInt32(BaseTestZDType):
     # However, np.dtype('u') raises a TypeError.
     uint_dtype = (np.array([1], dtype=np.uint32) & 1).dtype
 
-    # The behavior of some tests associated with this class variable are
-    # order-dependent -- uint_dtype correctly fails certain tests only if it's not
-    # in the last position of the tuple. I have no idea how this is possible!
     valid_dtype = (uint_dtype, np.dtype(">u4"), np.dtype("<u4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -267,7 +266,7 @@ class TestUInt32(BaseTestZDType):
 class TestUInt64(BaseTestZDType):
     test_cls = UInt64
     scalar_type = np.uint64
-    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"))
+    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"), np.dtype(np.ulonglong))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.int16),
@@ -337,3 +336,32 @@ def test_string_integer_from_json_scalar() -> None:
     # Test that it works for v2 format too
     result = dtype_instance.from_json_scalar("123", zarr_format=2)
     assert result == np.int32(123)
+
+
+class _DTypeLookalike:
+    """An object with the attributes of a 64-bit signed integer dtype that is not a NumPy dtype."""
+
+    kind = "i"
+    itemsize = 8
+
+
+NOT_NUMPY_DTYPES = ("i8", None, 8, np.int64, _DTypeLookalike())
+
+
+@pytest.mark.parametrize("not_a_dtype", NOT_NUMPY_DTYPES)
+@pytest.mark.parametrize("cls", [Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64])
+def test_from_native_dtype_not_a_numpy_dtype(cls: Any, not_a_dtype: Any) -> None:
+    """
+    Test that an input that is not a NumPy dtype is reported as an invalid data type.
+    """
+    with pytest.raises(DataTypeValidationError, match="Invalid data type"):
+        cls.from_native_dtype(not_a_dtype)
+
+
+@pytest.mark.parametrize("not_a_dtype", NOT_NUMPY_DTYPES)
+def test_match_dtype_not_a_numpy_dtype(not_a_dtype: Any) -> None:
+    """
+    Test that the registry reports no match for an input that is not a NumPy dtype.
+    """
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_dtype(not_a_dtype)

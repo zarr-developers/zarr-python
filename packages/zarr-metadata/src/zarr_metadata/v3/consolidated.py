@@ -9,7 +9,7 @@ This is a known non-core interoperability extension. The core spec fixes
 only its `{kind, must_understand, metadata}` envelope, which
 `ZarrV3ConsolidatedMetadataEnvelopeJSON` types with any JSON as the
 entries. `CONSOLIDATED_METADATA_EXTRA_FIELD` reads a group's member as
-that envelope, and `CORE` holds it. `ZarrV3ConsolidatedMetadataJSON` types
+that envelope, and `CORE_CONTEXT` holds it. `ZarrV3ConsolidatedMetadataJSON` types
 the entries as the reference implementation writes them.
 """
 
@@ -42,8 +42,11 @@ class ZarrV3ConsolidatedMetadataEnvelopeJSON(TypedDict, closed=True):
     """
 
     kind: Literal["inline"]
+    """How the entries are carried, `"inline"`: in the group's own document."""
     must_understand: Literal[False]
+    """Always `false`: a reader that does not recognize consolidated metadata may ignore it."""
     metadata: Mapping[str, UserJSONValue]
+    """The entries, by each node's path from the group, as any JSON."""
 
 
 class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
@@ -59,8 +62,14 @@ class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
     """
 
     kind: Literal["inline"]
+    """How the entries are carried, `"inline"`: in the group's own document."""
     must_understand: Literal[False]
+    """Always `false`: a reader that does not recognize consolidated metadata may ignore it."""
     metadata: Mapping[str, ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON]
+    """The metadata document of each node below the group, by its path from the group.
+
+    A path joins its segments with `"/"`, e.g. `"child/grandchild"`.
+    """
 
 
 ZARR_V3_CONSOLIDATED_METADATA_KEY: Final = "consolidated_metadata"

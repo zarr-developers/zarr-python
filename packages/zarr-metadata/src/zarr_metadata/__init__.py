@@ -7,7 +7,7 @@ documentation lives:
 - `zarr_metadata.v3` and `zarr_metadata.v2`: the JSON types of each
   document, extension and data type;
 - `zarr_metadata.model`: the document models and their readers;
-- `zarr_metadata.definition`: definitions, scopes and the field reader
+- `zarr_metadata.definition`: definitions, scopes and the declaration reader
   that both formats share;
 - `zarr_metadata.problems`: the problems every reader reports;
 - `zarr_metadata.typed_json`: `check`, the type checker for JSON;
@@ -62,7 +62,7 @@ from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
+from zarr_metadata.v3 import ZarrV3DeclarationJSON, ZarrV3ExtensionField, ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
@@ -136,6 +136,16 @@ from zarr_metadata.v3.codec.transpose import (
     TransposeCodecMetadata,
     TransposeCodecName,
 )
+from zarr_metadata.v3.codec.vlen_bytes import (
+    VLEN_BYTES_CODEC_NAME,
+    VlenBytesCodecMetadata,
+    VlenBytesCodecName,
+)
+from zarr_metadata.v3.codec.vlen_utf8 import (
+    VLEN_UTF8_CODEC_NAME,
+    VlenUtf8CodecMetadata,
+    VlenUtf8CodecName,
+)
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC_NAME, ZstdCodecMetadata, ZstdCodecName
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,
@@ -161,6 +171,11 @@ from zarr_metadata.v3.data_type.complex128 import (
     COMPLEX128_DATA_TYPE_NAME,
     Complex128DataTypeName,
     Complex128FillValue,
+)
+from zarr_metadata.v3.data_type.fixed_length_utf32 import (
+    FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
+    FixedLengthUtf32DataTypeName,
+    FixedLengthUtf32FillValue,
 )
 from zarr_metadata.v3.data_type.float16 import (
     FLOAT16_DATA_TYPE_NAME,
@@ -247,6 +262,7 @@ from zarr_metadata.v3.group import (
 )
 
 __version__ = version("zarr-metadata")
+"""The installed version of the `zarr-metadata` distribution."""
 
 
 __all__ = [
@@ -265,6 +281,7 @@ __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "ENDIANNESS",
+    "FIXED_LENGTH_UTF32_DATA_TYPE_NAME",
     "FLOAT16_DATA_TYPE_NAME",
     "FLOAT32_DATA_TYPE_NAME",
     "FLOAT64_DATA_TYPE_NAME",
@@ -291,6 +308,8 @@ __all__ = [
     "UNSET",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
+    "VLEN_BYTES_CODEC_NAME",
+    "VLEN_UTF8_CODEC_NAME",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
     "ZARR_V2_ARRAY_ORDER",
@@ -325,6 +344,8 @@ __all__ = [
     "DefaultChunkKeyEncodingName",
     "DefaultChunkKeyEncodingSeparator",
     "Endianness",
+    "FixedLengthUtf32DataTypeName",
+    "FixedLengthUtf32FillValue",
     "Float16DataTypeName",
     "Float16FillValue",
     "Float32DataTypeName",
@@ -378,6 +399,10 @@ __all__ = [
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingSeparator",
     "ValidationProblem",
+    "VlenBytesCodecMetadata",
+    "VlenBytesCodecName",
+    "VlenUtf8CodecMetadata",
+    "VlenUtf8CodecName",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataJSON",
@@ -405,12 +430,12 @@ __all__ = [
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3DeclarationJSON",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataJSON",
     "ZarrV3GroupMetadataStoreKey",
     "ZarrV3GroupMetadataUpdate",
-    "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
     "ZarrV3NodeMetadataInput",
     "ZstdCodecMetadata",

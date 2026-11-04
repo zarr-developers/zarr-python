@@ -8,7 +8,7 @@ model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
-field-level coercion can never bypass it). A field type reads the fields
+field-level coercion can never bypass it). A field type reads the declarations
 of its document in the scope given by pydantic's validation context
 (pydantic passes this context to every validator). The scope is chosen
 as follows:
@@ -20,7 +20,7 @@ as follows:
   `"zarr_metadata_context_v2"` item. This lets a model with fields of
   both formats give a scope for each format.
 - If no scope is given for a format, its field types read in the default
-  scope for that format, `CORE_AND_EXTENSIONS` or `CORE_V2`.
+  scope for that format, `CORE_AND_EXTENSIONS_CONTEXT` or `CORE_V2_CONTEXT`.
 
 A mapping key that starts like these keys but is not one of them raises
 `TypeError`, so a misspelled key is not read as no scope. To fix a field's
@@ -128,8 +128,8 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import Context
 from zarr_metadata.definition._scope import ScopeConflictError
-from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, ZarrV3Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -247,7 +247,7 @@ def _read_in(
 
 
 def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
-    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
+    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the declaration it is in."""
     try:
         return refine(value, context)
     except MetadataValidationError as error:
@@ -321,7 +321,7 @@ ZarrV3ArrayMetadataField = Annotated[
             _model.ZarrV3ArrayMetadata,
             _model.ZarrV3ArrayMetadata.from_json,
             _model.ZarrV3ArrayMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ArrayMetadataSchema,
@@ -337,7 +337,7 @@ ZarrV2ArrayMetadataField = Annotated[
             _model.ZarrV2ArrayMetadata,
             _model.ZarrV2ArrayMetadata.from_json,
             _model.ZarrV2ArrayMetadata.refined_in,
-            CORE_V2,
+            CORE_V2_CONTEXT,
             CONTEXT_KEY_V2,
         ),
         json_schema_input_type=_ZarrV2ArrayMetadataSchema,
@@ -353,7 +353,7 @@ ZarrV3GroupMetadataField = Annotated[
             _model.ZarrV3GroupMetadata,
             _model.ZarrV3GroupMetadata.from_json,
             _model.ZarrV3GroupMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3GroupMetadataSchema,
@@ -369,7 +369,7 @@ ZarrV2GroupMetadataField = Annotated[
             _model.ZarrV2GroupMetadata,
             _model.ZarrV2GroupMetadata.from_json,
             _model.ZarrV2GroupMetadata.refined_in,
-            CORE_V2,
+            CORE_V2_CONTEXT,
             CONTEXT_KEY_V2,
         ),
         json_schema_input_type=_ZarrV2GroupMetadataSchema,
@@ -385,7 +385,7 @@ ZarrV3ConsolidatedMetadataField = Annotated[
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
             _model.ZarrV3ConsolidatedMetadata.refined_in,
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
             CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
@@ -404,7 +404,7 @@ ZarrV2ConsolidatedMetadataField = Annotated[
             _model.ZarrV2ConsolidatedMetadata,
             _model.ZarrV2ConsolidatedMetadata.from_json,
             _model.ZarrV2ConsolidatedMetadata.refined_in,
-            CORE_V2,
+            CORE_V2_CONTEXT,
             CONTEXT_KEY_V2,
         ),
         json_schema_input_type=_ZarrV2ConsolidatedMetadataSchema,
@@ -419,15 +419,15 @@ ZarrV2ConsolidatedMetadataField = Annotated[
 _FIELD_PARTS: Final[Mapping[type[Any], tuple[ZarrV3Context | ZarrV2Context, object]]] = (
     MappingProxyType(
         {
-            _model.ZarrV3ArrayMetadata: (CORE_AND_EXTENSIONS, _ZarrV3ArrayMetadataSchema),
-            _model.ZarrV2ArrayMetadata: (CORE_V2, _ZarrV2ArrayMetadataSchema),
-            _model.ZarrV3GroupMetadata: (CORE_AND_EXTENSIONS, _ZarrV3GroupMetadataSchema),
-            _model.ZarrV2GroupMetadata: (CORE_V2, _ZarrV2GroupMetadataSchema),
+            _model.ZarrV3ArrayMetadata: (CORE_AND_EXTENSIONS_CONTEXT, _ZarrV3ArrayMetadataSchema),
+            _model.ZarrV2ArrayMetadata: (CORE_V2_CONTEXT, _ZarrV2ArrayMetadataSchema),
+            _model.ZarrV3GroupMetadata: (CORE_AND_EXTENSIONS_CONTEXT, _ZarrV3GroupMetadataSchema),
+            _model.ZarrV2GroupMetadata: (CORE_V2_CONTEXT, _ZarrV2GroupMetadataSchema),
             _model.ZarrV3ConsolidatedMetadata: (
-                CORE_AND_EXTENSIONS,
+                CORE_AND_EXTENSIONS_CONTEXT,
                 _ZarrV3ConsolidatedMetadataSchema,
             ),
-            _model.ZarrV2ConsolidatedMetadata: (CORE_V2, _ZarrV2ConsolidatedMetadataSchema),
+            _model.ZarrV2ConsolidatedMetadata: (CORE_V2_CONTEXT, _ZarrV2ConsolidatedMetadataSchema),
         }
     )
 )
@@ -449,6 +449,7 @@ class InScope:
     """
 
     context: ZarrV3Context | ZarrV2Context
+    """The scope the field is read in, in place of any scope the validation context holds."""
 
     def __post_init__(self) -> None:
         if not _is_context(self.context):
