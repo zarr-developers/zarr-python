@@ -218,6 +218,45 @@ def test_error_a_bytes_codec_without_an_endian_for_fixed_length_utf32() -> None:
     ]
 
 
+_NOT_NUMBERS = [
+    (_UTF32, ""),
+    (_NULL_TERMINATED, ""),
+    ("variable_length_bytes", ""),
+    (_RAW, ""),
+]
+"""The data types this scope adds, each beside a fill value it takes; none of them holds numbers."""
+
+
+@pytest.mark.parametrize("data_type", [data_type for data_type, _ in _NOT_NUMBERS])
+def test_error_a_cast_to_a_data_type_that_holds_no_numbers(data_type: object) -> None:
+    cast_value = {"name": "cast_value", "configuration": {"data_type": data_type}}
+    document = _document("int32", 0, [cast_value, _LITTLE])
+    reading = read_array_metadata_v3(document, context=ZARR_PYTHON_CONTEXT)
+    assert [(p.loc, p.kind) for p in reading.problems] == [
+        (("codecs", 0, "configuration", "data_type"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(("data_type", "fill_value"), _NOT_NUMBERS)
+def test_error_a_cast_from_a_data_type_that_holds_no_numbers(
+    data_type: object, fill_value: str
+) -> None:
+    cast_value = {"name": "cast_value", "configuration": {"data_type": "int32"}}
+    document = _document(data_type, fill_value, [cast_value, _LITTLE])
+    reading = read_array_metadata_v3(document, context=ZARR_PYTHON_CONTEXT)
+    assert [(p.loc, p.kind) for p in reading.problems] == [(("codecs", 0), "invalid_value")]
+
+
+@pytest.mark.parametrize(("data_type", "fill_value"), _NOT_NUMBERS)
+def test_error_a_scale_offset_of_a_data_type_that_holds_no_numbers(
+    data_type: object, fill_value: str
+) -> None:
+    serializer = "vlen-bytes" if data_type == "variable_length_bytes" else _LITTLE
+    document = _document(data_type, fill_value, ["scale_offset", serializer])
+    reading = read_array_metadata_v3(document, context=ZARR_PYTHON_CONTEXT)
+    assert [(p.loc, p.kind) for p in reading.problems] == [(("codecs", 0), "invalid_value")]
+
+
 def test_an_empty_scope_reads_none_of_them() -> None:
     for name in (
         "fixed_length_utf32",
