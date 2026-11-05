@@ -9,7 +9,7 @@ from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 from zarr.errors import DataTypeValidationError
@@ -103,11 +103,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         ``TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]``
             True if the input is a valid JSON representation, False otherwise.
         """
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] == cls._zarr_v2_name
-            and data["object_codec_id"] is None
-        )
+        return check_dtype_spec_no_object_codec_v2(data) and data["name"] == cls._zarr_v2_name
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:

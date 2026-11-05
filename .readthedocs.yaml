@@ -10,24 +10,48 @@ build:
       # that have their own Read the Docs projects. Exit code 183 cancels the
       # build and reports success to the Git provider. Scoped to PR builds
       # ("external" versions) because origin/main is only a meaningful diff
-      # base there. Read the Docs strips shell quoting from commands, so the
+      # base there. Compare against the merge base (origin/main...HEAD), not
+      # against the tip of main: a two-dot diff also reports everything that
+      # landed on main after the PR branched, which made every PR that was
+      # behind main build every site. The checkout is shallow, so fetch the
+      # full history first; without a merge base the diff fails and the build
+      # runs, which is the safe default. Read the Docs strips shell quoting from commands, so the
       # exclude pathspecs must use the quote-free :! form, not ':(exclude)'.
+      # The diff is taken against the merge base (origin/main...HEAD), not
+      # against the tip of main: a two-dot diff also reports everything that
+      # landed on main after the PR branched, which made every PR that was
+      # behind main build every site. The checkout is shallow, so fetch the
+      # full history first; without a merge base the diff fails and the build
+      # runs, which is the safe default.
       - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- :!packages/zarr-metadata :!packages/zarr-indexing;
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ];
         then
-          exit 183;
+          git fetch --quiet --unshallow origin main pull/$READTHEDOCS_VERSION_NAME/head || true;
+          if git diff --quiet origin/main...HEAD -- :!packages/zarr-metadata :!packages/zarr-indexing :!packages/zarr-http-server;
+          then
+            exit 183;
+          fi
         fi
     install:
       - pip install --upgrade pip
-      - pip install .[remote] --group docs
+      # The docs recipes resolve their toolchain from uv.lock, so uv is all that is
+      # needed here besides just itself.
+      - pip install uv==0.12.9
+      # No GitHub Action is available on Read the Docs, so fetch the official just
+      # release and verify it against the checksum casey/just publishes. Installed
+      # into the build virtualenv's bin, which is already on PATH.
+      - |
+        curl -fsSL -o /tmp/just.tar.gz https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz
+        echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  /tmp/just.tar.gz" | sha256sum -c -
+        tar -xzf /tmp/just.tar.gz -C "$READTHEDOCS_VIRTUALENV_PATH/bin" just
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
         then
-          towncrier build --version Unreleased --yes;
+          just changelog-build --version Unreleased --yes;
         fi
     build:
         html:
-          - mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
+          - just docs-build --site-dir $READTHEDOCS_OUTPUT/html
 mkdocs:
   configuration: mkdocs.yml

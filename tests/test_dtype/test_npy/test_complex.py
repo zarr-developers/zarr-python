@@ -29,9 +29,10 @@ class TestComplex64(_BaseTestFloat):
     )
     valid_json_v3 = ("complex64",)
     invalid_json_v2 = (
-        "|c8",
-        "complex64",
-        "|f8",
+        {"name": "|c8", "object_codec_id": None},
+        {"name": "complex64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<c8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|c8",
@@ -72,9 +73,10 @@ class TestComplex128(_BaseTestFloat):
     )
     valid_json_v3 = ("complex128",)
     invalid_json_v2 = (
-        "|c16",
-        "complex128",
-        "|f8",
+        {"name": "|c16", "object_codec_id": None},
+        {"name": "complex128", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<c16", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|c16",

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NotRequired, TypeGuard, cast
 
 from typing_extensions import TypedDict
 
@@ -24,8 +25,11 @@ from zarr.core.common import (
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
+    NodeType,
     compress_rle,
     expand_rle,
+    parse_chunk_edge,
+    parse_chunk_shape,
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
@@ -36,6 +40,10 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.repair import (
+    mark_repaired,
+    repair_array_document,
+)
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
@@ -46,6 +54,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.metadata.repair import ArrayDocument
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -155,8 +164,8 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
-    This class models allowed extra fields in array metadata.
-    They must have ``must_understand`` set to ``False``, and may contain
+    This class models allowed extra fields in array or group metadata.
+    They must have `must_understand` set to `False`, and may contain
     arbitrary additional JSON data.
     """
 
@@ -172,22 +181,45 @@ def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
 
 
 def parse_extra_fields(
-    data: Mapping[str, AllowedExtraField] | None,
+    data: Mapping[str, object] | None,
+    *,
+    reserved_keys: AbstractSet[str],
+    node_type: NodeType,
 ) -> dict[str, AllowedExtraField]:
+    """
+    Check the extra fields of a Zarr V3 metadata document.
+
+    Raises `ValueError` if a key collides with a key in `reserved_keys`, and
+    `MetadataValidationError` if a value is not an object with `"must_understand": false`.
+    """
     if data is None:
         return {}
-    else:
-        conflict_keys = ARRAY_METADATA_KEYS & set(data.keys())
-        if len(conflict_keys) > 0:
-            msg = (
-                "Invalid extra fields. "
-                "The following keys: "
-                f"{sorted(conflict_keys)} "
-                "are invalid because they collide with keys reserved for use by the "
-                "array metadata document."
-            )
-            raise ValueError(msg)
-        return dict(data)
+    conflict_keys = reserved_keys & set(data.keys())
+    if len(conflict_keys) > 0:
+        msg = (
+            "Invalid extra fields. "
+            "The following keys: "
+            f"{sorted(conflict_keys)} "
+            "are invalid because they collide with keys reserved for use by the "
+            f"{node_type} metadata document."
+        )
+        raise ValueError(msg)
+    allowed_extra_fields: dict[str, AllowedExtraField] = {}
+    invalid_extra_fields: list[str] = []
+    for key, val in data.items():
+        if check_allowed_extra_field(val):
+            allowed_extra_fields[key] = val
+        else:
+            invalid_extra_fields.append(key)
+    if len(invalid_extra_fields) > 0:
+        msg = (
+            f"Got Zarr V3 {node_type} metadata with the following disallowed extra "
+            f"fields: {sorted(invalid_extra_fields)}. "
+            'Extra fields are not allowed unless they are an object with a "must_understand" '
+            "key which is assigned the value `false`."
+        )
+        raise MetadataValidationError(msg)
+    return allowed_extra_fields
 
 
 # JSON type for a single dimension's rectilinear spec:
@@ -212,17 +244,6 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 ]
 
 
-def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
-    """Validate and normalize a regular chunk shape.
-
-    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
-    a sequence of bare ints (one per dimension), each of which must be >= 1.
-    """
-    result = _validate_chunk_shapes(tuple(chunk_shape))
-    # Regular grids only have bare ints — cast is safe after validation
-    return cast(tuple[int, ...], result)
-
-
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[int | Sequence[int]],
 ) -> tuple[int | tuple[int, ...], ...]:
@@ -233,23 +254,14 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int):
-            if dim_spec < 1:
-                raise ValueError(
-                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
-                )
-            result.append(dim_spec)
-        else:
-            edges = tuple(dim_spec)
-            if not edges:
-                raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            bad = [i for i, e in enumerate(edges) if e < 1]
-            if bad:
-                raise ValueError(
-                    f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
-                    f"{[edges[i] for i in bad]}"
-                )
-            result.append(edges)
+        match dim_spec:
+            case list() | tuple():
+                edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
+                if not edges:
+                    raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+                result.append(edges)
+            case _:
+                result.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(result)
 
 
@@ -264,7 +276,7 @@ class RegularChunkGridMetadata(Metadata):
     chunk_shape: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        chunk_shape_parsed = _parse_chunk_shape(self.chunk_shape)
+        chunk_shape_parsed = parse_chunk_shape(self.chunk_shape)
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @property
@@ -281,7 +293,7 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+        return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -303,12 +315,6 @@ class RectilinearChunkGridMetadata(Metadata):
     chunk_shapes: tuple[int | tuple[int, ...], ...]
 
     def __post_init__(self) -> None:
-        if not config.get("array.rectilinear_chunks"):
-            raise ValueError(
-                "Rectilinear chunk grids are experimental and disabled by default. "
-                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
-                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
-            )
         object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
 
     @property
@@ -366,22 +372,45 @@ class RectilinearChunkGridMetadata(Metadata):
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
-        parsed: list[int | tuple[int, ...]] = []
-        for dim_spec in raw_shapes:
-            if isinstance(dim_spec, int):
-                if dim_spec < 1:
-                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
-                parsed.append(tuple(expand_rle(dim_spec)))
-            else:
-                raise TypeError(
-                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
-                )
+        parsed = [
+            tuple(expand_rle(dim_spec, axis)) if isinstance(dim_spec, list) else dim_spec
+            for axis, dim_spec in enumerate(raw_shapes)
+        ]
         return cls(chunk_shapes=tuple(parsed))
 
 
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
+
+
+class RectilinearChunksDisabledError(ValueError):
+    """Rectilinear chunk grids are used while the `array.rectilinear_chunks` flag is off."""
+
+
+def _check_rectilinear_chunks_enabled() -> None:
+    """Raise unless rectilinear chunks are enabled.
+
+    The flag gates storing and reading array metadata documents that declare a
+    rectilinear chunk grid; the chunk grid metadata classes themselves are not gated.
+    """
+    if not config.get("array.rectilinear_chunks"):
+        raise RectilinearChunksDisabledError(
+            "Rectilinear chunk grids are experimental and disabled by default. "
+            "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
+            "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
+        )
+
+
+def check_storable(metadata: ArrayV3Metadata) -> None:
+    """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
+    rectilinear chunks flag. `zarr.core.metadata.io.encode_documents` names the node in
+    the error.
+
+    Every serialization of array metadata for a store calls this, before the store is
+    touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
+    consolidated metadata, `GroupMetadata.to_buffer_dict`.
+    """
+    if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
+        _check_rectilinear_chunks_enabled()
 
 
 def create_chunk_grid_metadata(
@@ -490,6 +519,9 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
+    _stored_document: ClassVar[ArrayDocument | None] = None
+    """The stored document `from_dict` read this metadata from, if it had to repair it
+    (set on the instance by `mark_repaired`): the store may still hold it."""
 
     def __init__(
         self,
@@ -518,7 +550,9 @@ class ArrayV3Metadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
-        extra_fields_parsed = parse_extra_fields(extra_fields)
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=ARRAY_METADATA_KEYS, node_type="array"
+        )
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type,
@@ -626,13 +660,28 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        check_storable(self)
         indent = config.get("json_indent")
         return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # make a copy because we are modifying the dict
-        _data = data.copy()
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
+        """Read a stored `zarr.json` array document. An invalid document that
+        `zarr.core.metadata.repair` can read is read as repaired; a reading the user
+        must act on warns, and a document the rectilinear chunks flag refuses raises,
+        naming the array at `path`."""
+        # The flag gates what the document declares, so it is checked before repairs.
+        chunk_grid = data.get("chunk_grid")
+        if isinstance(chunk_grid, Mapping) and chunk_grid.get("name") == "rectilinear":
+            try:
+                _check_rectilinear_chunks_enabled()
+            except ValueError as e:
+                if path is not None:
+                    e.add_note(f"Array {path!r}: nothing was read.")
+                raise
+        repaired, readings = repair_array_document(data, 3)
+        # a new dict, because we are modifying it
+        _data = dict(repaired)
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -652,27 +701,15 @@ class ArrayV3Metadata(Metadata):
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # check if there are extra keys
-        extra_keys = set(_data.keys()) - ARRAY_METADATA_KEYS
-        allowed_extra_fields: dict[str, AllowedExtraField] = {}
-        invalid_extra_fields = {}
-        for key in extra_keys:
-            val = _data[key]
-            if check_allowed_extra_field(val):
-                allowed_extra_fields[key] = val
-            else:
-                invalid_extra_fields[key] = val
-        if len(invalid_extra_fields) > 0:
-            msg = (
-                "Got a Zarr V3 metadata document with the following disallowed extra fields:"
-                f"{sorted(invalid_extra_fields.keys())}."
-                'Extra fields are not allowed unless they are a dict with a "must_understand" key'
-                "which is assigned the value `False`."
-            )
-            raise MetadataValidationError(msg)
+        allowed_extra_fields = parse_extra_fields(
+            {k: v for k, v in _data.items() if k not in ARRAY_METADATA_KEYS},
+            reserved_keys=ARRAY_METADATA_KEYS,
+            node_type="array",
+        )
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
-        return cls(
+        metadata = cls(
             shape=_data_typed["shape"],
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
@@ -686,6 +723,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
+        return mark_repaired(metadata, data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()

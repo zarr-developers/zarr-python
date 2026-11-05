@@ -80,18 +80,51 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 ### Creating a development environment
 
-To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
+The root `Justfile` defines development and CI commands. [just](https://just.systems/)
+runs these commands, while [Hatch](https://hatch.pypa.io/latest/index.html) manages
+the Python environments declared in `pyproject.toml`. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) first, then the two task
+tools. `uv tool install` puts them in their own environments, which a plain `pip install`
+cannot do on a Python that marks itself externally managed (Debian, Ubuntu, Homebrew):
 
 ```bash
-pip install hatch
-hatch env show  # list all available environments
+uv tool install hatch==1.16.5
+uv tool install rust-just==1.58.0   # or any option from https://just.systems/man/en/packages.html
+just                 # list available commands
+just envs            # list Python environments
+just setup           # create the default test environment
+just test
 ```
 
-To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
+Test recipes default to `test.py3.12-optional`. Set `HATCH_ENV` to select a different
+interpreter or dependency set, just as CI does. `just gpu` reads `GPU_HATCH_ENV`
+instead, so an exported `HATCH_ENV` cannot silently send GPU tests to an
+environment built without the `gpu` feature, and `just doctest` always runs in the
+`doctest` environment. On Windows, run these commands in
+Git Bash.
 
 ```bash
-hatch env run --env test.py3.12-optional run
+HATCH_ENV=test.py3.13-minimal just test
+HATCH_ENV=min_deps just coverage
+HATCH_ENV=upstream just coverage
+GPU_HATCH_ENV=gputest.py3.12 just gpu
+just test tests/test_array.py -k 'resize and not async'
 ```
+
+Arguments after the recipe name are forwarded to the underlying tool. Use
+`just --show test` to inspect a command. Package-specific commands live in the
+`justfile` inside each package directory. The root recipes delegate to these files,
+so you can also run package commands from the repository root:
+
+```bash
+just zarr-metadata              # list this package's recipes
+just zarr-metadata test
+just zarr-indexing test-tensorstore
+just zarr-http-server docs-check
+```
+
+The package justfile sets the working directory and defines the command and its
+environment. Root recipes forward arguments without duplicating those definitions.
 
 ### Creating a branch
 
@@ -125,10 +158,10 @@ Again, any conflicts need to be resolved before submitting a pull request.
 
 ### Running the test suite
 
-Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
+Zarr includes a suite of unit tests. The simplest way to run the unit tests is to invoke:
 
 ```bash
-hatch env run --env test.py3.12-optional run
+just test
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
@@ -137,46 +170,36 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
-
-```bash
-uv tool install prek
-```
-
-or:
-
-```bash
-pip install prek
-```
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager compatible with `.pre-commit-config.yaml`. The recipes pin the prek version: `just lint` and `just hooks` run it through `uvx`, and `just hooks-install` installs it as a persistent `uv tool` so the git hook can find it on later commits.
 
 The hooks can be installed locally by running:
 
 ```bash
-prek install
+just hooks-install
 ```
 
 This will run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-prek run --all-files
+just lint
 ```
 
 You can also run hooks only for files in a specific directory:
 
 ```bash
-prek run --directory src/zarr
+just hooks run --directory src/zarr
 ```
 
 Or run hooks for files changed in the last commit:
 
 ```bash
-prek run --last-commit
+just hooks run --last-commit
 ```
 
 To list all available hooks:
 
 ```bash
-prek list
+just hooks list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -188,7 +211,7 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage
+just coverage
 ```
 
 will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
@@ -196,7 +219,7 @@ will automatically run the test suite with coverage and produce an XML coverage 
 You can also generate an HTML coverage report by running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage-html
+just coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -210,16 +233,38 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-hatch --env docs run build
+just docs-build
 ```
+
+`just docs-check` also runs the documentation source checks used in CI.
 
 The resulting built documentation will be available in the `site` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
+`just docs-serve` serves a continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
 
 ```bash
-hatch --env docs run serve
+just docs-serve
 ```
+
+#### Sub-package documentation sites
+
+Each sub-package under `packages/` ships its own Material for MkDocs site, built from within the package directory:
+
+```bash
+cd packages/zarr-metadata
+uv run --group docs mkdocs build --strict
+```
+
+Configuration shared by all package sites (theme, plugins, markdown extensions) lives in `packages/mkdocs-base.yml`, symlinked into each package directory; each package's `mkdocs.yml` pulls it in via `INHERIT` and defines only the site identity (name, description, repo and site URLs) and nav. `INHERIT` merges mappings but replaces lists, so a package that sets `theme.features` or `markdown_extensions` silently drops every shared entry; add extensions and features to the base instead. The header source widget's version fact is overridden by `packages/source-version.js`, symlinked into each package's `docs/_static/`, which replaces the monorepo's latest release with the latest tag matching the package's `zarr_<name>-v` prefix (both derived from `repo_url` at runtime, so the file needs no per-package edits). On Windows, enable symlinks in git (`git config core.symlinks true`, with Developer Mode on) before cloning, or local builds will ship a file containing the link target instead of the script.
+
+To add a site for a new sub-package, copy `mkdocs.yml`, the `docs/` folder, `.readthedocs.yaml`, and the `docs` dependency group in `pyproject.toml` from an existing package, then adjust the site name, description, URLs, and nav. Recreate the `mkdocs-base.yml` and `docs/_static/source-version.js` symlinks rather than copying the files, and copy the sdist `exclude` and `force-include` entries from an existing package's `pyproject.toml`, which ship the linked files in place of the links. Add `packages/mkdocs-base.yml` and `packages/source-version.js` to the package workflow's `paths` filters and to the `git diff` in its `.readthedocs.yaml`, so changes to the shared files build the site.
+
+Each site is hosted as its own Read the Docs project. To set one up for a new sub-package:
+
+1. Create a new project on [readthedocs.org](https://app.readthedocs.org) importing the `zarr-python` repository, named after the package (e.g. `zarr-metadata`).
+2. In the project's admin settings, set the configuration file path to `packages/<name>/.readthedocs.yaml`. That file also cancels pull request builds that don't touch the package.
+3. Add an automation rule matching the package's release tags (custom match `^zarr_<name>-v`, note the underscore) with the action "Activate version". Automation rules only apply to versions detected after the rule is created, so activate any earlier release tags manually from the versions list.
+4. When activating a version, edit its slug to the bare version number (`0.4.0`, not `v0.4.0`). RTD keeps a version record for every tag in the monorepo, including inactive ones not shown in the dashboard's versions list, and all of zarr-python's own release tags are `v`-prefixed — so a `v`-prefixed slug collides with zarr-python's release history ("A version with that slug already exists"), while bare version numbers cannot collide.
 
 #### Adding executable code blocks in the documentation
 
@@ -320,10 +365,10 @@ Sometimes, you may want the documentation to build quicker. You can disable code
 
 ### Changelog
 
-zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `towncrier create` with your development environment, which will prompt you for the issue number, change type, and the news text:
+zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `just changelog`, which will prompt you for the issue number, change type, and the news text:
 
 ```bash
-towncrier create
+just changelog
 ```
 
 Alternatively, you can manually create the files in the `changes` directory using the naming convention `{issue-number}.{change-type}.md`.
@@ -410,6 +455,52 @@ The Zarr library is an implementation of a file format standard defined external
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in a new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
+### Deprecation policy
+
+Our versioning policy (above) commits us to minimizing the effort users spend upgrading. A deprecation cycle is the main tool we use to honor that commitment. Rather than removing or changing public behavior abruptly, we first ship a release that keeps the old behavior working while warning that it is going away, and only remove it in a later release. This section defines when a deprecation cycle is required, how to decide whether a removal is worth it, and the concrete steps a deprecation must follow.
+
+This policy governs the user-facing Python API of `zarr-python`: importable names, function and method signatures, the exceptions raised, and other observable runtime behavior. It does not govern the Zarr data format, whose compatibility is described under [Data format compatibility](#data-format-compatibility) above, nor the `zarr.experimental` namespace, which is governed by the [Experimental API policy](#experimental-api-policy) below. Private API (names prefixed with `_`, and anything not documented as public) may change at any time without a deprecation cycle.
+
+Any backwards-incompatible change to public API, including removing a name, changing a signature in a non-additive way, or changing observable behavior, requires a deprecation cycle unless it qualifies for one of the [exceptions](#exceptions) listed below.
+
+#### Deciding whether to deprecate
+
+A deprecation cycle has a real cost. Every user of the affected API must eventually migrate and we carry the deprecated code and its warning until removal. Before starting one, weigh the costs and benefits and record your reasoning in the pull request, so that proposals are evaluated on a shared scale. NumPy's [backwards compatibility policy (NEP 23)](https://numpy.org/neps/nep-0023-backwards-compatibility.html#general-principles) is a good guide to the trade-offs involved. The factors below follow the same principles.
+
+- **How many users are affected.** `zarr-python` is widely used, including by downstream libraries, so assume that any public API is used by someone unless there is concrete evidence otherwise. Most users do not follow our issue tracker and discover a removal only when their code breaks after upgrading, so absence of reported usage is not evidence of absence of usage. Base the estimate on usage data where possible, using code search across downstream projects, documented usage, or download statistics.
+- **The cost of migration to users.** Is there a drop-in replacement? Can the migration be performed mechanically, or does it require users to redesign their code? A change with a clear, easy migration path is much cheaper to justify than one without.
+- **The cost of keeping the API.** What do we pay by not removing it? Is there maintenance burden, bug surface, duplicated logic, or a worse design that we can't improve while the old API exists? A high carrying cost strengthens the case for removal.
+- **Who benefits.** Benefits can include improved functionality, usability, and performance for users, as well as lower maintenance cost and better future extensibility for developers. A change that gives users something they want is a stronger case than one that benefits only maintainers, since users pay the migration cost either way.
+- **Whether the goal can be met without removal.** Often a refactor, an alias, or an additive change achieves the same end without breaking anyone. Prefer those. As mentioned above, removing public API is never free.
+
+If, after weighing these factors, a removal is not clearly worthwhile, prefer to keep the API. A deprecation warning is a commitment to change or remove. If you only want to steer users away from an API without removing it, say so in its documentation rather than emitting a warning. Conversely, do not leave a decision to remove an API indefinitely deferred. A vague intention to "eventually" break something is itself a form of technical debt. Either commit to the deprecation and begin the cycle, or decide to keep the API and design around it.
+
+#### How to deprecate
+
+Once a deprecation is decided, it must follow these steps so that users get a consistent, actionable signal:
+
+1. **Emit a warning at runtime.** Raise `zarr.errors.ZarrDeprecationWarning` for an API that will be *removed*. Use `zarr.errors.ZarrFutureWarning` instead when behavior will *change* rather than disappear (for example, a default value that will change). The distinction is about who needs to see the warning. Python hides `DeprecationWarning` by default except in `__main__` and under test runners, so a removal warning reaches the authors of the code that calls the deprecated API, whereas `FutureWarning` is shown to everyone, which a behavior change needs because it alters results without any change to the user's code. The [`typing_extensions.deprecated`](https://typing-extensions.readthedocs.io/en/latest/#deprecated) decorator is the preferred way to deprecate whole functions, methods, and classes. When calling `warnings.warn` directly, set `stacklevel` so the warning points at the caller's code rather than zarr internals.
+2. **Write an actionable message.** The warning message must state the planned removal or change (a specific version if known, otherwise "a future release") and the migration path (i.e., what the user should do instead). A deprecation warning with no replacement guidance is incomplete.
+3. **Document it.** Add a "Deprecated" admonition to the docstring, stating the same removal target and migration path as the warning, so the deprecation appears in the rendered API reference, and update any affected user-guide prose.
+4. **Add a changelog entry.** Add a `removal` changelog fragment in `changes/` (for example, `changes/1234.removal.md`) so the deprecation is announced under "Deprecations and Removals" in the release notes. When the API is finally removed, add a second `removal` fragment for that release.
+
+When an API is being replaced rather than simply dropped, deprecate the old name and introduce its replacement in a single step, rather than repeatedly adjusting the same signature across releases. Users should have to migrate only once.
+
+#### How long a deprecation lasts
+
+A deprecated API must remain available, emitting its warning, for **at least 6 months and at least one minor release** before it is removed. The same minimum applies to a behavior change announced with `ZarrFutureWarning`. The old behavior stays the default, with the warning, for at least that long before the change takes effect. These are minimums rather than specific targets. For widely-used API, prefer a longer cycle, and communicate the upcoming removal beyond the warning itself (for example, in release notes or a migration guide).
+
+The removal itself is a backwards-incompatible change, and is classified under our [versioning policy](#versioning) by the upgrade effort it imposes. Use a `major` release for the removal of widely-used API versus a `minor` release when the impact is genuinely small. This differs from [Semantic Versioning](https://semver.org/), under which any removal would require a `major` release. Again, the [versioning policy](#versioning) above explains why. The deprecation period, not the release type, is the guarantee users rely on. A removal is only permitted once the minimum period has elapsed, regardless of which release it lands in.
+
+#### Exceptions
+
+A full deprecation cycle may be shortened or skipped in some cases. When it is, explain why in the pull request and the changelog entry:
+
+- **Security fixes and data-corruption bugs**, where continuing the old behavior actively harms users.
+- **Changes forced by the Zarr format specification**, which are governed by [Data format compatibility](#data-format-compatibility) and may move faster during a format transition.
+- **Recently introduced API**, which has had little time to be adopted. API that has not yet appeared in a release can be changed freely. API that appeared in a recent release may be changed in a `minor` release with a shortened cycle, as the [versioning policy](#versioning) allows, when the number of affected users is small because the API is new.
+- **Experimental API**, which is exempt and governed by the [Experimental API policy](#experimental-api-policy). This includes the deprecated re-export left in `zarr.experimental` when a feature is promoted to stable, which that policy keeps for one minor release.
+
 ## Experimental API policy
 
 The `zarr.experimental` namespace contains features that are under active development and may change without notice. When contributing to or depending on experimental features, please keep the following in mind:
@@ -437,6 +528,18 @@ Features in `zarr.experimental` carry no stability guarantees. They may be chang
 Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
 performance benchmarks as part of our test suite. The benchmarks are found in `tests/benchmarks`.
 By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
-a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+a benchmark with timing measurements, run `just benchmark`. Pass pytest arguments
+to select benchmarks, for example `just benchmark -k test_morton_order`.
 
 The benchmarks are run as part of the continuous integration suite through [codspeed](https://app.codspeed.io/zarr-developers/zarr-python).
+
+## Building distributions and maintaining dependencies
+
+`just just-check` verifies that the root `Justfile` and each package `justfile` are
+formatted the way CI expects; `just --fmt` rewrites them in place if it complains.
+
+Run `just build` to produce a source distribution and wheel in `dist/`.
+Use `just lock-check` to check the dependency lockfile, or `just lock` to update it.
+`just typecheck` runs the type checker independently of the other lint hooks.
+Preview release notes with `just changelog-draft`; use `just check-changelogs`
+to validate fragment names, optionally passing a package's `changes/` directory.

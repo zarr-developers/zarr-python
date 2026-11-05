@@ -17,7 +17,7 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
 )
 from zarr.core.dtype.npy.common import (
     ComplexLike,
@@ -106,11 +106,7 @@ class BaseComplex[
         bool
             True if the input is a valid JSON representation, False otherwise.
         """
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] in cls._zarr_v2_names
-            and data["object_codec_id"] is None
-        )
+        return check_dtype_spec_no_object_codec_v2(data) and data["name"] in cls._zarr_v2_names
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[str]:

@@ -35,7 +35,7 @@ runner = typer_testing.CliRunner()
 def test_migrate_array(local_store: LocalStore) -> None:
     shape = (10, 10)
     chunks = (10, 10)
-    dtype = "uint16"
+    dtype = "<u2"
     compressors = numcodecs.Blosc(cname="zstd", clevel=3, shuffle=1)
     fill_value = 2
     attributes = cast(dict[str, JSON], {"baz": 42, "qux": [1, 4, 7, 12]})
@@ -59,7 +59,7 @@ def test_migrate_array(local_store: LocalStore) -> None:
 
     expected_metadata = ArrayV3Metadata(
         shape=shape,
-        data_type=UInt16(endianness="little"),
+        data_type=UInt16(),
         chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
         chunk_key_encoding=V2ChunkKeyEncoding(separator="."),
         fill_value=fill_value,
@@ -292,7 +292,7 @@ def test_migrate_compressor(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=compressor_v2,
         zarr_format=2,
         fill_value=0,
@@ -330,7 +330,7 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=numcodecs.LZMA.from_config(lzma_settings),
         zarr_format=2,
         fill_value=0,
@@ -364,7 +364,7 @@ def test_migrate_filter(local_store: LocalStore) -> None:
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=None,
         filters=filter_v2,
         zarr_format=2,
@@ -398,7 +398,7 @@ def test_migrate_C_vs_F_order(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=None,
         zarr_format=2,
         fill_value=0,
@@ -421,9 +421,10 @@ def test_migrate_C_vs_F_order(
     ("dtype", "expected_data_type", "expected_codecs"),
     [
         ("uint8", UInt8(), (BytesCodec(endian=None),)),
-        ("uint16", UInt16(), (BytesCodec(endian="little"),)),
+        ("<u2", UInt16(), (BytesCodec(endian="little"),)),
+        (">u2", UInt16(), (BytesCodec(endian="big"),)),
     ],
-    ids=["single_byte", "multi_byte"],
+    ids=["single_byte", "little_endian", "big_endian"],
 )
 def test_migrate_endian(
     local_store: LocalStore,

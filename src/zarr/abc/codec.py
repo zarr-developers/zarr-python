@@ -109,9 +109,9 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
 
     # Whether this codec's encoded output is a fixed size given a fixed input
     # size. Defaults to False (the conservative answer): a codec that does not
-    # explicitly opt in is treated as variable-size, which only disables
-    # size-dependent fast paths (e.g. the sharding bulk-decode), never
-    # correctness. Codecs with genuinely fixed-size output (BytesCodec,
+    # explicitly opt in is treated as variable-size, which disables
+    # size-dependent fast paths (e.g. the sharding bulk-decode) and makes it
+    # ineligible as a sharding index codec. Codecs with genuinely fixed-size output (BytesCodec,
     # TransposeCodec, ...) override this with True. The default also keeps
     # third-party / variable-length codecs (VLenUTF8, numcodecs wrappers) that
     # never set the attribute from raising AttributeError where it is read.

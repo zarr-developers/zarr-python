@@ -1,0 +1,934 @@
+"""Every extension the package defines, read against its definition.
+
+Each codec, data type, chunk grid and chunk key encoding is a definition.
+Its configuration is a TypedDict, and its rules are a function over that
+configuration.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import pickle
+from typing import Any
+
+import pytest
+
+from zarr_metadata import ValidationProblem
+from zarr_metadata._json import value_at
+from zarr_metadata.definition import (
+    AcceptedDeclaration,
+    Definition,
+    RefusedDeclaration,
+    canonical_of,
+    configuration_of,
+    fill_value_problems,
+    resolve,
+)
+from zarr_metadata.definition._definition import canonicalize
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
+from zarr_metadata.v3.definition import (
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
+    ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
+    CodecDefinition,
+    DataTypeDefinition,
+    GroupExtraFieldDefinition,
+    ZarrV3Context,
+    ZarrV3Kind,
+)
+
+KINDS: dict[str, type[ZarrV3Kind]] = {
+    "codecs": CodecDefinition,
+    "data_type": DataTypeDefinition,
+    "chunk_grid": ChunkGridDefinition,
+    "chunk_key_encoding": ChunkKeyEncodingDefinition,
+    "group_extra_field": GroupExtraFieldDefinition,
+}
+
+# Declarations that read without problems, per extension: at least one per definition in
+# the widest scope the package provides.
+EXAMPLES: dict[str, tuple[object, ...]] = {
+    "codecs:blosc": (
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "zstd",
+                "clevel": 5,
+                "shuffle": "shuffle",
+                "typesize": 4,
+                "blocksize": 0,
+            },
+        },
+    ),
+    "codecs:bytes": ("bytes", {"name": "bytes", "configuration": {"endian": "little"}}),
+    "codecs:cast_value": (
+        {"name": "cast_value", "configuration": {"data_type": "int8"}},
+        {
+            "name": "cast_value",
+            "configuration": {"data_type": "int8", "scalar_map": {"encode": [["NaN", 0]]}},
+        },
+    ),
+    "codecs:crc32c": ("crc32c", {"name": "crc32c"}),
+    "codecs:gzip": ({"name": "gzip", "configuration": {"level": 5}},),
+    "codecs:scale_offset": (
+        "scale_offset",
+        {"name": "scale_offset", "configuration": {"offset": 2, "scale": 0.5}},
+    ),
+    "codecs:sharding_indexed": (
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": [4],
+                "codecs": ["bytes"],
+                "index_codecs": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    "crc32c",
+                ],
+                "index_location": "start",
+            },
+        },
+    ),
+    "codecs:vlen-bytes": ("vlen-bytes", {"name": "vlen-bytes"}),
+    "codecs:vlen-utf8": ("vlen-utf8", {"name": "vlen-utf8"}),
+    "codecs:transpose": ({"name": "transpose", "configuration": {"order": [2, 1, 0]}},),
+    "codecs:zstd": ({"name": "zstd", "configuration": {"level": 3, "checksum": False}},),
+    "chunk_grid:regular": ({"name": "regular", "configuration": {"chunk_shape": [4, 4]}},),
+    "chunk_grid:rectilinear": (
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [[32, 32, 32]]},
+        },
+        {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[[32, 3]]]}},
+    ),
+    "chunk_key_encoding:default": (
+        "default",
+        {"name": "default", "configuration": {"separator": "."}},
+    ),
+    "chunk_key_encoding:v2": ("v2", {"name": "v2", "configuration": {"separator": "/"}}),
+    "data_type:numpy.datetime64": (
+        {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
+    ),
+    "data_type:numpy.timedelta64": (
+        {"name": "numpy.timedelta64", "configuration": {"unit": "ms", "scale_factor": 10}},
+    ),
+    "data_type:bool": ("bool",),
+    "data_type:int8": ("int8",),
+    "data_type:int16": ("int16",),
+    "data_type:int32": ("int32",),
+    "data_type:int64": ("int64",),
+    "data_type:uint8": ("uint8",),
+    "data_type:uint16": ("uint16",),
+    "data_type:uint32": ("uint32",),
+    "data_type:uint64": ("uint64",),
+    "data_type:float16": ("float16",),
+    "data_type:float32": ("float32",),
+    "data_type:float64": ("float64",),
+    "data_type:complex64": ("complex64",),
+    "data_type:complex128": ("complex128",),
+    "data_type:bytes": ("bytes",),
+    "data_type:struct": (
+        {
+            "name": "struct",
+            "configuration": {
+                "fields": [
+                    {"name": "a", "data_type": "uint8"},
+                    {
+                        "name": "b",
+                        "data_type": {
+                            "name": "numpy.datetime64",
+                            "configuration": {"unit": "s", "scale_factor": 1},
+                        },
+                    },
+                ]
+            },
+        },
+    ),
+    "data_type:string": ("string",),
+    "data_type:fixed_length_utf32": (
+        {"name": "fixed_length_utf32", "configuration": {"length_bytes": 48}},
+    ),
+    "data_type:null_terminated_bytes": (
+        {"name": "null_terminated_bytes", "configuration": {"length_bytes": 1}},
+    ),
+    "data_type:variable_length_bytes": ("variable_length_bytes",),
+    "data_type:raw_bytes": ({"name": "raw_bytes", "configuration": {"length_bytes": 1}},),
+    "data_type:r*": ("r16", "r008"),
+    "group_extra_field:consolidated_metadata": (
+        {"consolidated_metadata": {"kind": "inline", "must_understand": False, "metadata": {}}},
+        {
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": {"attributes": {"x": float("nan")}}},
+            }
+        },
+    ),
+}
+
+CASES = [
+    (key, declaration) for key, declarations in EXAMPLES.items() for declaration in declarations
+]
+
+
+def _read(key: str, declaration: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
+    """The type of the result of reading `declaration` in the scope (`AcceptedDeclaration`, `UnclaimedDeclaration` or `RefusedDeclaration`), and the location of each problem."""
+    resolved, problems = resolve(declaration, KINDS[key.split(":")[0]], ZARR_PYTHON_CONTEXT)
+    return type(resolved), [(found.loc, found.kind) for found in problems]
+
+
+def _problems(key: str, declaration: object) -> list[tuple[tuple[str | int, ...], str]]:
+    return _read(key, declaration)[1]
+
+
+def test_a_scope_s_definitions_pickle() -> None:
+    # This lets a scope be sent to another process and rebuilt there.
+    data_types = pickle.loads(pickle.dumps(tuple(CORE_AND_EXTENSIONS_CONTEXT.data_types.values())))
+    context = ZarrV3Context(data_types=data_types)
+    resolved, _ = resolve("complex64", DataTypeDefinition, context)
+    assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
+        ((1,), "invalid_value")
+    ]
+
+
+def _every(context: ZarrV3Context) -> set[Definition[Any]]:
+    """Every definition in `context`, from each of its slots."""
+    return {
+        definition
+        for kind in ZarrV3Context.kinds.values()
+        for definition in context.definitions_of(kind).values()
+    }
+
+
+def test_every_definition_in_scope_has_an_example() -> None:
+    names = {definition.name for definition in _every(ZARR_PYTHON_CONTEXT)}
+    assert names == {key.split(":")[1] for key in EXAMPLES}
+    assert _every(CORE_CONTEXT) < _every(CORE_AND_EXTENSIONS_CONTEXT) < _every(ZARR_PYTHON_CONTEXT)
+
+
+@pytest.mark.parametrize(
+    ("key", "declaration"), CASES, ids=[f"{k}:{i}" for i, (k, _) in enumerate(CASES)]
+)
+def test_every_example_reads_and_its_simplest_spelling_is_stable(
+    key: str, declaration: object
+) -> None:
+    # The declaration is an AcceptedDeclaration with no problems. Its simplest spelling
+    # reads the same way, and is its own simplest spelling.
+    assert _read(key, declaration) == (AcceptedDeclaration, [])
+    kind = KINDS[key.split(":")[0]]
+    simplest, problems = canonicalize(declaration, kind, ZARR_PYTHON_CONTEXT)
+    assert problems == ()
+    assert simplest is not None
+    assert canonicalize(simplest, kind, ZARR_PYTHON_CONTEXT) == (simplest, ())
+    # A declaration that was already read gives the same spelling as its JSON, without reading it again.
+    assert canonical_of(*resolve(declaration, kind, ZARR_PYTHON_CONTEXT)) == simplest
+
+
+@pytest.mark.parametrize(
+    ("declaration", "simplest"),
+    [
+        # `noshuffle` ignores `typesize`, so the simplest spelling drops it.
+        (
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": 1,
+                    "shuffle": "noshuffle",
+                    "typesize": 4,
+                    "blocksize": 0,
+                },
+            },
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": 1,
+                    "shuffle": "noshuffle",
+                    "blocksize": 0,
+                },
+            },
+        ),
+        # With nothing configured, the simplest spelling is an object with the
+        # name alone, which every reader accepts, and no `must_understand: true`.
+        ({"name": "crc32c", "configuration": {}, "must_understand": True}, {"name": "crc32c"}),
+        # But a data type with nothing configured is written as its bare name,
+        # as core data types are written.
+        ({"name": "int8", "configuration": {}, "must_understand": True}, "int8"),
+        # Each nested declaration is written in its own simplest spelling.
+        (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2],
+                    "codecs": [{"name": "bytes"}],
+                    "index_codecs": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "crc32c"},
+                    ],
+                },
+            },
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (2,),
+                    "codecs": ({"name": "bytes"},),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "crc32c"},
+                    ),
+                },
+            },
+        ),
+        (
+            {
+                "name": "cast_value",
+                "configuration": {"data_type": {"name": "int8", "configuration": {}}},
+            },
+            {"name": "cast_value", "configuration": {"data_type": "int8"}},
+        ),
+        # A dimension's runs of equal sizes are run-length encoded.
+        (
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [[32, 32, 32, 16], 8]},
+            },
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": (((32, 3), 16), 8)},
+            },
+        ),
+        # A member set to its spec default is left out: a key encoding's
+        # separator, a shard's index location, and zstd's checksum.
+        ({"name": "default", "configuration": {"separator": "/"}}, {"name": "default"}),
+        ({"name": "v2", "configuration": {"separator": "."}}, {"name": "v2"}),
+        (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2],
+                    "codecs": ["bytes"],
+                    "index_codecs": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        "crc32c",
+                    ],
+                    "index_location": "end",
+                },
+            },
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (2,),
+                    "codecs": ({"name": "bytes"},),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "crc32c"},
+                    ),
+                },
+            },
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            {"name": "zstd", "configuration": {"level": 3}},
+        ),
+    ],
+    ids=[
+        "blosc-noshuffle",
+        "name-alone",
+        "data-type-bare-name",
+        "sharding-nested",
+        "cast-value-target",
+        "rectilinear-rle",
+        "default-separator",
+        "v2-separator",
+        "sharding-index-location",
+        "zstd-checksum",
+    ],
+)
+def test_the_simplest_spelling(declaration: dict[str, Any], simplest: object) -> None:
+    kinds = {
+        "rectilinear": ChunkGridDefinition,
+        "int8": DataTypeDefinition,
+        "default": ChunkKeyEncodingDefinition,
+        "v2": ChunkKeyEncodingDefinition,
+    }
+    kind = kinds.get(declaration["name"], CodecDefinition)
+    assert canonicalize(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT) == (simplest, ())
+    assert canonical_of(*resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)) == simplest
+
+
+@pytest.mark.parametrize(
+    ("declaration", "bits", "simplest"),
+    [
+        ("r16", 16, "r16"),
+        ({"name": "r8"}, 8, "r8"),
+        ({"name": "r24", "configuration": {}}, 24, "r24"),
+        # The size is a number, and its simplest spelling is in decimal.
+        ("r008", 8, "r8"),
+    ],
+    ids=["bare", "object", "empty-configuration", "leading-zeros"],
+)
+def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
+    declaration: object, bits: int, simplest: str
+) -> None:
+    resolved, problems = resolve(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert problems == ()
+    assert isinstance(resolved, AcceptedDeclaration)
+    assert resolved.definition is RAW_BYTES_DATA_TYPE
+    assert resolved.json == declaration
+    assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
+    assert canonicalize(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT) == (
+        simplest,
+        (),
+    )
+
+
+def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
+    # This definition accepts any size. Filed under `r*` in place of the
+    # package's own, it reads every raw-bits name. Filed back, the package's
+    # definition reads them again.
+    mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={"data_types": {**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}}
+    )
+    resolved, problems = resolve("r12", DataTypeDefinition, context)
+    assert problems == ()
+    assert isinstance(resolved, AcceptedDeclaration)
+    assert resolved.definition is mine
+    # The package's own definition does not accept 12 bits, and refuses them.
+    again, _ = resolve(
+        "r12",
+        DataTypeDefinition,
+        context.copy(update={"data_types": {**context.data_types, "r*": RAW_BYTES_DATA_TYPE}}),
+    )
+    assert isinstance(again, RefusedDeclaration)
+    assert again.definition is RAW_BYTES_DATA_TYPE
+
+
+@pytest.mark.parametrize(
+    ("declaration", "at"),
+    [("r*", ()), ({"name": "r*", "configuration": {"bits": 16}}, ("name",))],
+    ids=["bare", "object"],
+)
+def test_error_r_star_is_notation_and_no_name(declaration: object, at: tuple[str, ...]) -> None:
+    # `r*` is how the specification's table writes raw bits, not a name a
+    # document can use: `*` is not allowed in an extension name.
+    resolved, problems = resolve(declaration, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert type(resolved) is RefusedDeclaration
+    assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
+
+
+@pytest.mark.parametrize(
+    ("declaration", "kind", "simplest"),
+    [
+        ({"name": "zfpy"}, CodecDefinition, {"name": "zfpy"}),
+        # Only its own definition can decide its simplest form, so its
+        # configuration is kept as written. Its envelope follows its kind.
+        (
+            {"name": "zfpy", "configuration": {"level": [1]}},
+            CodecDefinition,
+            {"name": "zfpy", "configuration": {"level": (1,)}},
+        ),
+        ("zfpy", CodecDefinition, {"name": "zfpy"}),
+        (
+            {"name": "zfpy", "configuration": {}, "must_understand": True},
+            CodecDefinition,
+            {"name": "zfpy"},
+        ),
+        ({"name": "acme.decimal"}, DataTypeDefinition, "acme.decimal"),
+    ],
+    ids=["object", "configured", "bare-codec", "spelled-out", "data-type"],
+)
+def test_an_unclaimed_declaration_keeps_its_configuration_in_its_kind_s_envelope(
+    declaration: object, kind: type[Definition[Any]], simplest: object
+) -> None:
+    assert canonicalize(declaration, kind, CORE_CONTEXT) == (simplest, ())
+
+
+def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object]:
+    configuration = {"chunk_shape": [2], "codecs": codecs, "index_codecs": index_codecs}
+    return {"name": "sharding_indexed", "configuration": configuration}
+
+
+@pytest.mark.parametrize(
+    ("declaration", "kind", "found"),
+    [
+        (
+            {"name": "gzip", "configuration": {"level": 12}},
+            CodecDefinition,
+            [(("configuration", "level"), "invalid_value")],
+        ),
+        (
+            {"name": "bytes", "configuration": {"endain": "big"}},
+            CodecDefinition,
+            [(("configuration", "endain"), "unknown_key")],
+        ),
+        (
+            {
+                "name": "struct",
+                "configuration": {"fields": [{"name": "a", "data_type": "int8", "x": 1}]},
+            },
+            DataTypeDefinition,
+            [(("configuration", "fields", 0, "x"), "unknown_key")],
+        ),
+        (
+            {"name": "crc32c", "must_understand": False},
+            CodecDefinition,
+            [(("must_understand",), "invalid_value")],
+        ),
+        (
+            {"name": "zfpy", "configuration": {}, "extra": 1},
+            CodecDefinition,
+            [(("extra",), "unknown_key")],
+        ),
+        (None, CodecDefinition, [((), "invalid_type")]),
+        (
+            _shard(["bytes", {"name": "gzip", "configuration": {"level": 12}}], ["bytes"]),
+            CodecDefinition,
+            [(("configuration", "codecs", 1, "configuration", "level"), "invalid_value")],
+        ),
+        (
+            _shard(["bytes"], ["bytes", {"name": "gzip", "configuration": {"level": 1}}]),
+            CodecDefinition,
+            [(("configuration", "index_codecs", 1), "invalid_value")],
+        ),
+    ],
+    ids=[
+        "refused-value",
+        "unknown-key",
+        "unknown-key-nested",
+        "must-understand-false",
+        "stray",
+        "null",
+        "holding-a-refused-declaration",
+        "a-codec-of-dynamic-size-where-one-of-static-size-goes",
+    ],
+)
+def test_error_a_declaration_with_a_problem_has_no_simplest_spelling(
+    declaration: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
+) -> None:
+    # What the author wrote is kept. A simpler spelling would drop the
+    # unknown key, the stray member or the `must_understand`, or would
+    # write a value that is not valid. A declaration that was already read,
+    # together with its problems, has no simplest spelling either.
+    simplest, problems = canonicalize(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    assert simplest is None
+    assert [(problem.loc, problem.kind) for problem in problems] == found
+    assert canonical_of(*resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)) is None
+
+
+def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:
+    # The output of `canonical` is checked again. A level the rules refuse
+    # is a bug in the definition, not in the declaration it was asked about.
+    lying = dataclasses.replace(
+        GZIP_CODEC, name="acme.lying", canonical=lambda configuration: {"level": -7}
+    )
+    with pytest.raises(ValueError, match="'acme.lying': its canonical gave"):
+        canonicalize(
+            {"name": "acme.lying", "configuration": {"level": 1}},
+            CodecDefinition,
+            CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[lying])),
+        )
+
+
+def _one(key: str, configuration: object) -> list[tuple[tuple[str | int, ...], str]]:
+    return _problems(key, {"name": key.split(":")[1], "configuration": configuration})
+
+
+BLOSC = {"cname": "lz4", "clevel": 5, "shuffle": "shuffle", "typesize": 4, "blocksize": 0}
+
+
+def test_error_blosc_clevel_is_out_of_range() -> None:
+    assert _one("codecs:blosc", {**BLOSC, "clevel": 10}) == [
+        (("configuration", "clevel"), "invalid_value")
+    ]
+
+
+def test_error_blosc_blocksize_is_negative() -> None:
+    assert _one("codecs:blosc", {**BLOSC, "blocksize": -1}) == [
+        (("configuration", "blocksize"), "invalid_value")
+    ]
+
+
+def test_error_blosc_typesize_is_missing_while_shuffling() -> None:
+    configuration = {key: value for key, value in BLOSC.items() if key != "typesize"}
+    assert _one("codecs:blosc", configuration) == [(("configuration", "typesize"), "missing_key")]
+
+
+def test_a_rule_is_asked_only_of_a_configuration_within_its_bounds() -> None:
+    # This works like pydantic's after-validators and zod's refinements. A
+    # rule relies on the bounds its type declares, so a value outside them
+    # is the only problem reported until it is fixed.
+    shuffled = {key: value for key, value in BLOSC.items() if key != "typesize"}
+    assert _one("codecs:blosc", {**shuffled, "clevel": 12}) == [
+        (("configuration", "clevel"), "invalid_value")
+    ]
+    assert _one("codecs:blosc", shuffled) == [(("configuration", "typesize"), "missing_key")]
+
+
+def test_error_blosc_typesize_is_not_positive() -> None:
+    assert _one("codecs:blosc", {**BLOSC, "typesize": 0}) == [
+        (("configuration", "typesize"), "invalid_value")
+    ]
+
+
+def test_error_zstd_level_is_out_of_range() -> None:
+    assert _one("codecs:zstd", {"level": 23}) == [(("configuration", "level"), "invalid_value")]
+
+
+def test_error_transpose_order_is_not_a_permutation() -> None:
+    assert _one("codecs:transpose", {"order": [0, 0]}) == [
+        (("configuration", "order"), "invalid_value")
+    ]
+
+
+def test_error_scale_offset_scalar_is_null() -> None:
+    assert _one("codecs:scale_offset", {"scale": None}) == [
+        (("configuration", "scale"), "invalid_value")
+    ]
+
+
+def test_error_regular_chunk_length_is_zero() -> None:
+    # This applies along a dimension of length 0 too: a grid's chunks must have a nonzero size.
+    assert _one("chunk_grid:regular", {"chunk_shape": [4, 0]}) == [
+        (("configuration", "chunk_shape", 1), "invalid_value")
+    ]
+
+
+def test_error_sharding_inner_chunk_extent_is_zero() -> None:
+    configuration = {"chunk_shape": [0], "codecs": ["bytes"], "index_codecs": ["bytes"]}
+    assert _one("codecs:sharding_indexed", configuration) == [
+        (("configuration", "chunk_shape", 0), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "declaration", "loc", "ctx"),
+    [
+        (
+            CodecDefinition,
+            {"name": "gzip", "configuration": {"level": 10}},
+            ("configuration", "level"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "zstd", "configuration": {"level": -131073}},
+            ("configuration", "level"),
+            {"ge": -131072, "le": 22},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "clevel": -1}},
+            ("configuration", "clevel"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "blocksize": -1}},
+            ("configuration", "blocksize"),
+            {"ge": 0},
+        ),
+        (
+            CodecDefinition,
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2, 0],
+                    "codecs": ["bytes"],
+                    "index_codecs": ["bytes"],
+                },
+            },
+            ("configuration", "chunk_shape", 1),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "regular", "configuration": {"chunk_shape": [2, 0]}},
+            ("configuration", "chunk_shape", 1),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [0]}},
+            ("configuration", "chunk_shapes", 0),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [[4, [2, 0]]]},
+            },
+            ("configuration", "chunk_shapes", 0, 1, 1),
+            {"ge": 1},
+        ),
+        (
+            DataTypeDefinition,
+            {"name": "numpy.timedelta64", "configuration": {"unit": "s", "scale_factor": 2**31}},
+            ("configuration", "scale_factor"),
+            {"ge": 1, "le": 2**31 - 1},
+        ),
+    ],
+    ids=[
+        "gzip-level",
+        "zstd-level",
+        "blosc-clevel",
+        "blosc-blocksize",
+        "sharding-inner-chunk-extent",
+        "regular-chunk-extent",
+        "rectilinear-extent",
+        "rectilinear-run-count",
+        "numpy-time-scale-factor",
+    ],
+)
+def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
+    kind: type[Definition[Any]],
+    declaration: dict[str, Any],
+    loc: tuple[str | int, ...],
+    ctx: dict[str, int],
+) -> None:
+    # The bound is declared on the TypedDict, as pydantic reads a bound,
+    # not in a rule. The problem holds the bound and the value found.
+    _, problems = resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    assert [(p.loc, p.kind, p.input, dict(p.ctx)) for p in problems] == [
+        (loc, "invalid_value", value_at(declaration, loc), ctx)
+    ]
+
+
+STATIC_SIZE = ("bytes", "cast_value", "crc32c", "scale_offset", "transpose")
+DYNAMIC_SIZE = ("blosc", "gzip", "sharding_indexed", "vlen-bytes", "vlen-utf8", "zstd")
+
+
+def test_every_codec_says_whether_its_size_is_static() -> None:
+    # This matches zarr-python's `is_fixed_size`. A compressor, and a shard
+    # (whose empty inner chunks take no bytes), and a variable-length
+    # codec output a size that depends on the values.
+    sizes = {
+        definition.name: definition.size
+        for definition in CORE_AND_EXTENSIONS_CONTEXT.codecs.values()
+    }
+    assert sizes == dict.fromkeys(STATIC_SIZE, "static") | dict.fromkeys(DYNAMIC_SIZE, "dynamic")
+
+
+@pytest.mark.parametrize(
+    "index_codecs",
+    [
+        ["bytes"],
+        ["bytes", "crc32c"],
+        [{"name": "bytes", "configuration": {"endian": "little"}}, {"name": "crc32c"}],
+        # A name that nothing in scope claims is not checked, and its size is unknown.
+        ["bytes", {"name": "acme.lz9"}],
+    ],
+    ids=["bytes", "bytes-crc32c", "spelled-out", "unclaimed"],
+)
+def test_a_shard_s_index_codecs_are_of_static_size(index_codecs: list[object]) -> None:
+    # The codecs for the inner chunks may be of either size.
+    configuration = {
+        "chunk_shape": [2],
+        "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 5}}],
+        "index_codecs": index_codecs,
+    }
+    assert _one("codecs:sharding_indexed", configuration) == []
+
+
+@pytest.mark.parametrize(
+    "codec",
+    [
+        {"name": "gzip", "configuration": {"level": 5}},
+        {"name": "zstd", "configuration": {"level": 3}},
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": "noshuffle",
+                "blocksize": 0,
+            },
+        },
+    ],
+    ids=["gzip", "zstd", "blosc"],
+)
+def test_error_a_shard_s_index_codec_is_of_dynamic_size(codec: dict[str, object]) -> None:
+    # The spec: "Codecs that produce variable-sized encoded representation,
+    # such as compression codecs, MUST NOT be used for index codecs."
+    configuration = {"chunk_shape": [2], "codecs": ["bytes"], "index_codecs": ["bytes", codec]}
+    assert _one("codecs:sharding_indexed", configuration) == [
+        (("configuration", "index_codecs", 1), "invalid_value")
+    ]
+
+
+def test_error_a_codec_size_that_is_neither() -> None:
+    with pytest.raises(TypeError, match="size is one of"):
+        dataclasses.replace(GZIP_CODEC, size="fixed")
+
+
+def test_error_a_codec_inside_a_shard_is_judged_where_it_sits() -> None:
+    configuration = {
+        "chunk_shape": [2],
+        "codecs": [{"name": "gzip", "configuration": {"level": 12}}],
+        "index_codecs": ["bytes"],
+    }
+    assert _one("codecs:sharding_indexed", configuration) == [
+        (("configuration", "codecs", 0, "configuration", "level"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        {"data_type": "bool"},
+        {"data_type": "complex64"},
+        {"data_type": "string"},
+        {"data_type": "r16"},
+        # Only one problem: the wrap problem follows from the target data type.
+        {"data_type": "bool", "out_of_range": "wrap"},
+    ],
+)
+def test_error_a_cast_to_a_data_type_that_models_no_real_numbers(configuration: object) -> None:
+    assert _one("codecs:cast_value", configuration) == [
+        (("configuration", "data_type"), "invalid_value")
+    ]
+
+
+def test_error_a_cast_that_wraps_to_a_data_type_that_is_not_integral() -> None:
+    assert _one("codecs:cast_value", {"data_type": "float32", "out_of_range": "wrap"}) == [
+        (("configuration", "out_of_range"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "scalar_map", "loc"),
+    [
+        # The output of encoding and the input of decoding are values of the
+        # target data type.
+        ("uint8", {"encode": [[0, 300]]}, ("scalar_map", "encode", 0, 1)),
+        ("uint8", {"decode": [[-1, 0]]}, ("scalar_map", "decode", 0, 0)),
+        # A float's infinity is "Infinity", as the core encoding writes it.
+        ("float32", {"decode": [["+Infinity", 0]]}, ("scalar_map", "decode", 0, 0)),
+    ],
+)
+def test_error_a_scalar_the_cast_maps_to_that_is_not_of_its_data_type(
+    data_type: str, scalar_map: object, loc: tuple[str | int, ...]
+) -> None:
+    assert _one("codecs:cast_value", {"data_type": data_type, "scalar_map": scalar_map}) == [
+        (("configuration", *loc), "invalid_value")
+    ]
+
+
+def test_error_a_cast_target_is_judged_where_it_sits() -> None:
+    target = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 0}}
+    assert _one("codecs:cast_value", {"data_type": target}) == [
+        (("configuration", "data_type", "configuration", "scale_factor"), "invalid_value")
+    ]
+
+
+def test_error_rectilinear_extent_is_not_positive() -> None:
+    configuration = {"kind": "inline", "chunk_shapes": [0, [4, 0], [[4, 0]]]}
+    assert _one("chunk_grid:rectilinear", configuration) == [
+        (("configuration", "chunk_shapes", 0), "invalid_value"),
+        (("configuration", "chunk_shapes", 1, 1), "invalid_value"),
+        (("configuration", "chunk_shapes", 2, 0, 1), "invalid_value"),
+    ]
+
+
+def test_error_numpy_time_scale_factor_is_out_of_range() -> None:
+    assert _one("data_type:numpy.timedelta64", {"unit": "s", "scale_factor": 2**31}) == [
+        (("configuration", "scale_factor"), "invalid_value")
+    ]
+
+
+def test_error_struct_has_no_fields() -> None:
+    assert _one("data_type:struct", {"fields": []}) == [
+        (("configuration", "fields"), "invalid_value")
+    ]
+
+
+def test_error_struct_field_name_is_empty() -> None:
+    fields = [{"name": "", "data_type": "uint8"}]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (("configuration", "fields", 0, "name"), "invalid_value")
+    ]
+
+
+def test_error_struct_field_name_is_repeated() -> None:
+    fields = [{"name": "a", "data_type": "uint8"}, {"name": "a", "data_type": "int8"}]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (("configuration", "fields", 1, "name"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field_type", "at"),
+    [
+        ("string", ()),
+        ("bytes", ()),
+        # A struct holding a struct that holds a string is refused at the
+        # location of the string.
+        (
+            {"name": "struct", "configuration": {"fields": [{"name": "s", "data_type": "string"}]}},
+            ("configuration", "fields", 0, "data_type"),
+        ),
+    ],
+)
+def test_error_a_struct_field_whose_values_vary_in_size(
+    field_type: object, at: tuple[str | int, ...]
+) -> None:
+    fields = [{"name": "a", "data_type": "int8"}, {"name": "b", "data_type": field_type}]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (("configuration", "fields", 1, "data_type", *at), "invalid_value")
+    ]
+
+
+def test_error_struct_field_type_is_judged_where_it_sits() -> None:
+    fields = [
+        {
+            "name": "a",
+            "data_type": {
+                "name": "numpy.datetime64",
+                "configuration": {"unit": "s", "scale_factor": 0},
+            },
+        }
+    ]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (
+            ("configuration", "fields", 0, "data_type", "configuration", "scale_factor"),
+            "invalid_value",
+        )
+    ]
+
+
+@pytest.mark.parametrize("name", ["r12", "r0"])
+def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str) -> None:
+    # Raw bits of a size the spec does not allow are reported, not left
+    # unchecked. The document wrote a name, so the problem is located at
+    # the declaration.
+    assert _problems("data_type:r*", name) == [((), "invalid_value")]
+
+
+def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
+    # The name carries the configuration, so a configuration written next
+    # to it may hold nothing: each member is a key that nothing declares.
+    assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
+        AcceptedDeclaration,
+        [(("configuration", "bits"), "unknown_key")],
+    )
+
+
+def test_error_a_chunk_key_separator_is_not_one_the_encoding_takes() -> None:
+    assert _one("chunk_key_encoding:v2", {"separator": "-"}) == [
+        (("configuration", "separator"), "invalid_value")
+    ]
+
+
+def test_a_rule_is_a_function_over_the_typeddict() -> None:
+    # The rules are plain functions over JSON. A caller with one
+    # configuration can call them without a scope or a declaration.
+    from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
+
+    _, problems = BLOSC_CODEC.read_configuration({**BLOSC, "clevel": 10})
+    assert problems == (
+        ValidationProblem(("clevel",), "expected an integer in [0, 9], got 10", "invalid_value"),
+    )

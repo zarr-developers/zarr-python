@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
-from zarr.core.array_spec import ArrayConfig, ArraySpec
+import zarr
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, ArraySpec
 from zarr.core.buffer import BufferPrototype, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.dtype import get_data_type_from_native_dtype
@@ -177,3 +178,46 @@ def test_signed_zero_fills_are_distinct(native_dtype: Any, neg_fill: Any, pos_fi
 def test_unequal_with_invalid_type(obj: Any) -> None:
     assert (_make_spec() == obj) is False
     assert _make_spec() != obj
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"order": "F"},
+        {"write_empty_chunks": True, "read_missing_chunks": False},
+        {
+            "order": "F",
+            "write_empty_chunks": True,
+            "read_missing_chunks": False,
+            "sharding_coalesce_max_gap_bytes": 1,
+            "sharding_coalesce_max_bytes": 2,
+        },
+    ],
+)
+def test_array_config_from_dict(data: ArrayConfigParams) -> None:
+    """
+    ArrayConfig.from_dict takes the given keys from `data` and the rest from the global
+    configuration.
+    """
+    observed = ArrayConfig.from_dict(data).to_dict()
+    for key, value in observed.items():
+        assert value == data.get(key, zarr.config.get(f"array.{key}"))
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda config: ArrayConfig.from_dict(config),
+        lambda config: zarr.create_array({}, shape=(4,), dtype="uint8", config=config),
+        lambda config: zarr.create(shape=(4,), dtype="uint8", config=config),
+    ],
+    ids=["from_dict", "create_array", "create"],
+)
+def test_array_config_unknown_key(build: Callable[[Any], object]) -> None:
+    """
+    An array config with a key that is not an ArrayConfig attribute raises TypeError instead of
+    being ignored.
+    """
+    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
+        build({"order": "C", "nope": 1})

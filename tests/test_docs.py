@@ -210,7 +210,7 @@ def test_test_only_blocks_come_last() -> None:
     Because we cannot statically tell which later blocks are state-dependent, this guard
     enforces the simple, safe convention only for the blocks we author this way
     (test="true" marker-bound examples like s3/gpu). It is NOT a complete build-hazard
-    check -- the authoritative check is `mkdocs build --strict` (the docs:check CI job),
+    check -- the authoritative check is `mkdocs build --strict` (`just docs-build` in CI),
     which catches the exec="false" case too. This guard just turns the common test-only
     case into a fast, local failure."""
     # Collect, per published-docs file, the start lines of test-only and exec blocks.

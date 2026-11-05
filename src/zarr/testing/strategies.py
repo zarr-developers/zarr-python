@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import math
 import sys
@@ -27,9 +28,17 @@ from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
+from zarr.core.dtype.common import HasItemSize
+from zarr.core.dtype.npy.common import DATETIME_UNIT
+from zarr.core.dtype.npy.structured import Struct
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+from zarr.core.metadata.v3 import (
+    RectilinearChunkGridMetadata,
+    RectilinearDimSpecJSON,
+    RegularChunkGridMetadata,
+)
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._utils import _join_paths, normalize_path
@@ -68,6 +77,112 @@ def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.datetime64_dtypes(endianness="=")
         | npst.timedelta64_dtypes(endianness="=")
     )
+
+
+_field_names = st.text(
+    alphabet=st.characters(min_codepoint=97, max_codepoint=122), min_size=1, max_size=4
+)
+_field_titles = st.text(
+    alphabet=st.characters(min_codepoint=65, max_codepoint=90), min_size=1, max_size=4
+)
+
+
+def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    A strategy for instances of a single non-struct `ZDType` class, drawing each constructor
+    parameter the class declares from its valid range.
+    """
+    params = {f.name for f in dataclasses.fields(cls)}
+    kwargs: dict[str, SearchStrategy[Any]] = {}
+    if "endianness" in params:
+        kwargs["endianness"] = st.sampled_from(["little", "big"])
+    if "length" in params:
+        kwargs["length"] = st.integers(min_value=1, max_value=16)
+    if "unit" in params:
+        # The constructor normalizes the microsecond alias; all units accept a scale.
+        kwargs["unit"] = st.sampled_from(DATETIME_UNIT)
+        kwargs["scale_factor"] = st.integers(min_value=1, max_value=2**31 - 1)
+    return st.builds(cls, **kwargs)
+
+
+def _struct_zdtypes(
+    children: SearchStrategy[ZDType[Any, Any]],
+) -> SearchStrategy[ZDType[Any, Any]]:
+    """A strategy for `Struct` instances whose field data types are drawn from `children`."""
+
+    @st.composite
+    def _draw(draw: st.DrawFn) -> ZDType[Any, Any]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names are unique without filtering
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        return Struct(fields=tuple((name, draw(children)) for name in names))
+
+    return _draw()
+
+
+def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    Generate instances of the built-in registered `ZDType` classes, including nested `Struct`.
+
+    Struct fields are restricted to fixed-size data types, as required by the V3 `struct`
+    extension. This strategy samples bounded lengths and normalized datetime units/scales;
+    it does not cover every valid instance or arbitrary third-party dtype constructors.
+    """
+    leaf_classes = [cls for cls in data_type_registry.contents.values() if cls is not Struct]
+    leaves = st.one_of([_leaf_zdtypes(cls) for cls in leaf_classes])
+    fixed_size_leaves = st.one_of(
+        [_leaf_zdtypes(cls) for cls in leaf_classes if issubclass(cls, HasItemSize)]
+    )
+    structs = st.recursive(fixed_size_leaves, _struct_zdtypes, max_leaves=max_leaves).filter(
+        lambda dt: isinstance(dt, Struct)
+    )
+    return leaves | structs
+
+
+@st.composite
+def structured_dtypes(
+    draw: st.DrawFn, *, allow_extended: bool = False, max_depth: int = 3
+) -> np.dtype[np.void]:
+    """
+    A strategy for native NumPy structured dtypes, flat or nested.
+
+    With `allow_extended=False` (the default), generate packed fields without titles or
+    subarray shapes. With `allow_extended=True`, also generate field titles, subarray fields,
+    and `align=True` layouts, independently. The current native dtype conversion rejects
+    titles and subarray fields and accepts padding with a warning. These are implementation
+    behaviors, not restrictions imposed by the V2 format.
+    """
+    fixed_size_leaves = st.one_of(
+        [
+            _leaf_zdtypes(cls)
+            for cls in data_type_registry.contents.values()
+            if cls is not Struct and issubclass(cls, HasItemSize)
+        ]
+    )
+
+    def build(depth: int) -> np.dtype[np.void]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names and titles are unique without filtering; titles
+        # draw from a different alphabet so they never collide with names either
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        titles = [f"{draw(_field_titles)}{i}" for i in range(num_fields)]
+        specs: list[tuple[Any, Any]] = []
+        for name, title in zip(names, titles, strict=True):
+            field_dtype: Any
+            if depth < max_depth and draw(st.booleans()):
+                field_dtype = build(depth + 1)
+            else:
+                field_dtype = draw(fixed_size_leaves).to_native_dtype()
+            key: Any = name
+            if allow_extended and draw(st.booleans()):
+                key = (title, name)
+            if allow_extended and draw(st.booleans()):
+                field_dtype = (field_dtype, draw(npst.array_shapes(max_dims=2, max_side=3)))
+            specs.append((key, field_dtype))
+        align = allow_extended and draw(st.booleans())
+        return np.dtype(specs, align=align)
+
+    return build(0)
 
 
 def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
@@ -333,18 +448,27 @@ def arrays(
     array_path = _join_paths([path, name])
     root = zarr.open_group(store, mode=open_mode, zarr_format=zarr_format)
 
-    # Convert chunk grid metadata to a form create_array accepts:
-    # - RegularChunkGridMetadata -> flat tuple of ints
-    # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
-    # - v2 -> flat tuple of ints
-    chunks_param: tuple[int, ...] | list[int | list[int]]
+    chunks_param: tuple[int, ...] | list[int | list[int]] | RectilinearChunkGridMetadata
     shard_shape = None
     dim_names = None
     if zarr_format == 3:
         chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
-            chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
+            # A rectilinear grid is passed either as the metadata object or in
+            # the list form of `chunks=`, drawn from its own strategy. A 0-d
+            # array has no dimension to hold an edge list.
+            if nparray.ndim > 0 and draw(st.booleans(), label="chunks as lists"):
+                event("rectilinear chunks= as lists")
+                chunks_param = draw(_rectilinear_chunks(shape=nparray.shape), label="chunks")
+                chunk_grid_meta = RectilinearChunkGridMetadata(
+                    chunk_shapes=tuple(
+                        dim if isinstance(dim, int) else tuple(dim) for dim in chunks_param
+                    )
+                )
+            else:
+                event("rectilinear chunks= as metadata")
+                chunks_param = chunk_grid_meta
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
         else:
@@ -394,7 +518,9 @@ def arrays(
             )
             assert shard_shape == a.shards
         else:
-            assert isinstance(a.metadata.chunk_grid, RectilinearChunkGridMetadata)
+            # The stored grid is exactly the declared one: bare ints stay bare
+            # ints, edge lists keep their edges.
+            assert a.metadata.chunk_grid == chunk_grid_meta
             assert shard_shape is None
 
     assert a.basename == name, (a.basename, name)
@@ -435,59 +561,190 @@ def chunks_param_from_rectilinear(
     return [list(dim) if isinstance(dim, tuple) else dim for dim in meta.chunk_shapes]
 
 
+# The most chunks a drawn rectilinear grid declares along one axis, and over
+# the array, all axes together. Indexing tests visit every chunk, so the
+# product is what costs time.
+_RECTILINEAR_MAX_CHUNKS_PER_DIM = 20
+_RECTILINEAR_CHUNK_BUDGET = 400
+
+
+def _max_chunks_per_dim(ndim: int) -> int:
+    """At most `_RECTILINEAR_MAX_CHUNKS_PER_DIM` chunks per dimension, and at
+    most `_RECTILINEAR_CHUNK_BUDGET` in total over `ndim` dimensions."""
+    return max(
+        k
+        for k in range(1, _RECTILINEAR_MAX_CHUNKS_PER_DIM + 1)
+        if k**ndim <= _RECTILINEAR_CHUNK_BUDGET
+    )
+
+
+@st.composite
+def rectilinear_dim_edges(
+    draw: st.DrawFn, *, extent: int, max_chunks: int = _RECTILINEAR_MAX_CHUNKS_PER_DIM
+) -> list[int]:
+    """Explicit chunk edge lengths summing exactly to `extent`.
+
+    A zero `extent` has no chunks for edges to cover, and no non-empty list
+    of positive edges sums to 0; its edges are the chunks the axis grows into
+    on `append` or `resize`, so any non-empty list of positive edges is drawn.
+
+    Two modes: "uneven" cuts the extent at random dividers; "uniform" repeats
+    one size with an optional remainder, optionally shuffled so equal edges
+    are not all adjacent. At most `max_chunks` chunks keeps property tests
+    fast.
+    """
+    assert extent >= 0
+    if extent == 0:
+        event("rectilinear edges: zero extent")
+        return draw(st.lists(st.integers(min_value=1, max_value=10), min_size=1, max_size=5))
+    if draw(st.booleans(), label="uneven edges"):
+        nchunks = draw(st.integers(min_value=1, max_value=min(extent, max_chunks)))
+        # Draw distinct dividers by index into the unused positions: no
+        # rejection, unlike `st.lists(..., unique=True)`.
+        positions = list(range(1, extent))
+        dividers = sorted(
+            positions.pop(draw(st.integers(min_value=0, max_value=len(positions) - 1)))
+            for _ in range(nchunks - 1)
+        )
+        return [b - a for a, b in zip([0, *dividers], [*dividers, extent], strict=True)]
+    size = draw(st.integers(min_value=math.ceil(extent / max_chunks), max_value=extent))
+    edges = [size] * (extent // size)
+    if extent % size:
+        edges.append(extent % size)
+    if draw(st.booleans(), label="shuffle uniform edges"):
+        return list(draw(st.permutations(edges)))
+    return edges
+
+
+def _rectilinear_step(draw: st.DrawFn, *, extent: int, max_chunks: int) -> int:
+    """A bare-int chunk size for one dimension: a step that repeats to cover
+    the extent, with the last chunk possibly smaller. A step larger than the
+    extent (one overhanging chunk) is allowed, as for a regular grid."""
+    step = draw(st.integers(min_value=max(1, math.ceil(extent / max_chunks)), max_value=extent + 3))
+    if step > extent:
+        event("rectilinear step: larger than extent")
+    return step
+
+
 @st.composite
 def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
-    """Generate valid rectilinear chunk shapes for a given array shape.
+    """A `chunks=` specification declaring a rectilinear grid over `shape`, as an
+    explicit edge list per dimension summing to the extent (any edges, for a zero
+    extent). A 0-d `shape` gives `[]`.
 
-    Uses two modes per dimension:
-    - "expanded": random divider points create arbitrary chunk sizes
-    - "rle": uniform chunks with optional remainder, optionally shuffled
-
-    Keeps max chunks per dimension <= 20 to avoid performance issues
-    in property tests. With higher dimensions, the total chunk count
-    grows multiplicatively.
+    To also draw bare-int steps, see `_rectilinear_chunks`.
     """
-    chunk_shapes: list[list[int]] = []
-    for size in shape:
-        assert size > 0
-        if size > 1:
-            mode = draw(st.sampled_from(["expanded", "rle"]))
-            if mode == "expanded":
-                event("rectilinear expanded")
-                max_chunks = min(size - 1, 20)
-                nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
-                dividers = sorted(
-                    draw(
-                        st.lists(
-                            st.integers(min_value=1, max_value=size - 1),
-                            min_size=nchunks - 1,
-                            max_size=nchunks - 1,
-                            unique=True,
-                        )
-                    )
-                )
-                chunk_shapes.append(
-                    [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
-                )
-            else:
-                # RLE mode: uniform chunks with optional remainder
-                max_chunk_size = min(size, 20)
-                chunk_size = draw(st.integers(min_value=1, max_value=max_chunk_size))
-                n_full = size // chunk_size
-                remainder = size % chunk_size
-                chunks_list = [chunk_size] * n_full
-                if remainder > 0:
-                    chunks_list.append(remainder)
-                # Optionally shuffle to create non-contiguous duplicate patterns
-                if draw(st.booleans()):
-                    event("rectilinear rle shuffled")
-                    chunks_list = draw(st.permutations(chunks_list))
-                else:
-                    event("rectilinear rle")
-                chunk_shapes.append(list(chunks_list))
+    max_chunks = _max_chunks_per_dim(len(shape))
+    return [draw(rectilinear_dim_edges(extent=e, max_chunks=max_chunks)) for e in shape]
+
+
+@st.composite
+def _rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int | list[int]]:
+    """A `chunks=` specification declaring a rectilinear grid over `shape`.
+
+    Each dimension is either a bare int (a step size; the last chunk may be
+    smaller) or an explicit edge list summing to the extent (any edges, for a
+    zero extent). At least one dimension is an edge list, since bare ints
+    alone declare a regular grid.
+    Run-length encoding is not part of the `chunks=` syntax; it belongs to
+    stored metadata, see `rectilinear_chunk_shape_declarations`.
+
+    `shape` must have at least one dimension: a 0-d array has no dimension
+    to hold an edge list, so it cannot have a rectilinear grid.
+    """
+    assert shape, "a rectilinear grid needs at least one dimension"
+    max_chunks = _max_chunks_per_dim(len(shape))
+    forced_list = draw(st.integers(min_value=0, max_value=len(shape) - 1))
+    chunks: list[int | list[int]] = []
+    for i, extent in enumerate(shape):
+        if i != forced_list and draw(st.booleans(), label="bare int"):
+            chunks.append(_rectilinear_step(draw, extent=extent, max_chunks=max_chunks))
         else:
-            chunk_shapes.append([1])
-    return chunk_shapes
+            chunks.append(draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks)))
+    return chunks
+
+
+def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
+    """Run-length encode `edges` as the spec allows: a mix of bare ints and
+    `[size, count]` pairs. Either the canonical form (each run as one pair,
+    a run of one as a bare int) or an arbitrary grouping, which may split a
+    run across pairs and use `count == 1`."""
+    canonical = draw(st.booleans(), label="canonical rle")
+    if not canonical:
+        event("rectilinear rle: arbitrary grouping")
+    encoded: list[int | list[int]] = []
+    i = 0
+    while i < len(edges):
+        run = 1
+        while i + run < len(edges) and edges[i + run] == edges[i]:
+            run += 1
+        if canonical:
+            count = run
+            bare = run == 1
+        else:
+            count = draw(st.integers(min_value=1, max_value=run))
+            bare = count == 1 and draw(st.booleans(), label="bare edge")
+        encoded.append(edges[i] if bare else [edges[i], count])
+        i += count
+    return encoded
+
+
+def _rectilinear_chunk_shapes(
+    draw: st.DrawFn, shape: tuple[int, ...]
+) -> tuple[int | tuple[int, ...], ...]:
+    """The `chunk_shapes` of a stored rectilinear grid over `shape`: per
+    dimension a bare-int step, or explicit edges. Edges may sum beyond the
+    extent, which the spec allows and a shrinking resize produces."""
+    max_chunks = _max_chunks_per_dim(len(shape))
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for extent in shape:
+        if draw(st.booleans(), label="bare int"):
+            chunk_shapes.append(_rectilinear_step(draw, extent=extent, max_chunks=max_chunks))
+            continue
+        edges = draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks))
+        if extent > 0 and draw(st.booleans(), label="overhang"):
+            event("rectilinear edges: overhang")
+            if draw(st.booleans(), label="trailing edge"):
+                edges = [*edges, draw(st.integers(min_value=1, max_value=5))]
+            else:
+                edges[-1] += draw(st.integers(min_value=1, max_value=5))
+        chunk_shapes.append(tuple(edges))
+    return tuple(chunk_shapes)
+
+
+@st.composite
+def rectilinear_chunk_shape_declarations(
+    draw: st.DrawFn, *, shape: tuple[int, ...]
+) -> tuple[list[RectilinearDimSpecJSON], tuple[int | tuple[int, ...], ...]]:
+    """The `chunk_shapes` of a stored rectilinear chunk grid, with its meaning.
+
+    Samples the whole declaration space of the spec. Per dimension: a bare
+    int step, or an edge list written in full or run-length encoded
+    (canonically, or with arbitrary grouping). Edge lists may sum beyond the
+    extent.
+
+    Returns `(declaration, chunk_shapes)`: the JSON value to store, and the
+    `chunk_shapes` that parsing it must produce.
+    """
+    chunk_shapes = _rectilinear_chunk_shapes(draw, shape)
+    declaration: list[RectilinearDimSpecJSON] = [
+        dim
+        if isinstance(dim, int)
+        else list(dim)
+        if draw(st.booleans(), label="write edges in full")
+        else _rle_encode(draw, list(dim))
+        for dim in chunk_shapes
+    ]
+    return declaration, chunk_shapes
+
+
+@st.composite
+def rectilinear_chunk_grids(
+    draw: st.DrawFn, *, shape: tuple[int, ...]
+) -> RectilinearChunkGridMetadata:
+    """A `RectilinearChunkGridMetadata` over `shape`, per dimension a bare-int
+    step or explicit edges, which may sum beyond the extent."""
+    return RectilinearChunkGridMetadata(chunk_shapes=_rectilinear_chunk_shapes(draw, shape))
 
 
 @st.composite
@@ -502,16 +759,9 @@ def chunk_grids(
 
     This allows property tests to exercise both chunk grid types.
     """
-    # RectilinearChunkGridMetadata doesn't support zero-sized dimensions,
-    # so use RegularChunkGridMetadata if any dimension is 0
-    if any(s == 0 for s in shape):
-        event("using RegularChunkGridMetadata (zero-sized dimensions)")
-        return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
-
     if zarr.config.get("array.rectilinear_chunks") and draw(st.booleans()):
-        chunks = draw(rectilinear_chunks(shape=shape))
         event("using RectilinearChunkGridMetadata")
-        return RectilinearChunkGridMetadata(chunk_shapes=tuple(tuple(dim) for dim in chunks))
+        return draw(rectilinear_chunk_grids(shape=shape))
     else:
         event("using RegularChunkGridMetadata")
         return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
@@ -529,7 +779,7 @@ def rectilinear_arrays(
 ) -> Any:
     """Generate a zarr v3 array with rectilinear (variable) chunk grid."""
     shape = draw(shapes)
-    chunk_shapes = draw(rectilinear_chunks(shape=shape))
+    chunk_shapes = draw(_rectilinear_chunks(shape=shape))
 
     np_dtype = draw(dtypes())
     nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=np_dtype))
@@ -832,7 +1082,7 @@ def block_test_arrays(
     ``zarray.write_chunk_sizes`` — the array's *outer* (block / shard) grid, which
     is exactly the grid ``Array.blocks`` addresses; the caller reads it directly.
     """
-    chunks: tuple[int, ...] | list[list[int]]
+    chunks: tuple[int, ...] | list[int | list[int]]
     if draw(st.booleans()):
         # regular arm, optionally sharded
         nparray, chunks = draw(
@@ -849,7 +1099,7 @@ def block_test_arrays(
         # rectilinear arm, always unsharded
         event("block rectilinear")
         shape = draw(_rectilinear_shapes)
-        chunks = draw(rectilinear_chunks(shape=shape))
+        chunks = draw(_rectilinear_chunks(shape=shape))
         nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=draw(dtypes())))
         shards, rectilinear = None, True
 
