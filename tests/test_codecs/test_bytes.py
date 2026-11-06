@@ -38,10 +38,12 @@ if TYPE_CHECKING:
     [
         ">u2",
         "<u2",
+        "<i8",
         [("flux", ">f4"), ("mask", ">i4")],
         [("flux", "<f4"), ("mask", "<i4")],
+        [("flux", ">f4"), ("mask", "<i4")],
     ],
-    ids=["big-scalar", "little-scalar", "big-struct", "little-struct"],
+    ids=["big-scalar", "little-scalar", "int64", "big-struct", "little-struct", "mixed-struct"],
 )
 @pytest.mark.parametrize("store_endian", ["big", "little"])
 async def test_endian(
@@ -101,8 +103,28 @@ def test_bytes_codec_supports_sync() -> None:
 @pytest.mark.parametrize("endian", ENDIAN)
 @pytest.mark.parametrize(
     "native_dtype",
-    [np.dtype("float64"), np.dtype(">u2"), np.dtype([("a", ">f4"), ("b", "<i4")])],
-    ids=["native-scalar", "big-scalar", "mixed-endian-struct"],
+    [
+        np.dtype("float64"),
+        np.dtype(">u2"),
+        np.dtype("<i2"),
+        np.dtype(">i4"),
+        np.dtype("<u8"),
+        np.dtype(">f2"),
+        np.dtype("<f4"),
+        np.dtype(">f8"),
+        np.dtype([("a", ">f4"), ("b", "<i4")]),
+    ],
+    ids=[
+        "native-scalar",
+        "big-scalar",
+        "int16",
+        "int32",
+        "uint64",
+        "float16",
+        "float32",
+        "float64-big",
+        "mixed-endian-struct",
+    ],
 )
 def test_bytes_codec_sync_roundtrip(endian: EndianLiteral, native_dtype: np.dtype[Any]) -> None:
     """
@@ -138,6 +160,72 @@ def test_bytes_codec_sync_roundtrip(endian: EndianLiteral, native_dtype: np.dtyp
     decoded = codec._decode_sync(encoded, spec)
     assert decoded.dtype == zdtype.to_native_dtype()
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
+
+
+@pytest.mark.parametrize(
+    ("native_dtype", "endian", "needs_copy"),
+    [
+        (np.dtype("<i4"), "little", False),
+        (np.dtype(">i4"), "big", False),
+        (np.dtype("<i4"), "big", True),
+        (np.dtype([("a", "<i2"), ("b", "<f4")]), "little", False),
+        (np.dtype([("a", ">i2"), ("b", "<f4")]), "little", True),
+        (np.dtype("u1"), None, False),
+        (np.dtype([("a", "i1"), ("b", "u1")]), None, False),
+    ],
+    ids=[
+        "native",
+        "big-matching",
+        "scalar-swap",
+        "struct-matching",
+        "struct-swap",
+        "byte",
+        "byte-struct",
+    ],
+)
+def test_bytes_codec_decode_only_copies_for_endian_conversion(
+    native_dtype: np.dtype[Any], endian: EndianLiteral | None, needs_copy: bool
+) -> None:
+    arr = np.zeros(4, dtype=native_dtype)
+    if native_dtype.fields is None:
+        arr[:] = np.arange(4)
+    else:
+        for offset, name in enumerate(native_dtype.names or ()):
+            arr[name] = np.arange(4) + offset
+    zdtype = get_data_type_from_native_dtype(native_dtype)
+    spec = ArraySpec(
+        shape=arr.shape,
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    codec = BytesCodec(endian=endian).evolve_from_array_spec(spec)
+    encoded = codec._encode_sync(default_buffer_prototype().nd_buffer.from_numpy_array(arr), spec)
+    assert encoded is not None
+    stored_dtype = native_dtype.newbyteorder(endian) if endian is not None else native_dtype
+    assert encoded.to_bytes() == arr.astype(stored_dtype).tobytes()
+
+    decoded = codec._decode_sync(encoded, spec)
+    assert type(decoded) is spec.prototype.nd_buffer
+    assert decoded.shape == arr.shape
+    assert decoded.dtype == zdtype.to_native_dtype()
+    np.testing.assert_array_equal(decoded.as_numpy_array(), arr)
+    assert np.shares_memory(decoded.as_numpy_array(), encoded.as_array_like()) is not needs_copy
+
+
+@pytest.mark.parametrize("native_dtype", [np.dtype("i2"), np.dtype("f8")])
+def test_bytes_codec_missing_endian_rejects_multibyte_dtype(native_dtype: np.dtype[Any]) -> None:
+    zdtype = get_data_type_from_native_dtype(native_dtype)
+    spec = ArraySpec(
+        shape=(1,),
+        dtype=zdtype,
+        fill_value=zdtype.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+    with pytest.raises(ValueError, match="needs to be specified for multi-byte"):
+        BytesCodec(endian=None).evolve_from_array_spec(spec)
 
 
 @pytest.mark.parametrize("endian", ENDIAN)
