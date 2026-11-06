@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import pickle
 import re
 from typing import TYPE_CHECKING
 
 import pytest
 
+import zarr.core.metadata as metadata_exports
+import zarr.core.metadata.v3 as metadata_v3
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
@@ -15,6 +18,7 @@ from zarr.core.chunk_grids import ChunkGrid, is_regular_1d, is_regular_nd
 from zarr.core.config import config
 from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
+from zarr.core.metadata import ArrayMetadata, ArrayMetadataV3
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
@@ -35,6 +39,34 @@ from zarr.errors import (
 
 if TYPE_CHECKING:
     from typing import Any
+
+
+def test_array_metadata_v3_names_are_compatible() -> None:
+    assert metadata_v3.ArrayMetadataV3 is ArrayMetadataV3
+    assert metadata_v3.ArrayV3Metadata is ArrayV3Metadata is ArrayMetadataV3
+    assert "ArrayMetadataV3" in metadata_exports.__all__
+    assert "ArrayV3Metadata" in metadata_exports.__all__
+    assert ArrayMetadataV3.__name__ == "ArrayMetadataV3"
+
+    metadata = ArrayMetadataV3.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value="NaN")  # type: ignore[arg-type]
+    )
+    assert type(metadata) is ArrayMetadataV3
+    assert isinstance(metadata, (ArrayV3Metadata, ArrayMetadata))
+    match metadata:
+        case ArrayV3Metadata():
+            pass
+        case _:
+            pytest.fail("Legacy V3 class pattern no longer matches")
+
+    restored = ArrayV3Metadata.from_dict(metadata.to_dict())
+    assert type(restored) is ArrayMetadataV3
+    assert restored == metadata
+    assert hash(restored) == hash(metadata)
+    assert pickle.loads(pickle.dumps(metadata)) == metadata
+    assert pickle.loads(b"czarr.core.metadata.v3\nArrayV3Metadata\n.") is ArrayMetadataV3
+    assert metadata.update_shape((8, 8)).shape == (8, 8)
+    assert metadata.update_attributes({"key": "value"}).attributes == {"key": "value"}
 
 
 # ---------------------------------------------------------------------------
