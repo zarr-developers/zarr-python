@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,9 @@ import pytest
 from zarr.abc.store import SuffixByteRequest
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.storage._utils import ParsedStoreUrl, _normalize_byte_range_index, parse_store_url
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestParseStoreUrl:
@@ -39,18 +43,60 @@ class TestParseStoreUrl:
             scheme="s3", name="bucket", path="key", raw="s3://bucket/key"
         )
 
-    def test_file_url(self) -> None:
-        result = parse_store_url("file:///tmp/test")
-        assert result.scheme == "file"
+    @pytest.mark.parametrize(
+        ("url", "expected_path"),
+        [
+            ("file:///tmp/test", "/tmp/test"),
+            ("file:///a/b", "/a/b"),
+            ("file:///a/b/", "/a/b"),
+            ("file:///", "/"),
+        ],
+    )
+    def test_absolute_file_url(self, url: str, expected_path: str) -> None:
+        """file:///a/b (empty netloc) is an absolute path."""
+        result = parse_store_url(url)
+        assert result == ParsedStoreUrl(scheme="file", name=None, path=expected_path, raw=url)
+
+    @pytest.mark.parametrize(
+        ("url", "relative_path"),
+        [
+            ("file://a/b", "a/b"),
+            ("file://a/b/", "a/b"),
+            ("file://a", "a"),
+            ("file://./a/b", "a/b"),
+            ("file://", ""),
+        ],
+    )
+    def test_relative_file_url(
+        self, url: str, relative_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """file://a/b is a path relative to the cwd, not a host named "a"."""
+        monkeypatch.chdir(tmp_path)
+        result = parse_store_url(url)
+        assert result == ParsedStoreUrl(
+            scheme="file", name=None, path=str(tmp_path / relative_path), raw=url
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "file:///a/b?query=1",
+            "file:///a/b#fragment",
+        ],
+    )
+    def test_file_url_rejects_params_query_fragment(self, url: str) -> None:
+        with pytest.raises(ValueError, match="not supported in file:// URLs"):
+            parse_store_url(url)
 
     def test_local_absolute_path(self) -> None:
         result = parse_store_url("/local/path")
         assert result == ParsedStoreUrl(scheme="", name=None, path="/local/path", raw="/local/path")
 
-    def test_local_relative_path(self) -> None:
+    def test_local_relative_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
         result = parse_store_url("relative/path")
         assert result == ParsedStoreUrl(
-            scheme="", name=None, path="relative/path", raw="relative/path"
+            scheme="", name=None, path=str(tmp_path / "relative/path"), raw="relative/path"
         )
 
     @pytest.mark.parametrize(
