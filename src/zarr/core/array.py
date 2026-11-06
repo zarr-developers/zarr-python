@@ -138,6 +138,7 @@ from zarr.core.metadata.v2 import (
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
+    RegularBoundedChunkGridMetadata,
     RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_node_type_array,
@@ -955,6 +956,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
 
         return self._chunk_grid.chunk_sizes
+
+    @property
+    def domain(self) -> tuple[tuple[int, int], ...]:
+        """The half-open coordinate range ``(start, stop)`` of each dimension.
+
+        Index ``i`` along a dimension is coordinate ``start + i``. ``start`` is 0
+        unless the array has been grown with `prepend`.
+        """
+        grid = getattr(self.metadata, "chunk_grid", None)
+        if isinstance(grid, RegularBoundedChunkGridMetadata):
+            lower_bound = grid.lower_bound
+        else:
+            lower_bound = (0,) * len(self.shape)
+        return tuple((lb, lb + n) for lb, n in zip(lower_bound, self.shape, strict=True))
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -1808,6 +1823,29 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return await _append(self, data, axis)
 
+    async def prepend(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
+        """Prepend `data` to `axis`.
+
+        Parameters
+        ----------
+        data : array-like
+            Data to be prepended.
+        axis : int
+            Axis along which to prepend.
+
+        Returns
+        -------
+        new_shape : tuple
+
+        Notes
+        -----
+        The size of all dimensions other than `axis` must match between this
+        array and `data`. Existing chunks keep their keys. The first prepend
+        switches a ``regular`` chunk grid to ``regular_bounded``, which readers
+        without that chunk grid refuse.
+        """
+        return await _prepend(self, data, axis)
+
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
         Asynchronously update the array's attributes.
@@ -2205,6 +2243,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ((10, 10, 10, 10),)
         """
         return self.async_array.write_chunk_sizes
+
+    @property
+    def domain(self) -> tuple[tuple[int, int], ...]:
+        """The half-open coordinate range ``(start, stop)`` of each dimension.
+
+        Index ``i`` along a dimension is coordinate ``start + i``. ``start`` is 0
+        unless the array has been grown with `prepend`.
+        """
+        return self.async_array.domain
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -4037,6 +4084,29 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return sync(self.async_array.append(data, axis=axis))
 
+    def prepend(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
+        """Prepend `data` to `axis`.
+
+        Parameters
+        ----------
+        data : array-like
+            Data to be prepended.
+        axis : int
+            Axis along which to prepend.
+
+        Returns
+        -------
+        new_shape : tuple
+
+        Notes
+        -----
+        The size of all dimensions other than `axis` must match between this
+        array and `data`. Existing chunks keep their keys. The first prepend
+        switches a ``regular`` chunk grid to ``regular_bounded``, which readers
+        without that chunk grid refuse.
+        """
+        return sync(self.async_array.prepend(data, axis=axis))
+
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
         Update the array's attributes.
@@ -5584,7 +5654,7 @@ async def _nchunks_initialized(
     grid = array._chunk_grid
     total = 0
     for key in await _shards_initialized(array):
-        spec = grid[meta.chunk_key_encoding.decode_chunk_key(key)]
+        spec = grid[meta.decode_chunk_key(key)]
         if spec is not None:
             total += product(
                 tuple(s // c for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
@@ -6081,6 +6151,77 @@ async def _append(
         for i in range(len(array.shape))
     )
     await array.setitem(append_selection, data)
+
+    return new_shape
+
+
+async def _prepend(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    data: npt.ArrayLike,
+    axis: int = 0,
+) -> tuple[int, ...]:
+    """
+    Prepend data to an array along the specified axis.
+
+    Parameters
+    ----------
+    array : AsyncArray
+        The array to prepend to. Must be a Zarr v3 array with a regular chunk grid.
+    data : npt.ArrayLike
+        Data to be prepended.
+    axis : int
+        Axis along which to prepend.
+
+    Returns
+    -------
+    new_shape : tuple[int, ...]
+        The new shape of the array after prepending.
+    """
+    if not hasattr(data, "shape"):
+        data = np.asanyarray(data)
+
+    metadata = array.metadata
+    if not isinstance(metadata, ArrayV3Metadata) or not isinstance(
+        metadata.chunk_grid, RegularChunkGridMetadata
+    ):
+        raise TypeError("prepend needs a Zarr v3 array with a regular chunk grid.")
+    ndim = len(metadata.shape)
+    if not -ndim <= axis < ndim:
+        raise ValueError(f"axis {axis} is out of range for a {ndim}-dimensional array.")
+    axis %= ndim
+
+    self_shape_preserved = tuple(s for i, s in enumerate(array.shape) if i != axis)
+    data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
+    if self_shape_preserved != data_shape_preserved:
+        raise ValueError(
+            f"shape of data to prepend is not compatible with the array. "
+            f"The shape of the data is ({data_shape_preserved})"
+            f"and the shape of the array is ({self_shape_preserved})."
+            "All dimensions must match except for the dimension being "
+            "prepended."
+        )
+    extent = data.shape[axis]
+    grid = metadata.chunk_grid
+    if isinstance(grid, RegularBoundedChunkGridMetadata):
+        origin, lower_bound = grid.origin, grid.lower_bound
+    else:
+        origin = lower_bound = (0,) * ndim
+
+    new_shape = tuple(s + extent if i == axis else s for i, s in enumerate(metadata.shape))
+    new_grid = RegularBoundedChunkGridMetadata(
+        chunk_shape=grid.chunk_shape,
+        origin=origin,
+        lower_bound=tuple(lb - extent if i == axis else lb for i, lb in enumerate(lower_bound)),
+    )
+    new_metadata = replace(metadata, shape=new_shape, chunk_grid=new_grid)
+    new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
+    await store_documents(array.store_path, encode_documents(array.store_path, new_metadata))
+    array._stored_document_replaced()
+    object.__setattr__(array, "metadata", new_metadata)
+    object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+
+    prepend_selection = tuple(slice(None) if i != axis else slice(0, extent) for i in range(ndim))
+    await array.setitem(prepend_selection, data)
 
     return new_shape
 

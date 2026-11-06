@@ -380,7 +380,7 @@ class IntDimIndexer:
         g = self.dim_grid
         dim_chunk_ix = g.index_to_chunk(self.dim_sel)
         dim_offset = g.chunk_offset(dim_chunk_ix)
-        dim_chunk_sel = self.dim_sel - dim_offset
+        dim_chunk_sel = self.dim_sel - dim_offset + g.buffer_offset(dim_chunk_ix)
         dim_out_sel = None
         is_complete_chunk = g.data_size(dim_chunk_ix) == 1
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
@@ -453,7 +453,6 @@ class SliceDimIndexer:
                 # selection ends within current chunk
                 dim_chunk_sel_stop = self.stop - dim_offset
 
-            dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
             dim_chunk_nitems = ceildiv_int((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
             # If there are no elements on the selection within this chunk, then skip
@@ -463,6 +462,10 @@ class SliceDimIndexer:
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
             is_complete_chunk = (
                 dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+            )
+            buffer_offset = g.buffer_offset(dim_chunk_ix)
+            dim_chunk_sel = slice(
+                dim_chunk_sel_start + buffer_offset, dim_chunk_sel_stop + buffer_offset, self.step
             )
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
@@ -686,8 +689,9 @@ class BoolArrayDimIndexer:
             # pad out if boundary chunk (codec buffer may be larger than valid data region)
             codec_size = g.chunk_size(dim_chunk_ix)
             if dim_chunk_sel.shape[0] < codec_size:
+                buffer_offset = g.buffer_offset(dim_chunk_ix)
                 tmp = np.zeros(codec_size, dtype=bool)
-                tmp[: dim_chunk_sel.shape[0]] = dim_chunk_sel
+                tmp[buffer_offset : buffer_offset + dim_chunk_sel.shape[0]] = dim_chunk_sel
                 dim_chunk_sel = tmp
 
             # find region in output
@@ -877,7 +881,7 @@ class IntArrayDimIndexer:
                 dim_out_sel = self.dim_out_sel[start:stop]
 
             # find region in chunk
-            dim_offset = g.chunk_offset(dim_chunk_ix)
+            dim_offset = g.chunk_offset(dim_chunk_ix) - g.buffer_offset(dim_chunk_ix)
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
             is_complete_chunk = False  # TODO
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
@@ -1111,7 +1115,7 @@ class BlockIndexer(Indexer):
                     )
 
                 start = dim_grid.chunk_offset(dim_sel)
-                stop = start + dim_grid.chunk_size(dim_sel)
+                stop = start + dim_grid.data_size(dim_sel)
                 slice_ = slice(start, stop)
 
             elif is_slice(dim_sel):
@@ -1398,7 +1402,7 @@ class CoordinateIndexer(Indexer):
                 out_selection = self.sel_sort[start:stop]
 
             chunk_offsets = tuple(
-                g.chunk_offset(dim_chunk_ix)
+                g.chunk_offset(dim_chunk_ix) - g.buffer_offset(dim_chunk_ix)
                 for dim_chunk_ix, g in zip(chunk_coords, self.dim_grids, strict=True)
             )
             chunk_selection = tuple(

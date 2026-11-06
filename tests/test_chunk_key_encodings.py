@@ -63,3 +63,23 @@ def test_default_encoding_rejects_key_using_the_other_separator() -> None:
 
     with pytest.raises(ValueError, match="Invalid chunk key"):
         encoding.decode_chunk_key("c.0.1")
+
+
+@pytest.mark.parametrize("separator", ["/", "."])
+def test_default_encoding_round_trips_negative_coordinates(separator: str) -> None:
+    encoding = DefaultChunkKeyEncoding(separator=separator)  # type: ignore[arg-type]
+    key = encoding.encode_chunk_key((-3, 0, 12))
+    assert key == separator.join(["c", "-3", "0", "12"])
+    assert encoding.decode_chunk_key(key) == (-3, 0, 12)
+
+
+@pytest.mark.parametrize("chunk_key", ["c/-0", "c/1/-0", "c/-01"])
+def test_default_encoding_rejects_negative_zero(chunk_key: str) -> None:
+    """`-0` would name the same chunk as `0`, so it is not a valid key component."""
+    with pytest.raises(ValueError, match="Invalid chunk key component"):
+        DefaultChunkKeyEncoding(separator="/").decode_chunk_key(chunk_key)
+
+
+def test_v2_encoding_rejects_negative_zero() -> None:
+    with pytest.raises(ValueError, match="Invalid chunk key component"):
+        V2ChunkKeyEncoding(separator=".").decode_chunk_key("1.-0")
