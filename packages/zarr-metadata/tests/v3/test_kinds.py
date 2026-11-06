@@ -100,13 +100,13 @@ def test_a_scope_has_the_format_of_its_class() -> None:
 
 
 def test_error_a_scope_files_one_format() -> None:
-    """Definitions of two formats cannot share a scope: a slot refuses a definition of the other format's kind, in the constructor and in `update`, and `union` refuses scopes of two formats. Each raises `TypeError`."""
+    """Definitions of two formats cannot share a scope: a slot refuses a definition of the other format's kind, in the constructor and in `copy(update=...)`, and `union` refuses scopes of two formats. Each raises `TypeError`."""
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
 
     with pytest.raises(TypeError, match="v2 data type"):
         ZarrV3Context(data_types=[UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="v2 data type"):
-        CORE_CONTEXT.update(data_types=[*CORE_CONTEXT.data_types.values(), UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
+        CORE_CONTEXT.copy(update={"data_types": [UINT_DATA_TYPE_V2]})  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="format"):
         CORE_CONTEXT.union(CORE_V2_CONTEXT)  # pyright: ignore[reportArgumentType]
 
