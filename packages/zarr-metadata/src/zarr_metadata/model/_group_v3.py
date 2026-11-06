@@ -258,7 +258,7 @@ class ZarrV3GroupMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
-        """The document as written, refined. The result shares no objects with the model."""
+        """The document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3GroupMetadataJSON", copied(self._document))
 
     def to_key_value(
@@ -569,7 +569,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         return MappingProxyType(self._metadata)
 
     def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
-        """The member as written, refined. The result shares no objects with the model."""
+        """The member as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3ConsolidatedMetadataJSON", copied(self._document))
 
     def __repr__(self) -> str:
