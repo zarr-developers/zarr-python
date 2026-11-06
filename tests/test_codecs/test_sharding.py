@@ -19,6 +19,7 @@ from zarr.codecs import (
     BytesCodec,
     Crc32cCodec,
     GzipCodec,
+    ScaleOffset,
     ShardingCodec,
     TransposeCodec,
 )
@@ -1522,3 +1523,50 @@ def test_open_rejects_stored_nested_sharding_with_indivisible_inner_chunk_shape(
     doc["codecs"][0]["configuration"]["codecs"][0]["configuration"]["chunk_shape"] = (4, 7)
     with pytest.raises(ValueError, match="not divisible"):
         ArrayV3Metadata.from_dict(doc)
+
+
+# ---------------------------------------------------------------------------
+# Inner-codec validation tolerance for unencodable fill values (issue #4511)
+# ---------------------------------------------------------------------------
+
+
+def test_create_with_encodable_fill_value_inner_codecs() -> None:
+    """`ShardingCodec._validate_inner_codecs` probes the inner codec chain with
+    the array's fill value. When the chain maps only a subrange of the dtype
+    (e.g. a scale/offset pair for values in [100, 200]) but the fill value lies
+    inside that subrange, the configuration is valid and array creation succeeds
+    (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(16,),
+        chunks=(4,),
+        shards=(16,),
+        dtype="uint16",
+        fill_value=100,
+        filters=[ScaleOffset(offset=100, scale=1)],
+    )
+    # Full-shard writes contain no fill positions, so they encode cleanly.
+    # Encoded values must stay within uint16 after decode adds the offset back.
+    data = np.array([100, 150, 200, 65435] * 4, dtype="uint16")
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+def test_create_with_unencodable_fill_value_inner_codecs_raises() -> None:
+    """`ShardingCodec._validate_inner_codecs` must raise when the array's fill
+    value cannot be round-tripped through the inner codec chain: an unwritten
+    shard returns the fill value, so the array has to be readable before any
+    chunks have been written
+    (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    with pytest.raises(ValueError, match="outside the range"):
+        zarr.create_array(
+            store=MemoryStore(),
+            shape=(16,),
+            chunks=(4,),
+            shards=(16,),
+            dtype="uint16",
+            # The default fill value (0) lies outside [100, 65535].
+            filters=[ScaleOffset(offset=100, scale=1)],
+        )
