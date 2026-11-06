@@ -67,7 +67,7 @@ def is_v3_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV3Kind]]:
 
 
 class ZarrV3ContextSlots(TypedDict, total=False, closed=True):
-    """The definitions in each slot of a v3 scope, as `ZarrV3Context` and its `update` take them.
+    """The definitions in each slot of a v3 scope, as `ZarrV3Context` and its `copy` take them.
 
     This is where a v3 scope's slots are declared: each key is a slot,
     and its value the definitions of the kind that slot holds, as an
@@ -114,13 +114,13 @@ class ZarrV3Context:
     `group_extra_fields` hold the definitions of members the spec does not
     define, by key. Each slot is a read-only mapping from the name each
     definition is filed under (`r*` for raw bits) to the definition. The
-    constructor and `update` take, for each slot, an iterable of
+    constructor and `copy` take, for each slot, an iterable of
     definitions or such a mapping, so one scope's slot can be given to
     another. A definition of another kind than its slot holds, and a key
     that is not its definition's name, raise `TypeError`, and two
     different definitions under one name in a slot raise
-    `ScopeConflictError`. To replace a definition, or a whole slot, use
-    `update`.
+    `ScopeConflictError`. To add definitions, use `union`. To replace a
+    definition, or a whole slot, use `copy`.
     `ZarrV3Context()` is the scope that claims nothing. Two scopes are
     equal when they file the same definitions in each slot, and equal
     scopes have equal hashes.
@@ -201,26 +201,28 @@ class ZarrV3Context:
         """
         return claimant_in(self._tables, kind, name)
 
-    def update(self, **slots: Unpack[ZarrV3ContextSlots]) -> ZarrV3Context:
-        """This scope, with each slot given here holding only the definitions given for it. The other slots are kept.
+    def copy(self, *, update: ZarrV3ContextSlots | None = None) -> ZarrV3Context:
+        """This scope, with each slot in `update` holding only the definitions given for it, as pydantic's `model_copy(update=...)` replaces each field it is given. The other slots are kept.
 
-        A slot can be given as a mapping from each definition's name to
-        it, so a slot of this scope passes back in changed:
-        `context.update(codecs={**context.codecs, "gzip": MY_GZIP})`
-        replaces the gzip definition and keeps the other codecs, and
-        `context.update(codecs=[*context.codecs.values(), MY_CODEC])` adds
-        one, raising `ScopeConflictError` if the scope already files
-        another definition under its name.
+        A slot given here is replaced whole: `context.copy(update={"codecs": [MY_CODEC]})`
+        is a scope whose only codec is `MY_CODEC`. To add definitions to a
+        scope, use `union`: `context.union(ZarrV3Context(codecs=[MY_CODEC]))`.
+        A slot can be given as a mapping from each definition's name to it,
+        so a slot of this scope passes back in changed:
+        `context.copy(update={"codecs": {**context.codecs, "gzip": MY_GZIP}})`
+        replaces the gzip definition and keeps the other codecs.
         """
-        return self._of(updated(self._tables, self.kinds, slots, 3))
+        return self._of(updated(self._tables, self.kinds, {} if update is None else update, 3))
 
     def union(self, *others: ZarrV3Context) -> ZarrV3Context:
         """The smallest scope that files everything this scope and each of `others` file.
 
-        Raises `ScopeConflictError` when two of them file different
-        definitions under one name in a slot. To replace a definition on
-        purpose, use `update`. Raises `TypeError` for a scope of another
-        format.
+        This is how to add definitions to a scope:
+        `CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[MY_CODEC]))` keeps every
+        definition of `CORE_AND_EXTENSIONS_CONTEXT` and adds `MY_CODEC`. Raises
+        `ScopeConflictError` when two of them file different definitions
+        under one name in a slot. To replace a definition on purpose, use
+        `copy`. Raises `TypeError` for a scope of another format.
         """
         refuse_others(others, ZarrV3Context)
         return self._of(

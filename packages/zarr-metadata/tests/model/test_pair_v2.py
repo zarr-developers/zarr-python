@@ -49,7 +49,7 @@ ARRAY: dict[str, Any] = {
 }
 BARE_ZLIB = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
 SMALL = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2])
-PRIVATE = CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": BARE_ZLIB})
+PRIVATE = CORE_V2_CONTEXT.copy(update={"codecs": {**CORE_V2_CONTEXT.codecs, "zlib": BARE_ZLIB}})
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:

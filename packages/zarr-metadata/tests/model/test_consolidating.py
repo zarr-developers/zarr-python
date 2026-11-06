@@ -41,7 +41,7 @@ WITH_LOOSE_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], LOOSE_ZSTD)}
 MY_BYTES = CodecDefinition(
     name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
 )
-PRIVATE = CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "bytes": MY_BYTES})
+PRIVATE = CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "bytes": MY_BYTES}})
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
 
@@ -315,7 +315,7 @@ def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> Non
     )
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "data_type": "r16", "fill_value": [0, 0], "codecs": ("bytes",)},
-        context=CORE_CONTEXT.update(data_types={**CORE_CONTEXT.data_types, "r*": strict}),
+        context=CORE_CONTEXT.copy(update={"data_types": {**CORE_CONTEXT.data_types, "r*": strict}}),
     )
     with pytest.raises(MetadataValidationError) as raised:
         _consolidated(CORE_CONTEXT, a=child)
@@ -333,7 +333,7 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
     strict = dataclasses.replace(GZIP_CODEC, rules=lambda configuration, nested: iter(()))
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1}})},
-        context=CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "gzip": strict}),
+        context=CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "gzip": strict}}),
     )
     with pytest.raises(MetadataValidationError) as raised:
         _consolidated(CORE_CONTEXT, a=child)

@@ -390,8 +390,8 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     # package's own, it reads every raw-bits name. Filed back, the package's
     # definition reads them again.
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types={**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={"data_types": {**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}}
     )
     resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
@@ -401,7 +401,7 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     again, _ = resolve(
         "r12",
         DataTypeDefinition,
-        context.update(data_types={**context.data_types, "r*": RAW_BYTES_DATA_TYPE}),
+        context.copy(update={"data_types": {**context.data_types, "r*": RAW_BYTES_DATA_TYPE}}),
     )
     assert isinstance(again, RefusedDeclaration)
     assert again.definition is RAW_BYTES_DATA_TYPE
@@ -529,9 +529,7 @@ def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None
         canonicalize(
             {"name": "acme.lying", "configuration": {"level": 1}},
             CodecDefinition,
-            CORE_AND_EXTENSIONS_CONTEXT.update(
-                codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), lying]
-            ),
+            CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[lying])),
         )
 
 
