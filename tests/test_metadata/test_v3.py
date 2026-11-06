@@ -491,3 +491,31 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
             },
         },
     }
+
+
+def test_eq_distinguishes_signed_zero_fill_value() -> None:
+    """Documents with fill_value -0.0 and 0.0 write back differently and must
+    not compare equal. Regression test for issue #4453 item 3."""
+    neg = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=-0.0)  # type: ignore[arg-type]
+    )
+    pos = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float64", fill_value=0.0)  # type: ignore[arg-type]
+    )
+    assert neg != pos
+    assert hash(neg) != hash(pos)
+
+
+def test_nan_payload_fill_value_round_trips() -> None:
+    """A non-canonical NaN payload survives a document round trip as its hex
+    bits, and does not compare equal to the canonical NaN document."""
+    payload = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float32", fill_value="0x7fc00001")  # type: ignore[arg-type]
+    )
+    canonical = ArrayV3Metadata.from_dict(
+        minimal_metadata_dict_v3(data_type="float32", fill_value="NaN")  # type: ignore[arg-type]
+    )
+    assert payload.to_dict()["fill_value"] == "0x7fc00001"
+    assert canonical.to_dict()["fill_value"] == "NaN"
+    assert payload != canonical
+    assert hash(payload) != hash(canonical)
