@@ -171,6 +171,47 @@ def test_group_name_properties(
     assert branch.basename == branch_name.split("/")[-1]
 
 
+@pytest.mark.parametrize("node_type", ["array", "group"])
+@pytest.mark.parametrize(
+    "name",
+    ["__reserved", "parent/__reserved", "zarr.json", "parent/zarr.json", "...", "parent/..."],
+)
+async def test_create_v3_rejects_invalid_node_names(
+    memory_store: MemoryStore, node_type: Literal["array", "group"], name: str
+) -> None:
+    root = await AsyncGroup.from_store(memory_store, zarr_format=3)
+    keys_before = {key async for key in memory_store.list()}
+    if node_type == "array":
+        create_node = root.create_array(name, shape=(1,), dtype="uint8")
+    else:
+        create_node = root.create_group(name)
+
+    with pytest.raises(ValueError, match="Invalid Zarr format 3 node name"):
+        await create_node
+
+    assert {key async for key in memory_store.list()} == keys_before
+
+
+@pytest.mark.parametrize("name", ["__reserved", "zarr.json"])
+async def test_create_v2_allows_v3_reserved_node_names(
+    memory_store: MemoryStore, name: str
+) -> None:
+    root = await AsyncGroup.from_store(memory_store, zarr_format=2)
+    child = await root.create_group(name)
+    assert child.path == name
+
+
+async def test_create_hierarchy_rejects_invalid_v3_node_name_without_writes(
+    memory_store: MemoryStore,
+) -> None:
+    nodes = {"parent/__reserved": GroupMetadata(zarr_format=3)}
+
+    with pytest.raises(ValueError, match="Invalid Zarr format 3 node name"):
+        await _collect_aiterator(create_hierarchy(store=memory_store, nodes=nodes))
+
+    assert {key async for key in memory_store.list()} == set()
+
+
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
 def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metadata: bool) -> None:
     """
