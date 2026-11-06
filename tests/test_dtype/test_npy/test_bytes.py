@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.common import JSON
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.errors import UnstableSpecificationWarning
 
@@ -171,3 +172,38 @@ def test_invalid_size(zdtype_cls: type[NullTerminatedBytes] | type[RawBytes]) ->
     msg = f"length must be >= 1, got {length}."
     with pytest.raises(ValueError, match=msg):
         zdtype_cls(length=length)
+
+
+@pytest.mark.parametrize(
+    ("zdtype", "expected"),
+    [
+        (NullTerminatedBytes(length=2), np.bytes_(b"ab")),
+        (RawBytes(length=2), np.void(b"ab")),
+        (VariableLengthBytes(), b"ab"),
+    ],
+)
+def test_byte_list_fill_value(
+    zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes, expected: object
+) -> None:
+    """
+    Test that byte data types accept a JSON list of byte values as a fill value,
+    per the Zarr V3 spec, and that it matches the base64 form.
+    """
+    from_byte_list = zdtype.from_json_scalar([97, 98], zarr_format=3)
+    from_base64 = zdtype.from_json_scalar("YWI=", zarr_format=3)
+    assert from_byte_list == expected
+    assert from_byte_list == from_base64
+
+
+@pytest.mark.parametrize(
+    "zdtype", [NullTerminatedBytes(length=2), RawBytes(length=2), VariableLengthBytes()]
+)
+@pytest.mark.parametrize("data", [[256], [-1], ["a"], [97.0], [True]])
+def test_byte_list_fill_value_invalid(
+    zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes, data: JSON
+) -> None:
+    """
+    Test that a JSON list containing non-byte values is rejected as a fill value.
+    """
+    with pytest.raises(TypeError, match="byte values"):
+        zdtype.from_json_scalar(data, zarr_format=3)
