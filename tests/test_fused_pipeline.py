@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import multiprocessing as mp
+import sys
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -37,6 +39,7 @@ from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterable
+    from pathlib import Path
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, NDBuffer
@@ -541,6 +544,48 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
                 futures = {ex.submit(read_row_block, i): i for i in range(10)}
                 for fut, i in futures.items():
                     np.testing.assert_array_equal(fut.result(), data[i * 4 : (i + 1) * 4, :])
+
+
+def _read_region(arr: zarr.Array[Any], selection: Any) -> np.ndarray:
+    return np.asarray(arr[selection])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fork is not available on Windows")
+@pytest.mark.filterwarnings(
+    r"ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning"
+)
+def test_forked_child_does_not_reuse_parent_pool(tmp_path: Path) -> None:
+    """A forked child must not reuse the parent's codec-pipeline thread pool.
+
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/4478.
+    Executor threads do not survive `fork()`, but the inherited executor keeps the
+    idle-semaphore permits its parent's workers released. Each submission in the
+    child consumes a permit instead of starting a thread, so a read of no more
+    chunks than there are permits queues work that nothing runs.
+
+    `max_workers` is pinned rather than left to `os.cpu_count()`: on a 1-CPU host
+    the default resolves to 1, the parent never creates the pool, and the test
+    would pass without exercising the bug.
+    """
+    import zarr.core.codec_pipeline as cp_mod
+
+    data = np.arange(100).reshape(10, 10)
+    with zarr_config.set(_FUSED_POOL_CONFIG):
+        arr = zarr.create_array(
+            store=str(tmp_path / "a.zarr"), shape=data.shape, chunks=(5, 5), dtype=data.dtype
+        )
+        arr[:] = data
+        # Each multi-chunk read releases one idle permit per completed task, so after
+        # two 4-chunk reads the pool holds more permits than the child read submits.
+        arr[:]
+        arr[:]
+        assert cp_mod._pool is not None, "the parent read did not create the pool"
+        with mp.get_context("fork").Pool(1) as pool:
+            # `[:5]` spans 2 chunks. Without the after-fork reset, both submissions
+            # are swallowed by the dead pool and `get` times out.
+            result = pool.starmap_async(_read_region, [(arr, np.s_[:5])])
+            (read_back,) = result.get(timeout=30)
+    np.testing.assert_array_equal(read_back, data[:5])
 
 
 def test_shared_transform_decode_alternating_specs() -> None:
