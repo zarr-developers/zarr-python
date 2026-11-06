@@ -1,8 +1,15 @@
 import numpy as np
 import pytest
 
+import zarr
+import zarr.storage
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
+from zarr.core.dtype.npy.bytes import (
+    NCZarrChar,
+    NullTerminatedBytes,
+    RawBytes,
+    VariableLengthBytes,
+)
 from zarr.errors import UnstableSpecificationWarning
 
 
@@ -25,6 +32,8 @@ class TestNullTerminatedBytes(BaseTestZDType):
         {"name": "|U10", "object_codec_id": None},
         {"name": "|f8", "object_codec_id": None},
         {"name": "|S4", "object_codec_id": "vlen-bytes"},
+        # NCZarr's spelling of netCDF NC_CHAR belongs to NCZarrChar
+        {"name": ">S1", "object_codec_id": None},
     )
     invalid_json_v3 = (
         {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
@@ -52,6 +61,34 @@ class TestNullTerminatedBytes(BaseTestZDType):
         NullTerminatedBytes(length=4),
         NullTerminatedBytes(length=10),
     )
+
+
+class TestNCZarrChar(BaseTestZDType):
+    test_cls = NCZarrChar
+    # NCZarrChar is never inferred from a NumPy data type
+    valid_dtype = ()
+    invalid_dtype = (np.dtype("|S1"), np.dtype(">S1"), np.dtype("|S2"), np.dtype(np.uint8))
+    valid_json_v2 = ({"name": ">S1", "object_codec_id": None},)
+    invalid_json_v2 = (
+        {"name": "|S1", "object_codec_id": None},
+        {"name": "<S1", "object_codec_id": None},
+        {"name": ">S2", "object_codec_id": None},
+        {"name": ">S1", "object_codec_id": "vlen-bytes"},
+    )
+    # NCZarrChar has no Zarr V3 representation
+    invalid_json_v3 = (
+        "nczarr.char",
+        {"name": "nczarr.char"},
+        {"name": "null_terminated_bytes", "configuration": {"length_bytes": 1}},
+    )
+
+    scalar_v2_params = ((NCZarrChar(), "YQ=="), (NCZarrChar(), ""))
+    cast_value_params = (
+        (NCZarrChar(), "", np.bytes_("")),
+        (NCZarrChar(), "abc", np.bytes_("a")),
+    )
+    invalid_scalar_params = ((NCZarrChar(), 1.0),)
+    item_size_params = (NCZarrChar(),)
 
 
 class TestRawBytes(BaseTestZDType):
@@ -171,3 +208,18 @@ def test_invalid_size(zdtype_cls: type[NullTerminatedBytes] | type[RawBytes]) ->
     msg = f"length must be >= 1, got {length}."
     with pytest.raises(ValueError, match=msg):
         zdtype_cls(length=length)
+
+
+def test_nczarr_char_length() -> None:
+    with pytest.raises(ValueError, match="length must be 1, got 2"):
+        NCZarrChar(length=2)
+
+
+def test_nczarr_char_to_json_v3() -> None:
+    with pytest.raises(ValueError, match="NCZarrChar has no Zarr V3 representation"):
+        NCZarrChar().to_json(zarr_format=3)
+
+
+def test_nczarr_char_create_array_v3() -> None:
+    with pytest.raises(ValueError, match="NCZarrChar has no Zarr V3 representation"):
+        zarr.create_array(zarr.storage.MemoryStore(), shape=(3,), dtype=NCZarrChar(), zarr_format=3)
