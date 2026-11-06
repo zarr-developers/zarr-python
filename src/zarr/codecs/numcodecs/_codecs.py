@@ -60,6 +60,7 @@ def _expect_name_prefix(codec_name: str) -> str:
     return codec_name.removeprefix(CODEC_PREFIX)
 
 
+# UNREGISTERED: numcodecs-codecs
 def _parse_codec_configuration(data: dict[str, JSON]) -> dict[str, JSON]:
     parsed_name, parsed_configuration = parse_named_configuration(data)
     if not parsed_name.startswith(CODEC_PREFIX):
@@ -112,6 +113,7 @@ class _NumcodecsCodec(Metadata):
         codec_config = _parse_codec_configuration(data)
         return cls(**codec_config)
 
+    # UNREGISTERED: numcodecs-codecs
     def to_dict(self) -> dict[str, JSON]:
         codec_config = self.codec_config.copy()
         codec_config.pop("id", None)

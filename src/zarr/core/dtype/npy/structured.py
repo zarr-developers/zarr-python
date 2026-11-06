@@ -465,6 +465,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             ]
             return {"name": fields, "object_codec_id": None}
         elif zarr_format == 3:
+            # NON-CONFORMANT: structured-data-type
             v3_unstable_dtype_warning(self)
             fields = [
                 [f_name, f_dtype.to_json(zarr_format=zarr_format)]  # type: ignore[list-item]
@@ -706,6 +707,7 @@ class Struct(Structured):
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
+            # NON-CONFORMANT: structured-data-type
             and data["name"] in ("struct", "structured")
             and isinstance(data["configuration"], dict)
             and set(data["configuration"].keys()) == {"fields"}
@@ -791,6 +793,7 @@ class Struct(Structured):
                 else:
                     field_values.append(field_dtype.default_scalar())
             return self._cast_scalar_unchecked(tuple(field_values))
+        # NON-CONFORMANT: structured-data-type
         elif check_json_str(data):
             as_bytes = bytes_from_json(data, zarr_format=zarr_format)
             return self._scalar_bytes_to_void(as_bytes, zarr_format)

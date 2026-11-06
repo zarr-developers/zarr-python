@@ -73,6 +73,7 @@ class BytesCodec(ArrayBytesCodec):
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if isinstance(array_spec.dtype, Struct):
+            # NON-CONFORMANT: struct-bytes-codec-without-endian
             if array_spec.dtype.has_multi_byte_fields():
                 if self.endian is None:
                     warnings.warn(

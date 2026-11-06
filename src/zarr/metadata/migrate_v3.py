@@ -263,6 +263,7 @@ def _convert_compressor(
             return compressor_codec
 
 
+# UNREGISTERED: numcodecs-codecs
 def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
     """Find matching zarr.codecs.numcodecs codec (if it exists)"""
 
