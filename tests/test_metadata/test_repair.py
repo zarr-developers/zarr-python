@@ -422,8 +422,8 @@ def _rectilinear_from_dict(chunk_shapes: list[Any]) -> RectilinearChunkGridMetad
 
 def _second_edge(grid: RectilinearChunkGridMetadata) -> int:
     edges = grid.chunk_shapes[0]
-    assert isinstance(edges, tuple)
-    return edges[1]
+    assert not isinstance(edges, int)
+    return edges.size_of(1)
 
 
 CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {

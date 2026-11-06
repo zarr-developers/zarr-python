@@ -8,6 +8,9 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+import itertools
+import json
+import pickle
 import re
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -25,7 +28,7 @@ from zarr.core.chunk_grids import (
     VaryingDimension,
     guess_chunks,
 )
-from zarr.core.common import compress_rle, expand_rle
+from zarr.core.common import RunLengthEdges, compress_rle, expand_rle, parse_rle
 from zarr.core.dtype import UInt8
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
@@ -57,7 +60,7 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
     if isinstance(d, FixedDimension):
         return tuple(d.size for _ in range(d.nchunks))
     if isinstance(d, VaryingDimension):
-        return tuple(d.edges)
+        return tuple(d.edges.expand())
     raise TypeError(f"Unexpected dimension type: {type(d)}")
 
 
@@ -72,13 +75,15 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
         (VaryingDimension([10, 20, 30], extent=60), 60, "out of bounds"),
         (VaryingDimension([10, 20, 30], extent=60), 100, "out of bounds"),
         (FixedDimension(size=10, extent=95), 95, "out of bounds"),
-        (FixedDimension(size=10, extent=95), -1, "Negative"),
+        (FixedDimension(size=10, extent=95), -1, "out of bounds"),
+        (VaryingDimension([10, 20, 30], extent=60), -1, "out of bounds"),
     ],
     ids=[
         "varying-at-extent",
         "varying-past-extent",
         "fixed-at-extent",
         "fixed-negative",
+        "varying-negative",
     ],
 )
 def test_dimension_index_to_chunk_bounds(
@@ -245,10 +250,9 @@ def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> 
 
 
 def test_varying_dimension_construction() -> None:
-    """VaryingDimension stores edges, cumulative sums, nchunks, and extent correctly"""
+    """VaryingDimension stores edges, nchunks, and extent correctly"""
     d = VaryingDimension([10, 20, 30], extent=60)
-    assert d.edges == (10, 20, 30)
-    assert d.cumulative == (10, 30, 60)
+    assert tuple(d.edges.expand()) == (10, 20, 30)
     assert d.nchunks == 3
     assert d.extent == 60
 
@@ -575,10 +579,13 @@ def test_rle_roundtrip() -> None:
         "rle-entry-of-three",
     ],
 )
-def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
-    """expand_rle raises ValueError for zero/negative edge lengths or repeat counts"""
+@pytest.mark.parametrize("read", [expand_rle, parse_rle])
+def test_rle_expand_rejects_invalid(
+    read: Callable[..., object], rle_input: list[Any], match: str
+) -> None:
+    """expand_rle and parse_rle raise ValueError for zero/negative edge lengths or repeat counts"""
     with pytest.raises(ValueError, match=match):
-        expand_rle(rle_input)
+        read(rle_input)
 
 
 @pytest.mark.parametrize(
@@ -604,10 +611,13 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         "numpy-int-count",
     ],
 )
-def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle reads `int`s (and `bool`s) only, not floats or NumPy integers."""
+@pytest.mark.parametrize("read", [expand_rle, parse_rle])
+def test_rle_expand_rejects_non_int(
+    read: Callable[..., object], rle_input: list[Any], match: str
+) -> None:
+    """expand_rle and parse_rle read `int`s (and `bool`s) only, not floats or NumPy integers."""
     with pytest.raises(TypeError, match=re.escape(match)):
-        expand_rle(rle_input)
+        read(rle_input)
 
 
 @pytest.mark.parametrize(
@@ -620,10 +630,259 @@ def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
     ],
     ids=["zero-edge", "fractional-edge", "zero-rle-count", "rle-entry-of-three"],
 )
-def test_rle_expand_names_dimension(rle_input: list[Any], match: str) -> None:
-    """Given the dimension `axis` the edges belong to, every error of expand_rle names it."""
+@pytest.mark.parametrize("read", [expand_rle, parse_rle])
+def test_rle_expand_names_dimension(
+    read: Callable[..., object], rle_input: list[Any], match: str
+) -> None:
+    """Given the dimension `axis` the edges belong to, every error of expand_rle and
+    parse_rle names it."""
     with pytest.raises((TypeError, ValueError), match=f"^Dimension 2: {match}"):
-        expand_rle(rle_input, axis=2)
+        read(rle_input, axis=2)
+
+
+@pytest.mark.parametrize(
+    "rle_input",
+    [[[10, 3]], [[10, 2], [20, 1]], [[True, 2], [3, 1]], [5, 5, [5, 2], 7], [1, 2, 3]],
+)
+def test_parse_rle(rle_input: list[Any]) -> None:
+    """parse_rle reads the edges expand_rle expands, as merged runs"""
+    parsed = parse_rle(rle_input)
+    assert list(parsed.expand()) == expand_rle(rle_input)
+    assert parsed.to_rle() == compress_rle(expand_rle(rle_input))
+
+
+# ---------------------------------------------------------------------------
+# RunLengthEdges tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        [(10, 1)],
+        [(10, 3)],
+        [(10, 2), (20, 1), (5, 4)],
+        [(1, 1), (2, 1), (3, 1)],
+        [(4, 2), (4, 3), (1, 1), (4, 1)],
+    ],
+    ids=["one-edge", "one-run", "mixed-runs", "no-repeats", "adjacent-equal-runs"],
+)
+def test_run_length_edges(runs: list[tuple[int, int]]) -> None:
+    """RunLengthEdges answers for the edges it encodes: the edge count, each edge's size,
+    the expansion, prefix sums and position lookups all agree with the expanded edges,
+    adjacent runs of one size are merged, and it equals only a RunLengthEdges of the
+    same edges, never the tuple of them"""
+    expanded = tuple(size for size, count in runs for _ in range(count))
+    offsets = (0, *itertools.accumulate(expanded))
+    edges = RunLengthEdges(runs)
+
+    assert edges != expanded
+    assert edges == RunLengthEdges.from_edges(expanded)
+    assert hash(edges) == hash(RunLengthEdges.from_edges(expanded))
+    assert edges != RunLengthEdges.from_edges((*expanded, 1))
+    assert pickle.loads(pickle.dumps(edges)) == edges
+    assert all(a != b for (a, _), (b, _) in itertools.pairwise(edges.runs))
+    assert edges.num_edges == len(expanded)
+    assert edges.total == sum(expanded)
+    assert tuple(edges.expand()) == expanded
+    assert [edges.size_of(i) for i in range(len(expanded))] == list(expanded)
+    assert edges.to_rle() == compress_rle(expanded)
+    assert tuple(edges.with_edge(7).expand()) == (*expanded, 7)
+    assert [edges.offset_of(i) for i in range(len(expanded) + 1)] == list(offsets)
+    positions = np.arange(-2, edges.total + 3, dtype=np.intp)
+    expected_indices = np.searchsorted(offsets[1:], positions, side="right")
+    assert [edges.index_at(p) for p in range(edges.total)] == expected_indices[2:-3].tolist()
+    np.testing.assert_array_equal(edges.indices_at(positions), expected_indices)
+
+
+def test_run_length_edges_rejects_count_below_one() -> None:
+    """RunLengthEdges raises ValueError for a run of fewer than one edge"""
+    with pytest.raises(ValueError, match="Run counts must be >= 1, got 0"):
+        RunLengthEdges([(5, 0)])
+
+
+@pytest.mark.parametrize("index", [3, -1])
+def test_run_length_edges_size_of_out_of_range(index: int) -> None:
+    """size_of raises IndexError for an index that is not an edge"""
+    with pytest.raises(IndexError, match=f"Edge index {index} is out of range for 3 edges"):
+        RunLengthEdges([(5, 3)]).size_of(index)
+
+
+@pytest.mark.parametrize(
+    "use",
+    [len, iter, lambda edges: edges[0], lambda edges: 5 in edges],
+    ids=["len", "iter", "getitem", "contains"],
+)
+def test_run_length_edges_is_not_a_sequence(use: Callable[[Any], object]) -> None:
+    """RunLengthEdges has no length, iteration, indexing or membership test, so no caller
+    visits every edge without asking for `expand`"""
+    with pytest.raises(TypeError):
+        use(RunLengthEdges([(5, 3)]))
+
+
+@pytest.mark.parametrize("index", [4, -1])
+def test_run_length_edges_offset_of_out_of_range(index: int) -> None:
+    """offset_of raises IndexError for an index that is neither an edge nor the end"""
+    with pytest.raises(IndexError, match=f"Edge index {index} is out of range for 3 edges"):
+        RunLengthEdges([(5, 3)]).offset_of(index)
+
+
+@pytest.mark.parametrize("position", [15, -1])
+def test_run_length_edges_index_at_out_of_range(position: int) -> None:
+    """index_at raises IndexError for a position no edge covers"""
+    with pytest.raises(IndexError, match=f"Position {position} is out of range"):
+        RunLengthEdges([(5, 3)]).index_at(position)
+
+
+# ---------------------------------------------------------------------------
+# Grids with very many chunks per run
+# ---------------------------------------------------------------------------
+
+HUGE = 2**40
+"""A repeat count no test could afford to expand: one entry per chunk would take
+terabytes of memory."""
+
+
+def test_varying_dimension_huge_runs() -> None:
+    """A VaryingDimension of runs of 2**40 chunks is built, queried, resized and shown
+    from its runs alone, with the values the expanded edges would give"""
+    # chunks [0, HUGE) have size 3, chunk HUGE has size 7, chunks (HUGE, 2 * HUGE] size 2
+    edge_sum = 3 * HUGE + 7 + 2 * HUGE
+    dim = VaryingDimension(RunLengthEdges([(3, HUGE), (7, 1), (2, HUGE)]), extent=edge_sum - 3)
+
+    assert dim.edges.num_edges == 2 * HUGE + 1
+    assert dim.nchunks == 2 * HUGE
+    assert dim.edges.sizes == (3, 7, 2)
+    assert dim._size_repr == f"[[3, {HUGE}], 7, [2, {HUGE}]]"
+    lookups = {
+        0: 0,
+        3 * HUGE - 1: HUGE - 1,
+        3 * HUGE: HUGE,
+        3 * HUGE + 6: HUGE,
+        3 * HUGE + 7: HUGE + 1,
+        edge_sum - 4: 2 * HUGE - 1,
+    }
+    for idx, chunk in lookups.items():
+        assert dim.index_to_chunk(idx) == chunk
+    np.testing.assert_array_equal(
+        dim.indices_to_chunks(np.array(list(lookups), dtype=np.intp)), list(lookups.values())
+    )
+    assert [dim.chunk_offset(c) for c in (0, HUGE - 1, HUGE, HUGE + 1, 2 * HUGE)] == [
+        0,
+        3 * HUGE - 3,
+        3 * HUGE,
+        3 * HUGE + 7,
+        edge_sum - 2,
+    ]
+    assert [dim.chunk_size(c) for c in (0, HUGE, HUGE + 1, 2 * HUGE)] == [3, 7, 2, 2]
+    # the extent ends one element into the last chunk that holds data
+    assert [dim.data_size(c) for c in (0, 2 * HUGE - 1, 2 * HUGE)] == [3, 1, 0]
+
+    grown = dim.resize(edge_sum + 5)
+    assert grown.edges.to_rle() == [[3, HUGE], 7, [2, HUGE], 5]
+    assert dim.resize(10).edges == dim.edges
+    assert VaryingDimension(dim.edges, extent=edge_sum).nchunks == 2 * HUGE + 1
+
+
+def _store_rectilinear_array(
+    shape: list[int], chunk_shapes: list[Any], codecs: list[dict[str, Any]]
+) -> MemoryStore:
+    """A store whose array `a` has the stored rectilinear chunk grid `chunk_shapes`."""
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": shape,
+        "data_type": "int8",
+        "fill_value": 0,
+        "chunk_grid": {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
+        },
+        "chunk_key_encoding": {"name": "default"},
+        "codecs": codecs,
+        "attributes": {},
+    }
+    store = MemoryStore()
+    buffer = default_buffer_prototype().buffer.from_bytes(json.dumps(document).encode())
+    zarr.core.sync.sync(store.set("a/zarr.json", buffer))
+    return store
+
+
+@pytest.mark.parametrize(
+    ("edge", "codecs"),
+    [
+        (1, [{"name": "bytes"}]),
+        (
+            4,
+            [
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": [2],
+                        "codecs": [{"name": "bytes"}],
+                        "index_codecs": [
+                            {"name": "bytes", "configuration": {"endian": "little"}},
+                            {"name": "crc32c"},
+                        ],
+                    },
+                }
+            ],
+        ),
+    ],
+    ids=["unsharded", "sharded"],
+)
+def test_open_rectilinear_huge_repeat_count(edge: int, codecs: list[dict[str, Any]]) -> None:
+    """An array whose stored rectilinear grid repeats one edge 2**40 times opens, reads,
+    writes, grows and re-serializes at the cost of its run-length encoded metadata:
+    expanding the edges would exhaust memory long before this test could pass"""
+    extent = edge * HUGE
+    store = _store_rectilinear_array([extent], [[[edge, HUGE]]], codecs)
+
+    arr = zarr.open_array(store, path="a", mode="r+")
+
+    assert arr.shape == (extent,)
+    assert arr._chunk_grid.grid_shape == (HUGE,)
+    assert arr.metadata.to_dict()["chunk_grid"] == {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": ([[edge, HUGE]],)},
+    }
+    assert f"[[{edge}, {HUGE}]]" in repr(arr._chunk_grid)
+    np.testing.assert_array_equal(arr[extent - 3 :], [0, 0, 0])
+    np.testing.assert_array_equal(arr[[0, extent // 2, extent - 1]], [0, 0, 0])
+    arr[extent // 2 : extent // 2 + 2] = [1, 2]
+    np.testing.assert_array_equal(arr[extent // 2 - 1 : extent // 2 + 3], [0, 1, 2, 0])
+
+    arr.resize((extent + 8,))
+    assert arr._chunk_grid.grid_shape == (HUGE + 1,)
+    stored_buffer = zarr.core.sync.sync(store.get("a/zarr.json", default_buffer_prototype()))
+    assert stored_buffer is not None
+    stored = json.loads(stored_buffer.to_bytes())
+    assert stored["chunk_grid"]["configuration"]["chunk_shapes"] == [[[edge, HUGE], 8]]
+    # Shrinking the stored grid keeps the trailing edges. (`Array.resize` to a smaller
+    # shape visits every chunk it drops, whatever the chunk grid, so it is not run here.)
+    grid = arr.metadata.chunk_grid
+    assert isinstance(grid, RectilinearChunkGridMetadata)
+    assert grid.update_shape((extent + 8,), (8,)) == grid
+
+
+def test_rectilinear_metadata_rejects_invalid_run_length_edge() -> None:
+    """RectilinearChunkGridMetadata rejects run-length encoded edges whose size is below
+    1, naming the dimension"""
+    with pytest.raises(ValueError, match="^Dimension 1: chunk edge length must be >= 1, got 0"):
+        RectilinearChunkGridMetadata(chunk_shapes=(4, RunLengthEdges([(0, HUGE)])))
+
+
+def test_rectilinear_metadata_rejects_empty_run_length_edges() -> None:
+    """RectilinearChunkGridMetadata rejects run-length encoded edges with no runs"""
+    with pytest.raises(ValueError, match="Dimension 0 has no chunk edges"):
+        RectilinearChunkGridMetadata(chunk_shapes=(RunLengthEdges(),))
+
+
+def test_varying_dimension_rejects_invalid_huge_run() -> None:
+    """VaryingDimension reports a non-positive edge in a long run without writing out
+    every edge"""
+    with pytest.raises(ValueError, match=re.escape(f"got [[0, {HUGE}]]")):
+        VaryingDimension(RunLengthEdges([(0, HUGE)]), extent=0)
 
 
 # ---------------------------------------------------------------------------
@@ -760,28 +1019,6 @@ def test_spec_example() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_parse_chunk_grid_varying_extent_mismatch_raises() -> None:
-    """Reconstructing a ChunkGrid with mismatched extents raises ValueError"""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [50, 50]])
-    with pytest.raises(ValueError, match="extent"):
-        ChunkGrid(
-            dimensions=tuple(
-                dim.with_extent(ext) for dim, ext in zip(g._dimensions, (100, 100), strict=True)
-            )
-        )
-
-
-def test_parse_chunk_grid_varying_extent_match_ok() -> None:
-    """Reconstructing a ChunkGrid with matching extents succeeds"""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [50, 50]])
-    g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True)
-        )
-    )
-    assert g2._dimensions[0].extent == 60
-
-
 @pytest.mark.parametrize(
     ("chunk_shapes", "array_shape", "match"),
     [
@@ -840,17 +1077,6 @@ def test_parse_chunk_grid_rectilinear_rle_extent_validated() -> None:
     assert g.grid_shape == (5, 2)
     with pytest.raises(ValueError, match="extent 100 exceeds sum of edges 50"):
         ChunkGrid.from_sizes((100, 50), meta.chunk_shapes)
-
-
-def test_parse_chunk_grid_varying_dimension_extent_mismatch_on_chunkgrid_input() -> None:
-    """ChunkGrid constructor rejects VaryingDimension with extent exceeding sum of edges"""
-    g = ChunkGrid.from_sizes((60, 50), [[10, 20, 30], [25, 25]])
-    with pytest.raises(ValueError, match="less than"):
-        ChunkGrid(
-            dimensions=tuple(
-                dim.with_extent(ext) for dim, ext in zip(g._dimensions, (100, 50), strict=True)
-            )
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -1102,7 +1328,7 @@ def test_mixed_scalar_and_list_dims_keep_shorthand(tmp_path: Path) -> None:
     assert isinstance(arr.metadata, ArrayV3Metadata)
     grid = arr.metadata.chunk_grid
     assert isinstance(grid, RectilinearChunkGridMetadata)
-    assert grid.chunk_shapes == (5, (10, 20, 70))
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=(5, (10, 20, 70)))
 
 
 # The chunk/shard spec matrix for `from_array` round-trip tests. Every kind of
@@ -1349,7 +1575,7 @@ def test_from_array_keep_is_o1_in_chunk_count() -> None:
     dst = zarr.from_array(MemoryStore(), data=src, name="0", write_data=False)
     grid = dst.metadata.chunk_grid
     assert isinstance(grid, RectilinearChunkGridMetadata)
-    assert grid.chunk_shapes == (3, (10, 20))
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=(3, (10, 20)))
 
 
 @pytest.mark.parametrize(
@@ -1374,7 +1600,7 @@ def test_resize_uniform_rectilinear_appends_edge(
     assert isinstance(rect.metadata, ArrayV3Metadata)
     rect_grid = rect.metadata.chunk_grid
     assert isinstance(rect_grid, RectilinearChunkGridMetadata)
-    assert rect_grid.chunk_shapes == ((10, 10, 10, 15),)
+    assert rect_grid == RectilinearChunkGridMetadata(chunk_shapes=((10, 10, 10, 15),))
     assert rect.nchunks == 4
     # the appended region is exactly the new edge chunk
     rect[30:45] = 1
@@ -1513,10 +1739,9 @@ def test_fixed_dimension_zero_extent(size: int) -> None:
     """A zero-length axis has zero chunks and behaves like an empty grid."""
     d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
-    assert d.ngridcells == 0
     assert d.data_size(0) == 0
-    assert d.with_extent(0) == d
-    assert d.with_extent(3) == FixedDimension(size=size, extent=3)
+    assert d.resize(0) == d
+    assert d.resize(3) == FixedDimension(size=size, extent=3)
     empty = np.array([], dtype=np.intp)
     np.testing.assert_array_equal(d.indices_to_chunks(empty), empty)
     with pytest.raises(IndexError):
@@ -1569,9 +1794,7 @@ def test_parse_chunk_grid_preserves_varying_extent() -> None:
     assert g._dimensions[0].extent == 60
 
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True))
     )
     assert isinstance(g2._dimensions[0], VaryingDimension)
     assert g2._dimensions[0].extent == 60
@@ -1583,9 +1806,7 @@ def test_parse_chunk_grid_rebinds_fixed_extent() -> None:
     assert g._dimensions[0].extent == 100
 
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (50, 100), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (50, 100), strict=True))
     )
     assert isinstance(g2._dimensions[0], FixedDimension)
     assert g2._dimensions[0].extent == 50
@@ -2190,7 +2411,7 @@ def test_varying_dimension_zero_extent() -> None:
     """VaryingDimension with extent=0 has zero active chunks but retains all grid cells."""
     d = VaryingDimension([10, 20], extent=0)
     assert d.nchunks == 0
-    assert d.ngridcells == 2
+    assert d.edges.num_edges == 2
     # No chunks overlap [0, 0), so the grid is structurally non-empty but logically empty
     g = ChunkGrid(dimensions=(d,))
     assert g.grid_shape == (0,)
@@ -2226,7 +2447,8 @@ def test_overflow_multiple_chunks_past_extent() -> None:
     """Edges past extent are structural; nchunks counts active only."""
     g = ChunkGrid.from_sizes((50,), [[10, 20, 30, 40]])
     d = g._dimensions[0]
-    assert d.ngridcells == 4
+    assert isinstance(d, VaryingDimension)
+    assert d.edges.num_edges == 4
     assert d.nchunks == 3
     assert d.data_size(0) == 10
     assert d.data_size(1) == 20
@@ -2520,7 +2742,7 @@ def test_update_shape_shrink_creates_boundary() -> None:
     new_grid = grid.update_shape((45,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert dim.edges == (10, 20, 30)
+    assert tuple(dim.edges.expand()) == (10, 20, 30)
     assert dim.extent == 45
     assert dim.chunk_size(2) == 30
     assert dim.data_size(2) == 15
@@ -2532,9 +2754,9 @@ def test_update_shape_shrink_to_exact_boundary() -> None:
     new_grid = grid.update_shape((30,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert dim.edges == (10, 20, 30)
+    assert tuple(dim.edges.expand()) == (10, 20, 30)
     assert dim.nchunks == 2
-    assert dim.ngridcells == 3
+    assert dim.edges.num_edges == 3
     assert dim.extent == 30
     assert dim.data_size(1) == 20
 
@@ -2554,9 +2776,7 @@ def test_update_shape_parse_chunk_grid_rebinds_extent() -> None:
     """parse_chunk_grid re-binds VaryingDimension extent to array shape."""
     g = ChunkGrid.from_sizes((60,), [[10, 20, 30]])
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (50,), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (50,), strict=True))
     )
     dim = g2._dimensions[0]
     assert isinstance(dim, VaryingDimension)
@@ -3064,7 +3284,7 @@ def test_rectilinear_from_dict(
 ) -> None:
     """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms."""
     grid = RectilinearChunkGridMetadata.from_dict(json_input)
-    assert grid.chunk_shapes == expected_chunk_shapes
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=expected_chunk_shapes)
 
 
 @pytest.mark.parametrize(
