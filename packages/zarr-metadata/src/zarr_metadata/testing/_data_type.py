@@ -25,7 +25,7 @@ from zarr_metadata.testing._draw import (
     fill_values_of,
     read,
 )
-from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, DataTypeStrategy
+from zarr_metadata.testing._strategy import CHARACTERS, EMPTY_CONFIGURATIONS, DataTypeStrategy
 from zarr_metadata.v3._definition import DataTypeDefinition, storage_of
 from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
 from zarr_metadata.v3.data_type._numpy_time import NUMPY_TIME_UNIT
@@ -223,10 +223,7 @@ _BYTES_FILL_VALUES: Final = st.integers(0, _MAX_BYTES).flatmap(_byte_values) | s
 ).map(_base64)
 """A `bytes` fill value: byte values, or the bytes in standard-alphabet base64."""
 
-_CHARACTERS: Final = st.characters(exclude_categories=("Cs",))
-"""Characters a JSON document can hold: no lone surrogate, which is no Unicode scalar value."""
-
-_TEXT: Final = st.text(_CHARACTERS, max_size=16)
+_TEXT: Final = st.text(CHARACTERS, max_size=16)
 
 _LENGTH_BYTES: Final = st.integers(1, _MAX_BYTES)
 """The `length_bytes` of zarr-python's fixed-length byte types."""
@@ -249,7 +246,7 @@ def _fixed_length_utf32_fill_values(
 ) -> st.SearchStrategy[JSONValue]:
     """Text of at most one code point for each 4 bytes of the size, some of them trailing `U+0000` padding."""
     capacity = cast("FixedLengthUtf32Configuration", configuration)["length_bytes"] // 4
-    return st.text(_CHARACTERS | st.just("\x00"), max_size=capacity)
+    return st.text(CHARACTERS | st.just("\x00"), max_size=capacity)
 
 
 _TICKS: Final = st.integers(-(2**63), 2**63 - 1) | st.just("NaT")
@@ -303,7 +300,7 @@ def _struct(strategies: Strategies, *, depth: int) -> st.SearchStrategy[StructCo
     # The type is drawn before the name: Hypothesis draws the first of many
     # options far more often when a draw of variable length comes before it.
     member = st.tuples(
-        _fixed_size(briefly(inner)), st.text(_CHARACTERS, min_size=1, max_size=16)
+        _fixed_size(briefly(inner)), st.text(CHARACTERS, min_size=1, max_size=16)
     ).map(lambda pair: StructField(name=pair[1], data_type=pair[0]))
     members = st.lists(
         member, min_size=1, max_size=_MAX_STRUCT_FIELDS, unique_by=lambda entry: entry["name"]
