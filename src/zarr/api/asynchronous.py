@@ -552,7 +552,9 @@ async def save_array(
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     shape = arr.shape
-    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
+    chunks = kwargs.pop(
+        "chunks", getattr(arr, "chunks", None)
+    )  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
     zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
