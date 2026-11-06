@@ -2044,9 +2044,9 @@ def test_get_selections_with_fields(store: StorePath) -> None:
         z.get_basic_selection(Ellipsis, fields=slice(None))  # type: ignore[arg-type]
 
 
-@pytest.mark.xfail(reason="fields are not supported in v3")
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
 def test_set_selections_with_fields(store: StorePath) -> None:
-    """Would verify that basic, orthogonal, coordinate, and mask set-selections with structured-array `fields` correctly write individual fields and reject multi-field assignment (xfail: fields unsupported in v3)."""
+    """Basic, orthogonal, coordinate, and mask set-selections with structured-array `fields` write only the named field and reject multi-field assignment."""
     v = np.array(
         [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
@@ -2073,11 +2073,11 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             with pytest.raises(IndexError):
                 z.set_basic_selection(Ellipsis, v, fields=fields)
             with pytest.raises(IndexError):
-                z.set_orthogonal_selection([0, 2], v, fields=fields)  # type: ignore[arg-type]
+                z.set_orthogonal_selection([0, 2], v[[0, 2]], fields=fields)  # type: ignore[arg-type]
             with pytest.raises(IndexError):
-                z.set_coordinate_selection([0, 2], v, fields=fields)
+                z.set_coordinate_selection([0, 2], v[[0, 2]], fields=fields)
             with pytest.raises(IndexError):
-                z.set_mask_selection([True, False, True], v, fields=fields)  # type: ignore[arg-type]
+                z.set_mask_selection([True, False, True], v[[0, 2]], fields=fields)  # type: ignore[arg-type]
 
         else:
             if isinstance(fields, list) and len(fields) == 1:
@@ -2129,6 +2129,55 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             a[key][ix] = v[key][ix]
             z.set_mask_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "shards"), [(2, None), (3, None), (3, (6,))], ids=["v2", "v3", "v3-sharded"]
+)
+@pytest.mark.parametrize("read_missing_chunks", [True, False])
+def test_set_field_preserves_other_fields(
+    zarr_format: ZarrFormat, shards: tuple[int, ...] | None, read_missing_chunks: bool
+) -> None:
+    """Writing one field of a structured array leaves the other fields of each record unchanged, including in chunks that were never written."""
+    dtype = np.dtype([("a", "i4"), ("b", "f8"), ("c", "i2")])
+    data = np.array([(i, i * 1.5, -i) for i in range(10)], dtype=dtype)
+    z = zarr.create_array(
+        {},
+        shape=(12,),
+        chunks=(3,),
+        shards=shards,
+        dtype=dtype,
+        zarr_format=zarr_format,
+        fill_value=None if zarr_format == 2 else 0,
+        config={"read_missing_chunks": read_missing_chunks},
+    )
+    # the last chunk (elements 9-11) is only partly written, the last shard is missing
+    z[:10] = data
+    expected = np.zeros(12, dtype=dtype)
+    expected[:10] = data
+
+    z.set_basic_selection(slice(2, 8), np.full(6, 7.0), fields="b")
+    expected["b"][2:8] = 7.0
+    z.set_basic_selection(4, 9, fields=["a"])
+    expected["a"][4] = 9
+    z.set_orthogonal_selection([0, 11], np.array([-5, -6], dtype="i2"), fields="c")
+    expected["c"][[0, 11]] = [-5, -6]
+    z.set_coordinate_selection([10, 1], 3.25, fields="b")
+    expected["b"][[10, 1]] = 3.25
+    mask = np.zeros(12, dtype=bool)
+    mask[[5, 9]] = True
+    z.set_mask_selection(mask, 8, fields="a")
+    expected["a"][mask] = 8
+
+    assert_array_equal(z[:], expected)
+
+
+def test_set_multiple_fields_as_tuple_raises() -> None:
+    """A tuple naming several fields is rejected for writes, like a list."""
+    dtype = np.dtype([("a", "i4"), ("b", "f8")])
+    z = zarr.create_array({}, shape=(4,), chunks=(2,), dtype=dtype, fill_value=0)
+    with pytest.raises(IndexError, match="multiple fields are not supported"):
+        z.set_basic_selection(slice(None), 1, fields=("a", "b"))
 
 
 def test_slice_selection_uints() -> None:

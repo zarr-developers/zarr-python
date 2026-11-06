@@ -1538,12 +1538,12 @@ def check_fields(fields: Fields | None, dtype: np.dtype[Any]) -> np.dtype[Any]:
         return dtype
 
 
-def check_no_multi_fields(fields: Fields | None) -> Fields | None:
-    if isinstance(fields, list):
-        if len(fields) == 1:
-            return fields[0]
-        elif len(fields) > 1:
+def check_no_multi_fields(fields: Fields | None) -> str | None:
+    if isinstance(fields, list | tuple):
+        if len(fields) > 1:
             raise IndexError("multiple fields are not supported for this operation")
+        # an empty sequence selects no fields, i.e. the whole record
+        return fields[0] if fields else None
     return fields
 
 
