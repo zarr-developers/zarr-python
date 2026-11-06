@@ -28,6 +28,7 @@ from zarr.codecs.numcodecs import (
     Zlib,
     Zstd,
 )
+from zarr.codecs.reshape import ReshapeCodec
 from zarr.codecs.scale_offset import ScaleOffset
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation, SubchunkWriteOrder
 from zarr.codecs.transpose import TransposeCodec
@@ -44,6 +45,7 @@ __all__ = [
     "Crc32cCodec",
     "Endian",
     "GzipCodec",
+    "ReshapeCodec",
     "ScaleOffset",
     "ShardingCodec",
     "ShardingCodecIndexLocation",
@@ -57,6 +59,7 @@ __all__ = [
 register_codec("blosc", BloscCodec)
 register_codec("cast_value", CastValue)
 register_codec("bytes", BytesCodec)
+register_codec("reshape", ReshapeCodec)
 
 # compatibility with earlier versions of ZEP1
 register_codec("endian", BytesCodec)
