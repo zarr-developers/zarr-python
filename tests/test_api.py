@@ -2133,8 +2133,26 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     assert a.chunks == (500, 500)
 
 
-@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
-def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
+@pytest.mark.parametrize(
+    "kwarg_name",
+    [
+        "synchronizer",
+        "chunk_store",
+        "cache_metadata",
+        "cache_attrs",
+        "object_codec",
+        "read_only",
+        "meta_array",
+    ],
+)
+def test_ignored_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
-    with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
+    with pytest.warns(ZarrDeprecationWarning, match=f"{kwarg_name} is ignored"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
+def test_ignored_kwarg_warnings_open_group(kwarg_name: str) -> None:
+    kwargs = {kwarg_name: 1}
+    with pytest.warns(ZarrDeprecationWarning, match=f"{kwarg_name} is ignored"):
+        zarr.open_group(store=MemoryStore(), **kwargs)  # type: ignore[arg-type]
