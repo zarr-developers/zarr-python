@@ -257,6 +257,7 @@ class Registry[T](dict[str, type[T]]):
 
 
 _codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
+_builtin_codecs_registered = False
 _pipeline_registry: Registry[CodecPipeline] = Registry()
 _buffer_registry: Registry[Buffer] = Registry()
 _ndbuffer_registry: Registry[NDBuffer] = Registry()
@@ -352,6 +353,71 @@ def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = N
     if key not in _codec_registries:
         _codec_registries[key] = Registry()
     _codec_registries[key].register(codec_cls, qualname=qualname)
+
+
+def _register_builtin_codecs() -> None:
+    """Register built-in codecs after the registry and codec implementations are initialized."""
+    global _builtin_codecs_registered
+    if _builtin_codecs_registered:
+        return
+
+    from zarr import codecs
+    from zarr.codecs import numcodecs
+
+    register_codec("blosc", codecs.BloscCodec)
+    register_codec("cast_value", codecs.CastValue)
+    register_codec("bytes", codecs.BytesCodec)
+
+    # Compatibility with earlier versions of ZEP1.
+    register_codec("endian", codecs.BytesCodec)
+    register_codec("crc32c", codecs.Crc32cCodec)
+    register_codec("gzip", codecs.GzipCodec)
+    register_codec("scale_offset", codecs.ScaleOffset)
+    register_codec("sharding_indexed", codecs.ShardingCodec)
+    register_codec("zstd", codecs.ZstdCodec)
+    register_codec("vlen-utf8", codecs.VLenUTF8Codec)
+    register_codec("vlen-bytes", codecs.VLenBytesCodec)
+    register_codec("transpose", codecs.TransposeCodec)
+
+    # Compatibility with codecs formerly contained in numcodecs.zarr3.
+    register_codec("numcodecs.bz2", numcodecs.BZ2, qualname="zarr.codecs.numcodecs.BZ2")
+    register_codec("numcodecs.crc32", numcodecs.CRC32, qualname="zarr.codecs.numcodecs.CRC32")
+    register_codec("numcodecs.crc32c", numcodecs.CRC32C, qualname="zarr.codecs.numcodecs.CRC32C")
+    register_codec("numcodecs.lz4", numcodecs.LZ4, qualname="zarr.codecs.numcodecs.LZ4")
+    register_codec("numcodecs.lzma", numcodecs.LZMA, qualname="zarr.codecs.numcodecs.LZMA")
+    register_codec("numcodecs.zfpy", numcodecs.ZFPY, qualname="zarr.codecs.numcodecs.ZFPY")
+    register_codec("numcodecs.adler32", numcodecs.Adler32, qualname="zarr.codecs.numcodecs.Adler32")
+    register_codec("numcodecs.astype", numcodecs.AsType, qualname="zarr.codecs.numcodecs.AsType")
+    register_codec(
+        "numcodecs.bitround", numcodecs.BitRound, qualname="zarr.codecs.numcodecs.BitRound"
+    )
+    register_codec("numcodecs.blosc", numcodecs.Blosc, qualname="zarr.codecs.numcodecs.Blosc")
+    register_codec("numcodecs.delta", numcodecs.Delta, qualname="zarr.codecs.numcodecs.Delta")
+    register_codec(
+        "numcodecs.fixedscaleoffset",
+        numcodecs.FixedScaleOffset,
+        qualname="zarr.codecs.numcodecs.FixedScaleOffset",
+    )
+    register_codec(
+        "numcodecs.fletcher32", numcodecs.Fletcher32, qualname="zarr.codecs.numcodecs.Fletcher32"
+    )
+    register_codec("numcodecs.gzip", numcodecs.GZip, qualname="zarr.codecs.numcodecs.GZip")
+    register_codec(
+        "numcodecs.jenkins_lookup3",
+        numcodecs.JenkinsLookup3,
+        qualname="zarr.codecs.numcodecs.JenkinsLookup3",
+    )
+    register_codec("numcodecs.pcodec", numcodecs.PCodec, qualname="zarr.codecs.numcodecs.PCodec")
+    register_codec(
+        "numcodecs.packbits", numcodecs.PackBits, qualname="zarr.codecs.numcodecs.PackBits"
+    )
+    register_codec(
+        "numcodecs.quantize", numcodecs.Quantize, qualname="zarr.codecs.numcodecs.Quantize"
+    )
+    register_codec("numcodecs.shuffle", numcodecs.Shuffle, qualname="zarr.codecs.numcodecs.Shuffle")
+    register_codec("numcodecs.zlib", numcodecs.Zlib, qualname="zarr.codecs.numcodecs.Zlib")
+    register_codec("numcodecs.zstd", numcodecs.Zstd, qualname="zarr.codecs.numcodecs.Zstd")
+    _builtin_codecs_registered = True
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
