@@ -450,7 +450,10 @@ class ZarrV3GroupMetadata(Keyed):
         scope that claims the member, as `CORE_CONTEXT` does, this is a problem,
         because the spec requires an object. Use
         `read_repaired_node_metadata_v3` to read such a store. A member the
-        spec does not define is kept in `extra_fields`.
+        spec does not define is kept in `extra_fields`, and is not a
+        problem when nothing in `context` claims it; the model lists each
+        such member a reader must understand in `unclaimed_declarations`.
+        `read_openable_node_metadata_v3` reports each one as a problem.
         """
         return cls(data, context=context)
 
@@ -769,6 +772,44 @@ def read_node_metadata_v3(
     return ZarrV3UnknownNodeMetadataReading(problems)
 
 
+def read_openable_node_metadata_v3(
+    value: object, *, context: ZarrV3Context | None = None
+) -> ZarrV3NodeMetadataReading:
+    """Read `value`, a v3 `zarr.json`, in `context` as `read_node_metadata_v3` does, and also report each declaration a reader must understand to open the node that nothing in `context` claims.
+
+    The spec requires a reader to refuse a node with a declaration it does
+    not understand: an unknown codec, data type or chunk grid, or an
+    unknown top-level member that does not say `"must_understand": false`.
+    `read_node_metadata_v3` accepts these, as `UnclaimedDeclaration`s,
+    since that is what keeps the format open. This reader reports each one
+    as a problem of kind `unclaimed_declaration`, at its location, and
+    gives no model when there is one. A member that says
+    `"must_understand": false` is ignored whole, with every declaration in
+    it, as `unclaimed_declarations` ignores it. So the reading has no
+    problems exactly when a reader that understands `context` can open the
+    node. The documents a group's `consolidated_metadata` lists are not
+    read, as `read_group_metadata_v3` does not read them.
+    """
+    reading = read_node_metadata_v3(value, context=context)
+    # A node reading is only of an array or a group when `value` is an object.
+    if isinstance(reading, ZarrV3UnknownNodeMetadataReading) or not is_object(value):
+        return reading
+    waived = waived_members({key: value[key] for key in reading.extra_fields})
+    unclaimed = [
+        ValidationProblem(
+            loc,
+            f"nothing in scope claims the {kind_name(declaration.read_as)} {declaration.name!r}, "
+            "which a reader must understand to open the node",
+            "unclaimed_declaration",
+        )
+        for loc, declaration in unclaimed_declarations_of(reading.declarations(), waived).items()
+    ]
+    if len(unclaimed) == 0:
+        return reading
+    problems = (*reading.problems, *with_input(unclaimed, value))
+    return dataclasses.replace(reading, problems=problems, metadata=None)
+
+
 ZarrV3NodeMetadata = TypeAliasType("ZarrV3NodeMetadata", ZarrV3ArrayMetadata | ZarrV3GroupMetadata)
 """The model of a v3 `zarr.json`: an array model or a group model, as its `node_type` declares."""
 
@@ -875,7 +916,8 @@ def read_group_metadata_v3(
     Unknown top-level keys are allowed (they map to `extra_fields`). A
     reader must understand each one that does not declare
     `must_understand: false`; the model reports these as
-    `must_understand_fields`. A `consolidated_metadata` member, if
+    `must_understand_fields`, and `read_openable_node_metadata_v3` reports
+    each one as a problem. A `consolidated_metadata` member, if
     present and claimed by the scope, as `CORE_CONTEXT` claims it, is checked
     against the envelope the core spec fixes. The documents it lists are
     not read; `read_consolidated_metadata_v3` reads them. This is the
