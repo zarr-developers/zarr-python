@@ -10,7 +10,7 @@ with the declaration's kind, as for a v3 declaration:
 `resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2_CONTEXT)` returns an
 `AcceptedDeclaration`, `UnclaimedDeclaration` or `RefusedDeclaration`, and every problem.
 `ZarrV2Context` is the class of a v2 scope. It has a slot for each kind
-of v2 declaration, `data_types` and `codecs`, and shares `update`,
+of v2 declaration, `data_types` and `codecs`, and shares `copy`,
 `union` and `claimant` with the v3 scope. A v2 reader rejects a v3
 scope with `TypeError`.
 
