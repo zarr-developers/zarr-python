@@ -20,7 +20,7 @@ from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
-from tests.conftest import json_attributes, skip_object_dtype
+from tests.conftest import Expect, json_attributes, skip_object_dtype
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -193,6 +193,41 @@ def test_array_name_properties_no_group(
     assert arr.path == ""
     assert arr.name == "/"
     assert arr.basename == ""
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(2, None), output=None, id="v2"),
+        Expect(input=(3, None), output=None, id="v3-no-names"),
+        Expect(input=(3, ["x", "y"]), output=("x", "y"), id="v3-names"),
+        Expect(input=(3, ["x", None]), output=("x", None), id="v3-partial-names"),
+        # names are not required to be unique
+        Expect(input=(3, ["x", "x"]), output=("x", "x"), id="v3-repeated-names"),
+    ],
+    ids=lambda c: c.id,
+)
+async def test_array_dimension_names(
+    case: Expect[tuple[ZarrFormat, list[str | None] | None], tuple[str | None, ...] | None],
+) -> None:
+    """
+    `Array.dimension_names` and `AsyncArray.dimension_names` return the array's
+    dimension names as a tuple, or None when it has none, as for every Zarr
+    format 2 array. They are preserved when the array is reopened.
+    """
+    zarr_format, dimension_names = case.input
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store=store,
+        shape=(2, 3),
+        dtype="i1",
+        zarr_format=zarr_format,
+        dimension_names=dimension_names,
+    )
+    assert arr.dimension_names == case.output
+    assert arr.async_array.dimension_names == case.output
+    reopened = await zarr.api.asynchronous.open_array(store=store)
+    assert reopened.dimension_names == case.output
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
