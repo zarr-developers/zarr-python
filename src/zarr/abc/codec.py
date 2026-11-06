@@ -148,6 +148,55 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         """
         return chunk_spec
 
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata] | None:
+        """The array shape and chunk grid seen by the codecs after this one.
+
+        This is the whole-array counterpart of `resolve_metadata`: where
+        `resolve_metadata` maps the spec of one chunk, this maps the geometry
+        of every chunk at once. It is used to validate a codec chain when the
+        array metadata is created, so that a later size-sensitive codec (such
+        as `ShardingCodec`) is checked against the chunks it will actually
+        receive, without enumerating the chunks of the grid.
+
+        Return `None` when the chunks after this codec cannot be described by
+        a single chunk grid computed from `chunk_grid` alone. On a regular grid
+        that costs nothing, because all chunks have one shape and
+        `resolve_metadata` describes them exactly. On a rectilinear grid it
+        makes the remaining chain "chunk-local": later codecs are validated
+        against one representative chunk only, so a chain that is invalid for
+        some other chunk shape is accepted at creation and fails when such a
+        chunk is first encoded or decoded (see
+        `zarr.core.metadata.v3.evolve_and_validate_codecs`).
+
+        The default declares the identity when `resolve_metadata` is not
+        overridden, and returns `None` otherwise. Codecs that override
+        `resolve_metadata` without changing the chunk shape (for example to
+        change the data type or fill value) should override this method to
+        return `(shape, chunk_grid)` unchanged, and codecs that change the chunk
+        shape in a way expressible as a grid (for example a permutation of the
+        axes) should return the mapped geometry.
+
+        A declaration is ignored if a subclass overrides `resolve_metadata`
+        without also overriding this method, or if it disagrees with
+        `resolve_metadata` on the representative chunk.
+
+        Parameters
+        ----------
+        shape : tuple[int, ...]
+            The array shape seen by this codec.
+        chunk_grid : ChunkGridMetadata
+            The chunk grid seen by this codec.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ChunkGridMetadata] | None
+        """
+        if type(self).resolve_metadata is BaseCodec.resolve_metadata:
+            return shape, chunk_grid
+        return None
+
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.

@@ -815,6 +815,15 @@ print(f"shard sizes={z.write_chunk_sizes}")
 print(z.info)
 ```
 
+!!! note "When the divisibility check happens"
+    Zarr checks that the inner chunk shape divides every shard when the array is
+    created, as long as each filter before the sharding codec describes how it maps
+    the chunk grid. All built-in filters that keep the chunk shape, and `transpose`, do.
+    A filter that changes chunk metadata without describing its grid limits that check
+    to the largest shard. A smaller shard that is not divisible is then reported when
+    a write touches it, before anything is stored, or when its stored bytes are read. See
+    [Chunk geometry and validation](extending.md#chunk-geometry-and-validation).
+
 ### Metadata format
 
 Rectilinear chunk grid metadata uses run-length encoding (RLE) for compact
