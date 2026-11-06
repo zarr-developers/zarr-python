@@ -3,18 +3,24 @@ import functools
 from collections.abc import Callable, Iterable
 from typing import Any, cast
 
-import hypothesis.extra.numpy as npst
-import hypothesis.strategies as st
 import numpy as np
-from hypothesis import assume, note
-from hypothesis.stateful import (
-    RuleBasedStateMachine,
-    initialize,
-    invariant,
-    precondition,
-    rule,
-)
-from hypothesis.strategies import DataObject
+
+from zarr.testing._deps import missing_dependency
+
+try:
+    import hypothesis.extra.numpy as npst
+    import hypothesis.strategies as st
+    from hypothesis import assume, note
+    from hypothesis.stateful import (
+        RuleBasedStateMachine,
+        initialize,
+        invariant,
+        precondition,
+        rule,
+    )
+    from hypothesis.strategies import DataObject
+except ImportError as e:
+    raise missing_dependency("hypothesis", __name__) from e
 
 import zarr
 from zarr import Array
