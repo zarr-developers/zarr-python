@@ -1,34 +1,48 @@
 # Models and readers
 
-A model is a metadata document and the context it was read in. This page
-covers how a document becomes a model, what a model exposes, how to change
-one, and when two models are equal. The [Context](context.md) page explains
-why the context is part of the model; this page is about using it.
+A model is a metadata document plus the context it was read in. This page
+covers:
+
+- how a document becomes a model,
+- what a model exposes,
+- how to change a model,
+- when two models are equal.
+
+The [Context](context.md) page explains why the context is part of the
+model. This page is about using it.
 
 ## Readers and readings
 
 Every document type has a reader in `zarr_metadata.model`. A reader does
-one read and returns a **reading**: everything the read found, as values,
-with nothing raised. `read_array_metadata_v3` returns:
+one read and returns a **reading**. A reading holds everything the read
+found, as values. Nothing is raised.
 
-- each declaration as the context read it: an `AcceptedDeclaration` when a
-  definition claims its name, an `UnclaimedDeclaration` when none does, or
-  a `RefusedDeclaration`, together with the declaration's location and the
-  kind it was read as;
-- each codec, with the chunk it receives;
-- every problem;
-- the model, when there are no problems.
+`read_array_metadata_v3` returns:
+
+- Each declaration as the context read it, with its location and the kind
+  it was read as. The declaration is one of:
+    - an `AcceptedDeclaration`, when a definition claims its name;
+    - an `UnclaimedDeclaration`, when no definition does;
+    - a `RefusedDeclaration`, when a definition claims it but finds problems.
+- Each codec, with the chunk it receives.
+- Every problem.
+- The model, when there are no problems.
 
 The model's `from_json` returns that model, or raises
-`MetadataValidationError` with the same problems. A consumer can apply its
-own policy by walking the declarations, without reading anything twice.
-`with_problems` pairs each declaration with its problems: those located in
-the declaration and in the declarations it contains. This matches how zod's
-`flattenError` groups issues. `canonical_of` returns the simplest spelling
-of a declaration that has no problems, without reading it again. For
-example, the code below finds the declarations that go beyond the core spec
-(a declaration with no name is already a problem), and the simplest
-spelling of each declaration:
+`MetadataValidationError` with the same problems.
+
+A consumer can walk the declarations to apply its own policy. Nothing is
+read twice. Two helpers support this:
+
+- `with_problems` pairs each declaration with its problems. These are the
+  problems located in the declaration and in the declarations it contains.
+  This matches how zod's `flattenError` groups issues.
+- `canonical_of` returns the simplest spelling of a declaration that has no
+  problems. It does not read the declaration again.
+
+The code below finds the declarations that go beyond the core spec. (A
+declaration with no name is already a problem.) It also finds the simplest
+spelling of each declaration.
 
 ```python test="true" session="models"
 import json
@@ -52,109 +66,155 @@ simplest = {
 metadata = reading.metadata  # None when reading.problems is not empty
 ```
 
-`read_group_metadata_v3` reads a group the same way. It checks the envelope
-of the group's `consolidated_metadata`, and does not read the documents the
-member lists (see [Consolidated metadata](consolidated-metadata.md)).
-`read_node_metadata_v3` reads a `zarr.json` of either kind as the node type
-its [`node_type`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#node-type) names, the same way a discriminated union uses its tag. A
-document whose `node_type` is neither reads as
-`ZarrV3UnknownNodeMetadataReading`, with the problems. Only its
-`zarr_format` is read, so a document of another format is reported as not
-v3. `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3`
-build the model of either kind, the same way the models' own `from_json`
-and `from_key_value` build one.
+The other v3 readers work the same way:
 
-Every reader takes `context=None` for the default context,
+- `read_group_metadata_v3` reads a group. It checks the envelope of the
+  group's `consolidated_metadata`. It does not read the documents that
+  member lists. See [Consolidated metadata](consolidated-metadata.md).
+- `read_node_metadata_v3` reads a `zarr.json` of either kind. It picks the
+  kind from the document's
+  [`node_type`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#node-type),
+  the way a discriminated union uses its tag. If `node_type` names neither
+  kind, the result is a `ZarrV3UnknownNodeMetadataReading` with the
+  problems. Only `zarr_format` is read in that case, so a document of
+  another format is reported as not v3.
+- `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3` build
+  the model of either kind. They work like the models' own `from_json` and
+  `from_key_value`.
+
+Every reader takes `context=None`. The default context is
 `CORE_AND_EXTENSIONS_CONTEXT`.
 
 ## A model is a document read in a context
 
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
-context (`CORE_AND_EXTENSIONS_CONTEXT` when none is given) and raises
-`MetadataValidationError` with every problem, so an invalid model is never
-built. `to_json` returns the document as it was written, and `to_key_value`
-writes that same document to store bytes.
+context. With no context, it uses `CORE_AND_EXTENSIONS_CONTEXT`. If the
+read finds problems, it raises `MetadataValidationError` with all of them.
+An invalid model is never built.
 
-Every typed attribute is a view of that read: each declaration as the
-context read it (an `AcceptedDeclaration` or an `UnclaimedDeclaration`),
-and `shape`, `attributes` and the members that hold no declaration as the
-read refined them. These views are read-only at every level: a list in the
-document is shown as a tuple, and an object as a read-only mapping.
-`to_json` returns plain containers. A model holds nothing that can be
-changed in place.
+- `to_json` returns the document as it was written.
+- `to_key_value` writes that same document to store bytes.
 
-To change a model, call `update`. It replaces members of the document with
-the given JSON members and reads the result in the model's own context, so
-you do not pass the context again. A member the spec defines is given by its
-name, and any other member in `extra_fields`, a mapping from its key to its
-value, or to `UNSET` to remove it. A name `update` does not take raises
-`TypeError`, so a misspelled member is never written. `with_context` reads
-the document in another context. `refined_in` also reads the document in
-another context, but only one that claims what this context left unclaimed
-and contradicts nothing; otherwise it raises `ScopeConflictError`.
+Every typed attribute is a view of the read:
+
+- Each declaration appears as the context read it: an
+  `AcceptedDeclaration` or an `UnclaimedDeclaration`.
+- `shape`, `attributes` and the other members that hold no declaration
+  appear as the read refined them.
+
+These views are read-only at every level. A list in the document appears
+as a tuple. An object appears as a read-only mapping. `to_json` returns
+plain containers. Nothing in a model can be changed in place.
+
+To change a model, use one of these methods:
+
+- `update` replaces members of the document and reads the result in the
+  model's own context. You do not pass the context again.
+    - Give a member the spec defines by its name.
+    - Give any other member in `extra_fields`. This is a mapping from the
+      member's key to its value, or to `UNSET` to remove it.
+    - A name `update` does not take raises `TypeError`, so a misspelled
+      member is never written.
+- `with_context` reads the document in another context.
+- `refined_in` also reads the document in another context. The new context
+  must claim what this context left unclaimed and contradict nothing.
+  Otherwise it raises `ScopeConflictError`.
 
 ## Extra fields
 
-A top-level member that the spec does not define is an extra field. The
-core spec hands such a member to its [extension rules](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown). A
-context can hold a definition for one, by its key, in the
-`array_extra_fields` or `group_extra_fields` slot of `ZarrV3Context`. A
-member whose key a definition claims is read by that definition: an extra
-field is a declaration written as the member alone, `{key: value}`. Any
-other extra field is kept as written, as an `UnclaimedDeclaration`.
+An extra field is a top-level member that the spec does not define. The
+core spec hands such members to its
+[extension rules](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown).
 
-The spec calls these members [additional fields](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#additional-fields),
-and the names `extra_fields`, `ExtraFieldDefinition` and
+A context can hold a definition for an extra field, filed by its key. The
+definition goes in the `array_extra_fields` or `group_extra_fields` slot of
+`ZarrV3Context`.
+
+- If a definition claims the key, it reads the member. The declaration is
+  the member alone, `{key: value}`.
+- Otherwise the member is kept as written, as an `UnclaimedDeclaration`.
+
+The spec calls these members
+[additional fields](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#additional-fields).
+The names `extra_fields`, `ExtraFieldDefinition` and
 `must_understand_fields` follow it. That heading comes from
-[PR 373](https://github.com/zarr-developers/zarr-specs/pull/373), which
-renamed the section v3.1.0 calls [Unknown](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown).
-As of v3.1.0 no tagged release carries the new heading, so the link points
-at the latest spec; pin it once a release does. Everywhere else this package says
-*member* for a name/value pair of a JSON object and *declaration* for the
-value at an extension point. It keeps *field* for the fields of a Python
-class, such as a dataclass or a pydantic model, and, after the spec and
-NumPy, for the parts of a structured data type (`StructField`).
+[PR 373](https://github.com/zarr-developers/zarr-specs/pull/373). It
+renamed the section that v3.1.0 calls
+[Unknown](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#unknown).
+As of v3.1.0, no tagged release has the new heading. So the link points at
+the latest spec. Pin it once a release has the heading.
 
-The context is what a reader recognizes, so the model's
-`must_understand_fields` lists each unclaimed member that does not say
-`"must_understand": false`: the spec [requires](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand) a reader to fail to open a
-node with any such member. It covers extra fields only. A data type, chunk
-grid, chunk key encoding, codec or storage transformer that nothing in the
-context claims is an `UnclaimedDeclaration` too, also when it sits inside
-another declaration, such as a codec inside a shard. A model's
-`unclaimed_declarations` lists every declaration nothing in the context
-claims, at any depth, by its location, and leaves out the members that waive
-`must_understand`: a reader can open the node when it is empty.
+Elsewhere, this package uses these words:
+
+- *member*: a name/value pair of a JSON object.
+- *declaration*: the value at an extension point.
+- *field*: a field of a Python class, such as a dataclass or a pydantic
+  model. Following the spec and NumPy, it also means a part of a structured
+  data type (`StructField`).
+
+A model has two lists of what its context does not recognize:
+
+- `must_understand_fields` lists each unclaimed extra field that does not
+  say `"must_understand": false`. The spec
+  [requires](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#must-understand)
+  a reader to fail to open a node with any such member. This list covers
+  extra fields only.
+- `unclaimed_declarations` lists every declaration that nothing in the
+  context claims, by its location. It covers every kind: data type, chunk
+  grid, chunk key encoding, codec, storage transformer and extra field. It
+  looks at any depth, such as a codec inside a shard. It leaves out the
+  members that waive `must_understand`. When it is empty, a reader can open
+  the node.
 
 ## Equality
 
-Two models are equal when they represent the same document, even if each
-is spelled differently. Values the package interprets (each declaration,
-and the fill value against its data type) are compared by their canonical
-spelling, as returned by `canonical_of` and `canonical_fill_value`. For
-example, `"NaN"` and `"0x7fc00000"` are the [same `float32` fill value](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/data-types/index.html#permitted-fill-values),
-`0.0` and `-0.0` are two different fill values, and a v3 blosc codec under
-`noshuffle`, which [ignores `typesize`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters), is the same codec with or without
-one.
+Two models are equal when they represent the same document, even if they
+spell it differently.
 
-A v2 document's [dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding), codecs and fill value are compared the same way:
-`<b1` and `|b1` are one dtype, in `dtype` and in a codec's dtype parameter
-alike, and a v2 codec that leaves out a parameter is the same as one that
-writes the numcodecs default, so `{"id": "zstd", "level": 0}` equals
-`{"id": "zstd", "level": 0, "checksum": false}`. A v2 blosc `typesize` is
-kept whatever the `shuffle`, unlike in v3: v2 codecs are defined by
-numcodecs, which writes it into each chunk's header, so two v2 blosc codecs
-that differ only in it encode different bytes, though they decode the same
-data. The [v3 blosc spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters) says `noshuffle` ignores `typesize`. A v2 node
-with no `.zattrs` equals one with an empty `.zattrs`: the
-[v2 spec](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#attributes) says the key
-"does not have to be present, and if it is absent the attributes should be
-treated as empty". In the same way, a v3 document with no `attributes`
-equals one whose `attributes` is empty.
+Values the package interprets are compared by their canonical spelling.
+These are each declaration, and the fill value read against its data type.
+`canonical_of` and `canonical_fill_value` return that spelling. For example:
 
-Values the package does not interpret (attributes, extra fields, and the
-configuration of a declaration that nothing in the context claims) are
-compared as JSON text. JSON text distinguishes `true` from `1` and `-0.0`
-from `0.0`, and treats `NaN` as equal to itself. Equal models have equal
-hashes, but may write different documents, because `to_json` writes each
-document as it was given.
+- `"NaN"` and `"0x7fc00000"` are the
+  [same `float32` fill value](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/data-types/index.html#permitted-fill-values).
+- `0.0` and `-0.0` are two different fill values.
+- A v3 blosc codec with `noshuffle`
+  [ignores `typesize`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters).
+  So it is the same codec with or without one.
+
+A v2 document's
+[dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding),
+codecs and fill value are compared the same way:
+
+- `<b1` and `|b1` are one dtype. This holds in `dtype` and in a codec's
+  dtype parameter.
+- A v2 codec that leaves out a parameter equals one that writes the
+  numcodecs default. So `{"id": "zstd", "level": 0}` equals
+  `{"id": "zstd", "level": 0, "checksum": false}`.
+- A v2 blosc `typesize` is always kept, whatever the `shuffle`. This
+  differs from v3. Numcodecs defines the v2 codecs, and it writes
+  `typesize` into each chunk's header. So two v2 blosc codecs that differ
+  only in `typesize` encode different bytes, though they decode the same
+  data. In v3, the
+  [blosc spec](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters)
+  says `noshuffle` ignores `typesize`.
+- A v2 node with no `.zattrs` equals one with an empty `.zattrs`. The
+  [v2 spec](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#attributes)
+  says the key "does not have to be present, and if it is absent the
+  attributes should be treated as empty".
+
+In the same way, a v3 document with no `attributes` equals one whose
+`attributes` is empty.
+
+Values the package does not interpret are compared as JSON text. These
+are:
+
+- attributes,
+- extra fields,
+- the configuration of a declaration that nothing in the context claims.
+
+JSON text tells `true` from `1`, and `-0.0` from `0.0`. It treats `NaN` as
+equal to itself.
+
+Equal models have equal hashes. They may still write different documents,
+because `to_json` writes each document as it was given.

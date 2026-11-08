@@ -17,10 +17,12 @@ pip install zarr-metadata
 
 A collection of data structures and routines that closely model the
 metadata rules in the Zarr v2 and v3 specifications and in zarr-extensions:
-`TypedDict` shapes for every document and configuration, immutable
-document models whose readers report every problem at its location, and
-**contexts**, which say exactly which codecs, data types and other
-extensions a program reads.
+
+- `TypedDict` shapes for every document and configuration.
+- Immutable document models. Their readers report every problem at its
+  location.
+- **Contexts**, which say exactly which codecs, data types and other
+  extensions a program reads.
 
 This is *not* a full Zarr implementation. Nothing here reads or writes
 chunks, encodes or decodes data, or performs store I/O.

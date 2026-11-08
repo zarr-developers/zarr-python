@@ -1,10 +1,14 @@
 # Pydantic
 
-`zarr_metadata.pydantic` is an optional integration. It requires Pydantic
-2.13 or newer, and the core package does not depend on it. Each exported
-name is a Pydantic field type over one of the models: a raw document given
-to the field goes through the same strict reader as `from_json`, and the
-value of the field is the model class itself.
+`zarr_metadata.pydantic` is an optional integration.
+
+- It requires Pydantic 2.13 or newer.
+- The core package does not depend on Pydantic.
+
+Each exported name is a Pydantic field type over one of the models. A raw
+document given to the field goes through the same strict reader as
+`from_json`. The value of the field is an instance of the model class
+itself.
 
 ```python test="true" session="pydantic"
 import json
@@ -28,9 +32,10 @@ manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": raw})
 ```
 
 A static type checker sees `manifest.metadata` as a
-`zarr_metadata.model.ZarrV3ArrayMetadata`. A failed read raises a Pydantic
-`ValidationError` with one line error per problem, in the format Pydantic
-uses for its own errors.
+`zarr_metadata.model.ZarrV3ArrayMetadata`.
+
+A failed read raises a Pydantic `ValidationError`. It has one line error
+per problem, in the format Pydantic uses for its own errors.
 
 ## Choosing the context
 
@@ -39,20 +44,23 @@ validation context:
 
 - If the validation context is a `Context`, every field type of that
   format reads in it.
-- If it is a mapping, the v3 field types read in its
-  `"zarr_metadata_context"` item and the v2 field types in its
-  `"zarr_metadata_context_v2"` item.
+- If it is a mapping:
+    - the v3 field types read in its `"zarr_metadata_context"` item;
+    - the v2 field types read in its `"zarr_metadata_context_v2"` item.
 - If no context is given for a format, its field types read in that
-  format's default, `CORE_AND_EXTENSIONS_CONTEXT` or `CORE_V2_CONTEXT`.
+  format's default: `CORE_AND_EXTENSIONS_CONTEXT` or `CORE_V2_CONTEXT`.
 
-A field annotated `Annotated[ZarrV3ArrayMetadata, zmp.InScope(CONTEXT)]`
-is read in `CONTEXT`, whatever the validation context holds, and a model
-instance given to it is read again in `CONTEXT`.
+To pin a field to one context, annotate it with `InScope`. A field
+annotated `Annotated[ZarrV3ArrayMetadata, zmp.InScope(CONTEXT)]` is read in
+`CONTEXT`, whatever the validation context holds. A model instance given to
+it is read again in `CONTEXT`.
 
 ## A bare `TypeAdapter` is not a validator
 
-A `TypeAdapter` over one of the public `TypedDict`s is a **coercive**
-shape adapter, not a Zarr conformance validator; it may coerce values or
-discard fields that the strict reader rejects. It suits input built from
-Python objects, such as user-authored dicts, better than JSON read from a
-store. For JSON, use the field types above or the readers directly.
+A `TypeAdapter` over one of the public `TypedDict`s is a **coercive** shape
+adapter. It is not a Zarr conformance validator. It may coerce values, or
+discard fields that the strict reader rejects.
+
+- It suits input built from Python objects, such as user-authored dicts.
+- For JSON read from a store, use the field types above, or the readers
+  directly.
