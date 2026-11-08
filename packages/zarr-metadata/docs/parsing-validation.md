@@ -203,11 +203,29 @@ for problem in problems:
 # ('configuration', 'level') invalid_value
 ```
 
-A declaration with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedDeclaration`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every declaration is known. A program that decodes chunks should also check that no declaration is unclaimed. A model's `unclaimed_declarations` lists each one, at any depth, by its location, and leaves out an extra field that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
+A declaration with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedDeclaration`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every declaration is known. A program that decodes chunks should also check that no declaration is unclaimed. A model's `unclaimed_declarations` lists each one, at any depth, by its location, and leaves out an extra field that says `"must_understand": false`, with everything in it, since a reader may ignore it. To report each of these as a problem too, read the document with `read_openable_node_metadata_v3`. Its problems are those of `read_node_metadata_v3`, then one of kind `unclaimed_declaration` for each declaration a reader must understand that nothing in scope claims. So its reading has no problems exactly when a reader that understands the scope can open the node:
 
 ```python test="true" session="parsing-validation"
-unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_declarations
-can_open = unclaimed is not None and len(unclaimed) == 0
+from zarr_metadata.model import read_openable_node_metadata_v3
+
+openable = read_openable_node_metadata_v3(
+    {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "data_type": "uint8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [2]}},
+        "chunk_key_encoding": {"name": "default"},
+        "fill_value": 0,
+        "codecs": [{"name": "bytes"}, {"name": "my_codec"}],
+        "my_member": {"name": "my_member"},
+        "ignorable": {"must_understand": False},
+    }
+)
+for problem in openable.problems:
+    print(problem.loc, problem.kind)
+# ('codecs', 1) unclaimed_declaration
+# ('my_member',) unclaimed_declaration
 ```
 
 To make an unknown data type or codec known, add its definition to the scope's slot and read the document again:
