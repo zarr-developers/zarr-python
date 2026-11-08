@@ -20,7 +20,14 @@ from typing import Final, Literal, TypeAlias, TypeGuard, TypeVar, cast, get_args
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
+ProblemKind = Literal[
+    "missing_key",
+    "invalid_type",
+    "invalid_value",
+    "invalid_json",
+    "unknown_key",
+    "unclaimed_declaration",
+]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -35,6 +42,10 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
   open since 2023), and many readers reject such a key. It has its own
   kind so that a caller who tolerates it can distinguish it from a wrong
   value, and so that it never hides other problems in the same object.
+- `unclaimed_declaration`: a declaration that nothing in scope claims, which
+  a reader must understand to open the node. Only
+  `read_openable_node_metadata_v3` reports it: the other readers accept an
+  unclaimed declaration, since that is what keeps the format open.
 """
 
 

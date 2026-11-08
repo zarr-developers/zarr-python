@@ -443,14 +443,14 @@ def must_understand_subset(
     }
 
 
-def waived_members(values: Mapping[str, ZarrV3ExtensionField]) -> list[str]:
+def waived_members(values: Mapping[str, object]) -> list[str]:
     """The keys of the extra fields in `values` (by key, as written) that say `"must_understand": false`, which a reader may ignore."""
     return [key for key, value in values.items() if _waived(value)]
 
 
-def _waived(value: ZarrV3ExtensionField) -> bool:
+def _waived(value: object) -> bool:
     """Whether `value`, an extra field as written, is an object that says `"must_understand": false`."""
-    return isinstance(value, Mapping) and value.get("must_understand") is False
+    return is_object(value) and value.get("must_understand") is False
 
 
 class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
@@ -835,6 +835,10 @@ class ZarrV3ArrayMetadata(Keyed):
         Raises `MetadataValidationError` with every problem the read finds.
         `read_array_metadata_v3` returns the reading this model is built
         from, and the problems of a document that has any.
+        A declaration that nothing in `context` claims, such as an unknown
+        codec or an unknown top-level member, is not a problem; the model
+        lists each one a reader must understand in `unclaimed_declarations`.
+        `read_openable_node_metadata_v3` reports each one as a problem.
         """
         return cls(data, context=context)
 
@@ -919,7 +923,9 @@ def read_array_metadata_v3(
     type. Unknown top-level keys are allowed (they map to
     `extra_fields`). A reader must understand each one that does not
     declare `must_understand: false`; the model reports these as
-    `must_understand_fields`.
+    `must_understand_fields`, and every declaration a reader must
+    understand, at any depth, as `unclaimed_declarations`.
+    `read_openable_node_metadata_v3` reports each of those as a problem.
 
     To apply a policy over the declarations (for example, allow only the core
     spec's declarations), iterate over the reading's `declarations()`. A value that
