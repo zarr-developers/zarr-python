@@ -116,40 +116,42 @@ compares equal after loading, only if its definitions can. A lambda or
 a closure cannot be pickled, and a `functools.partial` can be pickled
 but does not compare equal to its loaded copy.
 
-    from collections.abc import Iterator
-    from typing import Annotated, NotRequired
+```python
+from collections.abc import Iterator
+from typing import Annotated, NotRequired
 
-    from annotated_types import Ge
-    from typing_extensions import TypedDict
+from annotated_types import Ge
+from typing_extensions import TypedDict
 
-    from zarr_metadata import ValidationProblem
-    from zarr_metadata.definition import Nested
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
-
-
-    class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: Annotated[int, Ge(1)]
-        dictionary: NotRequired[str]
-        dictionary_size: NotRequired[Annotated[int, Ge(1)]]
+from zarr_metadata import ValidationProblem
+from zarr_metadata.definition import Nested
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
 
 
-    def acme_lz4_rules(
-        configuration: AcmeLz4Configuration, nested: Nested
-    ) -> Iterator[ValidationProblem]:
-        if "dictionary" in configuration and "dictionary_size" not in configuration:
-            yield ValidationProblem(
-                ("dictionary_size",), "a dictionary needs its size", "missing_key"
-            )
+class AcmeLz4Configuration(TypedDict, closed=True):
+    acceleration: Annotated[int, Ge(1)]
+    dictionary: NotRequired[str]
+    dictionary_size: NotRequired[Annotated[int, Ge(1)]]
 
 
-    ACME_LZ4 = CodecDefinition(
-        name="acme.lz4",
-        configuration=AcmeLz4Configuration,
-        kind="bytes_bytes",
-        size="dynamic",
-        rules=acme_lz4_rules,
-    )
-    CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_LZ4]))
+def acme_lz4_rules(
+    configuration: AcmeLz4Configuration, nested: Nested
+) -> Iterator[ValidationProblem]:
+    if "dictionary" in configuration and "dictionary_size" not in configuration:
+        yield ValidationProblem(
+            ("dictionary_size",), "a dictionary needs its size", "missing_key"
+        )
+
+
+ACME_LZ4 = CodecDefinition(
+    name="acme.lz4",
+    configuration=AcmeLz4Configuration,
+    kind="bytes_bytes",
+    size="dynamic",
+    rules=acme_lz4_rules,
+)
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_LZ4]))
+```
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,
