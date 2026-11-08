@@ -1,0 +1,1 @@
+Bounded CI-runner GPU capability probe (intent 69202). This file only triggers the repository's existing GPU Test workflow; no other change.
