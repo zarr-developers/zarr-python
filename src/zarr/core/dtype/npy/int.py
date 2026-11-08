@@ -63,7 +63,42 @@ class BaseInt[
     in both Zarr v2 and v3 formats, as well as methods for checking and casting scalars.
     """
 
+    dtype_cls: ClassVar[type[_NumpyIntDType]]
     _zarr_v2_names: ClassVar[tuple[str, ...]]
+
+    @classmethod
+    def _check_native_dtype(cls: type[Self], dtype: object) -> TypeGuard[DType]:
+        """
+        Check the integer kind and item size, allowing equivalent NumPy dtype aliases.
+
+        NumPy has a separate data type class for each C integer type, even when two C types have
+        the same width, and a fixed-width class such as `np.dtypes.Int64DType` is an alias for only
+        one of them. This check is required for the following reasons:
+        - On Windows, `np.dtype('i')` creates an instance of `np.dtypes.IntDType`, rather than an
+          instance of `np.dtypes.Int32DType`, even though both represent 32-bit signed integers.
+        - On Windows, `np.array([1], dtype=np.uint32) & 1` creates an instance of
+          `np.dtypes.UIntDType`, rather than an instance of `np.dtypes.UInt32DType`,
+          even though both represent 32-bit unsigned integers.
+        - On Linux and macOS, `np.longlong` and `np.ulonglong` create instances of
+          `np.dtypes.LongLongDType` and `np.dtypes.ULongLongDType` instead of the expected
+          `np.dtypes.Int64DType` and `np.dtypes.UInt64DType`.
+
+        Parameters
+        ----------
+        dtype : object
+            The object to check. Anything other than a NumPy dtype does not match.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        expected = cls.dtype_cls()
+        return (
+            isinstance(dtype, np.dtype)
+            and dtype.kind == expected.kind
+            and dtype.itemsize == expected.itemsize
+        )
 
     @classmethod
     def _check_json_v2(cls, data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
@@ -280,7 +315,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         if cls._check_native_dtype(dtype):
             return cls()
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
@@ -421,7 +456,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         if cls._check_native_dtype(dtype):
             return cls()
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self: Self) -> np.dtypes.UInt8DType:
@@ -583,7 +618,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.Int16DType:
@@ -746,7 +781,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.UInt16DType:
@@ -887,27 +922,6 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
 
     @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.Int32DType]:
-        """
-        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
-
-        This method is overridden for this particular data type because of a Windows-specific issue
-        where np.dtype('i') creates an instance of ``np.dtypes.IntDType``, rather than an
-        instance of ``np.dtypes.Int32DType``, even though both represent 32-bit signed integers.
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return super()._check_native_dtype(dtype) or dtype == np.dtypes.Int32DType()
-
-    @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Create an Int32 from an np.dtype('int32') instance.
@@ -930,7 +944,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self: Self) -> np.dtypes.Int32DType:
@@ -1071,28 +1085,6 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
 
     @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.UInt32DType]:
-        """
-        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
-
-        This method is overridden for this particular data type because of a Windows-specific issue
-        where ``np.array([1], dtype=np.uint32) & 1`` creates an instance of ``np.dtypes.UIntDType``,
-        rather than an instance of ``np.dtypes.UInt32DType``, even though both represent 32-bit
-        unsigned integers. (In contrast to ``np.dtype('i')``, ``np.dtype('u')`` raises an error.)
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return super()._check_native_dtype(dtype) or dtype == np.dtypes.UInt32DType()
-
-    @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
         Create a UInt32 from an np.dtype('uint32') instance.
@@ -1116,7 +1108,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.UInt32DType:
@@ -1275,7 +1267,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.Int64DType:
@@ -1530,7 +1522,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            f"Invalid data type: {dtype}. Expected a data type equivalent to {cls.dtype_cls}"
         )
 
     @property
