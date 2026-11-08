@@ -8,12 +8,14 @@ block that cannot run says so with `exec="false"` and a `reason`.
 
 from __future__ import annotations
 
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 
 import pytest
 from pytest_examples import CodeExample, EvalExample, find_examples
 
+import zarr_metadata.definition
 from zarr_metadata.model import ZarrV3ArrayMetadata
 
 PACKAGE_ROOT = Path(__file__).parent.parent
@@ -75,10 +77,6 @@ def test_every_python_block_says_whether_it_runs() -> None:
 
 def test_the_extensions_page_example_is_the_definition_module_docstring_example() -> None:
     """The acme.lz4 example on the extensions page is, line for line, the example in the `zarr_metadata.definition` module docstring. Only the page's copy runs under these tests, so this is what keeps the docstring's copy from drifting."""
-    import textwrap
-
-    import zarr_metadata.definition
-
     page_blocks = [
         example
         for example in _examples()

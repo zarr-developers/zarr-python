@@ -86,7 +86,7 @@ changed in place.
 To change a model, call `update`. It replaces members of the document with
 the given JSON members and reads the result in the model's own context, so
 you do not pass the context again. A member the spec defines is given by its
-name, and any other field in `extra_fields`, a mapping from its key to its
+name, and any other member in `extra_fields`, a mapping from its key to its
 value, or to `UNSET` to remove it. A name `update` does not take raises
 `TypeError`, so a misspelled member is never written. `with_context` reads
 the document in another context. `refined_in` also reads the document in
