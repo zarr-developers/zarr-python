@@ -232,17 +232,17 @@ To make an unknown data type or codec known, add its definition to the scope's s
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import EmptyConfiguration
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
 
 # The definition of the codec that was unknown: here, a codec named
 # `acme.codec` that takes no configuration.
 MY_CODEC = CodecDefinition(
     name="acme.codec", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
 )
-context = CORE_AND_EXTENSIONS_CONTEXT.update(codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), MY_CODEC])
+context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[MY_CODEC]))
 reading = read_array_metadata_v3(raw, context=context)
 ```
 
-`update` replaces each slot it is given and keeps the others. A slot can also be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.update(codecs={**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP})` replaces the gzip definition with your own.
+`union` keeps every definition the scope has, and raises `ScopeConflictError` if `MY_CODEC` has a name the scope already files with another definition. To replace a definition on purpose, use `copy`, which, like pydantic's `model_copy(update=...)`, replaces whole each slot it is given and keeps the others. A slot can be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.copy(update={"codecs": {**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP}})` replaces the gzip definition with your own. Passing `copy(update={"codecs": [MY_CODEC]})` instead would leave `MY_CODEC` as the only codec.
 
 [^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the declaration `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

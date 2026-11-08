@@ -88,35 +88,36 @@ CORE_CONTEXT: Final = ZarrV3Context(
 )
 """A scope with only what the Zarr v3 specification defines, including the envelope of a group's `consolidated_metadata`, which the spec fixes."""
 
-CORE_AND_EXTENSIONS_CONTEXT: Final = CORE_CONTEXT.update(
-    data_types=[
-        *CORE_CONTEXT.data_types.values(),
-        BYTES_DATA_TYPE,
-        STRING_DATA_TYPE,
-        FIXED_LENGTH_UTF32_DATA_TYPE,
-        NUMPY_DATETIME64_DATA_TYPE,
-        NUMPY_TIMEDELTA64_DATA_TYPE,
-        STRUCT_DATA_TYPE,
-    ],
-    chunk_grids=[*CORE_CONTEXT.chunk_grids.values(), RECTILINEAR_CHUNK_GRID],
-    codecs=[
-        *CORE_CONTEXT.codecs.values(),
-        CAST_VALUE_CODEC,
-        SCALE_OFFSET_CODEC,
-        VLEN_BYTES_CODEC,
-        VLEN_UTF8_CODEC,
-        ZSTD_CODEC,
-    ],
+CORE_AND_EXTENSIONS_CONTEXT: Final = CORE_CONTEXT.union(
+    ZarrV3Context(
+        data_types=[
+            BYTES_DATA_TYPE,
+            STRING_DATA_TYPE,
+            FIXED_LENGTH_UTF32_DATA_TYPE,
+            NUMPY_DATETIME64_DATA_TYPE,
+            NUMPY_TIMEDELTA64_DATA_TYPE,
+            STRUCT_DATA_TYPE,
+        ],
+        chunk_grids=[RECTILINEAR_CHUNK_GRID],
+        codecs=[
+            CAST_VALUE_CODEC,
+            SCALE_OFFSET_CODEC,
+            VLEN_BYTES_CODEC,
+            VLEN_UTF8_CODEC,
+            ZSTD_CODEC,
+        ],
+    )
 )
 """A scope with what the specification defines, plus the extensions that `zarr-extensions` registers and this package defines."""
 
-ZARR_PYTHON_CONTEXT: Final = CORE_AND_EXTENSIONS_CONTEXT.update(
-    data_types=[
-        *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-        NULL_TERMINATED_BYTES_DATA_TYPE,
-        VARIABLE_LENGTH_BYTES_DATA_TYPE,
-        ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
-    ],
+ZARR_PYTHON_CONTEXT: Final = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(
+        data_types=[
+            NULL_TERMINATED_BYTES_DATA_TYPE,
+            VARIABLE_LENGTH_BYTES_DATA_TYPE,
+            ZARR_PYTHON_RAW_BYTES_DATA_TYPE,
+        ]
+    )
 )
 """A scope with `CORE_AND_EXTENSIONS_CONTEXT`, plus the data types that zarr-python writes but no specification registers: `null_terminated_bytes`, `variable_length_bytes` and `raw_bytes`.
 
