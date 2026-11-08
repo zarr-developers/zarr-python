@@ -4,10 +4,15 @@ Zarr v3 `uint8` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, single_byte
-from zarr_metadata.v3.data_type._integer import integer_fill_value_rules
+from annotated_types import Interval
+
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    single_byte,
+)
 
 UINT8_DATA_TYPE_NAME: Final = "uint8"
 """The `data_type` value for the `uint8` type."""
@@ -15,7 +20,7 @@ UINT8_DATA_TYPE_NAME: Final = "uint8"
 Uint8DataTypeName = Literal["uint8"]
 """Literal type of the `data_type` field for `uint8`."""
 
-Uint8FillValue = int
+Uint8FillValue = Annotated[int, Interval(ge=0, le=2**8 - 1)]
 """Permitted JSON shape of the `fill_value` field for `uint8`: a JSON integer in [0, 255]."""
 
 
@@ -23,10 +28,9 @@ UINT8_DATA_TYPE: Final = DataTypeDefinition(
     name=UINT8_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=Uint8FillValue,
-    fill_value_rules=integer_fill_value_rules(0, 2**8 - 1),
     storage=single_byte,
 )
-"""The `uint8` data type: a bare name, with nothing to configure; its fill value an integer in its range."""
+"""The `uint8` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 
 
 __all__ = [

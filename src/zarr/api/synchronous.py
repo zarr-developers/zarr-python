@@ -186,6 +186,7 @@ def open(
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
 ) -> AnyArray | Group:
     """Open a group or array using file-mode-like semantics.
@@ -210,6 +211,11 @@ def open(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration. Groups have no runtime
+        configuration, so passing `config` when a group is opened or created raises a
+        `TypeError`.
     **kwargs
         Additional parameters are passed through to `zarr.open_array` or
         `zarr.open_group`.
@@ -237,6 +243,7 @@ def open(
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
+            config=config,
             **kwargs,
         )
     )
@@ -263,7 +270,7 @@ def save(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
-    """Save an array or group of arrays to the local file system.
+    """Save an array or group of arrays to a store.
 
     Parameters
     ----------
@@ -304,7 +311,7 @@ def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
-    """Save a NumPy array to the local file system.
+    """Save a NumPy array to a store.
 
     Follows a similar API to the NumPy save() function.
 
@@ -347,7 +354,7 @@ def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Save several NumPy arrays to the local file system.
+    """Save several NumPy arrays to a store.
 
     Follows a similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -775,6 +782,13 @@ def create(
 
         The elements of `codecs` specify the transformation from array values to stored bytes.
         Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
+        The [Zarr format 3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-encoding)
+        requires, in order, zero or more array -> array codecs
+        ([`zarr.abc.codec.ArrayArrayCodec`][]), exactly one array -> bytes codec
+        ([`zarr.abc.codec.ArrayBytesCodec`][]), and zero or more bytes -> bytes codecs
+        ([`zarr.abc.codec.BytesBytesCodec`][]). Elsewhere in Zarr-Python these are
+        called filters, the serializer, and compressors; those names are Zarr-Python
+        aliases, not terms defined in the specification.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;
@@ -928,10 +942,13 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no `compressors` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_compressors`
-        in [`zarr.config`][zarr.config].
+        returns another bytestream. These values must be instances of
+        [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+        [`zarr.abc.codec.BytesBytesCodec`][]. Multiple compressors may be provided
+        for Zarr format 3. Codecs that take an array and return bytes are serializers
+        and must be supplied with `serializer` instead.
+        If no `compressors` are provided, the default for Zarr format 3 is
+        `(ZstdCodec(),)`.
         Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
@@ -943,9 +960,11 @@ def create_array(
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no `serializer` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_serializer`
-        in [`zarr.config`][zarr.config].
+        Codecs that are instances of [`zarr.abc.codec.ArrayBytesCodec`][] must be
+        supplied here, not with `compressors`.
+        If no `serializer` is provided, a default serializer is chosen based on the data type:
+        `VLenUTF8Codec` for variable-length strings, `VLenBytesCodec` for variable-length
+        bytes, and `BytesCodec` otherwise.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -1401,6 +1420,7 @@ def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Open an array using file-mode-like semantics.
@@ -1418,6 +1438,9 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1434,6 +1457,7 @@ def open_array(
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
+                config=config,
                 **kwargs,
             )
         )

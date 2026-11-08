@@ -11,6 +11,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v3._definition import CodecDefinition
 
 CRC32C_CODEC_NAME: Final = "crc32c"
@@ -18,10 +19,6 @@ CRC32C_CODEC_NAME: Final = "crc32c"
 
 Crc32cCodecName = Literal["crc32c"]
 """Literal type of the `name` field of the `crc32c` codec."""
-
-
-class Empty(TypedDict, closed=True):
-    """An empty mapping"""
 
 
 class Crc32cCodecObject(TypedDict, closed=True):
@@ -33,8 +30,19 @@ class Crc32cCodecObject(TypedDict, closed=True):
     """
 
     name: Crc32cCodecName
-    configuration: NotRequired[Empty]
+    """The codec's name, `"crc32c"`."""
+    configuration: NotRequired[EmptyConfiguration]
+    """The codec's parameters, of which there are none.
+
+    Absent, or an empty mapping.
+    """
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 Crc32cCodecMetadata = Crc32cCodecObject | Crc32cCodecName
@@ -48,9 +56,9 @@ configuration, so both forms are valid.
 
 
 CRC32C_CODEC: Final = CodecDefinition(
-    name=CRC32C_CODEC_NAME, configuration=Empty, kind="bytes_bytes", size="static"
+    name=CRC32C_CODEC_NAME, configuration=EmptyConfiguration, kind="bytes_bytes", size="static"
 )
-"""The `crc32c` codec: a checksum has nothing to configure."""
+"""The `crc32c` codec. A checksum has no configuration."""
 
 __all__ = [
     "CRC32C_CODEC",
