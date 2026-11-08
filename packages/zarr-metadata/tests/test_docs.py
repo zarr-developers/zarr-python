@@ -92,8 +92,12 @@ def test_the_extensions_page_example_is_the_definition_module_docstring_example(
     marker = "from collections.abc import Iterator"
     starts = [i for i, line in enumerate(lines) if line.strip() == marker]
     assert len(starts) == 1, f"expected one line {marker!r} in the docstring, found {len(starts)}"
+    assert lines[starts[0] - 1].strip() == "```python", (
+        f"expected {marker!r} to open a ```python fence in the docstring"
+    )
     end = starts[0]
-    while end < len(lines) and (lines[end].startswith("    ") or lines[end].strip() == ""):
+    while end < len(lines) and lines[end].strip() != "```":
         end += 1
+    assert end < len(lines), "the docstring's ```python fence is not closed"
     docstring_example = textwrap.dedent("\n".join(lines[starts[0] : end])).strip()
     assert page_blocks[0].source.strip().splitlines() == docstring_example.splitlines()

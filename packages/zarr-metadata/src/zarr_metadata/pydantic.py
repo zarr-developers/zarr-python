@@ -29,9 +29,11 @@ with `InScope`: `Annotated[ZarrV3ArrayMetadata, InScope(CONTEXT)]`.
 
 For example:
 
-    TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
-    ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
-    Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
+```python
+TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
+ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
+Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
+```
 
 An existing model instance passes through unchanged when no scope is
 given. When one is, the instance is read again in it with `refined_in`, so
@@ -63,11 +65,13 @@ each with its own error. For a document that deep, call
 
 Usage:
 
-    import zarr_metadata.pydantic as zmp
+```python
+import zarr_metadata.pydantic as zmp
 
-    class ArrayManifest(BaseModel):
-        path: str
-        metadata: zmp.ZarrV3ArrayMetadataField
+class ArrayManifest(BaseModel):
+    path: str
+    metadata: zmp.ZarrV3ArrayMetadataField
+```
 
 Static type checkers see each field type as its core model class, so
 `manifest.metadata` is a `zarr_metadata.model.ZarrV3ArrayMetadata`.
