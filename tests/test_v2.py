@@ -147,13 +147,13 @@ def test_create_array_defaults(store: Store) -> None:
     g = zarr.open(store, mode="w", zarr_format=2)
     assert isinstance(g, Group)
     arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
-    assert arr.async_array.compressor is None
+    assert arr.compressors == ()
     assert not (arr.filters)
     arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
-    assert arr.async_array.compressor is not None
+    assert arr.compressors != ()
     assert not (arr.filters)
     arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
-    assert arr.async_array.compressor is not None
+    assert arr.compressors != ()
     assert not (arr.filters)
     with pytest.raises(ValueError):
         g.create_array(
@@ -229,8 +229,18 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
 
 
 def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
+    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated") as caught:
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
+    assert caught[0].filename == __file__
+
+
+def test_v2_metadata_chunk_grid_deprecation_warning() -> None:
+    metadata = zarr.create(shape=(2,), chunks=(1,), zarr_format=2).metadata
+    with pytest.warns(
+        DeprecationWarning, match="ArrayV2Metadata.chunk_grid is deprecated"
+    ) as caught:
+        metadata.chunk_grid  # noqa: B018
+    assert caught[0].filename == __file__
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
