@@ -229,8 +229,18 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
 
 
 def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
+    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated") as caught:
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
+    assert caught[0].filename == __file__
+
+
+def test_v2_metadata_chunk_grid_deprecation_warning() -> None:
+    metadata = zarr.create(shape=(2,), chunks=(1,), zarr_format=2).metadata
+    with pytest.warns(
+        DeprecationWarning, match="ArrayV2Metadata.chunk_grid is deprecated"
+    ) as caught:
+        metadata.chunk_grid  # noqa: B018
+    assert caught[0].filename == __file__
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
