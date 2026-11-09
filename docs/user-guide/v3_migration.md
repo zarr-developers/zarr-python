@@ -233,7 +233,7 @@ The following functions / methods have not been ported to Zarr-Python 3:
 
 The following function arguments from Zarr-Python 2 are accepted but ignored by
   Zarr-Python 3. Passing them emits a `ZarrDeprecationWarning`, and they will be
-  removed in a release after April 2027:
+  removed in a release after February 2027:
 
 - `cache_attrs`
 - `cache_metadata`

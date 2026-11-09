@@ -459,15 +459,15 @@ def group(
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
     chunk_store : StoreLike or None, default=None
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     cache_attrs : bool, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     synchronizer : object, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     path : str, optional
         Group path within store.
     meta_array : array-like, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     storage_options : dict
@@ -526,18 +526,18 @@ def open_group(
         (fail if exists). On a store that cannot delete keys, 'w' raises an
         error instead of replacing an existing node.
     cache_attrs : bool, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     synchronizer : object, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     path : str, optional
         Group path within store.
     chunk_store : StoreLike or None, default=None
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     meta_array : array-like, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
     use_consolidated : bool or str, default None
@@ -702,14 +702,14 @@ def create(
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
     synchronizer : object, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     overwrite : bool, optional
         If True, delete all pre-existing data in `store` at `path` before
         creating the array.
     path : str, optional
         Path under which array is stored.
     chunk_store : StoreLike or None, default=None
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -730,13 +730,13 @@ def create(
 
         To create an array with no filters, provide an empty iterable or the value `None`.
     cache_metadata : bool, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     cache_attrs : bool, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     read_only : bool, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     object_codec : Codec, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
         Zarr format 2 only. Zarr format 3 arrays should use `chunk_key_encoding` instead.
@@ -753,7 +753,7 @@ def create(
         which instructs Zarr to choose the default Zarr format value defined in the
         runtime configuration.
     meta_array : array-like, optional
-        Ignored. Deprecated and will be removed in a release after April 2027.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     attributes : dict[str, JSON], optional
         A dictionary of user attributes to store with the array.
     chunk_shape : ChunksLike, optional
