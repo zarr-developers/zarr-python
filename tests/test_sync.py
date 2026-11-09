@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -61,13 +62,19 @@ def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
 
 
 def test_sync_timeout() -> None:
-    duration = 0.02
+    release = threading.Event()
 
     async def foo() -> None:
-        await asyncio.sleep(duration)
+        # Stay unfinished until the timeout has been seen, so the result does not depend
+        # on how soon the calling thread is rescheduled after submitting the coroutine.
+        while not release.is_set():
+            await asyncio.sleep(0.001)
 
-    with pytest.raises(asyncio.TimeoutError):
-        sync(foo(), timeout=duration / 10)
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            sync(foo(), timeout=0.002)
+    finally:
+        release.set()
 
 
 def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None) -> None:

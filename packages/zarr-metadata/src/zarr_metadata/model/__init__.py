@@ -9,7 +9,7 @@ Every document type has a reader: `read_array_metadata_v3`,
 `read_consolidated_metadata_v2`. A reader checks a document's JSON
 structure. In a v3 document it also reads each extension point (codecs,
 chunk grids, data types, ...) through the definition that claims its
-name in a scope. The scope is `CORE_AND_EXTENSIONS` unless a `context`
+name in a scope. The scope is `CORE_AND_EXTENSIONS_CONTEXT` unless a `context`
 is passed. A v3 reader checks the fill value against the data type the
 document names, the chunk grid against the shape, and the codecs as a
 pipeline, each codec against the chunk it receives. Each reader does one
@@ -25,8 +25,13 @@ read a store that another writer made with a known writer bug, use
 `read_repaired_node_metadata_v3` or `read_repaired_node_metadata_v2`.
 They undo each bug with `repair_node_metadata_v3` or
 `repair_node_metadata_v2` before the strict read, and report what they
-changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
-readers read, except for the rules. One field on its own is read with
+changed. A reader accepts a declaration that nothing in its scope claims
+(an unknown codec, or an unknown top-level member), and a model lists each
+one a reader must understand in `unclaimed_declarations`. To also report
+each one as a problem, so that a reading has no problems exactly when a
+reader can open the node, use `read_openable_node_metadata_v3`.
+`zarr_metadata.json_schema` writes a JSON Schema of what the v3
+readers read, except for the rules. One declaration on its own is read with
 `zarr_metadata.definition.resolve`.
 
 The model constructors `from_json` and `from_key_value` raise
@@ -91,6 +96,7 @@ from zarr_metadata.model._group_v3 import (
     read_consolidated_metadata_v3,
     read_group_metadata_v3,
     read_node_metadata_v3,
+    read_openable_node_metadata_v3,
 )
 from zarr_metadata.model._repair import (
     Repair,
@@ -160,6 +166,7 @@ __all__ = [
     "read_group_metadata_v3",
     "read_node_metadata_v2",
     "read_node_metadata_v3",
+    "read_openable_node_metadata_v3",
     "read_repaired_consolidated_metadata_v2",
     "read_repaired_node_metadata_v2",
     "read_repaired_node_metadata_v3",

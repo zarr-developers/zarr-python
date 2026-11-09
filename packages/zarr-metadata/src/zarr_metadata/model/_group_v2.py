@@ -22,9 +22,11 @@ from zarr_metadata._json import (
     json_text,
     not_an_object,
     object_at,
+    prefixed,
     refine_json,
     refine_user_data,
     refined_object,
+    said,
     shown,
     with_input,
 )
@@ -36,8 +38,10 @@ from zarr_metadata.model._array_v2 import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataReading,
     decoded_node_files_v2,
+    in_files,
+    missing_store_key,
     node_document_v2,
-    read_array_metadata_v2,
+    read_array_node_v2,
     read_array_v2,
 )
 from zarr_metadata.model._keyed import Keyed
@@ -59,14 +63,14 @@ from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
-from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.definition import CORE_V2_CONTEXT
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY, ZarrV2GroupMetadataJSON
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import ResolvedField, UnclaimedField
+    from zarr_metadata.definition._definition import ResolvedDeclaration, UnclaimedDeclaration
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
@@ -88,7 +92,7 @@ _GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 
 
 def _group_problems_v2(value: object) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no fields for a scope to read, so no scope is needed."""
+    """Every reason `value` is not a v2 group document in the merged form: the `.zgroup` members, plus an optional `attributes` object from `.zattrs`. A group has no declarations for a scope to read, so no scope is needed."""
     if not is_object(value):
         return not_an_object(value)
     doc = value
@@ -104,22 +108,22 @@ _GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
     ("attributes",),
     f"unexpected key 'attributes' in {ZARR_V2_GROUP_METADATA_STORE_KEY}: a group's attributes "
     f"belong in {ZARR_V2_ATTRIBUTES_STORE_KEY}",
-    "unknown_key",
+    "invalid_value",
 )
-"""The problem of a `.zgroup` that holds `attributes`, which `.zgroup` does not declare: a group's attributes belong in `.zattrs`."""
+"""The problem of a `.zgroup` that holds `attributes`, which belong in `.zattrs`. The kind is the one `.zarray` gives the same member: the key is not unknown, but taken by the attributes, and a caller who tolerates an unknown key would drop the attributes the member holds."""
 
 
 @dataclass(frozen=True, slots=True)
 class ZarrV2GroupMetadataReading:
-    """A v2 group document as a scope read it: every problem, and the model when there are no problems. A group has no fields for a scope to read."""
+    """A v2 group document as a scope read it: every problem, and the model when there are no problems. A group has no declarations for a scope to read."""
 
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not valid."""
     metadata: ZarrV2GroupMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Its fields as read: none, since a group has no fields."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Its declarations as read: none, since a group has no declarations."""
         return iter(())
 
     def __reduce__(self) -> str | tuple[object, ...]:
@@ -132,12 +136,14 @@ class ZarrV2GroupMetadataReading:
 def read_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataReading:
-    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem, and the model when there are none. A group has no fields for a scope to read; `context` is taken for consistency with every other v2 reader."""
-    context = scoped(context, CORE_V2)
+    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem, and the model when there are none. A group has no declarations for a scope to read; `context` is taken for consistency with every other v2 reader."""
+    context = scoped(context, CORE_V2_CONTEXT)
     problems = _group_problems_v2(value)
     if len(problems) != 0:
         return ZarrV2GroupMetadataReading(problems=problems)
-    return ZarrV2GroupMetadata(value, context=context).reading
+    # The document was checked above, so the model is built without
+    # checking it again, as for a group in a `.zmetadata`.
+    return ZarrV2GroupMetadata._of(value, context).reading  # pyright: ignore[reportPrivateUsage]
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,8 +158,8 @@ class ZarrV2UnknownNodeMetadataReading:
         """Its model: always None, since there is no node to model."""
         return None
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Its fields as read: none, since no document is read."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Its declarations as read: none, since no document is read."""
         return iter(())
 
 
@@ -167,7 +173,7 @@ ZarrV2NodeMetadataReading = TypeAliasType(
 def read_node_metadata_v2(
     files: Mapping[str, object], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadataReading:
-    """Read the v2 node described by `files`, in `context` (`CORE_V2` when none is given), as the node type its files declare.
+    """Read the v2 node described by `files`, in `context` (`CORE_V2_CONTEXT` when none is given), as the node type its files declare.
 
     `files` maps each of the node's files to its decoded JSON: `.zarray`
     or `.zgroup`, and `.zattrs` when there is one. They can come from a
@@ -180,11 +186,15 @@ def read_node_metadata_v2(
     both, give a `ZarrV2UnknownNodeMetadataReading` with the problem. A
     `.zarray` or `.zgroup` that writes `attributes` itself gives the
     reading of its node type with no model, and with that problem
-    followed by the problems of the rest of the file. This is the
+    followed by the problems of the rest of the file. Each problem is
+    located in the file that holds it, such as `(".zarray", "order")` or
+    `(".zattrs", "x")`, and so is each declaration of an array's reading, whose
+    `at` is `(".zarray",)`. The model reads its merged document, so its
+    own `reading` locates declarations there, at `("dtype",)`. This is the
     v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
     and its `node_type`.
     """
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     is_array = ZARR_V2_ARRAY_METADATA_STORE_KEY in files
     is_group = ZARR_V2_GROUP_METADATA_STORE_KEY in files
     if is_array and is_group:
@@ -195,23 +205,9 @@ def read_node_metadata_v2(
         )
         return ZarrV2UnknownNodeMetadataReading((both,))
     if is_array:
-        document, problems = node_document_v2(
-            files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
-        )
-        reading = read_array_metadata_v2(document, context=context)
-        if len(problems) != 0:
-            return dataclasses.replace(
-                reading, problems=(*problems, *reading.problems), metadata=None
-            )
-        return reading
+        return read_array_node_v2(files, context)
     if is_group:
-        document, problems = node_document_v2(
-            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
-        )
-        reading = read_group_metadata_v2(document, context=context)
-        if len(problems) != 0:
-            return ZarrV2GroupMetadataReading(problems=(*problems, *reading.problems))
-        return reading
+        return _read_group_node_v2(files, context)
     neither = ValidationProblem(
         (),
         f"expected a {ZARR_V2_ARRAY_METADATA_STORE_KEY} or a {ZARR_V2_GROUP_METADATA_STORE_KEY}",
@@ -220,11 +216,25 @@ def read_node_metadata_v2(
     return ZarrV2UnknownNodeMetadataReading((neither,))
 
 
+def _read_group_node_v2(
+    files: Mapping[str, object], context: ZarrV2Context
+) -> ZarrV2GroupMetadataReading:
+    """Read the v2 group node whose files are `files`, which hold its `.zgroup`, as `read_node_metadata_v2` reads it: each problem located in the file that holds it."""
+    document, problems = node_document_v2(
+        files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+    )
+    reading = read_group_metadata_v2(document, context=context)
+    problems = (*problems, *in_files(reading.problems, ZARR_V2_GROUP_METADATA_STORE_KEY, files))
+    if len(problems) != 0:
+        return ZarrV2GroupMetadataReading(problems=problems)
+    return reading
+
+
 def node_metadata_from_key_value_v2(
     mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
 ) -> ZarrV2NodeMetadata:
     """Return the model of the v2 node whose files are in `mapping`, a store's keys and bytes: each file is decoded, then read as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem, including a file whose bytes are not JSON, and `TypeError` for a scope of another format before any bytes are decoded."""
-    context = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2_CONTEXT)
     files, problems = decoded_node_files_v2(mapping)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
@@ -238,6 +248,10 @@ class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
     """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
+    """The `attributes` member: user attributes, which a store holds in `.zattrs`.
+
+    `UNSET` removes it, so the group has no `.zattrs`.
+    """
 
 
 class ZarrV2GroupMetadata(Keyed):
@@ -248,7 +262,7 @@ class ZarrV2GroupMetadata(Keyed):
     them) as written, refined. `attributes` is empty when no `.zattrs`
     exists, as in a v3 model. The document still tells the two apart:
     `to_json` and `to_key_value` write `attributes` and `.zattrs` only when
-    a `.zattrs` exists, even an empty one. A group has no fields
+    a `.zattrs` exists, even an empty one. A group has no declarations
     for a scope to read, so the scope is held only for consistency with
     the other models: `update` reads new attributes in it, and no other
     scope conflicts with the reading. A model is only built by reading:
@@ -265,40 +279,34 @@ class ZarrV2GroupMetadata(Keyed):
     _shown: Mapping[str, JSONValue]
 
     zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    """The Zarr format version, `2`. A class constant: comparing it narrows a union of models."""
     node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
+    """The kind of node, `"group"`. A class constant: comparing it narrows a union of models.
+
+    A v2 document does not write this member: its `.zgroup` key says the node is a group.
+    """
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         problems = _group_problems_v2(document)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        # Refine once. The attributes the model holds are taken from the
-        # refined document, which shares no objects with the input.
+        self._adopt(document, context)
+
+    @classmethod
+    def _of(cls, document: object, context: ZarrV2Context) -> ZarrV2GroupMetadata:
+        """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
+        model = object.__new__(cls)
+        model._adopt(document, context)
+        return model
+
+    def _adopt(self, document: object, context: ZarrV2Context) -> None:
+        """Hold `document`, which a read found no problems with, refined once. The attributes the model holds are taken from the refined document, which shares no objects with the input."""
         refined = refined_object(document)
         attributes: dict[str, JSONValue] | UNSET = (
             object_at(refined, "attributes") if "attributes" in refined else UNSET
         )
-        self._adopt(refined, context, attributes)
-
-    @classmethod
-    def _of(
-        cls,
-        document: dict[str, JSONValue],
-        context: ZarrV2Context,
-        attributes: dict[str, JSONValue] | UNSET,
-    ) -> ZarrV2GroupMetadata:
-        """Build a model of a document that a read found no problems with, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
-        model = object.__new__(cls)
-        model._adopt(document, context, attributes)
-        return model
-
-    def _adopt(
-        self,
-        document: dict[str, JSONValue],
-        context: ZarrV2Context,
-        attributes: dict[str, JSONValue] | UNSET,
-    ) -> None:
-        self._document = document
+        self._document = refined
         self._context = context
         self._attributes = attributes
         self._shown = frozen({} if attributes is UNSET else attributes)
@@ -314,8 +322,8 @@ class ZarrV2GroupMetadata(Keyed):
         return self._context
 
     @property
-    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims. A v2 group holds no fields, so this is always empty; it is here so a reader can ask any node the same question."""
+    def unclaimed_declarations(self) -> dict[Loc, UnclaimedDeclaration]:
+        """Every declaration nothing in scope claims. A v2 group holds no declarations, so this is always empty; it is here so a reader can ask any node the same question."""
         return {}
 
     @property
@@ -369,11 +377,11 @@ class ZarrV2GroupMetadata(Keyed):
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
-        context = scoped(context, CORE_V2)
-        return self._of(self._document, context, self._attributes)
+        context = scoped(context, CORE_V2_CONTEXT)
+        return self._of(self._document, context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
-        """Return this document read in `context`. A group has no fields, so no scope conflicts with its reading, and this is the same as `with_context`."""
+        """Return this document read in `context`. A group has no declarations, so no scope conflicts with its reading, and this is the same as `with_context`."""
         return self.with_context(context)
 
     def refines(self, other: ZarrV2GroupMetadata) -> bool:
@@ -407,20 +415,18 @@ class ZarrV2GroupMetadata(Keyed):
         valid, with every problem the read finds. Raises `TypeError` for a
         scope of another format before any bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         files, problems = decoded_node_files_v2(
             mapping, (ZARR_V2_GROUP_METADATA_STORE_KEY, ZARR_V2_ATTRIBUTES_STORE_KEY)
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        document, problems = node_document_v2(
-            files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
-        )
-        if len(problems) != 0:
-            if document is not None:
-                problems = (*problems, *_group_problems_v2(document))
-            raise MetadataValidationError(problems)
-        return cls(document, context=context)
+        if ZARR_V2_GROUP_METADATA_STORE_KEY not in files:
+            raise missing_store_key(ZARR_V2_GROUP_METADATA_STORE_KEY)
+        reading = _read_group_node_v2(files, context)
+        if reading.metadata is None:
+            raise MetadataValidationError(reading.problems)
+        return reading.metadata
 
 
 ZarrV2NodeMetadata = TypeAliasType("ZarrV2NodeMetadata", ZarrV2ArrayMetadata | ZarrV2GroupMetadata)
@@ -436,11 +442,11 @@ class ZarrV2ConsolidatedMetadataReading:
     metadata: ZarrV2ConsolidatedMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
 
-    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no fields."""
+    def declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Each declaration of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry, at the key the document writes for it. Nothing when there is no model, and nothing for a group, which has no declarations."""
         if self.metadata is None:
             return
-        yield from self.metadata._located_fields()  # pyright: ignore[reportPrivateUsage]
+        yield from self.metadata._located_declarations()  # pyright: ignore[reportPrivateUsage]
 
     def __reduce__(self) -> str | tuple[object, ...]:
         # Same as the other readings: pickle through the model, when there is one.
@@ -452,8 +458,8 @@ class ZarrV2ConsolidatedMetadataReading:
 def read_consolidated_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ConsolidatedMetadataReading:
-    """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
-    context = scoped(context, CORE_V2)
+    """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2_CONTEXT` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
+    context = scoped(context, CORE_V2_CONTEXT)
     document, nodes, files, problems = _read_consolidated_v2(value, context)
     if len(problems) != 0:
         return ZarrV2ConsolidatedMetadataReading(problems=problems)
@@ -488,9 +494,10 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     _metadata: dict[str, ZarrV2NodeMetadata]
 
     zarr_consolidated_format: Final = 1
+    """The version of the consolidated metadata format, `1`."""
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         read, nodes, files, problems = _read_consolidated_v2(document, context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
@@ -566,20 +573,20 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         consumed = {key for names in self._files.values() for key in names.values()}
         return json_text({key: value for key, value in entries.items() if key not in consumed})
 
-    def _located_fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-        """Each field of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
+    def _located_declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
+        """Each declaration of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
         for path, node in self._metadata.items():
             if isinstance(node, ZarrV2ArrayMetadata):
                 key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
-                for loc, field in node.reading.fields():
-                    yield ("metadata", key, *loc), field
+                for loc, declaration in node.reading.declarations():
+                    yield ("metadata", key, *loc), declaration
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`, whatever that changes. Raises `MetadataValidationError` when a node has a problem in `context`."""
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
@@ -589,19 +596,19 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         node's entry. Raises `MetadataValidationError` when a gain exposes
         a problem.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         conflicts: list[Conflict] = []
         for path, node in self._metadata.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
-            found = disagreements(context, claims_of(node.reading.fields()))
+            found = disagreements(context, claims_of(node.reading.declarations()))
             key = self._files[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(
                     conflict,
                     loc=("metadata", key, *(() if conflict.loc is None else conflict.loc)),
                 )
-                for conflict in located_conflicts(node.reading.fields(), found.conflicts)
+                for conflict in located_conflicts(node.reading.declarations(), found.conflicts)
             )
         if len(conflicts) != 0:
             raise ScopeConflictError(conflicts)
@@ -636,7 +643,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         are not JSON, or the document is not valid. Raises `TypeError` for
         a scope of another format before the bytes are decoded.
         """
-        context = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2_CONTEXT)
         return cls(
             load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY), context=context
         )
@@ -659,37 +666,45 @@ _NODE_FILES: Final = (
 def _entries_by_path(
     entries: Mapping[str, JSONValue],
 ) -> tuple[dict[str, dict[str, str]], list[ValidationProblem]]:
-    """The store key of each `.zarray`, `.zgroup` and `.zattrs` entry, by node path and then by file name. Also a problem for each extra key that names a file of a node already seen, since that entry would otherwise not be read."""
+    """The store key of each `.zarray`, `.zgroup` and `.zattrs` entry, by node path and then by file name. Also a problem for each such key that does not name its file by the node's path, since a reader would not find that entry."""
     by_path: dict[str, dict[str, str]] = {}
     problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
         if name not in _NODE_FILES:
             continue
-        # A node's path, as a store names it: segments joined by a single `/`.
-        segments = [segment for segment in path.split("/") if segment != ""]
-        if any(segment in (".", "..") for segment in segments):
+        faults = _key_faults(key)
+        if len(faults) != 0:
             problems.append(
                 ValidationProblem(
                     ("metadata", key),
-                    f"expected the path of a node, got {key!r}, which has a '.' or '..' segment",
+                    f"expected the path of a node, got {key!r}, which {said(faults)}",
                     "invalid_value",
                 )
             )
             continue
-        path = "/".join(segments)
-        files = by_path.setdefault(path, {})
-        if name in files:
-            problems.append(
-                ValidationProblem(
-                    ("metadata", key),
-                    f"a second {name} for the node at {path!r}, which {files[name]!r} is",
-                    "invalid_value",
-                )
-            )
-            continue
-        files[name] = key
+        by_path.setdefault(path, {})[name] = key
     return by_path, problems
+
+
+def _key_faults(key: str) -> list[str]:
+    """Each reason `key`, the key of a node's file in a `.zmetadata`, does not name the file by its node's path.
+
+    A store names a node's file by the node's path: names joined by a
+    single `/`, with no leading `/`. zarr-python 2.x looks an entry up by
+    that key, so it never finds an entry written otherwise. Such a key is
+    refused, as a v3 listing refuses it.
+    """
+    names = key.split("/")[:-1]
+    faults: list[str] = []
+    if key.startswith("/"):
+        faults.append('starts with "/"')
+        names = names[1:]
+    if "" in names:
+        faults.append('holds an empty name between two "/"')
+    if any(name in (".", "..") for name in names):
+        faults.append("has a '.' or '..' segment")
+    return faults
 
 
 def _read_consolidated_v2(
@@ -702,10 +717,13 @@ def _read_consolidated_v2(
 ]:
     """Read `data`, a `.zmetadata` document. Return the document as read, with its keys in the order it writes them and each entry as read; the model of each node read in `context`, by path; the entry key of each node's files, by path and then by file name; and every problem, located in the document.
 
-    Each entry is read as the kind of document its key names. A `.zattrs`
-    entry is user data. Any other entry must be JSON by RFC 8259. A
-    `.zarray` or `.zgroup` entry is read as that document, merged with
-    its sibling `.zattrs`. Its problems are located under its own entry,
+    Each entry is read as the kind of document its key names. An entry
+    for a node's file is refined as user data, and its reader judges each
+    value the spec interprets: a `.zattrs` entry is user data, and a
+    `.zarray` or `.zgroup` reader refuses a non-finite number in a member
+    the spec defines, as it does in a store. Any other entry must be JSON
+    by RFC 8259. A `.zarray` or `.zgroup` entry is read as that document,
+    merged with its sibling `.zattrs`. Its problems are located under its own entry,
     and problems with the attributes under the `.zattrs` entry. The
     nodes and their files are empty when there is any problem.
     """
@@ -732,22 +750,18 @@ def _read_consolidated_v2(
             for key, value in entries.items():
                 if not isinstance(key, str):
                     continue
-                refine = (
-                    refine_user_data
-                    if key.rsplit("/", 1)[-1] == ZARR_V2_ATTRIBUTES_STORE_KEY
-                    else refine_json
-                )
+                refine = refine_user_data if key.rsplit("/", 1)[-1] in _NODE_FILES else refine_json
                 entry, found = refine(value, ("metadata", key))
                 problems.extend(found)
                 refined[key] = entry
     nodes: dict[str, ZarrV2NodeMetadata] = {}
     by_path: dict[str, dict[str, str]] = {}
     if len(problems) == 0:
-        # A second key for one file is reported along with the node
-        # problems. Every node is still read, so a user sees all problems
-        # at once.
-        by_path, doubled = _entries_by_path(refined)
-        problems.extend(doubled)
+        # A key that does not name its node's path is reported along with
+        # the node problems. Every other node is still read, so a user sees
+        # all problems at once.
+        by_path, misnamed = _entries_by_path(refined)
+        problems.extend(misnamed)
         for path, names in by_path.items():
             node, found = _read_node_v2(path, names, refined, context)
             problems.extend(found)
@@ -828,27 +842,12 @@ def _read_node_v2(
     if zattrs is not None:
         merged["attributes"] = entries[zattrs]
 
-    def located(found: tuple[ValidationProblem, ...]) -> list[ValidationProblem]:
-        placed: list[ValidationProblem] = []
-        for problem in found:
-            if zattrs is not None and problem.loc[:1] == ("attributes",):
-                placed.append(
-                    dataclasses.replace(problem, loc=("metadata", zattrs, *problem.loc[1:]))
-                )
-            else:
-                placed.append(dataclasses.replace(problem, loc=("metadata", key, *problem.loc)))
-        return placed
-
     if zarray is not None:
         reading, members = read_array_v2(merged, context)
         if members is None or len(beside) != 0:
-            return None, [*beside, *located(reading.problems)]
+            return None, [*beside, *prefixed("metadata", in_files(reading.problems, key, entries))]
         return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = _group_problems_v2(merged)
     if len(found) != 0 or len(beside) != 0:
-        return None, [*beside, *located(found)]
-    document = refined_object(merged)
-    attributes: dict[str, JSONValue] | UNSET = (
-        object_at(document, "attributes") if "attributes" in document else UNSET
-    )
-    return ZarrV2GroupMetadata._of(document, context, attributes), []  # pyright: ignore[reportPrivateUsage]
+        return None, [*beside, *prefixed("metadata", in_files(found, key, entries))]
+    return ZarrV2GroupMetadata._of(merged, context), []  # pyright: ignore[reportPrivateUsage]

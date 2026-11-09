@@ -62,6 +62,10 @@ class RawBytesConfiguration(TypedDict, closed=True):
     """
 
     bits: int
+    """The size in bits that the name writes, `16` for `r16`.
+
+    A positive multiple of 8.
+    """
 
 
 def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
@@ -114,7 +118,7 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
 """Raw bits, `r*`: a single data type whose name carries its size.
 
 `r16` reads as `r*` with `{"bits": 16}`. A size that is not a positive
-multiple of 8 is a problem of the field that names it. The simplest
+multiple of 8 is a problem of the declaration that names it. The simplest
 spelling writes the size back into the name in decimal, so `r008`
 becomes `r8`.
 """

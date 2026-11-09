@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 
 from zarr_metadata.definition import (
-    AcceptedField,
-    RefusedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
     canonical_of,
     resolve,
 )
@@ -97,7 +97,9 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
     "adler32": ({"id": "adler32"},),
     "fletcher32": ({"id": "fletcher32"},),
 }
-CASES = [(name, field) for name, fields in EXAMPLES.items() for field in fields]
+CASES = [
+    (name, declaration) for name, declarations in EXAMPLES.items() for declaration in declarations
+]
 
 
 def test_every_codec_has_an_example() -> None:
@@ -106,17 +108,17 @@ def test_every_codec_has_an_example() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "field"), CASES, ids=[f"{n}:{i}" for i, (n, _) in enumerate(CASES)]
+    ("name", "declaration"), CASES, ids=[f"{n}:{i}" for i, (n, _) in enumerate(CASES)]
 )
 def test_every_example_reads_and_is_written_back_as_it_was(
-    name: str, field: ZarrV2CodecMetadata
+    name: str, declaration: ZarrV2CodecMetadata
 ) -> None:
     """A numcodecs configuration is read by the definition its `id` names, with no problem, and is written back unchanged: the `id` next to the parameters. Its canonical form reads as the same codec."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
-    assert isinstance(resolved, AcceptedField)
+    resolved, problems = resolve(declaration, ZarrV2CodecDefinition, CONTEXT)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition.name == name
     assert problems == ()
-    assert resolved.to_json() == field
+    assert resolved.to_json() == declaration
     assert resolve(canonical_of(resolved, problems), ZarrV2CodecDefinition, CONTEXT)[0] == resolved
 
 
@@ -131,7 +133,7 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
 
 
 @pytest.mark.parametrize(
-    ("field", "canonical"),
+    ("declaration", "canonical"),
     [
         ({"id": "zlib"}, {"id": "zlib", "level": 1}),
         ({"id": "gzip"}, {"id": "gzip", "level": 1}),
@@ -203,10 +205,10 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
     ],
 )
 def test_the_canonical_form_fills_in_defaults_and_writes_each_value_one_way(
-    field: dict[str, Any], canonical: dict[str, Any]
+    declaration: dict[str, Any], canonical: dict[str, Any]
 ) -> None:
     """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. It writes a dtype parameter as NumPy spells it (`<i1` is `|i1`, `μs` is `us`), as an array's dtype compares, since numcodecs reads both spellings alike. So a configuration and its canonical form are one codec: they compare equal, with equal hashes. A codec with nothing to fill in or respell is unchanged."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
+    resolved, problems = resolve(declaration, ZarrV2CodecDefinition, CONTEXT)
     filled, _ = resolve(canonical, ZarrV2CodecDefinition, CONTEXT)
     assert canonical_of(resolved, problems) == canonical
     assert resolved == filled
@@ -261,19 +263,19 @@ def test_codecs_numcodecs_encodes_differently_are_different_codecs(
 
 
 @pytest.mark.parametrize(
-    "field",
+    "declaration",
     [{"id": "categorize", "labels": ["a"]}, {"id": "pickle"}, {"id": "n5_wrapper", "inner": 1}],
 )
-def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) -> None:
-    """A codec id that no definition in scope claims is read as `UnclaimedField`. Its parameters are kept and not checked, as for an unclaimed v3 extension."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
-    assert isinstance(resolved, UnclaimedField)
+def test_an_id_the_package_does_not_model_is_unclaimed(declaration: dict[str, Any]) -> None:
+    """A codec id that no definition in scope claims is read as `UnclaimedDeclaration`. Its parameters are kept and not checked, as for an unclaimed v3 extension."""
+    resolved, problems = resolve(declaration, ZarrV2CodecDefinition, CONTEXT)
+    assert isinstance(resolved, UnclaimedDeclaration)
     assert problems == ()
-    assert json.dumps(resolved.to_json()) == json.dumps(field)
+    assert json.dumps(resolved.to_json()) == json.dumps(declaration)
 
 
 @pytest.mark.parametrize(
-    ("field", "at", "kind"),
+    ("declaration", "at", "kind"),
     [
         ({"id": "zlib", "level": 10}, ("c", "level"), "invalid_value"),
         ({"id": "gzip", "level": -2}, ("c", "level"), "invalid_value"),
@@ -317,9 +319,11 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
     ],
 )
 def test_error_a_parameter_outside_what_numcodecs_takes_is_a_problem(
-    field: dict[str, Any], at: Loc, kind: str
+    declaration: dict[str, Any], at: Loc, kind: str
 ) -> None:
-    """Each of these is reported at the parameter's location inside the field: a parameter out of the range numcodecs reads, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that an array's dtype could not be, and a key that no codec declares."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT, ("c",))
+    """Each of these is reported at the parameter's location inside the declaration: a parameter out of the range numcodecs reads, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that an array's dtype could not be, and a key that no codec declares."""
+    resolved, problems = resolve(declaration, ZarrV2CodecDefinition, CONTEXT, ("c",))
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
-    assert isinstance(resolved, AcceptedField if kind == "unknown_key" else RefusedField)
+    assert isinstance(
+        resolved, AcceptedDeclaration if kind == "unknown_key" else RefusedDeclaration
+    )

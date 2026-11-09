@@ -34,7 +34,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.12', '3.13', '3.14']
+        python-version: ['3.12', '3.13', '3.14', '3.15']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
@@ -66,7 +66,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
     - name: Install just
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.12', "3.14"]
+        python-version: ['3.12', "3.14", "3.15"]
         dependency-set: ["upstream", "min_deps"]
         exclude:
           - python-version: "3.14"
@@ -119,7 +119,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
     - name: Install just
@@ -158,7 +158,7 @@ jobs:
         python-version: '3.13'
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
     - name: Install just
@@ -187,7 +187,7 @@ jobs:
         python-version: '3.13'
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
     - name: Install just
@@ -201,6 +201,32 @@ jobs:
       run: |
         HATCH_ENV=test.py3.13-minimal just benchmark
 
+  examples:
+    name: Example scripts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0 # required for hatch version discovery when uv builds zarr
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+    - name: Install Hatch
+      run: python -m pip install hatch==1.16.5
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
+    - name: Run Examples
+      run: |
+        HATCH_ENV=test.py3.13-minimal just test-examples
+
   test-complete:
     name: Test complete
 
@@ -209,7 +235,8 @@ jobs:
         test,
         test-upstream-and-min-deps,
         doctests,
-        benchmarks
+        benchmarks,
+        examples
       ]
     if: always()
     runs-on: ubuntu-latest

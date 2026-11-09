@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 from zarr.abc.store import Store
 from zarr.core.array import (
@@ -43,12 +42,11 @@ from zarr.errors import (
     ArrayNotFoundError,
     GroupNotFoundError,
     NodeTypeValidationError,
-    ZarrDeprecationWarning,
     ZarrRuntimeWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StorePath
-from zarr.storage._common import make_store_path
+from zarr.storage._common import make_store_path, resolve_zarr_format
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -91,7 +89,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -234,6 +231,7 @@ async def consolidate_metadata(
         consolidated metadata, this function raises a `TypeError`.
         See `Store.supports_consolidated_metadata`.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path)
 
     if not store_path.store.supports_consolidated_metadata:
@@ -409,6 +407,7 @@ async def open(
             mode = "r"
         else:
             mode = "a"
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
@@ -541,6 +540,7 @@ async def save_array(
     **kwargs
         Passed through to [`create`][zarr.api.asynchronous.create], e.g., compressor.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
     if not isinstance(arr, NDArrayLike):
@@ -594,6 +594,7 @@ async def save_group(
         NumPy arrays with data to save.
     """
 
+    zarr_format = resolve_zarr_format(store, zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -626,31 +627,6 @@ async def save_group(
     for k, arr in kwargs.items():
         aws.append(save_array(store_path, arr, zarr_format=zarr_format, path=k))
     await asyncio.gather(*aws)
-
-
-@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
-async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return await grp.tree(expand=expand, level=level)
 
 
 async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
@@ -809,6 +785,7 @@ async def create_group(
         The new group.
     """
 
+    zarr_format = resolve_zarr_format(store, zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -904,6 +881,7 @@ async def open_group(
         }
     )
 
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
         attributes = {}
@@ -1118,6 +1096,7 @@ async def create(
     z : array
         The array.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -1357,6 +1336,7 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if "write_empty_chunks" in kwargs:
