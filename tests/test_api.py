@@ -54,6 +54,7 @@ from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayError,
     MetadataValidationError,
+    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import MemoryStore
