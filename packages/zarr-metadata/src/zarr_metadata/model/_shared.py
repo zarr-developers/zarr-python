@@ -310,17 +310,6 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
         ) from exc
 
 
-def dump_store_json(value: object, *, indent: int | str | None = None) -> bytes:
-    """Encode a document that its reader has accepted as JSON bytes.
-
-    A non-finite number is written as Python's `json` module writes it
-    (`NaN`, `Infinity`, `-Infinity`), which matches how zarr-python
-    writes attributes. The reader keeps such numbers out of every
-    other place in the document.
-    """
-    return json.dumps(value, indent=indent, allow_nan=True).encode("utf-8")
-
-
 def located_conflicts(
     declarations: Iterable[tuple[Loc, ResolvedDeclaration[Any]]], conflicts: Sequence[Conflict]
 ) -> tuple[Conflict, ...]:

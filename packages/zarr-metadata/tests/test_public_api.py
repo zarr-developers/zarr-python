@@ -60,6 +60,10 @@ EXPECTED = [
     "MetadataValidationError",
     "ProblemKind",
     "UNSET",
+    # How `to_key_value` encodes a document as JSON bytes.
+    "JSONWriter",
+    "JSONWriterSchema",
+    "JSONWriterLike",
     # Store keys — the names the documents are persisted under. Defined in the
     # v2/v3 spec modules, re-exported through `zarr_metadata.model`.
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
@@ -339,6 +343,10 @@ _STANDALONE_VOCAB = frozenset(
         "HexFloat64",
         "JSONSchema",
         "JSONValue",
+        # How `to_key_value` encodes a document as JSON bytes.
+        "JSONWriter",
+        "JSONWriterSchema",
+        "JSONWriterLike",
         "UserJSONValue",
         # A pydantic field's scope, fixed: `Annotated[Model, InScope(CONTEXT)]`.
         "InScope",
