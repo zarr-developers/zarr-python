@@ -62,12 +62,12 @@ from zarr_metadata.model._array_v3 import (
     read_extra_fields_v3,
     waived_members,
 )
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     attributes_of,
     check_literal,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -262,16 +262,17 @@ class ZarrV3GroupMetadata(Keyed):
         return cast("ZarrV3GroupMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+        """The document as a store holds it: JSON bytes at `zarr.json`, spelled by `writer`, a `JSONWriter` or a mapping of its settings.
 
         `NaN`, `Infinity` and `-Infinity` in `attributes`, or in the
         documents the consolidated metadata lists, are written as bare
         tokens, as zarr-python writes them. A strict JSON parser rejects
         these tokens.
         """
-        return {ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)}
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V3_GROUP_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"

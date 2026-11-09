@@ -120,6 +120,34 @@ To change a model, use one of these methods:
   must claim what this context left unclaimed and contradict nothing.
   Otherwise it raises `ScopeConflictError`.
 
+## Writing store bytes
+
+`to_key_value` writes a model's document as the JSON bytes a store holds.
+A `JSONWriter` decides how those bytes are spelled: `indent`, `sort_keys`,
+`ensure_ascii` and `trailing_newline`. Its defaults are those of
+`json.dumps`. `to_key_value` takes a `JSONWriter` or a mapping of its
+settings, so you do not need to import the class to change one:
+
+```python test="true" session="models"
+from zarr_metadata.model import JSONWriter, ZarrV3GroupMetadata
+
+group = ZarrV3GroupMetadata.create_default(attributes={"b": 1, "a": 2})
+print(group.to_key_value({"indent": 2, "sort_keys": True})["zarr.json"].decode())
+# {
+#   "attributes": {
+#     "a": 2,
+#     "b": 1
+#   },
+#   "node_type": "group",
+#   "zarr_format": 3
+# }
+assert group.to_key_value({"indent": 2}) == group.to_key_value(JSONWriter(indent=2))
+```
+
+A mapping with a key that is not a setting raises `TypeError`, so a
+misspelled setting is not ignored. `JSONWriter.from_dict` turns a mapping
+into a writer, and `to_dict` turns a writer back into a mapping.
+
 ## Extra fields
 
 An extra field is a top-level member that the spec does not define. The
