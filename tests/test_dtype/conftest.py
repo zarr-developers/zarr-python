@@ -29,9 +29,9 @@ for wrapper_cls in data_type_registry.contents.values():
 
 def pytest_generate_tests(metafunc: Any) -> None:
     """
-    This is a pytest hook to parametrize class-scoped fixtures.
+    This is a pytest hook to parametrize tests using class attributes.
 
-    This hook allows us to define class-scoped fixtures as class attributes and then
+    This hook allows us to define test parameters as class attributes and then
     generate the parametrize calls for pytest. This allows the fixtures to be
     reused across multiple tests within the same class.
 
@@ -60,13 +60,15 @@ def pytest_generate_tests(metafunc: Any) -> None:
     """
     # Iterate over all the fixtures defined in the class
     # and parametrize them with the values defined in the class
-    # This allows us to define class-scoped fixtures as class attributes
+    # This allows us to define test parameters as class attributes
     # and then generate the parametrize calls for pytest
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
             params = getattr(metafunc.cls, fixture_name)
+            # Function scope prevents pytest from reusing equal but distinct dtypes,
+            # such as IntDType and Int32DType on Windows.
             metafunc.parametrize(
-                fixture_name, params, scope="class", ids=_unique_ids([str(p) for p in params])
+                fixture_name, params, scope="function", ids=_unique_ids([str(p) for p in params])
             )
 
 

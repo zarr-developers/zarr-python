@@ -20,7 +20,14 @@ from typing import Final, Literal, TypeAlias, TypeGuard, TypeVar, cast, get_args
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
+ProblemKind = Literal[
+    "missing_key",
+    "invalid_type",
+    "invalid_value",
+    "invalid_json",
+    "unknown_key",
+    "unclaimed_declaration",
+]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -35,6 +42,10 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
   open since 2023), and many readers reject such a key. It has its own
   kind so that a caller who tolerates it can distinguish it from a wrong
   value, and so that it never hides other problems in the same object.
+- `unclaimed_declaration`: a declaration that nothing in scope claims, which
+  a reader must understand to open the node. Only
+  `read_openable_node_metadata_v3` reports it: the other readers accept an
+  unclaimed declaration, since that is what keeps the format open.
 """
 
 
@@ -130,14 +141,23 @@ class ValidationProblem:
     """
 
     loc: tuple[str | int, ...]
+    """The path from the root of what was judged to the offending value.
+
+    Keys and indices, e.g. `("codecs", 0, "name")` in a document; an empty
+    `loc` refers to that root.
+    """
     message: str
+    """The human-readable description of what is wrong."""
     kind: ProblemKind
+    """The kind of problem, for programmatic dispatch."""
     input: JSONValue | UNSET = dataclasses.field(
         default=UNSET, kw_only=True, compare=False, repr=False
     )
+    """The JSON found at `loc`, or `UNSET` when nothing is there or it is not JSON."""
     ctx: Mapping[str, JSONValue] = dataclasses.field(
         default_factory=_no_ctx, kw_only=True, compare=False, repr=False
     )
+    """What was expected, e.g. bounds or a closed set of values; empty when only a type was."""
 
     def __post_init__(self) -> None:
         # Enforce the annotations at runtime. A rule written without a type
@@ -215,6 +235,7 @@ class MetadataValidationError(ValueError):
     """
 
     problems: tuple[ValidationProblem, ...]
+    """Every problem found, in the order found."""
 
     def __init__(self, problems: Sequence[ValidationProblem]) -> None:
         self.problems = tuple(problems)
@@ -608,6 +629,13 @@ def shown_by_python(value: object) -> str:
 V = TypeVar("V")
 
 
+def said(faults: Sequence[str]) -> str:
+    """Join `faults`, each a reason, into one clause: `a`, `a and b`, `a, b and c`."""
+    if len(faults) <= 1:
+        return "".join(faults)
+    return f"{', '.join(faults[:-1])} and {faults[-1]}"
+
+
 def choices(allowed: Sequence[object]) -> str:
     """A closed set of values as a message names it: `"C"` alone, or `one of ["C", "F"]`."""
     values = [shown(value) for value in listed(allowed)]
@@ -652,9 +680,20 @@ def json_type(value: object) -> str:
 
 
 def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
-    """The kind of problem for `value` outside a closed set: `invalid_type` when no member of the set has its JSON type, else `invalid_value`."""
-    same_type = json_type(value) in {json_type(entry) for entry in allowed}
+    """The kind of problem for `value` outside a closed set: `invalid_type` when no member of the set has its type, else `invalid_value`.
+
+    An integer is a type of its own here, as everywhere a reader expects
+    one: `2.0` for `zarr_format` is the wrong type, as `4.0` in `shape` is.
+    """
+    same_type = _set_type(value) in {_set_type(entry) for entry in allowed}
     return "invalid_value" if same_type else "invalid_type"
+
+
+def _set_type(value: object) -> str:
+    """The type `refused_kind` compares: the JSON type, with an integer told apart from any other number."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "an integer"
+    return json_type(value)
 
 
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
@@ -808,6 +847,7 @@ __all__ = [
     "refine_json",
     "refine_user_data",
     "refused_kind",
+    "said",
     "shown",
     "shown_key",
     "validate_json",

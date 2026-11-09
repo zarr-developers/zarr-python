@@ -12,12 +12,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
 )
 from zarr_metadata.v3._common import (
-    ZarrV3CodecField,
-    ZarrV3StaticCodecField,
+    ZarrV3CodecDeclaration,
+    ZarrV3StaticCodecDeclaration,
 )
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -60,17 +60,44 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
-    codecs: tuple[ZarrV3CodecField, ...]
-    index_codecs: tuple[ZarrV3StaticCodecField, ...]
+    """The shape of the inner chunks a shard is divided into.
+
+    One length, at least 1, per axis of the shard the codec is handed, each
+    dividing the shard's length along that axis.
+    """
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    """The codec pipeline that encodes each inner chunk.
+
+    Like an array's `codecs`, it holds exactly one array -> bytes codec.
+    """
+    index_codecs: tuple[ZarrV3StaticCodecDeclaration, ...]
+    """The codec pipeline that encodes the shard index.
+
+    It holds exactly one array -> bytes codec, and only codecs whose output
+    size is fixed by the size of their input, so no compressor. The spec
+    recommends a little-endian `bytes` codec followed by `crc32c`.
+    """
     index_location: NotRequired[ShardingIndexLocation]
+    """Whether the shard index sits at the `"start"` or the `"end"` of the encoded shard.
+
+    Absent means `"end"`.
+    """
 
 
 class ShardingIndexedCodecObject(TypedDict, closed=True):
     """`sharding_indexed` codec metadata in object form."""
 
     name: ShardingIndexedCodecName
+    """The codec's name, `"sharding_indexed"`."""
     configuration: ShardingIndexedCodecConfiguration
+    """The codec's parameters."""
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 ShardingIndexedCodecMetadata = ShardingIndexedCodecObject
@@ -122,7 +149,7 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = AcceptedField(
+_UINT64: Final = AcceptedDeclaration(
     json=UINT64_DATA_TYPE_NAME,
     name=UINT64_DATA_TYPE_NAME,
     definition=UINT64_DATA_TYPE,
@@ -200,7 +227,7 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
 )
 """The `sharding_indexed` codec.
 
-Its two pipelines are nested fields. Each codec in them is read in the
+Its two pipelines are nested declarations. Each codec in them is read in the
 same scope as the shard, and each pipeline is read as a pipeline: the
 inner codecs receive the inner chunks, and the index codecs receive the
 shard index.

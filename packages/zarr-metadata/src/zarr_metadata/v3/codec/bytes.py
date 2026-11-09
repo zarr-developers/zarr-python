@@ -38,6 +38,12 @@ class BytesCodecConfiguration(TypedDict, closed=True):
     """
 
     endian: NotRequired[Endianness]
+    """The byte order in which each value is written.
+
+    Required when the values of the data type the codec is handed take more
+    than one byte; a single-byte type such as `uint8` or `bool` does not
+    depend on it.
+    """
 
 
 class BytesCodecObject(TypedDict, closed=True):
@@ -50,8 +56,19 @@ class BytesCodecObject(TypedDict, closed=True):
     """
 
     name: BytesCodecName
+    """The codec's name, `"bytes"`."""
     configuration: NotRequired[BytesCodecConfiguration]
+    """The codec's parameters.
+
+    May be absent when no parameter is set.
+    """
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 BytesCodecMetadata = BytesCodecObject | BytesCodecName
