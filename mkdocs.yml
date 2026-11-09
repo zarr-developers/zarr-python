@@ -14,7 +14,7 @@ nav:
   - User Guide:
       - user-guide/index.md
       - user-guide/layers.md
-        - user-guide/installation.md
+    - user-guide/installation.md
       - user-guide/arrays.md
       - user-guide/groups.md
       - user-guide/attributes.md
