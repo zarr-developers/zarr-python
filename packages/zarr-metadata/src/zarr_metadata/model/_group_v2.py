@@ -332,7 +332,7 @@ class ZarrV2GroupMetadata(Keyed):
         return self._shown
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:
-        """The merged document as written, refined. The result shares no objects with the model.
+        """The merged document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`.
 
         `attributes` is included when set, even if empty. This is not the
         on-disk `.zgroup`, which excludes them: `to_key_value` splits the
@@ -545,7 +545,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return MappingProxyType(self._metadata)
 
     def to_json(self) -> dict[str, JSONValue]:
-        """The `.zmetadata` document as written, refined. The result shares no objects with the model."""
+        """The `.zmetadata` document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("dict[str, JSONValue]", copied(self._document))
 
     def to_key_value(

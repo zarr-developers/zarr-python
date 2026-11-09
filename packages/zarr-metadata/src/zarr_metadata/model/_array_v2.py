@@ -584,7 +584,7 @@ class ZarrV2ArrayMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV2ArrayMetadataJSON:
-        """The merged document as written, refined. The result shares no objects with the model.
+        """The merged document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`.
 
         `attributes` is included when set, even empty. This is not the
         on-disk `.zarray`, which excludes them: `to_key_value` splits the

@@ -103,8 +103,17 @@ Every typed attribute is a view of the read:
   appear as the read refined them.
 
 These views are read-only at every level. A list in the document appears
-as a tuple. An object appears as a read-only mapping. `to_json` returns
-plain containers. Nothing in a model can be changed in place.
+as a tuple. An object appears as a read-only mapping. Nothing in a model
+can be changed in place.
+
+`to_json` returns a copy that the caller may change. Each object in it is
+a new `dict`, and each array is a new tuple, because the package's JSON
+types spell a JSON array as a tuple. `json.dumps` writes the copy, but it
+does not compare equal to what `json.loads` returns for the same
+document, where arrays are lists. To ask whether a model holds a
+document, compare models: `ZarrV3ArrayMetadata.from_json(document) == model`.
+This also treats a default that the document leaves out as equal to the
+default written out.
 
 To change a model, use one of these methods:
 
