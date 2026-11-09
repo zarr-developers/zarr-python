@@ -44,13 +44,13 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
 from zarr_metadata.definition._scope import refines as refines_declaration
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     attributes_of,
     check_literal,
     dimension_lengths,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -581,19 +581,20 @@ class ZarrV3ArrayMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
-        """The document as written, refined. The result shares no objects with the model."""
+        """The document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3ArrayMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+        """The document as a store holds it: JSON bytes at `zarr.json`, spelled by `writer`, a `JSONWriter` or a mapping of its settings.
 
         `NaN`, `Infinity` and `-Infinity` in `attributes` are written as
         bare tokens, as zarr-python writes them. A strict JSON parser
         rejects these tokens.
         """
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)}
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"

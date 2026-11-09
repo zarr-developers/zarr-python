@@ -44,11 +44,11 @@ from zarr_metadata.model._array_v2 import (
     read_array_node_v2,
     read_array_v2,
 )
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     check_literal,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -332,7 +332,7 @@ class ZarrV2GroupMetadata(Keyed):
         return self._shown
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:
-        """The merged document as written, refined. The result shares no objects with the model.
+        """The merged document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`.
 
         `attributes` is included when set, even if empty. This is not the
         on-disk `.zgroup`, which excludes them: `to_key_value` splits the
@@ -342,17 +342,16 @@ class ZarrV2GroupMetadata(Keyed):
         return cast("ZarrV2GroupMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
-        """The document as a store holds it: `.zgroup` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        """The document as a store holds it, spelled by `writer`, a `JSONWriter` or a mapping of its settings: `.zgroup` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        writes = JSONWriter.from_dict(writer)
         zgroup = {key: value for key, value in self._document.items() if key != "attributes"}
         out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
+            ZARR_V2_GROUP_METADATA_STORE_KEY: writes.encode(zgroup)
         }
         if "attributes" in self._document:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
-                self._document["attributes"], indent=indent
-            )
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = writes.encode(self._document["attributes"])
         return out
 
     def __repr__(self) -> str:
@@ -546,16 +545,15 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return MappingProxyType(self._metadata)
 
     def to_json(self) -> dict[str, JSONValue]:
-        """The `.zmetadata` document as written, refined. The result shares no objects with the model."""
+        """The `.zmetadata` document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("dict[str, JSONValue]", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `.zmetadata`, indented by `indent`."""
-        return {
-            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)
-        }
+        """The document as a store holds it: JSON bytes at `.zmetadata`, spelled by `writer`, a `JSONWriter` or a mapping of its settings."""
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"

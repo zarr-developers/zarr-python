@@ -271,4 +271,48 @@ reading = read_array_metadata_v3(raw, context=context)
 
 `union` keeps every definition the context has, and raises `ScopeConflictError` if `MY_CODEC` has a name the context already files with another definition. To replace a definition on purpose, use `copy`, which, like pydantic's `model_copy(update=...)`, replaces whole each slot it is given and keeps the others. A slot can be given as a mapping from each definition's name to it, so `CORE_AND_EXTENSIONS_CONTEXT.copy(update={"codecs": {**CORE_AND_EXTENSIONS_CONTEXT.codecs, "gzip": MY_GZIP}})` replaces the gzip definition with your own. Passing `copy(update={"codecs": [MY_CODEC]})` instead would leave `MY_CODEC` as the only codec.
 
+A data type's definition also says what its fill value may be. `fill_value` is the fill value's JSON shape, as a type annotation. `fill_value_rules` is a function of the configuration, the nested declarations and the fill value, that yields each problem the shape cannot express. For example, `Base64Bytes` is a string, so an annotation accepts any string, and the rule `base64_fill_value_rules` rejects one that is not base64. A rule of your own can yield from it, then check what depends on the configuration:
+
+```python test="true" session="parsing-validation"
+import base64
+
+from typing_extensions import TypedDict
+
+from zarr_metadata.definition import fill_value_problems
+from zarr_metadata.problems import ValidationProblem
+from zarr_metadata.v3.data_type.bytes import Base64Bytes, base64_fill_value_rules
+from zarr_metadata.v3.definition import DataTypeDefinition
+
+
+class PackedConfiguration(TypedDict, closed=True):
+    length_bytes: int
+
+
+def packed_fill_value_rules(configuration, nested, value):
+    # The fill value is base64, of at most `length_bytes` bytes.
+    problems = list(base64_fill_value_rules(configuration, nested, value))
+    yield from problems
+    if not problems and len(base64.b64decode(value)) > configuration["length_bytes"]:
+        yield ValidationProblem((), "expected fewer bytes than the type holds", "invalid_value")
+
+
+PACKED = DataTypeDefinition(
+    name="acme.packed",
+    configuration=PackedConfiguration,
+    fill_value=Base64Bytes,
+    fill_value_rules=packed_fill_value_rules,
+)
+context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[PACKED]))
+data_type, _ = resolve(
+    {"name": "acme.packed", "configuration": {"length_bytes": 2}}, DataTypeDefinition, context
+)
+for fill_value in ("YWI=", "not base64!", "YWJj"):
+    print(fill_value, [problem.message for problem in fill_value_problems(data_type, fill_value)])
+# YWI= []
+# not base64! ['expected standard-alphabet base64, got "not base64!"']
+# YWJj ['expected fewer bytes than the type holds']
+```
+
+A reader of a document in this context checks its fill value with these rules, and so does a pydantic field. A JSON Schema written for the context does not contain the rules, so it accepts any string here.
+
 [^1]: The one exception is the [`r*` data type](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#data-types), which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects. The declaration `"r16"` keeps its name. The `r*` definition reads it with the configuration `{"bits": 16}`.

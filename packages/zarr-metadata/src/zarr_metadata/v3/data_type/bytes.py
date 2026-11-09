@@ -5,10 +5,8 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 import base64
-from collections.abc import Iterator
 from typing import Final, Literal
 
-from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import Base64Bytes, base64_bytes
 from zarr_metadata.definition._definition import (
     EmptyConfiguration,
@@ -18,7 +16,11 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     variable_length,
 )
-from zarr_metadata.v3.data_type._byte import ByteValue, base64_problems, base64_spelling
+from zarr_metadata.v3.data_type._byte import (
+    ByteValue,
+    base64_fill_value_rules,
+    base64_spelling,
+)
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -32,14 +34,6 @@ BytesFillValue = tuple[ByteValue, ...] | Base64Bytes
 Either a JSON array of integers in `[0, 255]` (one per byte), or a
 `Base64Bytes` string encoding the byte sequence.
 """
-
-
-def _fill_value_rules(
-    configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
-) -> Iterator[ValidationProblem]:
-    """Check that a string fill value is standard-alphabet base64. A fill value written as byte values is not checked here."""
-    if isinstance(value, str):
-        yield from base64_problems(value)
 
 
 def _fill_value_canonical(
@@ -60,7 +54,7 @@ BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=BytesFillValue,
-    fill_value_rules=_fill_value_rules,
+    fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
 )
@@ -79,4 +73,5 @@ __all__ = [
     "BytesDataTypeName",
     "BytesFillValue",
     "base64_bytes",
+    "base64_fill_value_rules",
 ]

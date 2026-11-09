@@ -19,6 +19,9 @@ from importlib.metadata import version
 
 from zarr_metadata.model import (
     UNSET,
+    JSONWriter,
+    JSONWriterLike,
+    JSONWriterSchema,
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataUpdate,
     ZarrV2ConsolidatedMetadata,
@@ -363,6 +366,9 @@ __all__ = [
     "Int64DataTypeName",
     "Int64FillValue",
     "JSONValue",
+    "JSONWriter",
+    "JSONWriterLike",
+    "JSONWriterSchema",
     "MetadataValidationError",
     "NumpyDatetime64DataTypeName",
     "NumpyDatetime64FillValue",

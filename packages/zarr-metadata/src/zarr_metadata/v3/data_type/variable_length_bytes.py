@@ -10,14 +10,12 @@ in `CORE_AND_EXTENSIONS_CONTEXT`.
 """
 
 import base64
-from collections.abc import Iterator
 from typing import Final, Literal
 
-from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import Base64Bytes
 from zarr_metadata.definition._definition import EmptyConfiguration, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, variable_length
-from zarr_metadata.v3.data_type._byte import base64_problems, base64_spelling
+from zarr_metadata.v3.data_type._byte import base64_fill_value_rules, base64_spelling
 
 VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME: Final = "variable_length_bytes"
 """The `data_type` value for the `variable_length_bytes` type."""
@@ -27,13 +25,6 @@ VariableLengthBytesDataTypeName = Literal["variable_length_bytes"]
 
 VariableLengthBytesFillValue = Base64Bytes
 """Permitted JSON shape of the `fill_value` field for `variable_length_bytes`: a `Base64Bytes` string, which is what zarr-python writes and reads."""
-
-
-def _fill_value_rules(
-    configuration: EmptyConfiguration, nested: Nested, value: VariableLengthBytesFillValue
-) -> Iterator[ValidationProblem]:
-    """Check that the fill value is standard-alphabet base64."""
-    yield from base64_problems(value)
 
 
 def _fill_value_canonical(
@@ -47,7 +38,7 @@ VARIABLE_LENGTH_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=VariableLengthBytesFillValue,
-    fill_value_rules=_fill_value_rules,
+    fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
 )
