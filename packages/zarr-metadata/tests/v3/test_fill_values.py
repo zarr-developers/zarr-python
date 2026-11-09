@@ -2,7 +2,7 @@
 
 Each data type's definition declares the JSON shape of its fill value and
 the rules for a value of that shape. `fill_value_problems` checks a fill
-value against a data type field that a scope read. The v3 array
+value against a data type declaration that a scope read. The v3 array
 validators check a document's `fill_value` against its `data_type`.
 """
 
@@ -24,7 +24,7 @@ from zarr_metadata import (
 )
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
@@ -42,6 +42,7 @@ from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -288,9 +289,7 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
 
 def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
     # The extra key is reported and hidden from the rules, which still check the other keys.
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), ACME_POINT]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[ACME_POINT]))
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     found = fill_value_problems(resolved, {"x": 99, "extra": 1})
     assert [(problem.loc, problem.kind) for problem in found] == [
@@ -320,7 +319,7 @@ def test_a_fill_value_nested_as_deep_as_a_reader_walks_is_read() -> None:
 def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> None:
     # A reading built by hand, with no reading of the field types.
     configuration = {"fields": ({"name": "a", "data_type": "int8"},)}
-    struct = AcceptedField(
+    struct = AcceptedDeclaration(
         json=STRUCT, name="struct", definition=STRUCT_DATA_TYPE, configuration=configuration
     )
     assert fill_value_problems(struct, {"a": 300}) == ()
@@ -334,10 +333,10 @@ def _alike(left: object, right: object) -> bool:
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
-def _read(data_type: JSONValue) -> AcceptedField[DataTypeDefinition[Any]]:
+def _read(data_type: JSONValue) -> AcceptedDeclaration[DataTypeDefinition[Any]]:
     resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     return resolved
 
 
@@ -461,11 +460,8 @@ def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it()
     def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=refuses),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=refuses)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
@@ -477,11 +473,8 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         return cast("JSONValue", {1, 2})
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=not_json),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=not_json)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):

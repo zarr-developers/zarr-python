@@ -16,6 +16,7 @@ class ZarrV2ObjectConfiguration(TypedDict, closed=True):
     """The configuration that `|O` carries: a byte order, which the type ignores."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
+    """The byte order that the typestr writes. The canonical form writes `|`, as NumPy does."""
 
 
 def _canonical(configuration: ZarrV2ObjectConfiguration) -> ZarrV2ObjectConfiguration:

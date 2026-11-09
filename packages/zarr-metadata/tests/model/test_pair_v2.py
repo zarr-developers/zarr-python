@@ -12,10 +12,10 @@ from typing import Any, cast, get_args
 import pytest
 
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     EmptyConfiguration,
     ScopeConflictError,
-    UnclaimedField,
+    UnclaimedDeclaration,
 )
 from zarr_metadata.model import (
     UNSET,
@@ -49,7 +49,7 @@ ARRAY: dict[str, Any] = {
 }
 BARE_ZLIB = ZarrV2CodecDefinition(name="zlib", configuration=EmptyConfiguration)
 SMALL = ZarrV2Context(data_types=[FLOAT_DATA_TYPE_V2, UINT_DATA_TYPE_V2])
-PRIVATE = CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": BARE_ZLIB})
+PRIVATE = CORE_V2_CONTEXT.copy(update={"codecs": {**CORE_V2_CONTEXT.codecs, "zlib": BARE_ZLIB}})
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:
@@ -72,14 +72,14 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`."""
+    """`dtype`, `compressor` and `filters` are the declarations as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
-    assert isinstance(model.dtype, AcceptedField)
+    assert isinstance(model.dtype, AcceptedDeclaration)
     assert model.dtype.definition is FLOAT_DATA_TYPE_V2
-    assert isinstance(model.compressor, AcceptedField)
+    assert isinstance(model.compressor, AcceptedDeclaration)
     assert model.compressor.definition is ZLIB_CODEC_V2
     assert model.filters is not None
-    assert isinstance(model.filters[0], UnclaimedField)
+    assert isinstance(model.filters[0], UnclaimedDeclaration)
     members = (model.shape, model.chunks, model.fill_value, model.order, model.dimension_separator)
     assert members == ((4,), (2,), 0, "C", ".")
     assert model.attributes == {"a": (1, 2)}
@@ -221,9 +221,9 @@ def test_error_update_refuses_a_document_with_a_problem(changes: dict[str, Any],
 def test_with_context_and_refined_in_read_the_document_in_another_scope() -> None:
     """`with_context` reads the document in any scope, and losing information is allowed. `refined_in` only moves up the order. A scope that claims what the current scope left unclaimed is a gain. A scope that reads a name with another definition, or with no definition, raises a `ScopeConflictError` that gives the name's location. A gain that reveals a problem raises a `MetadataValidationError`."""
     unclaimed = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib"}}, SMALL)
-    assert isinstance(unclaimed.compressor, UnclaimedField)
+    assert isinstance(unclaimed.compressor, UnclaimedDeclaration)
     gained = unclaimed.refined_in(PRIVATE)
-    assert isinstance(gained.compressor, AcceptedField)
+    assert isinstance(gained.compressor, AcceptedDeclaration)
     assert gained.compressor.definition is BARE_ZLIB
     assert unclaimed.refines(unclaimed)
     assert gained.refines(unclaimed)
@@ -232,7 +232,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
         gained.refined_in(CORE_V2_CONTEXT)
     assert [c.loc for c in conflict.value.conflicts] == [("compressor",)]
     lost = gained.with_context(SMALL)
-    assert isinstance(lost.compressor, UnclaimedField)
+    assert isinstance(lost.compressor, UnclaimedDeclaration)
     assert lost == unclaimed
     assert gained.with_context(PRIVATE) == gained
     with pytest.raises(MetadataValidationError):
@@ -242,7 +242,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
 
 
 def test_refines_orders_models_by_information() -> None:
-    """`refines` is true when each field refines its counterpart and every other member is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
+    """`refines` is true when each declaration refines its counterpart and every other member is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
     core = ZarrV2ArrayMetadata(ARRAY)
     assert core.refines(ZarrV2ArrayMetadata({**ARRAY, "fill_value": 0.0}))
     filled = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib", "level": 1}})
@@ -297,7 +297,7 @@ def test_a_group_is_its_document_read_in_its_scope(
 
 
 def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
-    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no field. Two groups are equal when their attributes are written the same way, and `refines` is that equality. No `.zattrs` counts as empty attributes, so a group with none and a group with an empty one are equal and refine each other."""
+    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no declaration. Two groups are equal when their attributes are written the same way, and `refines` is that equality. No `.zattrs` counts as empty attributes, so a group with none and a group with an empty one are equal and refine each other."""
     model = ZarrV2GroupMetadata(GROUP)
     assert model.update(attributes={"h": 2}).attributes == {"h": 2}
     removed = model.update(attributes=UNSET)
@@ -402,10 +402,10 @@ def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them()
     assert empty.refines(ZarrV2ConsolidatedMetadata(CONSOLIDATED))
     small = ZarrV2ConsolidatedMetadata(CONSOLIDATED, SMALL)
     assert isinstance(small.metadata["a"], ZarrV2ArrayMetadata)
-    assert isinstance(small.metadata["a"].compressor, UnclaimedField)
+    assert isinstance(small.metadata["a"].compressor, UnclaimedDeclaration)
     gained = small.refined_in(PRIVATE)
     assert isinstance(gained.metadata["a"], ZarrV2ArrayMetadata)
-    assert isinstance(gained.metadata["a"].compressor, AcceptedField)
+    assert isinstance(gained.metadata["a"].compressor, AcceptedDeclaration)
     assert gained.refines(small)
     assert not small.refines(gained)
     with pytest.raises(ScopeConflictError) as conflict:

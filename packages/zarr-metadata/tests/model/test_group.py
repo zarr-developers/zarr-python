@@ -15,7 +15,7 @@ from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text
 from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
-    UnclaimedField,
+    UnclaimedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -52,6 +52,7 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
     CodecDefinition,
+    ZarrV3Context,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -147,9 +148,10 @@ def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, .
     return [(p.loc, p.kind) for p in raised.value.problems]
 
 
-def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]:
+def _v3_declaration_problems(declaration: object) -> list[tuple[tuple[str | int, ...], str]]:
     return [
-        (p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1]
+        (p.loc, p.kind)
+        for p in resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1]
     ]
 
 
@@ -178,15 +180,19 @@ def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]
             [(("consolidated_metadata", "x"), "unknown_key")],
         ),
         (
-            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1}, "x": 1}),
+            lambda: _v3_declaration_problems(
+                {"name": "gzip", "configuration": {"level": 1}, "x": 1}
+            ),
             [(("x",), "unknown_key")],
         ),
         (
-            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1, "x": 1}}),
+            lambda: _v3_declaration_problems(
+                {"name": "gzip", "configuration": {"level": 1, "x": 1}}
+            ),
             [(("configuration", "x"), "unknown_key")],
         ),
     ],
-    ids=["v2-group", "v2-consolidated", "v3-consolidated", "v3-field", "v3-configuration"],
+    ids=["v2-group", "v2-consolidated", "v3-consolidated", "v3-declaration", "v3-configuration"],
 )
 def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
     problems: Callable[[], list[tuple[tuple[str | int, ...], str]]],
@@ -642,10 +648,8 @@ ACME_X = CodecDefinition(
 
 
 def test_group_update_keeps_the_documents_it_holds() -> None:
-    """`update` does not read the consolidated documents again: a child read in an extended scope keeps each field as it was read, and the group keeps its scope."""
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), ACME_X]
-    )
+    """`update` does not read the consolidated documents again: a child read in an extended scope keeps each declaration as it was read, and the group keeps its scope."""
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_X]))
     child = ZarrV3ArrayMetadata.create_default(
         context=context, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
@@ -666,7 +670,7 @@ def test_group_update_writes_the_consolidated_metadata_it_is_given() -> None:
     held = ZarrV3ConsolidatedMetadata(member, context=CORE_CONTEXT)
     child = held.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
-    assert isinstance(child.codecs[1], UnclaimedField)
+    assert isinstance(child.codecs[1], UnclaimedDeclaration)
     group = ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT)
     updated = group.update(consolidated_metadata=held)
     assert updated.consolidated_metadata == held.to_json()
@@ -676,8 +680,8 @@ def test_group_update_writes_the_consolidated_metadata_it_is_given() -> None:
     assert removed.consolidated_metadata is UNSET
 
 
-def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
-    """Return the locations of a default array's fields, under `at`."""
+def _declarations_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
+    """Return the locations of a default array's declarations, under `at`."""
     points = ("data_type", "chunk_grid", "chunk_key_encoding")
     return [*((*at, point) for point in points), (*at, "codecs", 0)]
 
@@ -685,12 +689,12 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
 @pytest.mark.parametrize(
     ("member", "paths", "locs"),
     [
-        (_inline(a=_array(), g=_group()), ["a", "g"], _fields_of_an_array(*A)),
+        (_inline(a=_array(), g=_group()), ["a", "g"], _declarations_of_an_array(*A)),
         # Every node below the group, including one below another group, at its path.
         (
             _inline(g=_group(), **{"g/b": _array()}),
             ["g", "g/b"],
-            _fields_of_an_array("metadata", "g/b"),
+            _declarations_of_an_array("metadata", "g/b"),
         ),
         # A group's consolidated metadata inside another group's, listing a node
         # the outer group also lists. The listed group's own listing is
@@ -700,7 +704,10 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
         (
             _inline(g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}),
             ["g", "g/b"],
-            [("metadata", "g", "consolidated_metadata"), *_fields_of_an_array("metadata", "g/b")],
+            [
+                ("metadata", "g", "consolidated_metadata"),
+                *_declarations_of_an_array("metadata", "g/b"),
+            ],
         ),
     ],
     ids=["an-array-and-a-group", "paths", "nested"],
@@ -708,12 +715,12 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
 def test_consolidated_metadata_reads_each_document_it_lists(
     member: dict[str, object], paths: list[str], locs: list[tuple[str | int, ...]]
 ) -> None:
-    """`read_consolidated_metadata_v3` reads each document a member lists as the node its `node_type` declares, and the reading's fields are each listed array's fields, located in the member. The model equals the one the constructor builds."""
+    """`read_consolidated_metadata_v3` reads each document a member lists as the node its `node_type` declares, and the reading's declarations are each listed array's declarations, located in the member. The model equals the one the constructor builds."""
     reading = read_consolidated_metadata_v3(member)
     assert reading.problems == ()
     assert reading.metadata is not None
     assert list(reading.metadata.metadata) == paths
-    assert [loc for loc, _ in reading.fields()] == locs
+    assert [loc for loc, _ in reading.declarations()] == locs
     assert reading.metadata == ZarrV3ConsolidatedMetadata(member)
 
 
@@ -865,10 +872,12 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
         reads.append(configuration)
         yield from ()
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        codecs={
-            **CORE_AND_EXTENSIONS_CONTEXT.codecs,
-            "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={
+            "codecs": {
+                **CORE_AND_EXTENSIONS_CONTEXT.codecs,
+                "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+            }
         }
     )
     array = _array(codecs=[LITTLE, {"name": "gzip", "configuration": {"level": 5}}])
@@ -956,7 +965,7 @@ def test_error_a_node_type_the_spec_does_not_define(node_type: object, kind: str
     assert isinstance(read, ZarrV3UnknownNodeMetadataReading)
     assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), kind)]
     assert read.metadata is None
-    assert list(read.fields()) == []
+    assert list(read.declarations()) == []
 
 
 def test_error_a_document_without_a_node_type() -> None:

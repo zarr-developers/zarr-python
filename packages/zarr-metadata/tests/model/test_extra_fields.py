@@ -12,13 +12,13 @@ from jsonschema import Draft202012Validator
 from typing_extensions import TypeAliasType, TypedDict
 
 from zarr_metadata.definition import (
-    AcceptedField,
-    RefusedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
     canonical_of,
     resolve,
 )
-from zarr_metadata.json_schema import field_json_schema_v3
+from zarr_metadata.json_schema import declaration_json_schema_v3
 from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3GroupMetadata
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.typed_json import UserJSONValue
@@ -51,9 +51,7 @@ class AcmeNoteConfiguration(TypedDict, closed=True):
 ACME_NOTE = ArrayExtraFieldDefinition(name="acme.note", configuration=AcmeNoteConfiguration)
 """A reader's own definition of the `acme.note` member of an array, whose numbers must be finite."""
 
-CONTEXT = CORE_CONTEXT.update(
-    array_extra_fields=[*CORE_CONTEXT.array_extra_fields.values(), ACME_TILING, ACME_NOTE]
-)
+CONTEXT = CORE_CONTEXT.union(ZarrV3Context(array_extra_fields=[ACME_TILING, ACME_NOTE]))
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 GROUP: dict[str, Any] = {"zarr_format": 3, "node_type": "group"}
@@ -107,18 +105,18 @@ def test_a_scope_reads_the_extra_fields_it_claims(
     claimed: set[str],
     must_understand: dict[str, object],
 ) -> None:
-    """Each member the spec does not define is an extra field. A member whose key a definition in scope claims is an `AcceptedField`, and a reader understands it. Any other member is an `UnclaimedField`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed member, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a member of an array, and `CORE_CONTEXT` reads a group's `consolidated_metadata`. The document is written back as it was read."""
+    """Each member the spec does not define is an extra field. A member whose key a definition in scope claims is an `AcceptedDeclaration`, and a reader understands it. Any other member is an `UnclaimedDeclaration`, kept as written, and `must_understand_fields` lists it unless it says `"must_understand": false`. Nothing reads an unclaimed member, so like attributes it may hold any number, finite or not. A definition of a group's extra field does not read a member of an array, and `CORE_CONTEXT` reads a group's `consolidated_metadata`. The document is written back as it was read."""
     model: ZarrV3ArrayMetadata | ZarrV3GroupMetadata
     if document["node_type"] == "array":
         model = ZarrV3ArrayMetadata(document, context=context)
     else:
         model = ZarrV3GroupMetadata(document, context=context)
     accepted = {
-        key for key, extra in model.extra_fields.items() if isinstance(extra, AcceptedField)
+        key for key, extra in model.extra_fields.items() if isinstance(extra, AcceptedDeclaration)
     }
     assert accepted == claimed
     assert all(
-        isinstance(extra, UnclaimedField)
+        isinstance(extra, UnclaimedDeclaration)
         for key, extra in model.extra_fields.items()
         if key not in claimed
     )
@@ -153,17 +151,17 @@ def test_unclaimed_extra_fields_compare_as_written(first: object, second: object
     assert a == ZarrV3ArrayMetadata({**ARRAY, "acme.flag": first})
 
 
-def test_an_extra_field_is_a_field_of_the_reading() -> None:
-    """A claimed extra field takes part in what the model's reading holds: it is a field at its key, read by the definition of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
+def test_an_extra_field_is_a_declaration_of_the_reading() -> None:
+    """A claimed extra field takes part in what the model's reading holds: it is a declaration at its key, read by the definition of its kind and name, and `resolve` reads it as the member alone, `{key: value}`. The JSON Schema of the kind accepts the member, and, like `resolve`, refuses a member the spec defines."""
     model = ZarrV3ArrayMetadata({**ARRAY, "acme.tiling": TILING}, context=CONTEXT)
-    assert dict(model.reading.fields())[("acme.tiling",)] == model.extra_fields["acme.tiling"]
+    assert dict(model.reading.declarations())[("acme.tiling",)] == model.extra_fields["acme.tiling"]
     tiling = model.extra_fields["acme.tiling"]
-    assert isinstance(tiling, AcceptedField)
+    assert isinstance(tiling, AcceptedDeclaration)
     assert tiling.definition is ACME_TILING
     read, problems = resolve({"acme.tiling": TILING}, ArrayExtraFieldDefinition, CONTEXT)
-    assert isinstance(read, AcceptedField)
+    assert isinstance(read, AcceptedDeclaration)
     assert problems == ()
-    schema = field_json_schema_v3(ArrayExtraFieldDefinition, context=CONTEXT)
+    schema = declaration_json_schema_v3(ArrayExtraFieldDefinition, context=CONTEXT)
     assert Draft202012Validator(schema).is_valid({"acme.tiling": TILING})
     assert not Draft202012Validator(schema).is_valid({"acme.tiling": {"edge": 0}})
     # A member the spec defines is not an extra field, as `resolve` says.
@@ -172,7 +170,7 @@ def test_an_extra_field_is_a_field_of_the_reading() -> None:
 
 
 def test_the_simplest_spelling_of_an_extra_field_is_plain_json() -> None:
-    """`canonical_of` returns plain JSON for an extra field, with no read-only views inside, so `json.dumps` writes it. `CORE_CONTEXT` claims a group's `consolidated_metadata`, whose configuration holds objects with no nested field."""
+    """`canonical_of` returns plain JSON for an extra field, with no read-only views inside, so `json.dumps` writes it. `CORE_CONTEXT` claims a group's `consolidated_metadata`, whose configuration holds objects with no nested declaration."""
     model = ZarrV3GroupMetadata({**GROUP, "consolidated_metadata": INLINE}, context=CORE_CONTEXT)
     simplest = canonical_of(model.extra_fields["consolidated_metadata"], ())
     assert json.loads(json.dumps(simplest)) == {"consolidated_metadata": INLINE}
@@ -234,9 +232,9 @@ def test_error_resolve_a_member_the_spec_defines_as_an_extra_field(
     kind: Any,  # noqa: ANN401 - either extra-field kind
     member: dict[str, Any],
 ) -> None:
-    """`resolve` reads a member the spec defines, read as an extra field, as a `RefusedField` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
+    """`resolve` reads a member the spec defines, read as an extra field, as a `RefusedDeclaration` with one `invalid_value` problem that says the spec defines it, for an array and for a group."""
     read, problems = resolve(member, kind, CORE_CONTEXT)
-    assert isinstance(read, RefusedField)
+    assert isinstance(read, RefusedDeclaration)
     assert [(p.loc, p.kind) for p in problems] == [((), "invalid_value")]
     assert "the spec defines" in problems[0].message
 
@@ -357,7 +355,7 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
     ],
 )
 def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
-    """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, or types the waiver with an annotation that is not a type, such as a list, is refused when it is built, rather than misreading the documents that carry it."""
+    """The spec lets every extension field carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, or types the waiver with an annotation that is not a type, such as a list, is refused when it is built, rather than misreading the documents that carry it."""
     with pytest.raises(
         TypeError, match="expected a configuration that takes must_understand as a boolean"
     ):

@@ -19,8 +19,16 @@ hooks:
 
 nav:
   - index.md
-  - Parsing / Validation: parsing-validation.md
-  - Context: context.md
+  - Guide:
+      - Parsing and validation: parsing-validation.md
+      - Context: context.md
+      - Models and readers: models.md
+      - What the readers check: validation-rules.md
+      - Consolidated metadata: consolidated-metadata.md
+      - Repairing known writer bugs: repair.md
+      - Writing an extension: extensions.md
+      - JSON Schema: json-schema.md
+      - Pydantic: pydantic.md
   - API Reference:
       - api/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.definition</code>': api/definition.md

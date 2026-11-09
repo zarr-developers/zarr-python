@@ -14,7 +14,7 @@ import pytest
 
 from zarr_metadata import JSONValue
 from zarr_metadata.definition import (
-    ResolvedField,
+    ResolvedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -41,7 +41,7 @@ LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
 INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
-def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
+def _dt(name: JSONValue) -> ResolvedDeclaration[DataTypeDefinition[Any]]:
     return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0]
 
 
@@ -50,7 +50,7 @@ UINT64 = _dt("uint64")
 
 
 def _chunk(
-    *axes: set[int] | None, data_type: ResolvedField[DataTypeDefinition[Any]] = FLOAT32
+    *axes: set[int] | None, data_type: ResolvedDeclaration[DataTypeDefinition[Any]] = FLOAT32
 ) -> Chunk:
     return Chunk(tuple(None if axis is None else frozenset(axis) for axis in axes), data_type)
 

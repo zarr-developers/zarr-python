@@ -1,9 +1,10 @@
 """The strategies against the definitions they draw for, and against what they ought to reach.
 
 Every draw is read in `ZARR_PYTHON_CONTEXT` and must read without a
-problem, by the definition it was drawn for: the field alone, a fill
+problem, by the definition it was drawn for: the declaration alone, a fill
 value beside its data type, a chunk grid over the shape it was drawn
-for, a codec handed the chunk it was drawn for. A strategy that only
+for, a codec handed the chunk it was drawn for, and a pipeline handed
+the chunks of a grid, as `read_pipeline` reads one. A strategy that only
 drew valid metadata could draw almost none, so reach is checked too,
 with targets worked out from each configuration's TypedDict rather than
 from the strategies: every optional key present and absent, every
@@ -14,35 +15,50 @@ configuration it simplifies.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Literal, cast, get_args, get_origin
+import math
+from collections import Counter
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast, get_args, get_origin
 
 import pytest
 from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
 
+from tests.testing._shares import share_of
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Definition,
     EmptyConfiguration,
     fill_value_problems,
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.testing._draw import scope_with
+from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
     DEFAULT_STRATEGIES,
     ChunkKeyEncodingStrategy,
     CodecStrategy,
+    DataTypeStrategy,
     Spellings,
+    Strategies,
     chunk_grid_configurations,
     codec_configurations,
     data_type_configurations,
-    fields,
+    declarations,
     fill_values,
+    pipelines,
 )
 from zarr_metadata.v2.definition import CORE_V2_CONTEXT
-from zarr_metadata.v3._definition import chunk_grid_lengths
+from zarr_metadata.v3._definition import (
+    chunk_grid_lengths,
+    no_pipelines,
+    storage_of,
+    variable_length,
+)
+from zarr_metadata.v3._pipeline import read_pipeline
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
+from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
@@ -54,6 +70,7 @@ from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
 from zarr_metadata.v3.data_type.float16 import FLOAT16_DATA_TYPE
 from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE
 from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE
+from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
@@ -68,13 +85,11 @@ from zarr_metadata.v3.definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
-
-_HOLDING_FIELDS = frozenset({SHARDING_INDEXED_CODEC, CAST_VALUE_CODEC, STRUCT_DATA_TYPE})
-"""The definitions whose configurations hold other fields, which have no strategy yet."""
+    from zarr_metadata.v3 import ZarrV3DeclarationJSON
+    from zarr_metadata.v3._definition import Lengths
 
 _IN_SCOPE = frozenset(
     (
@@ -85,13 +100,15 @@ _IN_SCOPE = frozenset(
         *ZARR_PYTHON_CONTEXT.storage_transformers.values(),
     )
 )
-"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not fields."""
+"""The definitions at the spec's extension points that `ZARR_PYTHON_CONTEXT` holds; members of a document it defines are not declarations."""
 _CORE_DATA_TYPES = frozenset(CORE_CONTEXT.data_types.values())
 
 _DEFINITIONS = sorted(DEFAULT_STRATEGIES, key=lambda definition: definition.name)
 _DATA_TYPES = [d for d in _DEFINITIONS if isinstance(d, DataTypeDefinition)]
 _CHUNK_GRIDS = [d for d in _DEFINITIONS if isinstance(d, ChunkGridDefinition)]
 _CODECS = [d for d in _DEFINITIONS if isinstance(d, CodecDefinition)]
+
+T = TypeVar("T")
 
 _SHAPES = st.lists(st.integers(0, 12), max_size=4).map(tuple)
 
@@ -102,45 +119,44 @@ def _id(value: object) -> str:
     return str(value)
 
 
-def _read(definition: Definition[Any], field: object) -> Any:  # noqa: ANN401
-    """`field` read in `ZARR_PYTHON_CONTEXT`, asserted to read without a problem by `definition`."""
-    resolved, problems = resolve(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
+def _read(definition: Definition[Any], declaration: object) -> Any:  # noqa: ANN401
+    """`declaration` read in `ZARR_PYTHON_CONTEXT`, asserted to read without a problem by `definition`."""
+    resolved, problems = resolve(declaration, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
     assert problems == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition is definition
     return resolved
 
 
 def test_every_definition_has_a_strategy() -> None:
-    """Each definition in scope has a strategy, but those that hold other fields; and none is out of scope."""
-    assert _IN_SCOPE - frozenset(DEFAULT_STRATEGIES) == _HOLDING_FIELDS
-    assert frozenset(DEFAULT_STRATEGIES) <= _IN_SCOPE
+    """Each definition in scope has a strategy, and none is out of scope."""
+    assert frozenset(DEFAULT_STRATEGIES) == _IN_SCOPE
 
 
 @pytest.mark.parametrize("spellings", get_args(Spellings))
 @pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
 @given(data=st.data())
-def test_fields_read(
+def test_declarations_read(
     definition: Definition[Any], spellings: Spellings, data: st.DataObject
 ) -> None:
-    """A drawn field reads by its definition, through JSON too; a canonical one is its own simplest spelling."""
-    field = data.draw(fields(definition, spellings=spellings))
-    _read(definition, field)
-    _read(definition, json.loads(json.dumps(field)))
+    """A drawn declaration reads by its definition, through JSON too; a canonical one is its own simplest spelling."""
+    declaration = data.draw(declarations(definition, spellings=spellings))
+    _read(definition, declaration)
+    _read(definition, json.loads(json.dumps(declaration)))
     if definition in _CORE_DATA_TYPES:
-        assert isinstance(field, str)
+        assert isinstance(declaration, str)
     if spellings == "canonical":
-        canonical, _ = canonicalize(field, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
-        assert canonical == field
+        canonical, _ = canonicalize(declaration, as_kind(kind_of(definition)), ZARR_PYTHON_CONTEXT)
+        assert canonical == declaration
 
 
 @pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
 @given(data=st.data())
 def test_a_changed_draw_changes_no_other(definition: Definition[Any], data: st.DataObject) -> None:
     """Each draw is a fresh value: a test that changes the configuration it drew does not change the next draw, which Hypothesis would report as flaky."""
-    field = data.draw(fields(definition))
-    if isinstance(field, dict) and "configuration" in field:
-        configuration = cast("dict[str, JSONValue]", field["configuration"])
+    declaration = data.draw(declarations(definition))
+    if isinstance(declaration, dict) and "configuration" in declaration:
+        configuration = cast("dict[str, JSONValue]", declaration["configuration"])
         assert "changed" not in configuration
         configuration["changed"] = True
 
@@ -151,7 +167,7 @@ def test_fill_values_fit_their_data_type(
     definition: DataTypeDefinition[Any], data: st.DataObject
 ) -> None:
     configuration = data.draw(data_type_configurations(definition))
-    data_type = _read(definition, data.draw(fields(definition, st.just(configuration))))
+    data_type = _read(definition, data.draw(declarations(definition, st.just(configuration))))
     value = data.draw(fill_values(definition, configuration))
     assert fill_value_problems(data_type, value) == ()
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
@@ -163,7 +179,7 @@ def test_chunk_grids_fit_their_shape(
     definition: ChunkGridDefinition[Any], data: st.DataObject, shape: tuple[int, ...]
 ) -> None:
     configurations = chunk_grid_configurations(definition, shape)
-    chunk_grid = _read(definition, data.draw(fields(definition, configurations)))
+    chunk_grid = _read(definition, data.draw(declarations(definition, configurations)))
     lengths, problems = chunk_grid_lengths(chunk_grid, shape)
     assert problems == ()
     # "Chunk sizes must be greater than zero", which the regular grid's rules do not yet refuse.
@@ -172,12 +188,49 @@ def test_chunk_grids_fit_their_shape(
 
 @st.composite
 def _chunks(draw: st.DrawFn) -> Chunk:
-    """A chunk of a data type drawn from the strategies, or of none known, with lengths known along some axes, all, or none."""
+    """A chunk of a data type drawn from the strategies, or of none known, of lengths known along some axes, all, or none, or of a grid drawn over an array of some shape.
+
+    A rectilinear grid's chunks take several lengths along an axis, which
+    a codec drawn for them must take each of.
+    """
+    lengths: Lengths | None
+    if draw(st.booleans()):
+        shape = draw(_SHAPES)
+        grid = draw(st.sampled_from(_CHUNK_GRIDS))
+        chunk_grid = _read(grid, draw(declarations(grid, chunk_grid_configurations(grid, shape))))
+        lengths, _ = chunk_grid_lengths(chunk_grid, shape)
+    else:
+        axis = st.none() | st.integers(1, 8).map(lambda length: frozenset({length}))
+        lengths = draw(st.none() | st.lists(axis, max_size=4).map(tuple))
     definition = draw(st.none() | st.sampled_from(_DATA_TYPES))
-    data_type = None if definition is None else _read(definition, draw(fields(definition)))
-    axis = st.none() | st.integers(1, 8).map(lambda length: frozenset({length}))
-    lengths = draw(st.none() | st.lists(axis, max_size=4).map(tuple))
+    data_type = None if definition is None else _read(definition, draw(declarations(definition)))
     return Chunk(lengths, data_type)
+
+
+def _handed_problems(codec: Any, chunk: Chunk) -> list[object]:  # noqa: ANN401
+    """What is wrong with `codec`, a codec field read, handed `chunk`: by its chunk rules, and in each pipeline it holds."""
+    definition = codec.definition
+    problems: list[object] = list(definition.chunk_rules(codec.configuration, codec.nested, chunk))
+    handed = definition.pipelines(codec.configuration, codec.nested, chunk)
+    for member, inner in handed.items():
+        held = [codec.nested[(member, index)] for index in range(len(codec.configuration[member]))]
+        problems.extend(read_pipeline(held, inner)[1])
+    return problems
+
+
+def _holds_pipelines(definition: CodecDefinition[Any]) -> bool:
+    return definition.pipelines is not no_pipelines
+
+
+def _encoders_refuse(data: st.DataObject, chunk: Chunk) -> bool:
+    """Whether every array -> bytes codec that holds no pipelines refuses a chunk of `chunk`'s data type."""
+    of_data_type = Chunk(None, chunk.data_type)
+    encoders = [d for d in _CODECS if d.kind == "array_bytes" and not _holds_pipelines(d)]
+    for encoder in encoders:
+        codec = _read(encoder, data.draw(declarations(encoder)))
+        if list(encoder.chunk_rules(codec.configuration, codec.nested, of_data_type)) == []:
+            return False
+    return True
 
 
 @pytest.mark.parametrize("definition", _CODECS, ids=_id)
@@ -185,22 +238,117 @@ def _chunks(draw: st.DrawFn) -> Chunk:
 def test_codecs_take_their_chunk(
     definition: CodecDefinition[Any], data: st.DataObject, chunk: Chunk
 ) -> None:
-    """A codec drawn for a chunk takes it; one drawn for none is one the spec does not give it, which needs the data type known."""
+    """A codec drawn for a chunk takes it; one drawn for none is one the spec does not give it, which needs the data type known.
+
+    A shard drawn for none is one whose inner chunks no codec encodes.
+    """
     configurations = codec_configurations(definition, chunk)
     if configurations is None:
         assert chunk.data_type is not None
         assert chunk.data_type.definition is not None
         data_type_name = chunk.data_type.definition.name
         event(f"takes no {data_type_name}")
-        codec = _read(definition, data.draw(fields(definition)))
+        if _holds_pipelines(definition):
+            assert _encoders_refuse(data, chunk)
+            return
+        codec = _read(definition, data.draw(declarations(definition)))
         assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) != []
         return
-    codec = _read(definition, data.draw(fields(definition, configurations)))
-    assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) == []
+    codec = _read(definition, data.draw(declarations(definition, configurations)))
+    assert _handed_problems(codec, chunk) == []
+
+
+_MIXED_LENGTHS = st.lists(
+    st.frozensets(st.integers(1, 24), min_size=1, max_size=3), max_size=3
+).map(tuple)
+"""Several lengths along each axis, as a rectilinear grid gives: one inner length must divide them all."""
+
+
+@given(data=st.data(), lengths=_MIXED_LENGTHS)
+def test_shards_divide_every_length(
+    data: st.DataObject, lengths: tuple[frozenset[int], ...]
+) -> None:
+    chunk = Chunk(lengths)
+    configurations = codec_configurations(SHARDING_INDEXED_CODEC, chunk)
+    assert configurations is not None
+    codec = _read(
+        SHARDING_INDEXED_CODEC, data.draw(declarations(SHARDING_INDEXED_CODEC, configurations))
+    )
+    assert _handed_problems(codec, chunk) == []
+
+
+def test_shards_divide_a_long_shard() -> None:
+    """A length of 2**30 has its divisors found without counting to it."""
+    chunk = Chunk((frozenset({2**30}),))
+    configurations = codec_configurations(SHARDING_INDEXED_CODEC, chunk)
+    assert configurations is not None
+    find(
+        configurations,
+        lambda configuration: configuration["chunk_shape"][0] > 2**15,
+        settings=_REACH,
+    )
+
+
+def test_a_shard_whose_index_nothing_encodes_is_none() -> None:
+    """Without a codec of static size to encode the index, no shard is drawn."""
+    without_bytes = {d: s for d, s in DEFAULT_STRATEGIES.items() if d is not BYTES_CODEC}
+    assert codec_configurations(SHARDING_INDEXED_CODEC, strategies=without_bytes) is None
+
+
+def test_a_cast_from_a_data_type_without_a_strategy_draws_numbers() -> None:
+    """Scalars of a chunk's data type that no strategy draws for are small numbers, which it holds."""
+    data_type = _read(INT8_DATA_TYPE, "int8")
+    strategies: Strategies = {
+        CAST_VALUE_CODEC: DEFAULT_STRATEGIES[CAST_VALUE_CODEC],
+        FLOAT32_DATA_TYPE: DEFAULT_STRATEGIES[FLOAT32_DATA_TYPE],
+    }
+    configurations = codec_configurations(
+        CAST_VALUE_CODEC, Chunk(None, data_type), strategies=strategies
+    )
+    assert configurations is not None
+    find(configurations, lambda configuration: "scalar_map" in configuration, settings=_REACH)
+
+
+@st.composite
+def _partly_known_chunks(draw: st.DrawFn) -> Chunk:
+    """A chunk some of which nothing says: its lengths along an axis or at all, or its data type, read by nothing in scope."""
+    chunk = draw(_chunks())
+    lengths = draw(
+        st.sampled_from(
+            [
+                chunk.lengths,
+                None,
+                None if chunk.lengths is None else tuple(None for _ in chunk.lengths),
+            ]
+        )
+    )
+    data_type = draw(st.sampled_from([chunk.data_type, None, _UNREAD_DATA_TYPE]))
+    return Chunk(lengths, data_type)
+
+
+_UNREAD_DATA_TYPE = resolve({"name": "an.unread.type"}, DataTypeDefinition, ZARR_PYTHON_CONTEXT)[0]
+"""A data type field that nothing in scope claims: a chunk of it says nothing of its values."""
+
+
+@given(data=st.data(), chunk=_chunks() | _partly_known_chunks())
+def test_pipelines_read(data: st.DataObject, chunk: Chunk) -> None:
+    """A pipeline drawn for a chunk reads as one handed it, through JSON too; none is drawn only for a chunk no codec encodes."""
+    drawn = pipelines(chunk)
+    if drawn is None:
+        assert chunk.data_type is not None
+        event(f"no pipeline for {chunk.data_type.json!r}")
+        assert storage_of(chunk.data_type) == "variable_length"
+        return
+    pipeline = data.draw(drawn)
+    for written in (pipeline, json.loads(json.dumps(pipeline))):
+        codecs = [resolve(field, CodecDefinition, ZARR_PYTHON_CONTEXT) for field in written]
+        assert [problems for _, problems in codecs] == [()] * len(codecs)
+        _, problems = read_pipeline([codec for codec, _ in codecs], chunk)
+        assert problems == ()
 
 
 Target = tuple[Literal["present", "absent"], str] | tuple[Literal["value"], str, object]
-FieldForm = Literal["bare", "object", "configured", "must_understand"]
+DeclarationForm = Literal["bare", "object", "configured", "must_understand"]
 
 
 def _configuration_targets(
@@ -218,20 +366,20 @@ def _configuration_targets(
     return targets
 
 
-def _field_forms(definition: Definition[Any]) -> list[FieldForm]:
-    """The envelopes the spec allows a field of `definition` to be written in."""
+def _declaration_forms(definition: Definition[Any]) -> list[DeclarationForm]:
+    """The envelopes the spec allows a declaration of `definition` to be written in."""
     if definition in _CORE_DATA_TYPES:
-        return []  # only ever bare, which `test_fields_read` asserts
+        return []  # only ever bare, which `test_declarations_read` asserts
     if definition.requires_configuration:
         return ["configured", "must_understand"]
     return ["bare", "object", "configured", "must_understand"]
 
 
-def _form_of(field: ZarrV3MetadataFieldJSON) -> set[FieldForm]:
-    if isinstance(field, str):
+def _form_of(declaration: ZarrV3DeclarationJSON) -> set[DeclarationForm]:
+    if isinstance(declaration, str):
         return {"bare"}
-    forms: set[FieldForm] = {"configured" if "configuration" in field else "object"}
-    if "must_understand" in field:
+    forms: set[DeclarationForm] = {"configured" if "configuration" in declaration else "object"}
+    if "must_understand" in declaration:
         forms.add("must_understand")
     return forms
 
@@ -253,6 +401,7 @@ def _hits(
 
 
 _REACH = settings(max_examples=2000, database=None)
+_ONCE = settings(database=None)
 
 
 @pytest.mark.parametrize(
@@ -263,7 +412,9 @@ _REACH = settings(max_examples=2000, database=None)
 def test_configurations_reach(
     definition: Definition[Any], target: Target | tuple[Literal["simplified"]]
 ) -> None:
-    configurations = fields(definition).map(lambda field: _read(definition, field).configuration)
+    configurations = declarations(definition).map(
+        lambda declaration: _read(definition, declaration).configuration
+    )
     find(
         configurations,
         lambda configuration: _hits(definition, target, configuration),
@@ -273,44 +424,94 @@ def test_configurations_reach(
 
 @pytest.mark.parametrize(
     ("definition", "form"),
-    [(d, form) for d in _DEFINITIONS for form in _field_forms(d)],
+    [(d, form) for d in _DEFINITIONS for form in _declaration_forms(d)],
     ids=_id,
 )
-def test_fields_reach(definition: Definition[Any], form: FieldForm) -> None:
-    find(fields(definition), lambda field: form in _form_of(field), settings=_REACH)
+def test_declarations_reach(definition: Definition[Any], form: DeclarationForm) -> None:
+    find(
+        declarations(definition), lambda declaration: form in _form_of(declaration), settings=_REACH
+    )
 
 
 def test_an_added_strategy_is_drawn_from() -> None:
     """A strategy joined to the defaults, as an extension author adds one, is the one drawn from."""
-    level_three = CodecStrategy(configurations=lambda _chunk: st.just({"level": 3}))
+    level_three = CodecStrategy(configurations=lambda _chunk, _strategies: st.just({"level": 3}))
     strategies = DEFAULT_STRATEGIES | {GZIP_CODEC: level_three}
-    field = find(fields(GZIP_CODEC, strategies=strategies), lambda _field: True, settings=_REACH)
-    assert _read(GZIP_CODEC, field).configuration == {"level": 3}
+    declaration = find(
+        declarations(GZIP_CODEC, strategies=strategies), lambda _declaration: True, settings=_REACH
+    )
+    assert _read(GZIP_CODEC, declaration).configuration == {"level": 3}
+
+
+_SHORT_REPR = 10_000
+"""Well short of the 30,000 characters past which Hypothesis warns about a strategy's repr.
+
+It writes that repr into the note on any error raised while drawing,
+its own rejections among them, so a longer one fails a suite that turns
+warnings into errors.
+"""
+
+
+@pytest.mark.parametrize("definition", _DEFINITIONS, ids=_id)
+def test_reprs_stay_short(definition: Definition[Any]) -> None:
+    """However the strategies are passed: a plain mapping is as long as every strategy in it."""
+    plain: Strategies = dict(DEFAULT_STRATEGIES)
+    assert len(repr(declarations(definition, strategies=plain))) < _SHORT_REPR
+    assert len(repr(pipelines(strategies=plain))) < _SHORT_REPR
 
 
 def test_a_definition_without_a_strategy_is_a_lookup_error() -> None:
-    with pytest.raises(LookupError, match="no strategy for 'sharding_indexed'"):
-        fields(SHARDING_INDEXED_CODEC)
+    with pytest.raises(LookupError, match="no strategy for 'gzip'"):
+        declarations(GZIP_CODEC, strategies={})
 
 
 def test_a_strategy_of_another_kind_is_a_type_error() -> None:
     # Unannotated, as an extension author writes it: a mapping keyed by a
     # `CodecDefinition` is a `Strategies`.
-    strategies = {GZIP_CODEC: ChunkKeyEncodingStrategy(configurations=st.just({}))}
+    strategies = {
+        GZIP_CODEC: ChunkKeyEncodingStrategy(configurations=lambda _strategies: st.just({}))
+    }
     with pytest.raises(TypeError, match="draws configurations of a ChunkKeyEncodingDefinition"):
         codec_configurations(GZIP_CODEC, strategies=strategies)
 
 
 def test_a_codec_strategy_refusing_an_unknown_chunk_is_a_value_error() -> None:
+    refusing = CodecStrategy(configurations=lambda _chunk, _strategies: None)
     with pytest.raises(ValueError, match=r"Chunk\(\), a chunk nothing is known of"):
-        CodecStrategy(configurations=lambda _chunk: None)
+        declarations(GZIP_CODEC, strategies=DEFAULT_STRATEGIES | {GZIP_CODEC: refusing})
+
+
+def test_fill_values_of_a_field_no_definition_reads_is_a_lookup_error() -> None:
+    """A struct handed a field type that no definition in the strategies reads has no fill values to draw for it."""
+    without_float32 = {d: s for d, s in DEFAULT_STRATEGIES.items() if d is not FLOAT32_DATA_TYPE}
+    configuration: Any = {"fields": ({"name": "a", "data_type": "float32"},)}
+    with pytest.raises(LookupError, match="no definition in `strategies` reads"):
+        fill_values(STRUCT_DATA_TYPE, configuration, strategies=without_float32)
+
+
+def test_a_refused_nested_draw_is_a_value_error() -> None:
+    """A field a configuration holds is read as it is drawn, so a strategy that draws a refused one is caught there."""
+    refused = DataTypeStrategy(
+        configurations=lambda _strategies: st.just({"stray": 1}),
+        fill_values=lambda _configuration, _strategies: st.just(0.0),
+    )
+    strategies: Strategies = {
+        CAST_VALUE_CODEC: DEFAULT_STRATEGIES[CAST_VALUE_CODEC],
+        NUMPY_DATETIME64_DATA_TYPE: refused,
+    }
+    with pytest.raises(ValueError, match="read in the strategies. scope, is refused"):
+        find(
+            declarations(CAST_VALUE_CODEC, strategies=strategies),
+            lambda _field: True,
+            settings=_ONCE,
+        )
 
 
 @pytest.mark.parametrize("spellings", get_args(Spellings))
 def test_a_refused_draw_is_a_value_error(spellings: Spellings) -> None:
-    refused = fields(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
+    refused = declarations(GZIP_CODEC, st.just({"level": 99}), spellings=spellings)
     with pytest.raises(ValueError, match="which is refused"):
-        find(refused, lambda _field: True, settings=settings(database=None))
+        find(refused, lambda _field: True, settings=_ONCE)
 
 
 _BFLOAT16 = DataTypeDefinition(name="bfloat16", configuration=EmptyConfiguration)
@@ -335,39 +536,203 @@ def test_scale_offset_takes_a_data_type_the_package_does_not_define(data: st.Dat
 def test_a_definition_no_v3_scope_holds_is_a_type_error() -> None:
     zlib = CORE_V2_CONTEXT.codecs["zlib"]
     with pytest.raises(TypeError, match="which no slot of a Zarr v3 scope holds"):
-        fields(zlib, st.just({}))
+        declarations(zlib, st.just({}))
 
 
-@pytest.mark.parametrize(
-    "definition", [FLOAT16_DATA_TYPE, FLOAT32_DATA_TYPE, FLOAT64_DATA_TYPE], ids=_id
-)
+_FLOAT_BITS = {FLOAT16_DATA_TYPE: 16, FLOAT32_DATA_TYPE: 32, FLOAT64_DATA_TYPE: 64}
+
+
+def _bits(value: object) -> int | None:
+    """The bits of a hex string; None for any other value."""
+    return int(value, 16) if isinstance(value, str) and value.startswith("0x") else None
+
+
+def _is_hex_of(value: object, width: int, *, exponent: bool, mantissa: bool) -> bool:
+    """Whether `value` is a float's bits in hex with its exponent all ones or not, and its mantissa not zero or zero."""
+    bits = _bits(value)
+    if bits is None:
+        return False
+    mantissa_bits = {16: 10, 32: 23, 64: 52}[width]
+    low = bits & (2**mantissa_bits - 1)
+    high = (bits >> mantissa_bits) & (2 ** (width - 1 - mantissa_bits) - 1)
+    return (high == 2 ** (width - 1 - mantissa_bits) - 1) == exponent and (low != 0) == mantissa
+
+
+_SCALE_OFFSET_VALUES: dict[str, Callable[[object, int], bool]] = {
+    "a number": lambda value, _width: isinstance(value, float) and value != 0.0,
+    "an integer": lambda value, _width: isinstance(value, int) and value != 0,
+    "NaN by name": lambda value, _width: value == "NaN",
+    "infinity by name": lambda value, _width: value == "Infinity",
+    "negative infinity by name": lambda value, _width: value == "-Infinity",
+    "hex of a number": lambda value, width: _is_hex_of(value, width, exponent=False, mantissa=True),
+    "hex of an infinity": lambda value, width: _is_hex_of(
+        value, width, exponent=True, mantissa=False
+    ),
+    "hex of a NaN": lambda value, width: _is_hex_of(value, width, exponent=True, mantissa=True),
+}
+"""Each spelling a fill value of a float takes, which `offset` and `scale` are."""
+
+
+@pytest.mark.parametrize("definition", _FLOAT_BITS, ids=_id)
 @pytest.mark.parametrize("member", ["offset", "scale"])
-def test_scale_offset_reaches_a_value_written_in_hex(
-    definition: DataTypeDefinition[Any], member: str
+@pytest.mark.parametrize("spelling", _SCALE_OFFSET_VALUES)
+def test_scale_offset_reaches_every_spelling_of_a_float(
+    definition: DataTypeDefinition[Any], member: str, spelling: str
 ) -> None:
-    """A float's `offset` and `scale` are fill values of its type, which the bits in hex spell too."""
+    """A float's `offset` and `scale` are fill values of its type, non-finite ones and the bits in hex too."""
+    chunk = Chunk(None, _read(definition, definition.name))
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    wanted = _SCALE_OFFSET_VALUES[spelling]
+    width = _FLOAT_BITS[definition]
+    find(
+        configurations,
+        lambda configuration: member in configuration and wanted(configuration[member], width),
+        settings=_REACH,
+    )
+
+
+@pytest.mark.parametrize("definition", [COMPLEX64_DATA_TYPE, COMPLEX128_DATA_TYPE], ids=_id)
+@pytest.mark.parametrize("member", ["offset", "scale"])
+@pytest.mark.parametrize("part", [0, 1])
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_scale_offset_reaches_a_non_finite_part_of_a_complex(
+    definition: DataTypeDefinition[Any], member: str, part: int, value: str
+) -> None:
+    """A complex number's `offset` and `scale` are pairs of float fill values, either of them non-finite."""
     chunk = Chunk(None, _read(definition, definition.name))
     configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
     assert configurations is not None
     find(
         configurations,
-        lambda configuration: isinstance(configuration.get(member), str),
+        lambda configuration: (
+            member in configuration
+            and cast("tuple[object, object]", configuration[member])[part] == value
+        ),
         settings=_REACH,
     )
 
 
-def _has_pair(configuration: Mapping[str, Any]) -> bool:
-    return any(
-        isinstance(entry, tuple)
-        for dimension in configuration["chunk_shapes"]
-        if isinstance(dimension, tuple)
-        for entry in cast("tuple[object, ...]", dimension)
+def _is_zero_spelled(value: object, width: int) -> bool:
+    """Whether a float fill value is zero of either sign, by its value alone."""
+    bits = _bits(value)
+    return value == 0 if bits is None else bits in (0, 2 ** (width - 1))
+
+
+@pytest.mark.parametrize(
+    ("definition", "width"),
+    [
+        *_FLOAT_BITS.items(),
+        (COMPLEX64_DATA_TYPE, 32),
+        (COMPLEX128_DATA_TYPE, 64),
+    ],
+    ids=str,
+)
+@given(data=st.data())
+def test_scale_offset_scale_is_never_zero(
+    definition: DataTypeDefinition[Any], width: int, data: st.DataObject
+) -> None:
+    """No spelling of a float, nor of both parts of a complex number, draws a scale of zero: decoding divides by it."""
+    chunk = Chunk(None, _read(definition, definition.name))
+    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
+    assert configurations is not None
+    configuration = data.draw(configurations)
+    assert list(SCALE_OFFSET_CODEC.chunk_rules(configuration, {}, chunk)) == []
+    if "scale" in configuration:
+        scale = configuration["scale"]
+        parts = scale if isinstance(scale, tuple) else (scale,)
+        assert not all(_is_zero_spelled(part, width) for part in parts)
+
+
+def _entries(dimension: object) -> tuple[object, ...]:
+    return cast("tuple[object, ...]", dimension) if isinstance(dimension, tuple) else ()
+
+
+def _is_pair(entry: object) -> bool:
+    return isinstance(entry, tuple)
+
+
+_RECTILINEAR_SPELLINGS: dict[str, tuple[tuple[int, ...] | None, Callable[[object], bool]]] = {
+    "a bare length": (None, lambda dimension: isinstance(dimension, int)),
+    "no edges": (None, lambda dimension: dimension == ()),
+    "only written-out lengths": (
+        None,
+        lambda dimension: (
+            len(_entries(dimension)) > 1
+            and not any(_is_pair(entry) for entry in _entries(dimension))
+        ),
+    ),
+    "only pairs": (
+        None,
+        lambda dimension: (
+            len(_entries(dimension)) > 1 and all(_is_pair(entry) for entry in _entries(dimension))
+        ),
+    ),
+    "pairs among written-out lengths": (
+        None,
+        lambda dimension: len({_is_pair(entry) for entry in _entries(dimension)}) == 2,
+    ),
+    "a long run written out": (
+        (64,),
+        lambda dimension: any(
+            count >= 16
+            for count in Counter(
+                entry for entry in _entries(dimension) if not _is_pair(entry)
+            ).values()
+        ),
+    ),
+    "a short run written as a pair": (
+        None,
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] <= 4
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run too long to write out": (
+        (2**16,),
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] > 64
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run that covers a long dimension": (
+        (2**16,),
+        lambda dimension: any(
+            _is_pair(entry)
+            and cast("tuple[int, int]", entry)[1] > 1
+            and math.prod(cast("tuple[int, int]", entry)) >= 2**15
+            for entry in _entries(dimension)
+        ),
+    ),
+    "a run of a million chunks past an unknown length": (
+        None,
+        lambda dimension: any(
+            _is_pair(entry) and cast("tuple[int, int]", entry)[1] >= 2**16
+            for entry in _entries(dimension)
+        ),
+    ),
+}
+"""What each spelling of a rectilinear dimension looks like, and the shape it is drawn over: spellings of one union, which no TypedDict target asks for."""
+
+
+@pytest.mark.parametrize("spelling", _RECTILINEAR_SPELLINGS)
+def test_rectilinear_dimensions_reach(spelling: str) -> None:
+    shape, reached = _RECTILINEAR_SPELLINGS[spelling]
+    find(
+        chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape),
+        lambda configuration: any(reached(d) for d in configuration["chunk_shapes"]),
+        settings=_REACH,
     )
 
 
-def test_rectilinear_edges_reach_a_run_written_as_a_pair() -> None:
-    """The `[size, count]` spelling, which no TypedDict target asks for: it is one arm of a union."""
-    find(chunk_grid_configurations(RECTILINEAR_CHUNK_GRID), _has_pair, settings=_REACH)
+@given(data=st.data(), shape=st.lists(st.integers(0, 2**63 - 1), max_size=3).map(tuple))
+def test_chunk_grids_fit_a_long_shape(data: st.DataObject, shape: tuple[int, ...]) -> None:
+    """However long an axis is, a grid covers it without a list as long as the axis."""
+    configurations = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape)
+    declaration = data.draw(declarations(RECTILINEAR_CHUNK_GRID, configurations))
+    _, problems = chunk_grid_lengths(_read(RECTILINEAR_CHUNK_GRID, declaration), shape)
+    assert problems == ()
+    assert len(json.dumps(declaration)) < 10_000
 
 
 FillValueSpelling = Literal[
@@ -430,3 +795,364 @@ def test_fill_values_reach(
         lambda configuration: fill_values(definition, configuration)
     )
     find(values, lambda value: spelling in _spellings_of(value), settings=_REACH)
+
+
+def _codecs_in(pipeline: tuple[Any, ...]) -> list[tuple[str, tuple[str, ...]]]:
+    """Each codec's name in `pipeline`, with the members of the shards it sits inside."""
+    found: list[tuple[str, tuple[str, ...]]] = []
+    for field in pipeline:
+        if isinstance(field, str):
+            found.append((field, ()))
+            continue
+        found.append((field["name"], ()))
+        if field["name"] != SHARDING_INDEXED_CODEC.name:
+            continue
+        configuration: Mapping[str, Any] = field["configuration"]
+        for member in ("codecs", "index_codecs"):
+            found.extend(
+                (inner, (member, *within)) for inner, within in _codecs_in(configuration[member])
+            )
+    return found
+
+
+def _drawn(strategy: st.SearchStrategy[T] | None) -> st.SearchStrategy[T]:
+    """`strategy`, or nothing when there is none."""
+    return st.nothing() if strategy is None else strategy
+
+
+def _drawn_pipelines() -> st.SearchStrategy[tuple[Any, ...]]:
+    return _chunks().flatmap(lambda chunk: _drawn(pipelines(chunk)))
+
+
+def _shards() -> st.SearchStrategy[Any]:
+    """Shards drawn for the chunks of a grid."""
+    return _chunks().flatmap(
+        lambda chunk: _drawn(codec_configurations(SHARDING_INDEXED_CODEC, chunk)).flatmap(
+            lambda configuration: declarations(SHARDING_INDEXED_CODEC, st.just(configuration))
+        )
+    )
+
+
+@pytest.mark.parametrize("definition", _CODECS, ids=_id)
+def test_pipelines_reach_every_codec(definition: CodecDefinition[Any]) -> None:
+    find(
+        _drawn_pipelines(),
+        lambda pipeline: any(name == definition.name for name, _ in _codecs_in(pipeline)),
+        settings=_REACH,
+    )
+
+
+@pytest.mark.parametrize(
+    ("definition", "member"),
+    [
+        (d, member)
+        for d in _CODECS
+        if d is not SHARDING_INDEXED_CODEC
+        for member in ("codecs", "index_codecs")
+        if member == "codecs" or d.size == "static"
+    ],
+    ids=_id,
+)
+def test_shards_hold_every_codec_their_pipeline_takes(
+    definition: CodecDefinition[Any], member: str
+) -> None:
+    """A shard's pipelines reach each codec they take: its index codecs, only those of static size."""
+    find(
+        _shards(),
+        lambda shard: (definition.name, (member,)) in _codecs_in((shard,)),
+        settings=_REACH,
+    )
+
+
+def test_shards_reach_a_shard_inside() -> None:
+    find(
+        _shards(),
+        lambda shard: (SHARDING_INDEXED_CODEC.name, ("codecs",)) in _codecs_in((shard,)),
+        settings=_REACH,
+    )
+
+
+_VARIABLE_LENGTH = frozenset(d for d in _DATA_TYPES if d.storage is variable_length)
+"""The data types whose values vary in size, which a struct's fields may not be."""
+
+
+@pytest.mark.parametrize(
+    "definition", [d for d in _DATA_TYPES if d not in _VARIABLE_LENGTH], ids=_id
+)
+def test_struct_fields_reach_every_fixed_size_data_type(
+    definition: DataTypeDefinition[Any],
+) -> None:
+    """A struct's field types reach each data type of fixed size, a struct among them."""
+    find(
+        data_type_configurations(STRUCT_DATA_TYPE),
+        lambda configuration: any(
+            _read_data_type(member["data_type"]).definition is definition
+            for member in configuration["fields"]
+        ),
+        settings=_REACH,
+    )
+
+
+def _read_data_type(field: object) -> Any:  # noqa: ANN401
+    resolved, problems = resolve(field, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
+    assert problems == ()
+    return resolved
+
+
+_REAL_NUMBERS = [
+    d
+    for d in _DATA_TYPES
+    if d.name
+    in {
+        *(f"{sign}int{bits}" for sign in ("", "u") for bits in (8, 16, 32, 64)),
+        *(f"float{bits}" for bits in (16, 32, 64)),
+        "numpy.datetime64",
+        "numpy.timedelta64",
+    }
+]
+"""The data types `cast_value` casts to: integers and floats, and the numpy times, which are signed 64-bit integers."""
+
+
+@pytest.mark.parametrize("definition", _REAL_NUMBERS, ids=_id)
+def test_cast_value_reaches_every_real_number_data_type(
+    definition: DataTypeDefinition[Any],
+) -> None:
+    find(
+        declarations(CAST_VALUE_CODEC).map(lambda field: _read(CAST_VALUE_CODEC, field)),
+        lambda codec: codec.nested[("data_type",)].definition is definition,
+        settings=_REACH,
+    )
+
+
+@pytest.mark.parametrize("direction", ["encode", "decode"])
+def test_cast_value_reaches_scalars_in_each_direction(direction: str) -> None:
+    find(
+        _drawn(codec_configurations(CAST_VALUE_CODEC)),
+        lambda configuration: len(configuration.get("scalar_map", {}).get(direction, ())) != 0,
+        settings=_REACH,
+    )
+
+
+@given(declaration=declarations(CAST_VALUE_CODEC))
+def test_cast_value_draws_only_real_number_data_types(declaration: ZarrV3DeclarationJSON) -> None:
+    """The reach test above says each of these is drawn; this says nothing else is."""
+    target = _read(CAST_VALUE_CODEC, declaration).nested[("data_type",)]
+    assert target.definition in _REAL_NUMBERS
+
+
+_PLAIN_GZIP = CodecDefinition(
+    name=GZIP_CODEC.name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+)
+"""A codec named as one the defaults hold, with a configuration of its own."""
+
+_WITH_PLAIN_GZIP = DEFAULT_STRATEGIES | {
+    _PLAIN_GZIP: CodecStrategy(configurations=lambda _chunk, _strategies: EMPTY_CONFIGURATIONS)
+}
+
+
+@given(declaration=declarations(_PLAIN_GZIP, st.just({})))
+def test_a_definition_named_as_a_default_is_read_as_itself(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """It claims its name in the scope its draw is read in, though the strategies hold another, whose rules refuse an empty configuration."""
+    scope = scope_with(_PLAIN_GZIP, DEFAULT_STRATEGIES)
+    read, problems = resolve(declaration, CodecDefinition, scope)
+    assert problems == ()
+    assert isinstance(read, AcceptedDeclaration)
+    assert read.definition is _PLAIN_GZIP
+
+
+def test_a_definition_shadowed_in_the_strategies_is_read_as_itself() -> None:
+    """Asked for by name, it claims that name over the one that replaced it."""
+    declaration = find(
+        declarations(GZIP_CODEC, strategies=_WITH_PLAIN_GZIP),
+        lambda _declaration: True,
+        settings=_ONCE,
+    )
+    assert _read(GZIP_CODEC, declaration).definition is GZIP_CODEC
+
+
+@given(pipeline=_drawn(pipelines(strategies=_WITH_PLAIN_GZIP)))
+def test_a_later_definition_replaces_a_default_of_its_name(pipeline: tuple[Any, ...]) -> None:
+    """A pipeline holds the later of two codecs with one name, so none has the earlier's `level`."""
+    gzips = [
+        field for field in pipeline if isinstance(field, dict) and field["name"] == GZIP_CODEC.name
+    ]
+    assert [field.get("configuration", {}) for field in gzips] == [{}] * len(gzips)
+
+
+_PLAIN_STRUCT = DataTypeDefinition(name=STRUCT_DATA_TYPE.name, configuration=EmptyConfiguration)
+"""A data type named as the struct the defaults hold, with a configuration of its own."""
+
+_PLAIN_SHARD = CodecDefinition(
+    name=SHARDING_INDEXED_CODEC.name,
+    configuration=EmptyConfiguration,
+    kind="array_bytes",
+    size="dynamic",
+)
+"""A codec named as the shard the defaults hold, with a configuration of its own."""
+
+
+@given(
+    declaration=declarations(
+        STRUCT_DATA_TYPE,
+        strategies=DEFAULT_STRATEGIES
+        | {
+            _PLAIN_STRUCT: DataTypeStrategy(
+                configurations=lambda _strategies: EMPTY_CONFIGURATIONS,
+                fill_values=lambda _configuration, _strategies: st.just(0),
+            )
+        },
+    )
+)
+def test_a_struct_holds_no_other_definition_of_its_name(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """Its field types are read as the struct asked for, not the one named as it in the strategies."""
+    assert _read(STRUCT_DATA_TYPE, declaration).definition is STRUCT_DATA_TYPE
+
+
+@given(
+    declaration=declarations(
+        SHARDING_INDEXED_CODEC,
+        strategies=DEFAULT_STRATEGIES
+        | {_PLAIN_SHARD: CodecStrategy(configurations=lambda _chunk, _s: EMPTY_CONFIGURATIONS)},
+    )
+)
+def test_a_shard_holds_no_other_definition_of_its_name(
+    declaration: ZarrV3DeclarationJSON,
+) -> None:
+    """Its inner codecs are read as the shard asked for, not the one named as it in the strategies."""
+    assert _read(SHARDING_INDEXED_CODEC, declaration).definition is SHARDING_INDEXED_CODEC
+
+
+def _float_class(value: object) -> str | None:
+    """What the bits of a `float64` fill value written in hex are; None for any other spelling."""
+    if not isinstance(value, str) or not value.startswith("0x"):
+        return None
+    bits = int(value, 16)
+    exponent, mantissa = (bits >> 52) & 0x7FF, bits & (2**52 - 1)
+    if exponent == 0x7FF:
+        return "infinity" if mantissa == 0 else "NaN"
+    if exponent == 0:
+        return "zero" if mantissa == 0 else "subnormal"
+    return "normal"
+
+
+_HEX_FILL_VALUES = fill_values(FLOAT64_DATA_TYPE, {}).filter(
+    lambda value: _float_class(value) is not None
+)
+
+
+@pytest.mark.parametrize(("kind", "at_least"), [("normal", 0.2), ("NaN", 0.1), ("infinity", 0.01)])
+def test_hex_fill_values_are_not_only_small_numbers(kind: str, at_least: float) -> None:
+    """Bits drawn as an integer alone are nearly all subnormal."""
+    assert share_of(_HEX_FILL_VALUES, lambda value: _float_class(value) == kind) >= at_least
+
+
+@pytest.mark.parametrize(
+    ("definition", "beyond"),
+    [(FLOAT32_DATA_TYPE, 2**11), (FLOAT64_DATA_TYPE, 2**24)],
+    ids=_id,
+)
+def test_integer_fill_values_reach_past_a_narrower_float(
+    definition: DataTypeDefinition[Any], beyond: int
+) -> None:
+    """Each width draws the integers it holds, not only those the narrowest does."""
+    find(
+        fill_values(definition, {}),
+        lambda value: isinstance(value, int) and abs(value) > beyond,
+        settings=_REACH,
+    )
+
+
+@st.composite
+def _shard_inner_lengths(draw: st.DrawFn) -> tuple[int, ...]:
+    """The inner chunk lengths of a shard of a rectilinear grid's chunks."""
+    shape = draw(st.lists(st.integers(1, 256), min_size=1, max_size=3).map(tuple))
+    grid = _read(
+        RECTILINEAR_CHUNK_GRID,
+        draw(
+            declarations(
+                RECTILINEAR_CHUNK_GRID, chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape)
+            )
+        ),
+    )
+    lengths, _ = chunk_grid_lengths(grid, shape)
+    return draw(_drawn(codec_configurations(SHARDING_INDEXED_CODEC, Chunk(lengths))))["chunk_shape"]
+
+
+def test_shards_of_a_rectilinear_grid_are_often_divided() -> None:
+    """Edges drawn apart rarely share a factor, which leaves a shard only inner chunks of length 1."""
+    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.4
+
+
+def _edge_factor(configuration: Mapping[str, Any]) -> int:
+    """The largest factor every edge of a dimension shares; 0 for a dimension with no edges."""
+    dimension = configuration["chunk_shapes"][0]
+    if isinstance(dimension, int):
+        return dimension
+    return math.gcd(*(entry if isinstance(entry, int) else entry[0] for entry in dimension))
+
+
+_LONGEST_AXES = st.lists(
+    st.integers(0, 2**63 - 1) | st.just(2**63 - 1), min_size=1, max_size=3
+).map(tuple)
+
+
+def _chunk_lengths_of(configuration: Mapping[str, Any]) -> list[int]:
+    if "chunk_shape" in configuration:
+        return list(configuration["chunk_shape"])
+    return [
+        length
+        for dimension in configuration["chunk_shapes"]
+        for length in (
+            [dimension]
+            if isinstance(dimension, int)
+            else (entry if isinstance(entry, int) else entry[0] for entry in dimension)
+        )
+    ]
+
+
+@pytest.mark.parametrize("definition", _CHUNK_GRIDS, ids=_id)
+@given(data=st.data(), shape=_LONGEST_AXES)
+def test_chunk_lengths_fit_a_signed_64_bit_size(
+    definition: ChunkGridDefinition[Any], data: st.DataObject, shape: tuple[int, ...]
+) -> None:
+    """However long an axis is, and however a grid's chunks run past it."""
+    configuration = data.draw(chunk_grid_configurations(definition, shape))
+    assert max(_chunk_lengths_of(configuration), default=0) <= 2**63 - 1
+    declaration = data.draw(declarations(definition, st.just(configuration)))
+    _, problems = chunk_grid_lengths(_read(definition, declaration), shape)
+    assert problems == ()
+
+
+def test_a_long_dimension_keeps_its_edge_factor() -> None:
+    """The edge that covers what the runs leave of a dimension shares their factor, or none would."""
+    edges = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, (2**16 + 1,)).filter(
+        lambda configuration: not isinstance(configuration["chunk_shapes"][0], int)
+    )
+    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.3
+
+
+def test_divisors_of_a_very_long_shard_are_found_quickly() -> None:
+    """A length of 2**64 has its divisors found without counting to its square root."""
+    configurations = codec_configurations(SHARDING_INDEXED_CODEC, Chunk((frozenset({2**64}),)))
+    assert configurations is not None
+    find(
+        configurations,
+        lambda configuration: configuration["chunk_shape"][0] > 2**32,
+        settings=_REACH,
+    )
+
+
+def _field_types(declaration: Any) -> list[str]:  # noqa: ANN401
+    return [
+        field["data_type"] if isinstance(field["data_type"], str) else field["data_type"]["name"]
+        for field in declaration["configuration"]["fields"]
+    ]
+
+
+def test_struct_fields_do_not_favor_the_first_data_type() -> None:
+    """A type drawn after a field's name would be `bool` a fifth of the time."""
+    assert share_of(declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool") <= 0.12

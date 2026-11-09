@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 
 from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata.definition._definition import AcceptedField
+from zarr_metadata.definition._definition import AcceptedDeclaration
 from zarr_metadata.v3._definition import Chunk
 
 
@@ -17,7 +17,7 @@ def vlen_problems(chunk: Chunk, compatible: frozenset[str]) -> Iterator[Validati
     type, nothing is checked.
     """
     data_type = chunk.data_type
-    if not isinstance(data_type, AcceptedField) or data_type.definition.name in compatible:
+    if not isinstance(data_type, AcceptedDeclaration) or data_type.definition.name in compatible:
         return
     expected = " or ".join(shown(name) for name in sorted(compatible))
     yield ValidationProblem(

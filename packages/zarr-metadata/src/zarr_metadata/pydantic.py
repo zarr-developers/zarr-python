@@ -8,7 +8,7 @@ model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
-field-level coercion can never bypass it). A field type reads the fields
+field-level coercion can never bypass it). A field type reads the declarations
 of its document in the scope given by pydantic's validation context
 (pydantic passes this context to every validator). The scope is chosen
 as follows:
@@ -29,9 +29,11 @@ with `InScope`: `Annotated[ZarrV3ArrayMetadata, InScope(CONTEXT)]`.
 
 For example:
 
-    TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
-    ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
-    Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
+```python
+TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
+ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
+Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
+```
 
 An existing model instance passes through unchanged when no scope is
 given. When one is, the instance is read again in it with `refined_in`, so
@@ -63,11 +65,13 @@ each with its own error. For a document that deep, call
 
 Usage:
 
-    import zarr_metadata.pydantic as zmp
+```python
+import zarr_metadata.pydantic as zmp
 
-    class ArrayManifest(BaseModel):
-        path: str
-        metadata: zmp.ZarrV3ArrayMetadataField
+class ArrayManifest(BaseModel):
+    path: str
+    metadata: zmp.ZarrV3ArrayMetadataField
+```
 
 Static type checkers see each field type as its core model class, so
 `manifest.metadata` is a `zarr_metadata.model.ZarrV3ArrayMetadata`.
@@ -247,7 +251,7 @@ def _read_in(
 
 
 def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
-    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
+    """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the declaration it is in."""
     try:
         return refine(value, context)
     except MetadataValidationError as error:
@@ -449,6 +453,7 @@ class InScope:
     """
 
     context: ZarrV3Context | ZarrV2Context
+    """The scope the field is read in, in place of any scope the validation context holds."""
 
     def __post_init__(self) -> None:
         if not _is_context(self.context):

@@ -30,8 +30,19 @@ class VlenUtf8CodecObject(TypedDict, closed=True):
     """`vlen-utf8` codec metadata in object form. The codec has no configuration fields."""
 
     name: VlenUtf8CodecName
+    """The codec's name, `"vlen-utf8"`."""
     configuration: NotRequired[EmptyConfiguration]
+    """The codec's parameters, of which there are none.
+
+    Absent, or an empty mapping.
+    """
     must_understand: NotRequired[bool]
+    """Whether a reader that does not recognize this codec must refuse the document.
+
+    Absent means `true`. The spec permits `false` for a codec
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
+    though `resolve` reports a `false` as a problem at every extension point.
+    """
 
 
 VlenUtf8CodecMetadata = VlenUtf8CodecObject | VlenUtf8CodecName
