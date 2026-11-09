@@ -69,6 +69,7 @@ from zarr.core.indexing import (
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
+    OffsetChunkGridMetadata,
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
     parse_codecs,
@@ -624,6 +625,8 @@ class ShardingCodec(
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
+        if isinstance(chunk_grid, OffsetChunkGridMetadata):
+            chunk_grid = chunk_grid.base_chunk_grid
         if isinstance(chunk_grid, RegularChunkGridMetadata):
             edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
         elif isinstance(chunk_grid, RectilinearChunkGridMetadata):
