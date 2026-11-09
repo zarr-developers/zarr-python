@@ -12,6 +12,7 @@ from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
     ceildiv,
+    concurrent_foreach,
     concurrent_iter,
     parse_bool,
     parse_int,
@@ -121,6 +122,101 @@ async def test_concurrent_iter_schedules_eagerly() -> None:
 
 # todo: test
 def test_concurrent_map() -> None: ...
+
+
+class _Abort(BaseException):
+    """A BaseException that is neither KeyboardInterrupt nor SystemExit."""
+
+
+@pytest.mark.parametrize(("n_items", "limit"), [(0, 1), (1, 4), (7, 1), (7, 3), (7, 7), (7, 50)])
+async def test_concurrent_foreach(n_items: int, limit: int) -> None:
+    """Every item is processed exactly once, lazily, with at most `limit` in flight."""
+    seen: list[int] = []
+    in_flight = 0
+    peak = 0
+    pulled = 0
+
+    def items() -> Iterable[tuple[int]]:
+        nonlocal pulled
+        for i in range(n_items):
+            pulled += 1
+            yield (i,)
+
+    async def work(i: int) -> None:
+        nonlocal in_flight, peak
+        # Laziness: an item is pulled only when a worker is free to take it.
+        assert pulled <= i + limit
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0)
+        in_flight -= 1
+        seen.append(i)
+
+    await concurrent_foreach(items(), work, limit)
+    assert sorted(seen) == list(range(n_items))
+    assert peak == min(n_items, limit)
+
+
+async def test_concurrent_foreach_rejects_non_positive_limit() -> None:
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        await concurrent_foreach([(0,)], asyncio.sleep, 0)
+
+
+async def test_concurrent_foreach_single_failure_is_raised_bare() -> None:
+    """One failing call surfaces as itself and stops the rest of the stream."""
+    started: list[int] = []
+
+    async def work(i: int) -> None:
+        started.append(i)
+        await asyncio.sleep(0)
+        if i == 2:
+            raise OSError("boom")
+
+    with pytest.raises(OSError, match="boom") as info:
+        await concurrent_foreach(((i,) for i in range(100)), work, 2)
+    assert info.value.__cause__ is None
+    assert info.value.__suppress_context__
+    assert len(started) < 100
+
+
+async def test_concurrent_foreach_fast_failure_is_not_repeated() -> None:
+    """A call that fails before its first await stops the other workers from
+    taking items, so a read-only store raises once, not once per worker."""
+    calls = 0
+
+    async def work(i: int) -> None:
+        nonlocal calls
+        calls += 1
+        raise PermissionError("read only")
+
+    with pytest.raises(PermissionError, match="read only") as info:
+        await concurrent_foreach(((i,) for i in range(100)), work, 8)
+    assert calls == 1
+    assert info.value.__suppress_context__
+
+
+async def test_concurrent_foreach_simultaneous_failures_keep_the_group() -> None:
+    """Failures from the same loop iteration are all kept on the raised exception."""
+
+    async def work(i: int) -> None:
+        await asyncio.sleep(0)
+        if i == 0:
+            raise OSError("first")
+        raise ValueError("second")
+
+    with pytest.raises(OSError, match="first") as info:
+        await concurrent_foreach([(0,), (1,)], work, 2)
+    group = info.value.__cause__
+    assert isinstance(group, ExceptionGroup)
+    assert {type(e) for e in group.exceptions} == {OSError, ValueError}
+
+
+async def test_concurrent_foreach_base_exception_is_raised_bare() -> None:
+    async def work(i: int) -> None:
+        raise _Abort
+
+    with pytest.raises(_Abort):
+        await concurrent_foreach([(0,), (1,)], work, 1)
 
 
 # todo: test

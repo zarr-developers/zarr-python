@@ -100,8 +100,55 @@ print(group)
    group = zarr.open_group(UPath('s3://noaa-nwm-retro-v2-zarr-pds', anon=True), mode='r')
    ```
 
+- a [`URLPipeline`][zarr.storage.URLPipeline], the parsed form of a
+  [URL pipeline](#user-guide-url-pipelines) such as `s3://bucket/data.zip|zip:`, which
+  is resolved through registered adapters.
+
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
+
+## URL Pipelines {#user-guide-url-pipelines}
+
+Zarr supports [URL pipelines](https://github.com/jbms/url-pipeline): `|`-chained URLs
+read left to right. The first sub-URL locates a resource with a conventional URL; each
+later sub-URL names an *adapter* that reinterprets everything to its left (e.g.
+`s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages; see
+[custom URL pipeline adapters](extending.md#custom-url-pipeline-adapters).
+
+Parse a pipeline with [`URLPipeline.from_url`][zarr.storage.URLPipeline.from_url] and
+pass it to any function that accepts a `StoreLike`. At present, this is the only way a string is
+read as a pipeline: a plain string store specification currently maintains its existing meaning, so a
+local path containing `|` still names a directory.
+
+```python exec="true" session="storage" source="above" result="ansi"
+from zarr.storage import URLPipeline
+
+pipeline = URLPipeline.from_url("memory://pipeline-demo|zarr2:")
+group = zarr.open_group(pipeline, mode="w")
+print(zarr.open_group(pipeline, mode="r").metadata.zarr_format)
+```
+
+A trailing `zarr2:` or `zarr3:` *format segment* selects the zarr format,
+and its body (`zarr3:path/to/node`) is the node path; `zarr:` gives a node path and
+detects the format. A conflicting `zarr_format` argument raises `ValueError`, including
+the default `zarr_format=3` of `zarr.create_array`, `Group.open`, `Group.from_store` and
+`Array.open`.
+
+The root sub-URL must carry a scheme, so a local path is spelled as an absolute `file:`
+URL (`file:/data/x.zarr`, with at most a `localhost` authority). Every `memory:` root
+addresses one managed in-memory store, and its body is a path within it (`memory:a` ≡
+`memory:/a` ≡ `memory://a`); data lives only while some store object refers to it.
+Neither root accepts `.` or `..` path components, and drive letters are only special on
+Windows. No percent-escape is decoded anywhere in a pipeline. Other roots, such as
+`s3://...`, are opened exactly as the same plain string would be.
+
+`storage_options` configure the root sub-URL, and every adapter in the pipeline can
+see them. When a pipeline may come from an untrusted source, keep credentials out of
+`storage_options` unless you trust every installed adapter, and don't accept `memory:`
+roots in a process that serves several users: the in-memory store is process-wide.
+
+For complex store configurations, explicit store creation, as described below, may be
+required.
 
 ## Explicit Store Creation
 

@@ -165,6 +165,13 @@ The following stores have been renamed or changed:
 | `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
 | `FSStore`          | [`zarr.storage.FsspecStore`][]         |
 | `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
+| `LRUStoreCache`    | [`zarr.experimental.cache_store.CacheStore`][] (experimental) |
+
+`LRUStoreCache` has no stable equivalent in Zarr-Python 3. The experimental
+[`CacheStore`](experimental.md#cachestore) wraps a store and caches its contents in a second
+store, evicting the least recently used entries once `max_size` is reached. For remote data read
+through [`FsspecStore`][zarr.storage.FsspecStore], fsspec's caching filesystems
+(`fsspec.implementations.cached`, e.g. a `simplecache::s3://...` URL) are another option.
 
 A number of deprecated stores were also removed.
 See [issue #1274](https://github.com/zarr-developers/zarr-python/issues/1274) for more details on the removal of these stores.
@@ -224,9 +231,9 @@ The following functions / methods have not been ported to Zarr-Python 3:
 - `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 - `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
 
-The following features (corresponding to function arguments to functions in
-  `zarr`) have not been ported to Zarr-Python 3. Using these features
-  will raise a warning or a `NotImplementedError`:
+The following function arguments from Zarr-Python 2 are accepted but ignored by
+  Zarr-Python 3. Passing them emits a `ZarrDeprecationWarning`, and they will be
+  removed in a release after February 2027:
 
 - `cache_attrs`
 - `cache_metadata`

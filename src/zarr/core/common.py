@@ -145,6 +145,56 @@ async def concurrent_map[T: tuple[Any, ...], V](
     return await asyncio.gather(*concurrent_iter(items, func, limit))
 
 
+async def concurrent_foreach[T: tuple[Any, ...]](
+    items: Iterable[T],
+    func: Callable[..., Awaitable[object]],
+    limit: int,
+) -> None:
+    """Run `func(*item)` for every item with at most `limit` calls in flight.
+
+    Unlike `concurrent_map`, `items` is consumed lazily: `limit` workers share
+    one iterator and each takes the next item as soon as it finishes the
+    previous one, so auxiliary memory is bounded by `limit`, not by the number
+    of items. Results are discarded.
+
+    Once a call fails, no further items are taken and the calls still in
+    flight are cancelled. The failure is re-raised as itself, so callers catch
+    the store's own exception type. If other in-flight calls failed in the
+    same event-loop iteration, the exception raised is the one from the
+    lowest-numbered worker and the `BaseExceptionGroup` holding every failure
+    is attached as its `__cause__`, so nothing is lost from tracebacks and
+    logs. Cancellation of the caller propagates as `CancelledError`.
+    """
+    if limit < 1:
+        raise ValueError(f"limit must be at least 1, got {limit}")
+    shared = iter(items)
+    failed = False
+
+    async def worker() -> None:
+        nonlocal failed
+        # `next()` on the shared iterator is synchronous, so workers never
+        # re-enter it: a worker only yields to the loop while awaiting `func`.
+        while not failed:
+            try:
+                item = next(shared)
+            except StopIteration:
+                return
+            try:
+                await func(*item)
+            except BaseException:
+                failed = True
+                raise
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(limit):
+                tg.create_task(worker())
+    except BaseExceptionGroup as eg:
+        if len(eg.exceptions) == 1:
+            raise eg.exceptions[0] from None
+        raise eg.exceptions[0] from eg
+
+
 def enum_names[E: Enum](enum: type[E]) -> Iterator[str]:
     for item in enum:
         yield item.name
@@ -168,6 +218,27 @@ def parse_name(data: JSON, expected: str | None = None) -> str:
     if expected is None or data == expected:
         return data
     raise ValueError(f"Expected '{expected}'. Got {data} instead.")
+
+
+@overload
+def expand_short_hand_name(data: str) -> dict[str, JSON]: ...
+
+
+@overload
+def expand_short_hand_name[T](data: T) -> T: ...
+
+
+def expand_short_hand_name(data: object) -> object:
+    """
+    Expand the short-hand name form of a Zarr V3 extension definition: a bare string `name`
+    is equivalent to the object `{"name": name}`. Any other value is returned unchanged.
+
+    Zarr V3.1 permits the short-hand form at every extension point of array metadata. See
+    https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#short-hand-names
+    """
+    if isinstance(data, str):
+        return {"name": data}
+    return data
 
 
 def parse_configuration(data: JSON) -> JSON:
