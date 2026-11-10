@@ -455,6 +455,36 @@ def test_migrate_endian(
     assert np.all(zarr_array[:] == 1)
 
 
+@pytest.mark.parametrize(
+    ("dtype", "expected_fill_value"),
+    [("<i4", 0), ("<f8", 0.0)],
+    ids=["int", "float"],
+)
+def test_migrate_null_fill_value(
+    local_store: LocalStore, dtype: str, expected_fill_value: float
+) -> None:
+    """A null v2 fill value becomes the default that is used when reading the v2 array"""
+    zarr_array = zarr.create_array(
+        store=local_store,
+        shape=(10,),
+        chunks=(5,),
+        dtype=dtype,
+        zarr_format=2,
+        fill_value=None,
+    )
+    zarr_array[:5] = 1
+    assert zarr_array.metadata.fill_value is None
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
+    assert zarr_array.metadata.fill_value == expected_fill_value
+    expected = np.array([1] * 5 + [expected_fill_value] * 5, dtype=dtype)
+    assert np.array_equal(zarr_array[:], expected)
+
+
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_migrate_v3(local_store: LocalStore, node_type: str) -> None:
     """Attempting to convert a v3 array/group should always fail"""
