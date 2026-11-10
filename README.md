@@ -47,6 +47,10 @@ For more details, including how to install from source, see the [installation do
 
 In addition to the primary `zarr` implementation, this repository contains other packages that provide specialized functionality with minimal dependencies:
 
-- [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata. Install with `pip install zarr-metadata`.
-- [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays. Install with `pip install zarr-indexing`.
-- [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data. Install with `pip install zarr-http-server`.
+| Package | Description | Install | Links |
+| --- | --- | --- | --- |
+| `zarr-metadata` | Tools for Zarr metadata | `pip install zarr-metadata` | [Docs](https://zarr.readthedocs.io/projects/zarr-metadata/) · [Source](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata) |
+| `zarr-indexing` | Tools for lazily indexing chunked arrays | `pip install zarr-indexing` | [Docs](https://zarr.readthedocs.io/projects/zarr-indexing/) · [Source](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing) |
+| `zarr-http-server` | An HTTP server implementation targeting Zarr data | `pip install zarr-http-server` | [Docs](https://zarr.readthedocs.io/projects/zarr-http-server/) · [Source](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server) |
+
+See [Sub-projects](https://zarr.readthedocs.io/en/stable/subprojects/) in the `zarr` documentation for an overview.
