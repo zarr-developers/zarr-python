@@ -61,7 +61,9 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
         ("<M8[ns]", "datetime64", "<M8[ns]"),
         (">M8[10s]", "datetime64", ">M8[10s]"),
         ("<M8[μs]", "datetime64", "<M8[us]"),
+        ("<M8[generic]", "datetime64", "<M8[generic]"),
         ("<m8[D]", "timedelta64", "<m8[D]"),
+        (">m8[2generic]", "timedelta64", ">m8[2generic]"),
         ([["x", "<f4"], ["y", "<i4", [2]]], "struct", (("x", "<f4"), ("y", "<i4", (2,)))),
         ([["r", "|u1"], ["s", [["t", "<f4"]]]], "struct", (("r", "|u1"), ("s", (("t", "<f4"),)))),
         # NumPy names the padding fields of an aligned struct "", and zarr 2.x writes them.
