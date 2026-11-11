@@ -156,7 +156,7 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage._common import StorePath, make_store_path
+from zarr.storage._common import StorePath, make_store_path, resolve_zarr_format
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import _relativize_path
 
@@ -469,6 +469,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
 
+        zarr_format = resolve_zarr_format(store, zarr_format)
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
@@ -826,6 +827,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # <AsyncArray memory://... shape=(100, 100) dtype=int32>
         ```
         """
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
@@ -1008,20 +1010,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return next(
             codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayBytesCodec)
         )
-
-    @property
-    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> Numcodec | None:
-        """
-        Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
-        """
-        if self.metadata.zarr_format == 2:
-            return self.metadata.compressor
-        raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
@@ -2306,18 +2294,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
         return self.async_array.serializer
-
-    @property
-    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> Numcodec | None:
-        """
-        Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`array.compressors`][zarr.Array.compressors] instead.
-        """
-        return self.async_array.compressor
 
     @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
@@ -4409,6 +4385,7 @@ async def from_array(
     """
     mode: Literal["a"] = "a"
     config_parsed = parse_array_config(config)
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
     (
@@ -4917,6 +4894,7 @@ async def create_array(
     else:
         mode: Literal["a"] = "a"
 
+        zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )

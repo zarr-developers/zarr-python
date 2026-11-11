@@ -1,0 +1,1 @@
+The `to_json` docstrings and the guide now say what `to_json` returns: a copy in which each JSON array is a tuple, as the package's JSON types spell an array, so it does not compare equal to what `json.loads` returns. They point to comparing models instead. The guide had said `to_json` returns plain containers.

@@ -1188,18 +1188,6 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
         assert np.array_equal(result, data)
 
 
-def test_tree() -> None:
-    g1 = zarr.group()
-    g1.create_group("foo")
-    g3 = g1.create_group("bar")
-    g3.create_group("baz")
-    g5 = g3.create_group("qux")
-    g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
-        assert repr(zarr.tree(g1)) == repr(g1.tree())
-        assert str(zarr.tree(g1)) == str(g1.tree())
-
-
 # @pytest.mark.parametrize("stores_from_path", [False, True])
 # @pytest.mark.parametrize(
 #     "with_chunk_store,listable",
@@ -2133,8 +2121,26 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     assert a.chunks == (500, 500)
 
 
-@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
-def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
+@pytest.mark.parametrize(
+    "kwarg_name",
+    [
+        "synchronizer",
+        "chunk_store",
+        "cache_metadata",
+        "cache_attrs",
+        "object_codec",
+        "read_only",
+        "meta_array",
+    ],
+)
+def test_ignored_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
-    with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
+    with pytest.warns(ZarrDeprecationWarning, match=f"{kwarg_name} is ignored"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
+def test_ignored_kwarg_warnings_open_group(kwarg_name: str) -> None:
+    kwargs = {kwarg_name: 1}
+    with pytest.warns(ZarrDeprecationWarning, match=f"{kwarg_name} is ignored"):
+        zarr.open_group(store=MemoryStore(), **kwargs)  # type: ignore[arg-type]

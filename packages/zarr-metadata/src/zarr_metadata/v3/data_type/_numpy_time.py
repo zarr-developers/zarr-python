@@ -14,7 +14,7 @@ NumpyTimeUnit = Literal[
 ]
 """The time unit codes of the numpy time types, `numpy.datetime64` and `numpy.timedelta64`."""
 
-NUMPY_TIME_UNIT: Final = (*NUMPY_TIME_UNITS, "generic")
+NUMPY_TIME_UNIT: Final = NUMPY_TIME_UNITS
 """Runtime tuple of the permitted `numpy.timedelta64`/`numpy.datetime64` unit strings."""
 
 numpy_time_storage: Final = multi_byte

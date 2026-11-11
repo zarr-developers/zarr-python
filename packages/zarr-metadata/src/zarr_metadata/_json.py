@@ -20,7 +20,14 @@ from typing import Final, Literal, TypeAlias, TypeGuard, TypeVar, cast, get_args
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
+ProblemKind = Literal[
+    "missing_key",
+    "invalid_type",
+    "invalid_value",
+    "invalid_json",
+    "unknown_key",
+    "unclaimed_declaration",
+]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -35,6 +42,10 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
   open since 2023), and many readers reject such a key. It has its own
   kind so that a caller who tolerates it can distinguish it from a wrong
   value, and so that it never hides other problems in the same object.
+- `unclaimed_declaration`: a declaration that nothing in scope claims, which
+  a reader must understand to open the node. Only
+  `read_openable_node_metadata_v3` reports it: the other readers accept an
+  unclaimed declaration, since that is what keeps the format open.
 """
 
 
@@ -130,14 +141,23 @@ class ValidationProblem:
     """
 
     loc: tuple[str | int, ...]
+    """The path from the root of what was judged to the offending value.
+
+    Keys and indices, e.g. `("codecs", 0, "name")` in a document; an empty
+    `loc` refers to that root.
+    """
     message: str
+    """The human-readable description of what is wrong."""
     kind: ProblemKind
+    """The kind of problem, for programmatic dispatch."""
     input: JSONValue | UNSET = dataclasses.field(
         default=UNSET, kw_only=True, compare=False, repr=False
     )
+    """The JSON found at `loc`, or `UNSET` when nothing is there or it is not JSON."""
     ctx: Mapping[str, JSONValue] = dataclasses.field(
         default_factory=_no_ctx, kw_only=True, compare=False, repr=False
     )
+    """What was expected, e.g. bounds or a closed set of values; empty when only a type was."""
 
     def __post_init__(self) -> None:
         # Enforce the annotations at runtime. A rule written without a type
@@ -215,6 +235,7 @@ class MetadataValidationError(ValueError):
     """
 
     problems: tuple[ValidationProblem, ...]
+    """Every problem found, in the order found."""
 
     def __init__(self, problems: Sequence[ValidationProblem]) -> None:
         self.problems = tuple(problems)

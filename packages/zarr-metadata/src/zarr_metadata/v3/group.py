@@ -22,8 +22,11 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
 
     zarr_format: Literal[3]
+    """The Zarr format version, `3`."""
     node_type: Literal["group"]
+    """The kind of node the document describes, `"group"`."""
     attributes: NotRequired[Mapping[str, JSONValue]]
+    """User attributes: arbitrary JSON values by string key."""
 
 
 ZarrV3GroupMetadataStoreKey = Literal["zarr.json"]

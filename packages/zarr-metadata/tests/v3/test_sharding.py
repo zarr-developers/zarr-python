@@ -14,7 +14,7 @@ import pytest
 
 from zarr_metadata import JSONValue
 from zarr_metadata.definition import (
-    ResolvedField,
+    ResolvedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -25,7 +25,7 @@ from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
@@ -41,8 +41,8 @@ LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
 INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
-def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
-    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
+def _dt(name: JSONValue) -> ResolvedDeclaration[DataTypeDefinition[Any]]:
+    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0]
 
 
 FLOAT32 = _dt("float32")
@@ -50,7 +50,7 @@ UINT64 = _dt("uint64")
 
 
 def _chunk(
-    *axes: set[int] | None, data_type: ResolvedField[DataTypeDefinition[Any]] = FLOAT32
+    *axes: set[int] | None, data_type: ResolvedDeclaration[DataTypeDefinition[Any]] = FLOAT32
 ) -> Chunk:
     return Chunk(tuple(None if axis is None else frozenset(axis) for axis in axes), data_type)
 
@@ -81,7 +81,7 @@ def _read(
 ) -> tuple[tuple[Stage, ...], tuple[ValidationProblem, ...]]:
     """The stages, and every problem: first each codec's own problems at its location, then the pipeline's."""
     read = [
-        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS, (index,))
+        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT, (index,))
         for index, codec in enumerate(codecs)
     ]
     stages, found = read_pipeline([resolved for resolved, _ in read], chunk)

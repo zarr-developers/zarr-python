@@ -29,27 +29,44 @@ class ZarrV2ZlibParameters(TypedDict, closed=True):
     """`numcodecs.Zlib(level=1)`."""
 
     level: NotRequired[ReadOnly[ZarrV2CompressionLevel]]
+    """The zlib compression level. Absent means 1."""
 
 
 class ZarrV2GzipParameters(TypedDict, closed=True):
     """`numcodecs.GZip(level=1)`."""
 
     level: NotRequired[ReadOnly[ZarrV2CompressionLevel]]
+    """The zlib compression level. Absent means 1."""
 
 
 class ZarrV2Bz2Parameters(TypedDict, closed=True):
     """`numcodecs.BZ2(level=1)`: 1 to 9."""
 
     level: NotRequired[ReadOnly[Annotated[int, Interval(ge=1, le=9)]]]
+    """The bzip2 compression level. Absent means 1."""
 
 
 class ZarrV2LzmaParameters(TypedDict, closed=True):
     """`numcodecs.LZMA(format=1, check=-1, preset=None, filters=None)`, with the parameters as the `lzma` module accepts them."""
 
     format: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=3)]]]
+    """The container format, an `lzma.FORMAT_*` code. Absent means 1, `FORMAT_XZ`.
+
+    2 is `FORMAT_ALONE`, and 3 is `FORMAT_RAW`, which requires `filters`. 0,
+    `FORMAT_AUTO`, only decompresses: `lzma` refuses it when compressing.
+    """
     check: NotRequired[ReadOnly[int]]
+    """The integrity check, an `lzma.CHECK_*` code, or -1 for the format's default. Absent means -1.
+
+    Only `FORMAT_XZ` takes a check other than -1 or `CHECK_NONE` (0).
+    """
     preset: NotRequired[ReadOnly[Annotated[int, Ge(0)] | None]]
+    """The compression preset, 0 to 9, optionally ORed with `lzma.PRESET_EXTREME`, or null for lzma's default, 6.
+
+    Absent means null. `lzma` refuses a preset together with `filters`.
+    """
     filters: NotRequired[ReadOnly[tuple[JSONValue, ...] | None]]
+    """A custom filter chain, as `lzma` filter specifiers, or null to use `preset`. Absent means null."""
 
 
 ZarrV2BloscCName = Literal["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
@@ -70,23 +87,34 @@ class ZarrV2BloscParameters(TypedDict, closed=True):
     """
 
     cname: NotRequired[ReadOnly[ZarrV2BloscCName]]
+    """The compressor that Blosc runs. Absent means `"lz4"`."""
     clevel: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=9)]]]
+    """The compression level. Absent means 5. At 0, Blosc stores the data uncompressed."""
     shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2] | bool]]
+    """How Blosc shuffles the data before compressing it. Absent means 1, byte shuffle."""
     blocksize: NotRequired[ReadOnly[_CInt]]
+    """The size in bytes of the blocks that Blosc compresses each chunk in. Absent means 0, which lets Blosc choose."""
     typesize: NotRequired[ReadOnly[Annotated[int, Interval(ge=1, le=2**31 - 1)] | None]]
+    """The size in bytes of one element, the unit that Blosc shuffles by.
+
+    Absent or null means the item size of the buffer that numcodecs is handed.
+    """
 
 
 class ZarrV2ZstdParameters(TypedDict, closed=True):
     """`numcodecs.Zstd(level=0, checksum=False)`. Level 0 is zstd's default level, and negative levels give up compression ratio for speed. zstd clamps a level outside its own range, -131072 to 22, to that range, so numcodecs reads any level that fits in a C `int`."""
 
     level: NotRequired[ReadOnly[_CInt]]
+    """The zstd compression level. Absent means 0, zstd's default level."""
     checksum: NotRequired[ReadOnly[bool]]
+    """Whether zstd writes a checksum of the content into each frame. Absent means false."""
 
 
 class ZarrV2Lz4Parameters(TypedDict, closed=True):
     """`numcodecs.LZ4(acceleration=1)`. numcodecs passes `acceleration` to C as an `int`, and lz4 reads one below 1 as 1."""
 
     acceleration: NotRequired[ReadOnly[_CInt]]
+    """How far lz4 trades compression ratio for speed: a larger value is faster. Absent means 1."""
 
 
 def _zlib_canonical(configuration: ZarrV2ZlibParameters) -> ZarrV2ZlibParameters:

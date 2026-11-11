@@ -1,8 +1,8 @@
 """The checker: parsers compiled from annotations for the shapes that JSON values take.
 
-These tests use the checker on its own, without any metadata field. A
+These tests use the checker on its own, without any declaration. A
 leaf stands in for whatever a caller adds (the definition layer adds the
-shape of a member that holds another metadata field), and `no_leaf` adds
+shape of a member that holds another declaration), and `no_leaf` adds
 nothing.
 """
 
