@@ -1,11 +1,9 @@
 """A model checks itself when it is built, as pydantic's `__init__` does.
 
-A v3 model is built only by reading its document. It is changed only by
+A model is built only by reading its document. It is changed only by
 `replace`, which reads the new document. A document with a problem is
-refused, with every problem reported, so no model is ever invalid. A v2
-model is still a dataclass, and a `dataclasses.replace` that would make it
-invalid is refused. `to_key_value` writes a model as it is, without
-reading anything.
+refused, with every problem reported, so no model is ever invalid.
+`to_key_value` writes a model as it is, without reading anything.
 """
 
 from __future__ import annotations
@@ -315,7 +313,7 @@ def test_copy_replace_calls_a_subclass_s_override_of_replace() -> None:
     ids=["v3-array", "v3-group", "v2-array", "v2-group"],
 )
 def test_replace_returns_a_new_model_and_is_what_copy_replace_calls(kind: Any) -> None:  # noqa: ANN401 - a model class
-    """`replace` returns a new model and leaves the one it is called on unchanged. Each model's `__replace__` is `replace`, so `copy.replace` (Python 3.13) returns the same model."""
+    """`replace` returns a new model and leaves the one it is called on unchanged. Each model's `__replace__` calls `replace`, so `__replace__` and `copy.replace` (Python 3.13) return the same model."""
     model = kind.create_default(attributes={"a": 1})
     replaced = model.replace(attributes={"b": 2})
     assert replaced is not model

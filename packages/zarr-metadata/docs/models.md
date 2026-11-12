@@ -119,7 +119,8 @@ To change a model, use one of these methods:
 
 - `replace` returns a new model with members of the document replaced, and
   reads it in the model's own context. You do not pass the context again.
-  The model itself is unchanged, as models are immutable.
+  The model itself is unchanged, as models are immutable. On Python 3.13
+  and later, `copy.replace(model, ...)` calls `replace` too.
     - Give a member the spec defines by its name.
     - Give any other member in `extra_fields`. This is a mapping from the
       member's key to its value, or to `UNSET` to remove it.
