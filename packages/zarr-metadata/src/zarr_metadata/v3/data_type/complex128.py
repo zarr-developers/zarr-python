@@ -32,6 +32,7 @@ COMPLEX128_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=complex_fill_value_rules(FLOAT64_DATA_TYPE.fill_value_rules),
     fill_value_canonical=complex_fill_value_canonical(FLOAT64_DATA_TYPE.fill_value_canonical),
     storage=multi_byte,
+    number_class="complex",
 )
 """The `complex128` data type. It is written as a bare name and has no configuration. Its fill value is a pair of `float64` components."""
 

@@ -13,8 +13,8 @@ from zarr_metadata.definition._definition import (
     Nested,
 )
 from zarr_metadata.v3._definition import (
+    ArrayBytesCodecDefinition,
     Chunk,
-    CodecDefinition,
     Lengths,
 )
 from zarr_metadata.v3._types.codec import (
@@ -134,11 +134,10 @@ def _canonical(
     return simpler
 
 
-SHARDING_INDEXED_CODEC: Final = CodecDefinition(
+SHARDING_INDEXED_CODEC: Final = ArrayBytesCodecDefinition(
     name=SHARDING_INDEXED_CODEC_NAME,
     configuration=ShardingIndexedCodecConfiguration,
     canonical=_canonical,
-    kind="array_bytes",
     size="dynamic",
     chunk_rules=_chunk_rules,
     pipelines=_pipelines,

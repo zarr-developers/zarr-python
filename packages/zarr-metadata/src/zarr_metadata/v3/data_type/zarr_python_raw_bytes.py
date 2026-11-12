@@ -88,6 +88,7 @@ ZARR_PYTHON_RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=single_byte,
+    number_class="non_numeric",
 )
 """zarr-python's `raw_bytes` data type: NumPy's `V` without fields. Each value is `length_bytes` single bytes."""
 

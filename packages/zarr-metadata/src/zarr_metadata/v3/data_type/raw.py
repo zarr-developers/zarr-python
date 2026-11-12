@@ -93,6 +93,7 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     storage=_storage,
+    number_class="non_numeric",
 )
 """Raw bits, `r*`: a single data type whose name carries its size.
 

@@ -325,6 +325,8 @@ _STANDALONE_VOCAB = frozenset(
         "Loc",
         "Nested",
         "NodeName",
+        # What kind of numbers a data type's values are, as `StorageClass` says how they are stored.
+        "NumberClass",
         "NodePath",
         # The result of reading a declaration in a scope: `AcceptedDeclaration` (read by the
         # definition that claims its name), `UnclaimedDeclaration`, or `RefusedDeclaration`.

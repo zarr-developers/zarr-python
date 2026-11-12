@@ -164,6 +164,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=_storage,
+    number_class="non_numeric",
 )
 """The `struct` data type: a record of named fields. The type of each field is a nested declaration."""
 

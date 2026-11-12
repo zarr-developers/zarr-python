@@ -25,7 +25,7 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
-    CodecDefinition,
+    ArrayBytesCodecDefinition,
     ZarrV3Context,
 )
 
@@ -38,9 +38,7 @@ ZSTD = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
 LOOSE_ZSTD = {"name": "zstd", "configuration": {"level": 30}}
 WITH_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], ZSTD)}
 WITH_LOOSE_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], LOOSE_ZSTD)}
-MY_BYTES = CodecDefinition(
-    name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
-)
+MY_BYTES = ArrayBytesCodecDefinition(name="bytes", configuration=EmptyConfiguration, size="static")
 PRIVATE = CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "bytes": MY_BYTES}})
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
@@ -135,8 +133,8 @@ def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() ->
     assert problem.kind == "invalid_value"
     assert problem.message == (
         "expected a document read in the scope of the consolidated metadata, got a model that "
-        "reads the codec 'bytes' by CodecDefinition(name='bytes') of EmptyConfiguration, which "
-        "that scope reads by CodecDefinition(name='bytes') of BytesCodecConfiguration"
+        "reads the codec 'bytes' by ArrayBytesCodecDefinition(name='bytes') of EmptyConfiguration, which "
+        "that scope reads by ArrayBytesCodecDefinition(name='bytes') of BytesCodecConfiguration"
     )
 
 
@@ -341,7 +339,7 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
     assert problem.message == (
         "expected a document read in the scope of the consolidated metadata, got a model that "
         "reads the codec 'gzip' by another definition than the one that scope reads it by, "
-        "CodecDefinition(name='gzip') of GzipCodecConfiguration"
+        "BytesBytesCodecDefinition(name='gzip') of GzipCodecConfiguration"
     )
 
 

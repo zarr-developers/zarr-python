@@ -20,6 +20,7 @@ INT8_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=Int8FillValue,
     fill_value_default=ConstantFillValue(0),
     storage=single_byte,
+    number_class="integral",
 )
 """The `int8` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 

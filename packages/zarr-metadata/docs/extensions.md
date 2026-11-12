@@ -33,7 +33,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import Nested
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
 class AcmeLz4Configuration(TypedDict, closed=True):
@@ -51,10 +51,9 @@ def acme_lz4_rules(
         )
 
 
-ACME_LZ4 = CodecDefinition(
+ACME_LZ4 = BytesBytesCodecDefinition(
     name="acme.lz4",
     configuration=AcmeLz4Configuration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_lz4_rules,
 )
@@ -110,13 +109,20 @@ Other kinds declare more:
   `create_default` is given no codecs (`array_bytes_codec_default`, such
   as `vlen-utf8` for `string`). A data type whose values vary in size
   declares its own, since the default, `bytes`, encodes values of a fixed
-  size.
+  size. It declares what kind of numbers its values are (`number_class`:
+  `"integral"`, `"floating_point"`, `"complex"` or `"non_numeric"`), which
+  the codecs that are defined only for some kinds of numbers read:
+  `cast_value` and `scale_offset` refuse a data type that declares
+  complex or non-numeric values. A data type that does not declare it is
+  accepted by both.
 - A chunk grid declares which shapes it fits (`shape_rules`) and its chunk
   lengths (`chunk_lengths`).
-- A codec declares:
-    - what it checks about the chunk it receives (`chunk_rules`),
-    - what it hands on (`transition`),
-    - any pipelines it contains (`pipelines`).
+- A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,
+  `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`. A codec that
+  receives an array declares what it checks about the chunk it receives
+  (`chunk_rules`) and any pipelines it contains (`pipelines`), and an
+  array -> array codec also declares what it hands on (`transition`). A
+  bytes -> bytes codec receives bytes, so it declares none of these.
 
 The [`zarr_metadata.v3.definition`](api/v3/definition.md) docstring
 describes each of these.

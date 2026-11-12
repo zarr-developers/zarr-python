@@ -27,7 +27,7 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
-    CodecDefinition,
+    BytesBytesCodecDefinition,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +48,9 @@ class LenientGzipConfiguration(TypedDict, closed=True):
     level: int
 
 
-LENIENT_GZIP = CodecDefinition(
+LENIENT_GZIP = BytesBytesCodecDefinition(
     name="gzip",
     configuration=LenientGzipConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
 )
 """A reader's own gzip definition, which accepts any level. A scope can be extended, and an extension can replace a definition."""

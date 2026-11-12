@@ -27,8 +27,14 @@ NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=numpy_time_fill_value_canonical,
     storage=numpy_time_storage,
+    number_class="non_numeric",
 )
-"""The `numpy.timedelta64` data type."""
+"""The `numpy.timedelta64` data type.
+
+Its number class is non-numeric, as that of `numpy.datetime64` is: its
+values are durations, and neither `cast_value` nor `scale_offset` names it
+among the data types it supports.
+"""
 
 
 __all__ = [

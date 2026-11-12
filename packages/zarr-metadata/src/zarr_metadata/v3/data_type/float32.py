@@ -47,6 +47,7 @@ FLOAT32_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=float_fill_value_rules("float32", hex_float32),
     fill_value_canonical=float_fill_value_canonical(32),
     storage=multi_byte,
+    number_class="floating_point",
 )
 """The `float32` data type. It is written as a bare name and has no configuration. Its fill value is a number, a named value or a hex string."""
 

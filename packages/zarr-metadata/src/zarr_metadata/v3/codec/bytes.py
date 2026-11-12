@@ -10,8 +10,8 @@ from typing import Final
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
+    ArrayBytesCodecDefinition,
     Chunk,
-    CodecDefinition,
     storage_of,
 )
 from zarr_metadata.v3._types.codec import (
@@ -64,10 +64,9 @@ def _chunk_rules(
         )
 
 
-BYTES_CODEC: Final = CodecDefinition(
+BYTES_CODEC: Final = ArrayBytesCodecDefinition(
     name=BYTES_CODEC_NAME,
     configuration=BytesCodecConfiguration,
-    kind="array_bytes",
     size="static",
     chunk_rules=_chunk_rules,
 )

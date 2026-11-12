@@ -43,6 +43,7 @@ VARIABLE_LENGTH_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
     array_bytes_codec_default=vlen_bytes_codec,
+    number_class="non_numeric",
 )
 """zarr-python's `variable_length_bytes` data type. It is written as a bare name and has no configuration, and each value is stored in as many bytes as it needs."""
 

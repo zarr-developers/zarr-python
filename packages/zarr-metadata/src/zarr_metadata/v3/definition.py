@@ -1,9 +1,10 @@
 """The kinds of metadata in a Zarr v3 document, and the scopes this package provides for it.
 
 The kind of metadata a definition defines is its type: `CodecDefinition`
-(with the codec's `kind`, and its `size`: `"static"` if the output size
-is determined by the input size, or `"dynamic"` if it depends on the
-values), `DataTypeDefinition`, `ChunkGridDefinition`,
+(built as one of its kinds, `ArrayArrayCodecDefinition`,
+`ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`, with its
+`size`: `"static"` if the output size is determined by the input size,
+or `"dynamic"` if it depends on the values), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`, and, for
 the members of a document that the spec does not define,
 `ArrayExtraFieldDefinition` and `GroupExtraFieldDefinition`. What a
@@ -53,6 +54,13 @@ is built without codecs, as a model's `create_default` builds it:
 `vlen-utf8` for `string`, and `bytes` with little `endian` for a data
 type that does not declare it. `default_array_bytes_codec(data_type)`
 calls it for a data type declaration the scope read.
+A data type also declares what kind of numbers its values are with
+`number_class`, a `NumberClass`: integral, floating-point, complex, or
+not plain numbers. A codec that is defined only for some kinds of numbers
+reads it: `cast_value` and `scale_offset` refuse a data type that
+declares complex or non-numeric values, as the numpy time types do. A
+data type that does not declare it leaves its number class unknown, and
+those codecs accept it.
 
 A chunk grid declares which array shapes it fits with `shape_rules`, a
 function that yields the spec violations in a grid with its
@@ -68,8 +76,8 @@ with None where the lengths are unknown.
 A codec is checked against its input. The array passes its first codec
 a `Chunk`: the lengths of the grid's chunks along each of the array's
 dimensions, and the array's data type declaration, with None for unknown
-parts. A codec that receives an array declares the spec violations for
-a given chunk with `chunk_rules`, located in its configuration (for
+parts. A codec that receives an array, an `ArrayCodecDefinition`,
+declares the spec violations for a given chunk with `chunk_rules`, located in its configuration (for
 example, a `transpose` whose `order` has the wrong number of axes). An
 array -> array codec declares what it passes to the next codec with
 `transition`, whatever its chunk rules found. For example, `transpose`
@@ -118,7 +126,11 @@ from zarr_metadata.v3._core import (
     ZARR_PYTHON_CONTEXT,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
     ArrayExtraFieldDefinition,
+    BytesBytesCodecDefinition,
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -129,6 +141,7 @@ from zarr_metadata.v3._definition import (
     ExtraFieldDefinition,
     GroupExtraFieldDefinition,
     Lengths,
+    NumberClass,
     StorageClass,
     StorageTransformerDefinition,
     default_array_bytes_codec,
@@ -140,7 +153,11 @@ __all__ = [
     "CORE_AND_EXTENSIONS_CONTEXT",
     "CORE_CONTEXT",
     "ZARR_PYTHON_CONTEXT",
+    "ArrayArrayCodecDefinition",
+    "ArrayBytesCodecDefinition",
+    "ArrayCodecDefinition",
     "ArrayExtraFieldDefinition",
+    "BytesBytesCodecDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
@@ -151,6 +168,7 @@ __all__ = [
     "ExtraFieldDefinition",
     "GroupExtraFieldDefinition",
     "Lengths",
+    "NumberClass",
     "Stage",
     "StorageClass",
     "StorageTransformerDefinition",

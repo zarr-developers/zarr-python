@@ -9,7 +9,7 @@ from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import BytesBytesCodecDefinition
 from zarr_metadata.v3._types.codec import (
     BLOSC_CNAME,
     BLOSC_CODEC_NAME,
@@ -62,10 +62,9 @@ def _canonical(configuration: BloscCodecConfiguration) -> BloscCodecConfiguratio
     return simpler
 
 
-BLOSC_CODEC: Final = CodecDefinition(
+BLOSC_CODEC: Final = BytesBytesCodecDefinition(
     name=BLOSC_CODEC_NAME,
     configuration=BloscCodecConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=_rules,
     canonical=_canonical,

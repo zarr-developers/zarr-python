@@ -258,12 +258,12 @@ To make an unknown data type or codec known, add its definition to the context's
 
 ```python test="true" session="parsing-validation"
 from zarr_metadata.definition import EmptyConfiguration
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 # The definition of the codec that was unknown: here, a codec named
 # `acme.codec` that takes no configuration.
-MY_CODEC = CodecDefinition(
-    name="acme.codec", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+MY_CODEC = BytesBytesCodecDefinition(
+    name="acme.codec", configuration=EmptyConfiguration, size="dynamic"
 )
 context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[MY_CODEC]))
 reading = read_array_metadata_v3(raw, context=context)
