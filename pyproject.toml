@@ -111,18 +111,18 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.16.2",
-    "pytest==9.1.1",
-    "pytest-asyncio==1.4.0",
+    "coverage==7.17.2",
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1.post1",
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
     "numpydoc==1.11.0",
-    "hypothesis==6.170.5",
+    "hypothesis==6.170.14",
     "pytest-reportlog==1.0.0",
     "pytest-xdist==3.8.0",
-    "pytest-benchmark==5.3.0",
-    "pytest-codspeed==5.0.3",
-    "uv==0.13.5",
+    "pytest-benchmark==5.3.1",
+    "pytest-codspeed==5.0.4",
+    "uv==0.13.7",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -130,7 +130,7 @@ remote-tests = [
     "obstore>=0.5.1",
     "botocore",
     "s3fs>=2023.10.0",
-    "moto[s3,server]==5.2.4",
+    "moto[s3,server]==5.2.5",
     "requests==2.34.2",
 ]
 release = [
@@ -138,29 +138,29 @@ release = [
 ]
 docs = [
     # Doc building
-    "mkdocs-material[imaging]==9.7.7",
+    "mkdocs-material[imaging]==9.8.0",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.8",
     "mkdocstrings-python==2.0.10",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
-    "markdown-exec[ansi]==1.12.5",
+    "markdown-exec[ansi]==1.12.6",
     "griffe-inherited-docstrings==1.1.4",
-    "ruff==0.17.1",
+    "ruff==0.17.3",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
     "numcodecs[msgpack]",
     "s3fs>=2023.10.0",
     "astroid==4.3.4",
-    "pytest==9.1.1",
+    "pytest==9.2.0",
 ]
 dev = [
     {include-group = "test"},
     {include-group = "remote-tests"},
     {include-group = "docs"},
     "universal-pathlib",
-    "mypy==2.4.0",
+    "mypy==2.4.1",
 ]
 
 [tool.coverage.report]
@@ -262,6 +262,10 @@ extra-dependencies = [
     'obstore==0.5.*',
     'msgspec==0.19.*',
 ]
+
+[tool.hatch.envs.min_deps.env-vars]
+# Keep pytest<9.2 here so packaging==22.* (our declared floor) still resolves.
+UV_OVERRIDE = "{root}/ci/min_deps-overrides.txt"
 
 [tool.hatch.envs.default]
 installer = "uv"
@@ -458,6 +462,10 @@ filterwarnings = [
     # loop-lifecycle changes.
     "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
     "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
+    # pytest>=9.2 applies these filters while importing plugins (pytest#12697). pytest-accept
+    # imports astor, which looks up the deprecated ast.Num at import time on Python < 3.14,
+    # so "error" above would abort the run before collection.
+    "ignore:ast\\.\\w+ is deprecated:DeprecationWarning:astor",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
