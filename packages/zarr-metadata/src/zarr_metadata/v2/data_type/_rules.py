@@ -13,9 +13,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata.definition._definition import Nested
-    from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue
-    from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration
-    from zarr_metadata.v2.data_type.time import ZarrV2TimeConfiguration
+    from zarr_metadata.v2._types.data_type import (
+        ZarrV2Base64FillValue,
+        ZarrV2ScalarConfiguration,
+        ZarrV2TimeConfiguration,
+    )
 
 
 @dataclass(frozen=True, slots=True)
