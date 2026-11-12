@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from typing import Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import Nested
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, multi_byte
 from zarr_metadata.v3._types.data_type import (
     FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
@@ -75,6 +75,7 @@ FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     configuration=FixedLengthUtf32Configuration,
     rules=_rules,
     fill_value=FixedLengthUtf32FillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=multi_byte,

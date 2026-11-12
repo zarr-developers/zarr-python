@@ -39,6 +39,7 @@ from zarr_metadata._json import (
     refine_user_data,
     with_input,
 )
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
     Loc,
     alias_value,
@@ -70,6 +71,7 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecDeclaration,
     ZarrV3StorageTransformerDeclaration,
 )
+from zarr_metadata.v3._types.codec import BYTES_CODEC_NAME, BytesCodecObject
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -123,6 +125,11 @@ def variable_length(*_: object) -> StorageClass:
 
 def unknown_storage(*_: object) -> None:
     """The storage of a data type that does not declare it: unknown."""
+
+
+def little_endian_bytes_codec(*_: object) -> BytesCodecObject:
+    """The array -> bytes codec of a data type that does not declare one: `bytes` with little `endian`, which encodes values of any fixed size."""
+    return {"name": BYTES_CODEC_NAME, "configuration": {"endian": "little"}}
 
 
 RAW_BYTES_NAME: Final = "r*"
@@ -182,6 +189,14 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     nested declarations as the scope read them. A data type that does not
     declare it leaves its storage unknown.
 
+    `array_bytes_codec_default` gives the array -> bytes codec that encodes
+    the values of an array whose document is built without codecs, as the
+    models' `create_default` builds it, such as `vlen-utf8` for `string`.
+    It receives the same arguments as `storage`. A data type that does not
+    declare it gets `bytes` with little `endian`, which encodes values of
+    any fixed size, so a data type whose values vary in size declares its
+    own.
+
     A data type named the way a document writes raw bits of one size (such
     as `r16`) is rejected. That name is read as `r*`, so this definition
     would never be used.
@@ -216,6 +231,10 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
 
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
     """How the values are stored, given the configuration and the nested declarations; None when unknown."""
+    array_bytes_codec_default: Callable[[C, Nested], ZarrV3CodecDeclaration] = (
+        little_endian_bytes_codec
+    )
+    """The array -> bytes codec that encodes the values of an array built without codecs, such as `vlen-utf8` for `string`."""
 
     def _refusal(self) -> str | None:
         if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
@@ -687,6 +706,38 @@ def storage_of(data_type: ResolvedDeclaration[DataTypeDefinition[Any]]) -> Stora
     return found
 
 
+def default_array_bytes_codec(
+    data_type: ResolvedDeclaration[DataTypeDefinition[Any]],
+) -> JSONValue | UNSET:
+    """The array -> bytes codec that encodes the values of an array of `data_type` (a data type declaration a scope read) whose document is built without codecs, as the data type's `array_bytes_codec_default` gives it; `UNSET` when the scope did not read the data type.
+
+    The default is the extension author's code. Its result is checked to
+    be JSON, and not against the codec's rules: a document built with it
+    is read, and the read reports a codec that does not fit the data type.
+    If it raises an error, a note is added that says which data type's
+    default raised it.
+    """
+    if not isinstance(data_type, AcceptedDeclaration):
+        return UNSET
+    definition, configuration = data_type.definition, data_type.configuration
+    found = asked(
+        definition,
+        "array_bytes_codec_default",
+        lambda: cast(
+            "object",
+            definition.array_bytes_codec_default(read_only(configuration), data_type.nested),
+        ),
+    )
+    refined, problems = refine_json(found, ())
+    if len(problems) != 0:
+        msg = (
+            f"{definition.name!r}: its array_bytes_codec_default gives JSON, got {found!r}: "
+            f"{problems[0].message}"
+        )
+        raise TypeError(msg)
+    return refined
+
+
 def chunk_grid_lengths(
     chunk_grid: ResolvedDeclaration[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
 ) -> tuple[Lengths, Problems]:
@@ -759,6 +810,8 @@ __all__ = [
     "StorageClass",
     "StorageTransformerDefinition",
     "chunk_grid_lengths",
+    "default_array_bytes_codec",
+    "little_endian_bytes_codec",
     "multi_byte",
     "no_pipelines",
     "single_byte",

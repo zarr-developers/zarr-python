@@ -7,6 +7,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 from typing import Final
 
 from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     multi_byte,
@@ -27,6 +28,7 @@ COMPLEX128_DATA_TYPE: Final = DataTypeDefinition(
     name=COMPLEX128_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=Complex128FillValue,
+    fill_value_default=ConstantFillValue((0.0, 0.0)),
     fill_value_rules=complex_fill_value_rules(FLOAT64_DATA_TYPE.fill_value_rules),
     fill_value_canonical=complex_fill_value_canonical(FLOAT64_DATA_TYPE.fill_value_canonical),
     storage=multi_byte,

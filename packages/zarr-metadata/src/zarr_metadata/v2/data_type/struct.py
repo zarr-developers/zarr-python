@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import math
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import AcceptedDeclaration
 from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, item_bytes
 from zarr_metadata.v2._types.data_type import (
@@ -45,6 +47,12 @@ def _fill_value_rules(
     yield from sized_base64_rules(value, _record_size(configuration, nested), exact=True)
 
 
+def _fill_value_default(configuration: ZarrV2StructConfiguration, nested: Nested) -> str | UNSET:
+    """Return one record of null bytes, in base64. `UNSET` when the size of a field is not known."""
+    size = _record_size(configuration, nested)
+    return UNSET if size is None else base64.b64encode(bytes(size)).decode("ascii")
+
+
 def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
     """Return the number of bytes that one record of `configuration` takes. Each field takes its item size in bytes times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
     total = 0
@@ -74,6 +82,7 @@ STRUCT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     configuration=ZarrV2StructConfiguration,
     rules=_rules,
     fill_value=ZarrV2Base64FillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
 )
 """A structured type: an array of field records. The fill value is base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""

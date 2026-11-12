@@ -13,14 +13,18 @@ import base64
 from typing import Final
 
 from zarr_metadata._common import EmptyConfiguration
-from zarr_metadata.definition._definition import Nested
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, variable_length
 from zarr_metadata.v3._types.data_type import (
     VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
     VariableLengthBytesDataTypeName,
     VariableLengthBytesFillValue,
 )
-from zarr_metadata.v3.data_type._byte import base64_fill_value_rules, base64_spelling
+from zarr_metadata.v3.data_type._byte import (
+    base64_fill_value_rules,
+    base64_spelling,
+    vlen_bytes_codec,
+)
 
 
 def _fill_value_canonical(
@@ -34,9 +38,11 @@ VARIABLE_LENGTH_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=VariableLengthBytesFillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
+    array_bytes_codec_default=vlen_bytes_codec,
 )
 """zarr-python's `variable_length_bytes` data type. It is written as a bare name and has no configuration, and each value is stored in as many bytes as it needs."""
 

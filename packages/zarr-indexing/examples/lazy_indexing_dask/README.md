@@ -53,7 +53,7 @@ uv run --with-editable . examples/lazy_indexing_dask/lazy_indexing_dask.py
 ```
 
 Alternatively, run it with plain Python, in which case you must first install
-`zarr`, `zarr-indexing`, `dask[array]`, `numpy`, and `pytest` yourself:
+`zarr`, `zarr-indexing`, `dask[array]`, and `numpy` yourself:
 
 ```bash
 cd packages/zarr-indexing

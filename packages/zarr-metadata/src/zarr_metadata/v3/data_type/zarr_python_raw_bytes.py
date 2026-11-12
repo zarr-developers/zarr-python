@@ -74,11 +74,17 @@ def _fill_value_canonical(
     return base64_spelling(data)
 
 
+def _fill_value_default(configuration: ZarrPythonRawBytesConfiguration, nested: Nested) -> str:
+    """Return `length_bytes` null bytes in base64, as zarr-python writes the default fill value."""
+    return base64_spelling(bytes(configuration["length_bytes"]))
+
+
 ZARR_PYTHON_RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME,
     configuration=ZarrPythonRawBytesConfiguration,
     rules=_rules,
     fill_value=ZarrPythonRawBytesFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=single_byte,

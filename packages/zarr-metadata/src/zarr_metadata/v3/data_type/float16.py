@@ -8,6 +8,7 @@ import re
 from typing import Final
 
 from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     multi_byte,
@@ -42,6 +43,7 @@ FLOAT16_DATA_TYPE: Final = DataTypeDefinition(
     name=FLOAT16_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=Float16FillValue,
+    fill_value_default=ConstantFillValue(0.0),
     fill_value_rules=float_fill_value_rules("float16", hex_float16),
     fill_value_canonical=float_fill_value_canonical(16),
     storage=multi_byte,

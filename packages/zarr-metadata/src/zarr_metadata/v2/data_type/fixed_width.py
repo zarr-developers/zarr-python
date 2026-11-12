@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING, Final
 
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v2._definition import CODE_POINT_BYTES, ZarrV2DataTypeDefinition
 from zarr_metadata.v2._types.data_type import ZarrV2Base64FillValue, ZarrV2ScalarConfiguration
 from zarr_metadata.v2.data_type._rules import orderless_at, sized, sized_base64_rules
@@ -29,12 +31,18 @@ def _bytes_fill_value_rules(
     yield from sized_base64_rules(value, configuration["itemsize"], exact=False)
 
 
+def _void_fill_value_default(configuration: ZarrV2ScalarConfiguration, nested: Nested) -> str:
+    """Return the item's size in null bytes, in base64."""
+    return base64.b64encode(bytes(configuration["itemsize"])).decode("ascii")
+
+
 BYTES_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     name="bytes",
     configuration=ZarrV2ScalarConfiguration,
     rules=sized(None, None),
     canonical=orderless_at(None),
     fill_value=ZarrV2Base64FillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=_bytes_fill_value_rules,
 )
 """`|S<n>`: byte strings of `n` bytes. The fill value is base64 of at most `n` bytes."""
@@ -44,6 +52,7 @@ STR_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     configuration=ZarrV2ScalarConfiguration,
     rules=sized(None, frozenset(), unit=CODE_POINT_BYTES),
     fill_value=str | None,
+    fill_value_default=ConstantFillValue(""),
 )
 """`<U<n>`: strings of `n` code points. Each code point takes four bytes, in the written byte order. The fill value is a string."""
 
@@ -53,6 +62,7 @@ VOID_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized(None, None),
     canonical=orderless_at(None),
     fill_value=ZarrV2Base64FillValue,
+    fill_value_default=_void_fill_value_default,
     fill_value_rules=_void_fill_value_rules,
 )
 """`|V<n>`: `n` untyped bytes. The fill value is base64 of exactly `n` bytes."""

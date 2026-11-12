@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from typing import Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import Nested
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, single_byte
 from zarr_metadata.v3._types.data_type import (
     NULL_TERMINATED_BYTES_DATA_TYPE_NAME,
@@ -77,6 +77,7 @@ NULL_TERMINATED_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     configuration=NullTerminatedBytesConfiguration,
     rules=_rules,
     fill_value=NullTerminatedBytesFillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=single_byte,

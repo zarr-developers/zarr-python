@@ -24,8 +24,6 @@ from __future__ import annotations
 
 import re
 import runpy
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,14 +58,13 @@ def _markdown_includes() -> tuple[tuple[str, str, str | None], ...]:
 
 
 INCLUDES = _markdown_includes()
-# In-process executables: every snippet, plus the one standalone example that
-# is importable as a module. The lazy_indexing_* examples are CLI scripts
-# (they parse argv and call sys.exit), so they run as subprocesses below —
-# no other test in the repository executes them.
-EXECUTABLES = (*sorted(DOC_SNIPPETS_DIR.glob("*.py")), CACHE_EXAMPLE)
-CLI_EXAMPLES = tuple(
-    script for script in sorted(STANDALONE_EXAMPLES.glob("*/*.py")) if script not in EXECUTABLES
-)
+# Every snippet and every standalone example, run in process as `__main__`, so a
+# standalone example's `main()` runs too. No other test in the repository
+# executes the standalone examples.
+EXECUTABLES = (*sorted(DOC_SNIPPETS_DIR.glob("*.py")), *sorted(STANDALONE_EXAMPLES.glob("*/*.py")))
+# Modules an example imports beyond this package's test dependencies. Where one
+# is missing, as in an environment built from the sdist alone, the example skips.
+EXAMPLE_REQUIRES: dict[str, tuple[str, ...]] = {"lazy_indexing_dask": ("dask.array", "zarr")}
 
 PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOC_SNIPPETS_DIR / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
@@ -129,22 +126,9 @@ def test_snippet_directories_hold_only_their_kind() -> None:
 @pytest.mark.parametrize("example", EXECUTABLES, ids=lambda path: path.stem)
 def test_documentation_example_executes(example: Path) -> None:
     """Examples are executable contracts; their inline asserts are the values check."""
+    for module in EXAMPLE_REQUIRES.get(example.stem, ()):
+        pytest.importorskip(module)
     runpy.run_path(str(example), run_name="__main__")
-
-
-@pytest.mark.parametrize("script", CLI_EXAMPLES, ids=lambda path: path.stem)
-def test_cli_example_runs_as_a_subprocess(script: Path) -> None:
-    """CLI examples exit 0 with this test environment's installed dependencies."""
-    if "dask" in script.stem:
-        pytest.importorskip("dask.array")
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        capture_output=True,
-        text=True,
-        cwd=script.parent,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr[-2000:]
 
 
 @pytest.mark.parametrize(

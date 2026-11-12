@@ -1,4 +1,4 @@
-"""The rules of a fill value written in base64, which the data types whose fill values are bytes share.
+"""The rules of a fill value written in base64, which the data types whose fill values are bytes share, and the default codec of those whose values vary in length.
 
 The type of one byte of such a fill value, `ByteValue`, is in
 `zarr_metadata.v3._types.data_type`.
@@ -9,6 +9,7 @@ from collections.abc import Iterator
 
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata._numpy import base64_bytes
+from zarr_metadata.v3._types.codec import VLEN_BYTES_CODEC_NAME, VlenBytesCodecObject
 
 
 def base64_problems(value: str) -> Iterator[ValidationProblem]:
@@ -51,9 +52,15 @@ def base64_spelling(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
+def vlen_bytes_codec(*_: object) -> VlenBytesCodecObject:
+    """The array -> bytes codec of a data type whose values are byte strings that vary in length: `vlen-bytes`, as zarr-python chooses it (https://github.com/zarr-developers/zarr-python/blob/0981311c07f0a8dc8650b74e33bd385ccb411f26/src/zarr/core/array.py#L5114-L5139)."""
+    return {"name": VLEN_BYTES_CODEC_NAME}
+
+
 __all__ = [
     "base64_decoded",
     "base64_fill_value_rules",
     "base64_problems",
     "base64_spelling",
+    "vlen_bytes_codec",
 ]

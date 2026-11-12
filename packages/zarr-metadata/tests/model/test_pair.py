@@ -250,21 +250,21 @@ SHARDED: dict[str, Any] = {
             ),
         ),
     ],
-    ids=["set", "unset", "update-keeps-scope", "members-together"],
+    ids=["set", "unset", "replace-keeps-scope", "members-together"],
 )
-def test_update_reads_new_members_in_the_models_own_scope(
+def test_replace_reads_new_members_in_the_models_own_scope(
     model: ZarrV3ArrayMetadata, members: dict[str, Any], expected: ZarrV3ArrayMetadata
 ) -> None:
-    """`update` replaces the document's members with the given JSON members, removes a member given as `UNSET`, and reads the result in the model's own scope. So a model read in a private scope stays in that scope."""
-    updated = model.update(**members)
+    """`replace` replaces the document's members with the given JSON members, removes a member given as `UNSET`, and reads the result in the model's own scope. So a model read in a private scope stays in that scope."""
+    updated = model.replace(**members)
     assert updated == expected
     assert updated.context == model.context
 
 
-def test_error_update_refuses_a_document_with_a_problem() -> None:
-    """`update` raises `MetadataValidationError` when the members make an invalid document, as the constructor does. Here the invalid document has two dimension names for one dimension."""
+def test_error_replace_refuses_a_document_with_a_problem() -> None:
+    """`replace` raises `MetadataValidationError` when the members make an invalid document, as the constructor does. Here the invalid document has two dimension names for one dimension."""
     with pytest.raises(MetadataValidationError):
-        ZarrV3ArrayMetadata(ARRAY).update(dimension_names=("x", "y"))
+        ZarrV3ArrayMetadata(ARRAY).replace(dimension_names=("x", "y"))
 
 
 @pytest.mark.parametrize(
@@ -502,10 +502,10 @@ def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[st
     assert pickle.loads(pickle.dumps(group)) == group
 
 
-def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
-    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group's declarations are its extra fields: in a scope that claims nothing, `consolidated_metadata` is unclaimed, and `refined_in` and `with_context` move the group to a scope that reads it as the envelope, which is a gain."""
+def test_group_replace_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
+    """`replace` reads in the group's scope and keeps the consolidated metadata unless a new one is given. A group's declarations are its extra fields: in a scope that claims nothing, `consolidated_metadata` is unclaimed, and `refined_in` and `with_context` move the group to a scope that reads it as the envelope, which is a gain."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=ZarrV3Context())
-    assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
+    assert group.replace(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
     assert isinstance(group.extra_fields["consolidated_metadata"], UnclaimedDeclaration)
     for moved in (group.refined_in(CORE_CONTEXT), group.with_context(PRIVATE)):
         assert isinstance(moved.extra_fields["consolidated_metadata"], AcceptedDeclaration)
