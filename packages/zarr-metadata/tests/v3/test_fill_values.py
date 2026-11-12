@@ -25,6 +25,7 @@ from zarr_metadata import (
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata.definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
@@ -539,3 +540,12 @@ def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
     data_type, _ = resolve("acme.odd", DataTypeDefinition, ZarrV3Context(data_types=[definition]))
     with pytest.raises(TypeError, match="'acme.odd': its fill_value_default gives JSON or UNSET"):
         default_fill_value(data_type)
+
+
+def test_constant_fill_values_are_equal_when_written_the_same_way() -> None:
+    """Two `ConstantFillValue`s are equal, and hash equal, when their values are written the same way, so two data types that differ only in their default are not the same definition. `0`, `False` and `0.0` are three defaults."""
+    defaults = [ConstantFillValue(0), ConstantFillValue(False), ConstantFillValue(0.0)]
+    assert len(set(defaults)) == 3
+    assert ConstantFillValue((0.0, 0.0)) == ConstantFillValue((0.0, 0.0))
+    assert hash(ConstantFillValue("")) == hash(ConstantFillValue(""))
+    assert ConstantFillValue(0) != 0

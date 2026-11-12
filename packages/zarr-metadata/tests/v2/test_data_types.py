@@ -230,10 +230,8 @@ def test_every_family_takes_its_fill_values(
         ("|O", UNSET),
     ],
 )
-def test_every_family_has_the_default_fill_value_zarr_python_writes(
-    dtype: object, default: object
-) -> None:
-    """Each family's default fill value is the one zarr-python writes for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`. `|O` has none, since its values may be of any type."""
+def test_every_family_has_a_default_fill_value_it_takes(dtype: object, default: object) -> None:
+    """Each family's default fill value is the value zarr-python uses for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`, which zarr-python writes as the ticks value of not-a-time. `|O` has none, since its values may be of any type: zarr-python writes `""` for one its filter makes strings, which the dtype alone does not say."""
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     found = default_fill_value(resolved)
     assert (found, type(found)) == (default, type(default))

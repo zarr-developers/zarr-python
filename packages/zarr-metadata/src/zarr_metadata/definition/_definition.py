@@ -130,12 +130,14 @@ def no_fill_value_default(*_: object) -> UNSET:
     return UNSET
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ConstantFillValue:
     """A data type's default fill value that is the same for every configuration, such as `0` for `int8`.
 
     It is a value and not a closure, so a definition that holds it can be
-    pickled and compares equal to its loaded copy.
+    pickled and compares equal to its loaded copy. Two compare equal when
+    their values are written the same way, so `ConstantFillValue(0)` is
+    not `ConstantFillValue(False)` or `ConstantFillValue(0.0)`.
     """
 
     value: JSONValue
@@ -144,6 +146,16 @@ class ConstantFillValue:
     def __call__(self, configuration: object, nested: object) -> JSONValue:
         """Return `value`, whatever the configuration and the nested declarations."""
         return self.value
+
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` is a `ConstantFillValue` whose value is written the same way."""
+        return isinstance(other, ConstantFillValue) and json_text(self.value) == json_text(
+            other.value
+        )
+
+    def __hash__(self) -> int:
+        """The hash of the value as written."""
+        return hash(json_text(self.value))
 
 
 class EmptyConfiguration(TypedDict, closed=True):

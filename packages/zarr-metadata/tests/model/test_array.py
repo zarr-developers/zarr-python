@@ -466,6 +466,14 @@ def test_error_create_default_needs_a_fill_value_for_a_data_type_without_a_defau
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "missing_key")]
 
 
+def test_error_create_default_reports_a_member_dropped_and_derives_nothing_from_it() -> None:
+    """A member given as `UNSET` is left out and derives nothing, so the members derived from it keep their defaults, and the only problem is the member dropped. `data_type` is not typed to take `UNSET`, since a document needs it, but an untyped caller can pass it."""
+    dropped = cast("dict[str, Any]", {"data_type": UNSET})
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(**dropped)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("data_type",), "missing_key")]
+
+
 def test_error_create_default_names_the_members_it_filled_in() -> None:
     """When the document has a problem, the error notes each member `create_default` filled in, since a default may not fit a member given: here, `dimension_names` given without `shape`."""
     with pytest.raises(MetadataValidationError) as raised:

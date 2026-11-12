@@ -893,7 +893,7 @@ _VARIABLE_LENGTH_SERIALIZERS: Final[Mapping[str, str]] = MappingProxyType(
 def _derived_chunk_grid(document: Mapping[str, object], context: ZarrV3Context) -> object:
     """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. A chunk of no dimensions when the shape has a problem, which the read reports."""
     lengths, _ = dimension_lengths(document, "shape")
-    chunk_shape = tuple(max(length, 1) for length in lengths or ())
+    chunk_shape = () if lengths is None else tuple(max(length, 1) for length in lengths)
     return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
 
 
@@ -906,17 +906,17 @@ def _derived_fill_value(document: Mapping[str, object], context: ZarrV3Context) 
 def _derived_codecs(document: Mapping[str, object], context: ZarrV3Context) -> object:
     """The array -> bytes codec for the document's `data_type` in `context`, alone."""
     data_type, _ = resolve(document.get("data_type", UNSET), DataTypeDefinition, context)
-    name = data_type.definition.name if isinstance(data_type, AcceptedDeclaration) else None
-    serializer = _VARIABLE_LENGTH_SERIALIZERS.get(name) if name is not None else None
-    if serializer is not None:
-        return ({"name": serializer},)
+    if isinstance(data_type, AcceptedDeclaration):
+        serializer = _VARIABLE_LENGTH_SERIALIZERS.get(data_type.definition.name, UNSET)
+        if serializer is not UNSET:
+            return ({"name": serializer},)
     return ({"name": "bytes", "configuration": {"endian": "little"}},)
 
 
 _DERIVED_MEMBERS: Final[tuple[Derived[ZarrV3Context], ...]] = (
-    Derived("chunk_grid", ("shape",), _derived_chunk_grid),
-    Derived("fill_value", ("data_type",), _derived_fill_value),
-    Derived("codecs", ("data_type",), _derived_codecs),
+    Derived("chunk_grid", "shape", _derived_chunk_grid),
+    Derived("fill_value", "data_type", _derived_fill_value),
+    Derived("codecs", "data_type", _derived_codecs),
 )
 """The members of `ZarrV3ArrayMetadata.create_default` derived from a member given."""
 

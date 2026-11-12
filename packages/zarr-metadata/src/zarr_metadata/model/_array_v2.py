@@ -898,7 +898,7 @@ _DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
 def _derived_chunks(document: Mapping[str, object], context: ZarrV2Context) -> object:
     """One chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. A chunk of no dimensions when the shape has a problem, which the read reports."""
     lengths, _ = dimension_lengths(document, "shape")
-    return tuple(max(length, 1) for length in lengths or ())
+    return () if lengths is None else tuple(max(length, 1) for length in lengths)
 
 
 def _derived_fill_value(document: Mapping[str, object], context: ZarrV2Context) -> object:
@@ -909,7 +909,7 @@ def _derived_fill_value(document: Mapping[str, object], context: ZarrV2Context) 
 
 
 _DERIVED_MEMBERS: Final[tuple[Derived[ZarrV2Context], ...]] = (
-    Derived("chunks", ("shape",), _derived_chunks),
-    Derived("fill_value", ("dtype",), _derived_fill_value),
+    Derived("chunks", "shape", _derived_chunks),
+    Derived("fill_value", "dtype", _derived_fill_value),
 )
 """The members of `ZarrV2ArrayMetadata.create_default` derived from a member given."""

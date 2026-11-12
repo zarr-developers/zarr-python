@@ -160,12 +160,12 @@ M = TypeVar("M")
 
 @dataclass(frozen=True, slots=True)
 class Derived(Generic[X]):
-    """A member that a model's `create_default` derives from the members it depends on, when one of them is given and it is not, such as a chunk grid from `shape`."""
+    """A member that a model's `create_default` derives from the member it depends on, when that member is given and it is not, such as a chunk grid from `shape`."""
 
     member: str
     """The member derived."""
-    sources: tuple[str, ...]
-    """The members it depends on."""
+    source: str
+    """The member it depends on."""
     derive: Callable[[Mapping[str, object], X], object]
     """Its value, given the document's other members and the scope the model is read in. `UNSET` leaves it out, and the read reports it missing."""
 
@@ -179,7 +179,7 @@ def created(
     derived: Sequence[Derived[X]],
     given: Mapping[str, object],
 ) -> M:
-    """The model of the document `create_default` builds: the `fixed` members, then the `given` ones over the `defaults`, then each `derived` member that is not given but one of whose sources is, derived in order. A member given as `UNSET` is left out and not derived.
+    """The model of the document `create_default` builds: the `fixed` members, then the `given` ones over the `defaults`, then each `derived` member that is not given but whose source is, derived in order. A member given as `UNSET` is left out and not derived, and derives nothing: the derived member keeps its default.
 
     `defaults` is a document without problems in any scope, so a member
     is derived only from a member given: the default data type's fill
@@ -191,7 +191,7 @@ def created(
     """
     document: dict[str, object] = {**defaults, **given}
     for derivation in derived:
-        if derivation.member not in given and any(key in given for key in derivation.sources):
+        if derivation.member not in given and given.get(derivation.source, UNSET) is not UNSET:
             document[derivation.member] = derivation.derive(document, context)
     written = {key: value for key, value in document.items() if value is not UNSET}
     try:
