@@ -1,17 +1,17 @@
 """A model checks itself when it is built, as pydantic's `__init__` does.
 
-A v3 model is built only by reading its document. It is changed only by
-`update`, which reads the new document. A document with a problem is
-refused, with every problem reported, so no model is ever invalid. A v2
-model is still a dataclass, and a `dataclasses.replace` that would make it
-invalid is refused. `to_key_value` writes a model as it is, without
-reading anything.
+A model is built only by reading its document. It is changed only by
+`replace`, which reads the new document. A document with a problem is
+refused, with every problem reported, so no model is ever invalid.
+`to_key_value` writes a model as it is, without reading anything.
 """
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import math
+import sys
 from collections import UserDict
 from typing import TYPE_CHECKING, Any, cast
 
@@ -39,7 +39,10 @@ from zarr_metadata.v3.definition import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from typing_extensions import Unpack
+
     from zarr_metadata.definition import Nested
+    from zarr_metadata.model import ZarrV3ArrayMetadataUpdate
 
 ARRAY = ZarrV3ArrayMetadata.create_default(
     shape=(4,),
@@ -72,7 +75,7 @@ V2_CONSOLIDATED = ZarrV2ConsolidatedMetadata.from_json(
 
 
 def _rebuilt(model: object, changes: dict[str, object]) -> Any:  # noqa: ANN401 - the tests give the model as object
-    """Rebuild the v2 model `model` from its document, with `changes` replacing members, in the model's own scope. This is what `update` does, and it also works for the consolidated model."""
+    """Rebuild the v2 model `model` from its document, with `changes` replacing members, in the model's own scope. This is what `replace` does, and it also works for the consolidated model."""
     held = cast("Any", model)
     return type(held)({**held.to_json(), **changes}, context=held.context)
 
@@ -119,7 +122,7 @@ def test_a_v3_model_holds_its_members_as_a_read_refines_them(
     model: object, changes: dict[str, object]
 ) -> None:
     """A model holds arrays as tuples and objects as dicts, as a read holds them. So a model updated with other container types equals the model a read builds, and it round-trips through its store."""
-    changed = cast("Any", model).update(**changes)
+    changed = cast("Any", model).replace(**changes)
     assert changed == model
     assert type(changed).from_key_value(changed.to_key_value()) == changed
 
@@ -149,10 +152,10 @@ def test_a_v2_model_holds_its_members_as_a_read_refines_them(
 def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
     model: object, member: str
 ) -> None:
-    """A model holds copies of the containers passed to `update`. Changing those containers afterwards does not change the model."""
+    """A model holds copies of the containers passed to `replace`. Changing those containers afterwards does not change the model."""
     held: dict[str, object] = {"must_understand": False, "z": {"y": 1}}
     changes = {"attributes": held} if member == "attributes" else {"extra_fields": {member: held}}
-    built = cast("Any", model).update(**changes)
+    built = cast("Any", model).replace(**changes)
     held["w"] = math.nan
     cast("dict[str, object]", held["z"])["y"] = math.nan
     expected = {"must_understand": False, "z": {"y": 1}}
@@ -185,7 +188,7 @@ def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
 
 
 def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
-    """A model is read once, when it is built. `to_key_value` reads nothing. `update` reads the new document. A group does not read the documents its consolidated metadata lists; `ZarrV3ConsolidatedMetadata` reads each of them once."""
+    """A model is read once, when it is built. `to_key_value` reads nothing. `replace` reads the new document. A group does not read the documents its consolidated metadata lists; `ZarrV3ConsolidatedMetadata` reads each of them once."""
     values: list[object] = []
 
     def counted(
@@ -202,7 +205,7 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
     assert values == [3]
     model.to_key_value()
     assert values == [3]
-    changed = model.update(fill_value=4)
+    changed = model.replace(fill_value=4)
     assert values == [3, 4]
     member: dict[str, Any] = {**_INLINE, "metadata": {"a": changed.to_json()}}
     group = ZarrV3GroupMetadata.create_default(context=context, consolidated_metadata=member)
@@ -250,9 +253,9 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
 def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
     model: object, changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """`update` reads the new document, so a change that makes the document invalid is refused, with every problem reported. No model is invalid, however it was made."""
+    """`replace` reads the new document, so a change that makes the document invalid is refused, with every problem reported. No model is invalid, however it was made."""
     with pytest.raises(MetadataValidationError) as raised:
-        cast("Any", model).update(**changes)
+        cast("Any", model).replace(**changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
 
 
@@ -264,10 +267,10 @@ def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
 def test_a_member_named_extra_fields_is_set_and_removed_through_extra_fields(
     kind: Any,  # noqa: ANN401 - a model class
 ) -> None:
-    """A document may hold a member that is itself named `extra_fields`. The spec does not define it, so `update` and `create_default` take it in the `extra_fields` mapping, as any other such member."""
+    """A document may hold a member that is itself named `extra_fields`. The spec does not define it, so `replace` and `create_default` take it in the `extra_fields` mapping, as any other such member."""
     added = kind.create_default(extra_fields={"extra_fields": {"must_understand": False}})
     assert added.to_json()["extra_fields"] == {"must_understand": False}
-    assert "extra_fields" not in added.update(extra_fields={"extra_fields": UNSET}).to_json()
+    assert "extra_fields" not in added.replace(extra_fields={"extra_fields": UNSET}).to_json()
 
 
 @pytest.mark.parametrize(
@@ -278,14 +281,30 @@ def test_a_member_named_extra_fields_is_set_and_removed_through_extra_fields(
 def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fields(
     kind: Any,  # noqa: ANN401 - a model class
 ) -> None:
-    """`create_default` and `update` take the members the spec does not define in `extra_fields`. Each member given there is set, each given as `UNSET` is removed, and the other members are kept."""
+    """`create_default` and `replace` take the members the spec does not define in `extra_fields`. Each member given there is set, each given as `UNSET` is removed, and the other members are kept."""
     added = kind.create_default(
         extra_fields={"acme.flag": 1, "acme.other": {"must_understand": False}}
     )
     assert added.to_json()["acme.flag"] == 1
-    removed = added.update(extra_fields={"acme.flag": UNSET})
+    removed = added.replace(extra_fields={"acme.flag": UNSET})
     assert "acme.flag" not in removed.to_json()
     assert removed.to_json()["acme.other"] == {"must_understand": False}
+
+
+class _MarkingArray(ZarrV3ArrayMetadata):
+    """An array model whose `replace` also sets an attribute, to show which `replace` a call reached."""
+
+    def replace(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        members["attributes"] = {"via": "override"}
+        return super().replace(**members)
+
+
+def test_copy_replace_calls_a_subclass_s_override_of_replace() -> None:
+    """`__replace__` calls `replace` rather than being the base class's `replace`, so a subclass that overrides `replace` changes what `__replace__` and `copy.replace` do."""
+    model = _MarkingArray.create_default()
+    assert model.__replace__(fill_value=3).attributes == {"via": "override"}
+    if sys.version_info >= (3, 13):
+        assert copy.replace(model, fill_value=3).attributes == {"via": "override"}
 
 
 @pytest.mark.parametrize(
@@ -293,12 +312,28 @@ def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fiel
     [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata, ZarrV2GroupMetadata],
     ids=["v3-array", "v3-group", "v2-array", "v2-group"],
 )
-def test_error_a_member_update_does_not_take_is_refused(kind: Any) -> None:  # noqa: ANN401 - a model class
-    """A misspelled member is a `TypeError` from `create_default` and from `update`. It is never written as a member the spec does not define, which a reader that must understand every member would refuse."""
+def test_replace_returns_a_new_model_and_is_what_copy_replace_calls(kind: Any) -> None:  # noqa: ANN401 - a model class
+    """`replace` returns a new model and leaves the one it is called on unchanged. Each model's `__replace__` calls `replace`, so `__replace__` and `copy.replace` (Python 3.13) return the same model."""
+    model = kind.create_default(attributes={"a": 1})
+    replaced = model.replace(attributes={"b": 2})
+    assert replaced is not model
+    assert (model.attributes, replaced.attributes) == ({"a": 1}, {"b": 2})
+    assert model.__replace__(attributes={"b": 2}) == replaced
+    if sys.version_info >= (3, 13):
+        assert copy.replace(model, attributes={"b": 2}) == replaced
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata, ZarrV2GroupMetadata],
+    ids=["v3-array", "v3-group", "v2-array", "v2-group"],
+)
+def test_error_a_member_replace_does_not_take_is_refused(kind: Any) -> None:  # noqa: ANN401 - a model class
+    """A misspelled member is a `TypeError` from `create_default` and from `replace`. It is never written as a member the spec does not define, which a reader that must understand every member would refuse."""
     with pytest.raises(TypeError, match="'attribute'"):
         kind.create_default(attribute={})
     with pytest.raises(TypeError, match="'attribute'"):
-        kind.create_default().update(attribute={})
+        kind.create_default().replace(attribute={})
 
 
 @pytest.mark.parametrize(
@@ -316,41 +351,41 @@ def test_error_extra_fields_refuses_a_member_the_spec_defines(kind: Any, member:
         kind.create_default(extra_fields={member: 1})
 
 
-def test_error_update_takes_declarations_as_json() -> None:
-    """`update` takes each member as a document writes it. A declaration the model read, such as each of `model.codecs`, is refused with a `TypeError` that says to write it with `to_json()`, rather than reported as a value that is not JSON."""
+def test_error_replace_takes_declarations_as_json() -> None:
+    """`replace` takes each member as a document writes it. A declaration the model read, such as each of `model.codecs`, is refused with a `TypeError` that says to write it with `to_json()`, rather than reported as a value that is not JSON."""
     with pytest.raises(TypeError, match=r"codecs: .*to_json\(\)"):
-        ARRAY.update(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
+        ARRAY.replace(codecs=ARRAY.codecs)  # pyright: ignore[reportArgumentType]
 
 
-def test_error_update_takes_no_refused_declaration() -> None:
-    """A declaration refused by its definition holds JSON its definition does not read, so it has no JSON for `update` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
+def test_error_replace_takes_no_refused_declaration() -> None:
+    """A declaration refused by its definition holds JSON its definition does not read, so it has no JSON for `replace` to write: given in a member, it is refused with a `TypeError` that says to give the member as JSON."""
     refused, _ = resolve(
         {"name": "gzip", "configuration": {"level": 99}}, CodecDefinition, CORE_CONTEXT
     )
     assert isinstance(refused, RefusedDeclaration)
     with pytest.raises(TypeError, match="a refused declaration has no JSON"):
-        ARRAY.update(codecs=(ARRAY.to_json()["codecs"][0], refused))  # pyright: ignore[reportArgumentType]
+        ARRAY.replace(codecs=(ARRAY.to_json()["codecs"][0], refused))  # pyright: ignore[reportArgumentType]
 
 
 def test_error_extra_fields_takes_values_as_json() -> None:
     """A declaration given as the value of a member in `extra_fields`, or an extra field given as a member's value, is refused with a `TypeError` that names `to_json()[key]`, which is the member's value. Writing a whole declaration there would nest the member inside itself and lose its waiver."""
     source = ZarrV3ArrayMetadata.create_default(extra_fields={"foo": {"must_understand": False}})
     with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
-        ARRAY.update(extra_fields=dict(source.extra_fields))  # pyright: ignore[reportArgumentType]
+        ARRAY.replace(extra_fields=dict(source.extra_fields))  # pyright: ignore[reportArgumentType]
     member = GROUP.extra_fields["consolidated_metadata"]
     with pytest.raises(TypeError, match=r"to_json\(\)\['consolidated_metadata'\]"):
-        GROUP.update(consolidated_metadata=member)  # pyright: ignore[reportArgumentType]
+        GROUP.replace(consolidated_metadata=member)  # pyright: ignore[reportArgumentType]
     # The advice follows the declaration's kind, not the key it was given under.
     with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
-        ARRAY.update(extra_fields={"bar": source.extra_fields["foo"]})  # pyright: ignore[reportArgumentType]
+        ARRAY.replace(extra_fields={"bar": source.extra_fields["foo"]})  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match=r"to_json\(\)$"):
-        ARRAY.update(extra_fields={"bytes": ARRAY.codecs[0]})  # pyright: ignore[reportArgumentType]
+        ARRAY.replace(extra_fields={"bytes": ARRAY.codecs[0]})  # pyright: ignore[reportArgumentType]
 
 
-def test_error_extra_fields_refuses_a_member_update_takes_by_name() -> None:
-    """A member that `update` takes by name, such as a group's `consolidated_metadata`, is refused in `extra_fields`, so one member is never given twice, and a listing given by name is never replaced unchecked."""
+def test_error_extra_fields_refuses_a_member_replace_takes_by_name() -> None:
+    """A member that `replace` takes by name, such as a group's `consolidated_metadata`, is refused in `extra_fields`, so one member is never given twice, and a listing given by name is never replaced unchecked."""
     with pytest.raises(TypeError, match="give it by name"):
-        GROUP.update(extra_fields={"consolidated_metadata": UNSET})
+        GROUP.replace(extra_fields={"consolidated_metadata": UNSET})
 
 
 @pytest.mark.parametrize(
@@ -363,9 +398,9 @@ def test_error_extra_fields_that_is_not_a_mapping(
     kind: Any,  # noqa: ANN401 - a model class
     extra_fields: object,
 ) -> None:
-    """`extra_fields` maps members to their values, so `update` refuses `UNSET` or a list of pairs given in its place with a `TypeError`, rather than removing every member or reading the pairs as members."""
+    """`extra_fields` maps members to their values, so `replace` refuses `UNSET` or a list of pairs given in its place with a `TypeError`, rather than removing every member or reading the pairs as members."""
     with pytest.raises(TypeError, match="extra_fields maps members to their values"):
-        kind.create_default().update(extra_fields=extra_fields)
+        kind.create_default().replace(extra_fields=extra_fields)
 
 
 @pytest.mark.parametrize(
@@ -374,15 +409,15 @@ def test_error_extra_fields_that_is_not_a_mapping(
     ids=["v3-array", "v3-group", "v2-array"],
 )
 def test_error_extra_fields_with_a_key_that_is_not_a_string(kind: Any) -> None:  # noqa: ANN401 - a model class
-    """A document's members are keyed by strings, so `update` refuses an `extra_fields` with any other key with a `TypeError` that names the key."""
+    """A document's members are keyed by strings, so `replace` refuses an `extra_fields` with any other key with a `TypeError` that names the key."""
     with pytest.raises(TypeError, match="extra_fields maps each member's key, a string"):
-        kind.create_default().update(extra_fields={1: 1})
+        kind.create_default().replace(extra_fields={1: 1})
 
 
 def test_error_a_v2_group_takes_no_extra_fields() -> None:
-    """A v2 group's `.zgroup` holds only `zarr_format`, so its `update` takes no `extra_fields`, and refuses it as an unknown member."""
+    """A v2 group's `.zgroup` holds only `zarr_format`, so its `replace` takes no `extra_fields`, and refuses it as an unknown member."""
     with pytest.raises(TypeError, match="unknown member 'extra_fields'"):
-        V2_GROUP.update(extra_fields={"acme": 1})  # pyright: ignore[reportCallIssue]
+        V2_GROUP.replace(extra_fields={"acme": 1})  # pyright: ignore[reportCallIssue]
 
 
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:

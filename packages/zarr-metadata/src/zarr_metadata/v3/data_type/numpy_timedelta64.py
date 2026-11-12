@@ -13,6 +13,7 @@ from zarr_metadata._numpy import (
     NumpyTimeTicks,
     numpy_time_fill_value_canonical,
 )
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import DataTypeDefinition
 from zarr_metadata.v3.data_type._numpy_time import NumpyTimeUnit, numpy_time_storage
 
@@ -65,6 +66,7 @@ NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
     name=NUMPY_TIMEDELTA64_DATA_TYPE_NAME,
     configuration=NumpyTimedelta64Configuration,
     fill_value=NumpyTimedelta64FillValue,
+    fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=numpy_time_fill_value_canonical,
     storage=numpy_time_storage,
 )

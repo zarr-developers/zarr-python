@@ -25,9 +25,11 @@ from zarr_metadata import (
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata.definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -522,3 +524,34 @@ def test_a_complex_fill_value_keeps_what_its_component_rules_found() -> None:
     (found,) = rules({}, {}, (1.0, 0))
     assert (found.loc, found.message, found.kind) == ((1, "x"), "expected >= 1", "invalid_value")
     assert (found.input, dict(found.ctx)) == (0, {"ge": 1})
+
+
+def _not_json_default(configuration: object, nested: object) -> object:
+    return object()
+
+
+def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A data type whose `fill_value_default` gives a value that is not JSON is the extension author's bug, a `TypeError` naming the data type."""
+    definition = DataTypeDefinition(
+        name="acme.odd",
+        configuration=EmptyConfiguration,
+        fill_value_default=cast("Any", _not_json_default),
+    )
+    data_type, _ = resolve("acme.odd", DataTypeDefinition, ZarrV3Context(data_types=[definition]))
+    with pytest.raises(TypeError, match="'acme.odd': its fill_value_default gives JSON or UNSET"):
+        default_fill_value(data_type)
+
+
+def test_error_a_constant_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A `ConstantFillValue` holds JSON, which it checks when built, so a value that is not JSON fails where it is written rather than when the data type is used."""
+    with pytest.raises(TypeError, match="ConstantFillValue holds JSON, got <object object"):
+        ConstantFillValue(cast("Any", object()))
+
+
+def test_constant_fill_values_are_equal_when_written_the_same_way() -> None:
+    """Two `ConstantFillValue`s are equal, and hash equal, when their values are written the same way, so two data types that differ only in their default are not the same definition. `0`, `False` and `0.0` are three defaults."""
+    defaults = [ConstantFillValue(0), ConstantFillValue(False), ConstantFillValue(0.0)]
+    assert len(set(defaults)) == 3
+    assert ConstantFillValue((0.0, 0.0)) == ConstantFillValue((0.0, 0.0))
+    assert hash(ConstantFillValue("")) == hash(ConstantFillValue(""))
+    assert ConstantFillValue(0) != 0
