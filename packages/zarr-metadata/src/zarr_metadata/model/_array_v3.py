@@ -819,6 +819,10 @@ class ZarrV3ArrayMetadata(Keyed):
           zarr-python chooses, and `bytes` with little `endian` for any
           other data type.
 
+        A member given with a problem derives nothing, so the members
+        derived from it keep their defaults, and the problem is the only
+        one reported.
+
         Raises `MetadataValidationError` when the resulting document has a
         problem, with a note naming each member that was not given and
         its value. So members that depend on each other in other ways must
@@ -891,15 +895,19 @@ _VARIABLE_LENGTH_SERIALIZERS: Final[Mapping[str, str]] = MappingProxyType(
 
 
 def _derived_chunk_grid(document: Mapping[str, object], context: ZarrV3Context) -> object:
-    """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. A chunk of no dimensions when the shape has a problem, which the read reports."""
+    """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The grid as it is when the shape has a problem, which the read reports."""
     lengths, _ = dimension_lengths(document, "shape")
-    chunk_shape = () if lengths is None else tuple(max(length, 1) for length in lengths)
+    if lengths is None:
+        return document["chunk_grid"]
+    chunk_shape = tuple(max(length, 1) for length in lengths)
     return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
 
 
 def _derived_fill_value(document: Mapping[str, object], context: ZarrV3Context) -> object:
-    """The default fill value of the document's `data_type` in `context`; `UNSET` when it has none."""
-    data_type, _ = resolve(document.get("data_type", UNSET), DataTypeDefinition, context)
+    """The default fill value of the document's `data_type` in `context`; `UNSET` when the data type has none or nothing in scope claims it. The fill value as it is when the data type has a problem, which the read reports."""
+    data_type, problems = resolve(document["data_type"], DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["fill_value"]
     return default_fill_value(data_type)
 
 

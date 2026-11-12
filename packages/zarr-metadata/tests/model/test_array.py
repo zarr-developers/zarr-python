@@ -2005,6 +2005,32 @@ def test_error_create_default_reports_a_shape_it_cannot_read(shape: object, kind
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), kind)]
 
 
+@pytest.mark.parametrize(
+    ("model", "members", "problems"),
+    [
+        (ZarrV3ArrayMetadata, {"data_type": 5}, [(("data_type",), "invalid_type")]),
+        (ZarrV3ArrayMetadata, {"data_type": "r12"}, [(("data_type",), "invalid_value")]),
+        (
+            ZarrV3ArrayMetadata,
+            {"data_type": {"name": "fixed_length_utf32", "configuration": {"length_bytes": 3}}},
+            [(("data_type", "configuration", "length_bytes"), "invalid_value")],
+        ),
+        (ZarrV2ArrayMetadata, {"dtype": 5}, [(("dtype",), "invalid_type")]),
+        (ZarrV2ArrayMetadata, {"dtype": "<i3"}, [(("dtype",), "invalid_value")]),
+    ],
+    ids=["v3-a-number", "v3-bits", "v3-configuration", "v2-a-number", "v2-size"],
+)
+def test_error_create_default_reports_a_data_type_it_cannot_read(
+    model: Any,  # noqa: ANN401
+    members: dict[str, Any],
+    problems: list[tuple[tuple[str | int, ...], str]],
+) -> None:
+    """A data type with a problem derives nothing: the fill value and codecs keep their defaults, so the data type's problem is the only one reported, as for a shape it cannot read."""
+    with pytest.raises(MetadataValidationError) as raised:
+        model.create_default(**members)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
+
+
 def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_name() -> None:
     """A codec whose configuration is not JSON takes the kind of the definition that claims its name, as a codec refused for a JSON configuration does. `gzip` is a bytes -> bytes codec, so the pipeline still lacks an array -> bytes codec."""
     document = {

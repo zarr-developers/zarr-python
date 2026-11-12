@@ -825,6 +825,10 @@ class ZarrV2ArrayMetadata(Keyed):
           which means no fill value, for a dtype that has none (such as
           `|O`) or that nothing in `context` claims.
 
+        A member given with a problem derives nothing, so the members
+        derived from it keep their defaults, and the problem is the only
+        one reported.
+
         Raises `MetadataValidationError` when the resulting document has a
         problem, with a note naming each member that was not given and
         its value. So `chunks` given without `shape` must have no
@@ -896,14 +900,18 @@ _DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
 
 
 def _derived_chunks(document: Mapping[str, object], context: ZarrV2Context) -> object:
-    """One chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. A chunk of no dimensions when the shape has a problem, which the read reports."""
+    """One chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The chunks as they are when the shape has a problem, which the read reports."""
     lengths, _ = dimension_lengths(document, "shape")
-    return () if lengths is None else tuple(max(length, 1) for length in lengths)
+    if lengths is None:
+        return document["chunks"]
+    return tuple(max(length, 1) for length in lengths)
 
 
 def _derived_fill_value(document: Mapping[str, object], context: ZarrV2Context) -> object:
-    """The default fill value of the document's `dtype` in `context`, and `null` (no fill value) when it has none."""
-    dtype, _ = resolve(document.get("dtype", UNSET), ZarrV2DataTypeDefinition, context)
+    """The default fill value of the document's `dtype` in `context`, and `null` (no fill value) when it has none or nothing in scope claims it. The fill value as it is when the dtype has a problem, which the read reports."""
+    dtype, problems = resolve(document["dtype"], ZarrV2DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["fill_value"]
     found = default_fill_value(dtype)
     return None if found is UNSET else found
 

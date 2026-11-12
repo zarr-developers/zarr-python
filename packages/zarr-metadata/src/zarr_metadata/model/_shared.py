@@ -167,7 +167,7 @@ class Derived(Generic[X]):
     source: str
     """The member it depends on."""
     derive: Callable[[Mapping[str, object], X], object]
-    """Its value, given the document's other members and the scope the model is read in. `UNSET` leaves it out, and the read reports it missing."""
+    """Its value, given the document's other members and the scope the model is read in. `UNSET` leaves it out, and the read reports it missing. When the source has a problem, it returns the member as the document holds it, so the read reports only the source's problem."""
 
 
 def created(
@@ -179,7 +179,7 @@ def created(
     derived: Sequence[Derived[X]],
     given: Mapping[str, object],
 ) -> M:
-    """The model of the document `create_default` builds: the `fixed` members, then the `given` ones over the `defaults`, then each `derived` member that is not given but whose source is, derived in order. A member given as `UNSET` is left out and not derived, and derives nothing: the derived member keeps its default.
+    """The model of the document `create_default` builds: the `fixed` members, then the `given` ones over the `defaults`, then each `derived` member that is not given but whose source is, derived in order. A member given as `UNSET` is left out and not derived, and derives nothing: the derived member keeps its default. A source given with a problem derives nothing either, by each derivation's contract.
 
     `defaults` is a document without problems in any scope, so a member
     is derived only from a member given: the default data type's fill
