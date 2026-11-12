@@ -1,3 +1,0 @@
-# pytest>=9.2 requires packaging>=24, but min_deps must keep testing the
-# declared runtime floor packaging>=22.0, so this env stays on pytest<9.2.
-pytest<9.2
