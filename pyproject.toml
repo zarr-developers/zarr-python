@@ -263,6 +263,10 @@ extra-dependencies = [
     'msgspec==0.19.*',
 ]
 
+[tool.hatch.envs.min_deps.env-vars]
+# Keep pytest<9.2 here so packaging==22.* (our declared floor) still resolves.
+UV_OVERRIDE = "{root}/ci/min_deps-overrides.txt"
+
 [tool.hatch.envs.default]
 installer = "uv"
 
@@ -458,6 +462,10 @@ filterwarnings = [
     # loop-lifecycle changes.
     "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
     "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
+    # pytest>=9.2 applies these filters while importing plugins (pytest#12697). pytest-accept
+    # imports astor, which looks up the deprecated ast.Num at import time on Python < 3.14,
+    # so "error" above would abort the run before collection.
+    "ignore:ast\\.\\w+ is deprecated:DeprecationWarning:astor",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
