@@ -16,7 +16,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import Base64Bytes
-from zarr_metadata.definition._definition import Nested
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, single_byte
 from zarr_metadata.v3.data_type._byte import base64_decoded, base64_problems, base64_spelling
 
@@ -105,6 +105,7 @@ NULL_TERMINATED_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     configuration=NullTerminatedBytesConfiguration,
     rules=_rules,
     fill_value=NullTerminatedBytesFillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=single_byte,

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, TypeVar, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeGuard, TypeVar, cast
 
 from zarr_metadata._json import (
     MetadataValidationError,
@@ -18,6 +19,7 @@ from zarr_metadata._json import (
     with_input,
     within,
 )
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._definition import (
     RefusedDeclaration,
@@ -28,7 +30,7 @@ from zarr_metadata.definition._scope import Conflict, claim_key
 from zarr_metadata.v3._definition import ExtraFieldDefinition
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
@@ -150,6 +152,56 @@ def member_changes(
         _refuse_declarations(key, value)
         changes[key] = value
     return changes
+
+
+X = TypeVar("X")
+M = TypeVar("M")
+
+
+@dataclass(frozen=True, slots=True)
+class Derived(Generic[X]):
+    """A member that a model's `create_default` derives from the member it depends on, when that member is given and it is not, such as a chunk grid from `shape`."""
+
+    member: str
+    """The member derived."""
+    source: str
+    """The member it depends on."""
+    derive: Callable[[Mapping[str, object], X], object]
+    """Its value, given the document's other members and the scope the model is read in. `UNSET` leaves it out, and the read reports it missing. When the source has a problem, it returns the member as the document holds it, so the read reports only the source's problem."""
+
+
+def created(
+    model: Callable[..., M],
+    context: X,
+    *,
+    fixed: Mapping[str, object],
+    defaults: Mapping[str, object],
+    derived: Sequence[Derived[X]],
+    given: Mapping[str, object],
+) -> M:
+    """The model of the document `create_default` builds: the `fixed` members, then the `given` ones over the `defaults`, then each `derived` member that is not given but whose source is, derived in order. A member given as `UNSET` is left out and not derived, and derives nothing: the derived member keeps its default. A source given with a problem derives nothing either, by each derivation's contract.
+
+    `defaults` is a document without problems in any scope, so a member
+    is derived only from a member given: the default data type's fill
+    value needs no definition of the data type.
+
+    Raises `MetadataValidationError` when the document has a problem, with
+    a note naming each member that was not given and its value, since a
+    problem may come from a default that does not fit a member given.
+    """
+    document: dict[str, object] = {**defaults, **given}
+    for derivation in derived:
+        if derivation.member not in given and given.get(derivation.source, UNSET) is not UNSET:
+            document[derivation.member] = derivation.derive(document, context)
+    written = {key: value for key, value in document.items() if value is not UNSET}
+    try:
+        return model({**fixed, **written}, context=context)
+    except MetadataValidationError as error:
+        filled = [key for key in written if key not in given]
+        if len(filled) != 0:
+            values = ", ".join(f"{key} = {json.dumps(written[key])}" for key in filled)
+            error.add_note(f"create_default filled in the members not given: {values}")
+        raise
 
 
 def unclaimed_declarations_of(

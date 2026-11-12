@@ -11,6 +11,7 @@ from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type._rules import orderless_at, sized
 
@@ -125,6 +126,7 @@ BOOL_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized((1,), None),
     canonical=orderless_at(None),
     fill_value=bool | None,
+    fill_value_default=ConstantFillValue(False),
 )
 """`|b1`: one byte, true or false."""
 
@@ -134,6 +136,7 @@ INT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
     canonical=orderless_at(_ONE_BYTE),
     fill_value=int | None,
+    fill_value_default=ConstantFillValue(0),
     fill_value_rules=_InRange(True),
 )
 """`i1` to `i8`: signed integers. The fill value must be in the type's range."""
@@ -144,6 +147,7 @@ UINT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
     canonical=orderless_at(_ONE_BYTE),
     fill_value=int | None,
+    fill_value_default=ConstantFillValue(0),
     fill_value_rules=_InRange(False),
 )
 """`u1` to `u8`: unsigned integers. The fill value must be in the type's range."""
@@ -153,6 +157,7 @@ FLOAT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((2, 4, 8), frozenset()),
     fill_value=ZarrV2FloatFillValue,
+    fill_value_default=ConstantFillValue(0.0),
     fill_value_canonical=_float_canonical,
 )
 """`f2`, `f4`, `f8`: IEEE 754 floats. The fill value is a number or a named non-finite value."""
@@ -162,6 +167,7 @@ COMPLEX_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     configuration=ZarrV2ScalarConfiguration,
     rules=sized((8, 16), frozenset()),
     fill_value=ZarrV2ComplexFillValue,
+    fill_value_default=ConstantFillValue((0.0, 0.0)),
     fill_value_canonical=_complex_canonical,
 )
 """`c8`, `c16`: complex floats. The fill value is `[real, imag]`."""
