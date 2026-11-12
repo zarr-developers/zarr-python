@@ -2,6 +2,64 @@
 
 <!-- towncrier release notes start -->
 
+## 0.8.0 (2026-11-12)
+
+### Features
+
+- **Breaking:** `create_default` derives each member that depends on a member given, unless that member is given too. In v3, a `data_type` brings its default fill value and its array -> bytes codec: `vlen-utf8` for `string`, `vlen-bytes` for `bytes` and `variable_length_bytes`, and `bytes` for any other data type. So `ZarrV3ArrayMetadata.create_default(data_type="bool")` and `create_default(data_type="string")` now work. In v2, a `dtype` brings its default fill value: `false` for `|b1`, `""` for `|S` and `<U`, and null bytes for `|V` and structs, where these got `null`. In both formats, a time data type now gets `"NaT"` where it got `0` (the epoch), and a float gets `0.0` where it got `0`, which is the same value written another way. `|O`, whose values may be of any type, has no default and gets `null` where it got `0`, and a v3 data type that nothing in scope claims needs a `fill_value`. A member given with a problem derives nothing, so its problem is the only one reported. When the document has a problem, the error notes each member `create_default` filled in. The defaults come from a new `fill_value_default` on a data type definition, which every data type this package defines declares, with the values zarr-python uses: zero, `false`, the empty string, null bytes, and not-a-time. `zarr_metadata.definition` exports `ConstantFillValue`, for a default that does not depend on the configuration, and `default_fill_value(data_type)`. The codec comes from a new `array_bytes_codec_default` on a v3 data type definition, read with `zarr_metadata.v3.definition.default_array_bytes_codec(data_type)`, so an extension data type whose values vary in size can declare its own. ([#4621](https://github.com/zarr-developers/zarr-python/pull/4621))
+
+- **Breaking:** a v3 codec is defined with the class of its kind,
+    `ArrayArrayCodecDefinition`, `ArrayBytesCodecDefinition` or
+    `BytesBytesCodecDefinition`, instead of `CodecDefinition(kind=...)`. The kind
+    is now the class's `kind` property, and `CodecDefinition` is their abstract
+    base, which a scope and `resolve` still use to name the kind. A codec that
+    receives an array, an `ArrayCodecDefinition`, has `chunk_rules` and
+    `pipelines`, an array -> array codec also has `transition`, and a bytes ->
+    bytes codec, which receives bytes, has none of them, so building one with any
+    of them is a `TypeError` from the class itself.
+
+    A v3 data type definition declares what kind of numbers its values are with
+    `number_class`, a `NumberClass`: `"integral"`, `"floating_point"`,
+    `"complex"` or `"non_numeric"`. `cast_value` and `scale_offset` read it to
+    decide which data types they accept, where each kept a list of data type
+    names, so a data type defined elsewhere is judged by what it declares: both
+    codecs refuse one that declares complex or non-numeric values, and
+    `cast_value` refuses to `wrap` to one that declares floating-point values. A
+    data type that declares no number class is accepted by both, as before. A data
+    type defined elsewhere under one of the float names the `cast_value` spec
+    lists, such as `bfloat16`, was refused as a `wrap` target by its name, and is
+    now refused once it declares `"floating_point"`. ([#4628](https://github.com/zarr-developers/zarr-python/pull/4628))
+
+### Bugfixes
+
+- `ZarrV2ArrayMetadata.create_default(shape=...)` derives a chunk length of 1 for a dimension of length 0, as the v3 model does, where it wrote 0, which zarr-python repairs to 1 on read. ([#4621](https://github.com/zarr-developers/zarr-python/pull/4621))
+
+- **Breaking:** `cast_value` and `scale_offset` refuse the data types their
+    specs do not list. Each spec names the integer and floating-point types as
+    "the following data types defined in this repository" that it supports, and
+    that repository also defines the numpy time types and the complex types. So
+    both codecs now refuse `numpy.datetime64` and `numpy.timedelta64`, and
+    `cast_value` refuses them as the data type it casts to, and `scale_offset`
+    now refuses `complex64` and `complex128`. All of these were accepted. The time
+    types' own spec says they are "compatible with any codec that supports arrays
+    of signed 64-bit integers", which the two codecs' specs do not bear out.
+    `zarr_metadata.testing.strategies` no longer draws these combinations. ([#4628](https://github.com/zarr-developers/zarr-python/pull/4628))
+
+### Deprecations and Removals
+
+- **Breaking:** The models' `update` method is now `replace`, the name Python gives a method that returns a changed copy of an immutable value, as `str.replace`, `datetime.replace` and `dataclasses.replace` do: `update`, as `dict.update` uses it, says that the object itself changes. It takes the same members and returns a new model, read in the model's own scope, as before. Each model also defines `__replace__`, so `copy.replace(model, attributes={"a": 1})` works on Python 3.13 and later. To migrate, rename each `model.update(...)` call to `model.replace(...)`. The `...Update` TypedDicts that type its members keep their names. ([#4622](https://github.com/zarr-developers/zarr-python/pull/4622))
+
+### Misc
+
+- The types of every extension (each codec's, data type's, chunk grid's and
+    chunk key encoding's name constants, `Literal` types, configuration and object
+    `TypedDict`s and metadata aliases, in both formats) now live in private modules
+    that hold types only and import no definition. A definition of one kind can
+    therefore import the types of another kind at run time, as a data type that
+    names its default codec does. Every name keeps its public import paths, since
+    each extension's module re-exports its types. ([#4627](https://github.com/zarr-developers/zarr-python/pull/4627))
+
+
 ## 0.7.0 (2026-11-11)
 
 ### Features
