@@ -21,6 +21,7 @@ from zarr_metadata.v3.data_type._byte import (
     ByteValue,
     base64_fill_value_rules,
     base64_spelling,
+    vlen_bytes_codec,
 )
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
@@ -59,6 +60,7 @@ BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
+    array_bytes_codec_default=vlen_bytes_codec,
 )
 """The `bytes` data type. It is written as a bare name and has no configuration.
 

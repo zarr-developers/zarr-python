@@ -11,6 +11,7 @@ from typing import Annotated
 
 from annotated_types import Interval
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata._numpy import base64_bytes
 
@@ -58,10 +59,16 @@ def base64_spelling(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
+def vlen_bytes_codec(*_: object) -> JSONValue:
+    """The array -> bytes codec of a data type whose values are byte strings that vary in length: `vlen-bytes`, as zarr-python chooses it (https://github.com/zarr-developers/zarr-python/blob/0981311c07f0a8dc8650b74e33bd385ccb411f26/src/zarr/core/array.py#L5114-L5139)."""
+    return {"name": "vlen-bytes"}
+
+
 __all__ = [
     "ByteValue",
     "base64_decoded",
     "base64_fill_value_rules",
     "base64_problems",
     "base64_spelling",
+    "vlen_bytes_codec",
 ]

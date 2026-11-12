@@ -106,7 +106,11 @@ Other kinds declare more:
   `fill_value_canonical`), and the fill value an array gets when
   `create_default` is given none (`fill_value_default`, such as
   `ConstantFillValue(0)`). It also declares how its values are stored
-  (`storage`).
+  (`storage`), and the array -> bytes codec an array gets when
+  `create_default` is given no codecs (`array_bytes_codec_default`, such
+  as `vlen-utf8` for `string`). A data type whose values vary in size
+  declares its own, since the default, `bytes`, encodes values of a fixed
+  size.
 - A chunk grid declares which shapes it fits (`shape_rules`) and its chunk
   lengths (`chunk_lengths`).
 - A codec declares:

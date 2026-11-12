@@ -35,6 +35,7 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.model import ZarrV3ArrayMetadata
 from zarr_metadata.testing._draw import scope_with
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
@@ -186,6 +187,16 @@ def test_default_fill_values_fit_their_data_type(
     assert value is not UNSET
     assert fill_value_problems(data_type, value) == ()
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
+
+
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_create_default_reads_every_data_type_given_alone(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """`create_default` given only a data type this package defines, in any configuration, derives a fill value and an array -> bytes codec that the read accepts."""
+    declaration = data.draw(declarations(definition))
+    ZarrV3ArrayMetadata.create_default(context=ZARR_PYTHON_CONTEXT, data_type=declaration)
 
 
 @pytest.mark.parametrize("definition", _CHUNK_GRIDS, ids=_id)

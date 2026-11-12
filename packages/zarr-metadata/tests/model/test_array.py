@@ -24,6 +24,9 @@ from zarr_metadata._json import (
 )
 from zarr_metadata.definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
+    EmptyConfiguration,
+    Nested,
     UnclaimedDeclaration,
     canonical_of,
     configuration_of,
@@ -51,6 +54,7 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
+from zarr_metadata.v3._definition import variable_length
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
@@ -59,6 +63,8 @@ from zarr_metadata.v3.definition import (
     ZARR_PYTHON_CONTEXT,
     ArrayExtraFieldDefinition,
     CodecDefinition,
+    DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -358,6 +364,41 @@ def _grid(*chunk_shape: int) -> dict[str, Any]:
     return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
 
 
+def _acme_vlen_text(configuration: EmptyConfiguration, nested: Nested) -> "JSONValue":
+    """The `acme.vlen-text` codec, alone."""
+    return {"name": "acme.vlen-text"}
+
+
+_ACME_TEXT_CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(
+        data_types=[
+            DataTypeDefinition(
+                name="acme.text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                array_bytes_codec_default=_acme_vlen_text,
+                storage=variable_length,
+            ),
+            DataTypeDefinition(
+                name="acme.bare-text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                storage=variable_length,
+            ),
+        ],
+        codecs=[
+            CodecDefinition(
+                name="acme.vlen-text",
+                configuration=EmptyConfiguration,
+                kind="array_bytes",
+                size="dynamic",
+            )
+        ],
+    )
+)
+"""A scope with an extension's data types whose values vary in size: `acme.text`, which declares its array -> bytes codec `acme.vlen-text`, and `acme.bare-text`, which declares none."""
+
+
 @pytest.mark.parametrize(
     ("model", "context", "overrides", "expected"),
     [
@@ -419,6 +460,12 @@ def _grid(*chunk_shape: int) -> dict[str, Any]:
         ),
         (
             ZarrV3ArrayMetadata,
+            _ACME_TEXT_CONTEXT,
+            {"data_type": "acme.text"},
+            {"fill_value": "", "codecs": ({"name": "acme.vlen-text"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
             ZARR_PYTHON_CONTEXT,
             {"data_type": {"name": "raw_bytes", "configuration": {"length_bytes": 2}}},
             {"fill_value": "AAA="},
@@ -447,7 +494,7 @@ def test_create_default_derives_the_members_not_given(
     overrides: dict[str, Any],
     expected: dict[str, Any],
 ) -> None:
-    """`create_default` derives each member that depends on a member given, when it is not given itself: the chunk grid (v3) or chunks (v2) from `shape`, one chunk covering the array with a length of 1 for a dimension of length 0; the fill value from the data type's default, `null` for a v2 dtype with none; and, in v3, the codecs from the data type, `vlen-utf8` or `vlen-bytes` for a data type whose values vary in size. A member given is kept. The document writes the members in the order it always has."""
+    """`create_default` derives each member that depends on a member given, when it is not given itself: the chunk grid (v3) or chunks (v2) from `shape`, one chunk covering the array with a length of 1 for a dimension of length 0; the fill value from the data type's default, `null` for a v2 dtype with none; and, in v3, the codecs from the array -> bytes codec the data type declares, such as `vlen-utf8` for `string` or an extension's own codec, and `bytes` for a data type that declares none. A member given is kept. The document writes the members in the order it always has."""
     document = dict(model.create_default(context=context, **overrides).to_json())
     assert {key: document[key] for key in expected} == expected
     assert [type(document[key]) for key in expected] == [type(expected[key]) for key in expected]
@@ -464,6 +511,15 @@ def test_error_create_default_needs_a_fill_value_for_a_data_type_without_a_defau
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ArrayMetadata.create_default(data_type="acme.unknown")
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "missing_key")]
+
+
+def test_error_create_default_derives_bytes_for_a_data_type_that_declares_no_codec() -> None:
+    """A data type that declares no array -> bytes codec gets `bytes`, which refuses a data type whose values vary in size. The note names the codecs filled in, since the caller did not write them."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(context=_ACME_TEXT_CONTEXT, data_type="acme.bare-text")
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 0), "invalid_value")]
+    (note,) = getattr(raised.value, "__notes__", [])
+    assert 'codecs = [{"name": "bytes", "configuration": {"endian": "little"}}]' in note
 
 
 def test_error_create_default_reports_a_member_dropped_and_derives_nothing_from_it() -> None:

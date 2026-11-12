@@ -76,17 +76,13 @@ from zarr_metadata.v3._definition import (
     Lengths,
     StorageTransformerDefinition,
     chunk_grid_lengths,
+    default_array_bytes_codec,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
 )
-from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC_NAME
-from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC_NAME
-from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -814,10 +810,10 @@ class ZarrV3ArrayMetadata(Keyed):
           `fill_value_default`, such as `0`, `false` or `""`. A data type
           that has none, or that nothing in `context` claims, needs a
           `fill_value`.
-        - `codecs`, from `data_type`: `vlen-utf8` for `string`,
-          `vlen-bytes` for `bytes` and `variable_length_bytes`, as
-          zarr-python chooses, and `bytes` with little `endian` for any
-          other data type.
+        - `codecs`, from `data_type`: the array -> bytes codec its
+          `array_bytes_codec_default` gives, such as `vlen-utf8` for
+          `string`, and `bytes` with little `endian` for a data type that
+          does not declare one or that nothing in `context` claims.
 
         A member given with a problem derives nothing, so the members
         derived from it keep their defaults, and the problem is the only
@@ -884,15 +880,6 @@ _DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
 )
 """The document of `ZarrV3ArrayMetadata.create_default` given nothing, without its `zarr_format` and `node_type`: a scalar `uint8` array."""
 
-_VARIABLE_LENGTH_SERIALIZERS: Final[Mapping[str, str]] = MappingProxyType(
-    {
-        STRING_DATA_TYPE_NAME: VLEN_UTF8_CODEC_NAME,
-        BYTES_DATA_TYPE_NAME: VLEN_BYTES_CODEC_NAME,
-        VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME: VLEN_BYTES_CODEC_NAME,
-    }
-)
-"""The array -> bytes codec `create_default` derives for each data type whose values vary in size, by the name of its definition, as zarr-python chooses it (https://github.com/zarr-developers/zarr-python/blob/0981311c07f0a8dc8650b74e33bd385ccb411f26/src/zarr/core/array.py#L5114-L5139)."""
-
 
 def _derived_chunk_grid(document: Mapping[str, object], context: ZarrV3Context) -> object:
     """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The grid as it is when the shape has a problem, which the read reports."""
@@ -912,13 +899,12 @@ def _derived_fill_value(document: Mapping[str, object], context: ZarrV3Context) 
 
 
 def _derived_codecs(document: Mapping[str, object], context: ZarrV3Context) -> object:
-    """The array -> bytes codec for the document's `data_type` in `context`, alone."""
-    data_type, _ = resolve(document.get("data_type", UNSET), DataTypeDefinition, context)
-    if isinstance(data_type, AcceptedDeclaration):
-        serializer = _VARIABLE_LENGTH_SERIALIZERS.get(data_type.definition.name, UNSET)
-        if serializer is not UNSET:
-            return ({"name": serializer},)
-    return ({"name": "bytes", "configuration": {"endian": "little"}},)
+    """The array -> bytes codec that the document's `data_type` declares in `context`, alone. The codecs as they are when nothing in scope claims the data type, or it has a problem, which the read reports."""
+    data_type, problems = resolve(document["data_type"], DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["codecs"]
+    codec = default_array_bytes_codec(data_type)
+    return document["codecs"] if codec is UNSET else (codec,)
 
 
 _DERIVED_MEMBERS: Final[tuple[Derived[ZarrV3Context], ...]] = (
