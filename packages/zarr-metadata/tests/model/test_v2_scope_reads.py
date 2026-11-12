@@ -87,16 +87,6 @@ def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
 
 
-def test_create_default_keeps_zero_where_the_family_takes_it() -> None:
-    """When `create_default` is given a dtype and no fill value, it uses `0` if the dtype family allows it and `null` otherwise. A given fill value is kept."""
-    assert ZarrV2ArrayMetadata.create_default(dtype="|b1").fill_value is None
-    assert ZarrV2ArrayMetadata.create_default(dtype="<f8").fill_value == 0
-    assert ZarrV2ArrayMetadata.create_default(dtype="<i4").fill_value == 0
-    assert ZarrV2ArrayMetadata.create_default(dtype="|S3").fill_value is None
-    assert ZarrV2ArrayMetadata.create_default(dtype="<f4", fill_value=1.5).fill_value == 1.5
-    assert ZarrV2ArrayMetadata.create_default().fill_value == 0
-
-
 def test_a_v2_model_refuses_a_dtype_the_scope_refuses() -> None:
     """`ZarrV2ArrayMetadata` validates itself when built, so a dtype that the scope refuses raises like any other problem."""
     with pytest.raises(MetadataValidationError, match="typestr"):

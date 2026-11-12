@@ -1,4 +1,4 @@
-"""Tests for building consolidated metadata from node models. A model is accepted when it reads the same in the scope of the consolidated metadata, or gains information there. It is refused when it conflicts or would lose information. A group takes the result through `update`, and writes its document."""
+"""Tests for building consolidated metadata from node models. A model is accepted when it reads the same in the scope of the consolidated metadata, or gains information there. It is refused when it conflicts or would lose information. A group takes the result through `replace`, and writes its document."""
 
 from __future__ import annotations
 
@@ -179,10 +179,10 @@ def test_error_the_reader_reports_a_conflicting_model_as_the_constructor_does() 
 
 
 def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document. It does not bring its own scope into the group: the group's `context` stays its own, and reading the written member in that scope gives the models in it."""
+    """A `ZarrV3ConsolidatedMetadata` given to `replace` is written as its document. It does not bring its own scope into the group: the group's `context` stays its own, and reading the written member in that scope gives the models in it."""
     held = _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=ZarrV3ArrayMetadata(ARRAY))
     group = ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT, attributes={"t": 1})
-    updated = group.update(consolidated_metadata=held)
+    updated = group.replace(consolidated_metadata=held)
     assert updated.context == CORE_CONTEXT
     assert updated.attributes == {"t": 1}
     assert updated.consolidated_metadata == held.to_json()
@@ -192,11 +192,11 @@ def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope()
 
 
 def test_error_a_group_refuses_consolidated_metadata_that_conflicts_with_its_scope() -> None:
-    """A `ZarrV3ConsolidatedMetadata` read in another scope is read again in the group's scope before the group writes it, as a listing of node models is. A model read with a private `bytes` conflicts with the core `bytes` the group reads, so `update` and `create_default` refuse it at the child's path."""
+    """A `ZarrV3ConsolidatedMetadata` read in another scope is read again in the group's scope before the group writes it, as a listing of node models is. A model read with a private `bytes` conflicts with the core `bytes` the group reads, so `replace` and `create_default` refuse it at the child's path."""
     held = _consolidated(PRIVATE, a=ZarrV3ArrayMetadata(ARRAY, context=PRIVATE))
     group = ZarrV3GroupMetadata.create_default(context=CORE_AND_EXTENSIONS_CONTEXT)
     for write in (
-        lambda: group.update(consolidated_metadata=held),
+        lambda: group.replace(consolidated_metadata=held),
         lambda: ZarrV3GroupMetadata.create_default(
             context=CORE_AND_EXTENSIONS_CONTEXT, consolidated_metadata=held
         ),
@@ -212,7 +212,7 @@ def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning()
     """A listing read in a scope that claims `zstd`, given to a group whose scope leaves `zstd` unclaimed, would lose information when the group's scope reads it, so the group refuses it at the child's path."""
     held = _consolidated(CORE_AND_EXTENSIONS_CONTEXT, a=ZarrV3ArrayMetadata(WITH_ZSTD))
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT).update(consolidated_metadata=held)
+        ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT).replace(consolidated_metadata=held)
     assert [problem.loc for problem in raised.value.problems] == [
         ("consolidated_metadata", "metadata", "a", "codecs", 1)
     ]
