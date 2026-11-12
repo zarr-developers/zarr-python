@@ -115,7 +115,6 @@ test = [
     "pytest==9.2.0",
     "pytest-asyncio==1.4.1.post1",
     "pytest-cov==7.1.0",
-    "pytest-accept==0.3.0",
     "numpydoc==1.11.0",
     "hypothesis==6.170.14",
     "pytest-reportlog==1.0.0",
@@ -462,10 +461,6 @@ filterwarnings = [
     # loop-lifecycle changes.
     "ignore:Exception ignored in[\\s\\S]*<function BaseEventLoop.__del__:pytest.PytestUnraisableExceptionWarning",
     "ignore:Exception ignored in[\\s\\S]*<socket.socket fd=\\d+, family=(1|2), type=1:pytest.PytestUnraisableExceptionWarning",
-    # pytest>=9.2 applies these filters while importing plugins (pytest#12697). pytest-accept
-    # imports astor, which looks up the deprecated ast.Num at import time on Python < 3.14,
-    # so "error" above would abort the run before collection.
-    "ignore:ast\\.\\w+ is deprecated:DeprecationWarning:astor",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",

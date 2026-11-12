@@ -298,15 +298,6 @@ wheels = [
 ]
 
 [[package]]
-name = "astor"
-version = "0.8.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/21/75b771132fee241dfe601d39ade629548a9626d1d39f333fde31bc46febe/astor-0.8.1.tar.gz", hash = "sha256:6a6effda93f4e1ce9f618779b2dd1d9d84f1e32812c23a29b3fff6fd7f63fa5e", size = 35090, upload-time = "2019-12-10T01:50:35.51Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/88/97eef84f48fa04fbd6750e62dcceafba6c63c81b7ac1420856c8dcc0a3f9/astor-0.8.1-py2.py3-none-any.whl", hash = "sha256:070a54e890cefb5b3739d19f30f5a5ec840ffc9c50ffa7d23cc9fc1a38ebbfc5", size = 27488, upload-time = "2019-12-10T01:50:33.628Z" },
-]
-
-[[package]]
 name = "astroid"
 version = "4.3.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2838,19 +2829,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-accept"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "astor" },
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/42/573e6dcd8d1a5fc779d525268d5036f710d018cdeefbae2bd5559687a6d5/pytest_accept-0.3.0.tar.gz", hash = "sha256:6f4e03e2492621e10b7678a331828274498cca04686b15b0f3e704e16e651068", size = 29744, upload-time = "2026-06-11T18:44:39.03Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/40/79f6f13e616f580b9c35110376818c76cacc54b70d2965bf1f82be336c66/pytest_accept-0.3.0-py3-none-any.whl", hash = "sha256:5e73f27020853b861a63dc630dfe63124af4bd60e0e0bb692e1376b99798f2b5", size = 39846, upload-time = "2026-06-11T18:44:37.965Z" },
-]
-
-[[package]]
 name = "pytest-asyncio"
 version = "1.4.1.post1"
 source = { registry = "https://pypi.org/simple" }
@@ -3872,7 +3850,6 @@ dev = [
     { name = "numpydoc" },
     { name = "obstore" },
     { name = "pytest" },
-    { name = "pytest-accept" },
     { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
     { name = "pytest-codspeed" },
@@ -3914,7 +3891,6 @@ remote-tests = [
     { name = "numpydoc" },
     { name = "obstore" },
     { name = "pytest" },
-    { name = "pytest-accept" },
     { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
     { name = "pytest-codspeed" },
@@ -3930,7 +3906,6 @@ test = [
     { name = "hypothesis" },
     { name = "numpydoc" },
     { name = "pytest" },
-    { name = "pytest-accept" },
     { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
     { name = "pytest-codspeed" },
@@ -3979,7 +3954,6 @@ dev = [
     { name = "numpydoc", specifier = "==1.11.0" },
     { name = "obstore", specifier = ">=0.5.1" },
     { name = "pytest", specifier = "==9.2.0" },
-    { name = "pytest-accept", specifier = "==0.3.0" },
     { name = "pytest-asyncio", specifier = "==1.4.1.post1" },
     { name = "pytest-benchmark", specifier = "==5.3.1" },
     { name = "pytest-codspeed", specifier = "==5.0.4" },
@@ -4019,7 +3993,6 @@ remote-tests = [
     { name = "numpydoc", specifier = "==1.11.0" },
     { name = "obstore", specifier = ">=0.5.1" },
     { name = "pytest", specifier = "==9.2.0" },
-    { name = "pytest-accept", specifier = "==0.3.0" },
     { name = "pytest-asyncio", specifier = "==1.4.1.post1" },
     { name = "pytest-benchmark", specifier = "==5.3.1" },
     { name = "pytest-codspeed", specifier = "==5.0.4" },
@@ -4035,7 +4008,6 @@ test = [
     { name = "hypothesis", specifier = "==6.170.14" },
     { name = "numpydoc", specifier = "==1.11.0" },
     { name = "pytest", specifier = "==9.2.0" },
-    { name = "pytest-accept", specifier = "==0.3.0" },
     { name = "pytest-asyncio", specifier = "==1.4.1.post1" },
     { name = "pytest-benchmark", specifier = "==5.3.1" },
     { name = "pytest-codspeed", specifier = "==5.0.4" },
