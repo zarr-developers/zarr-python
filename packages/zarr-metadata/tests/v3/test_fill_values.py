@@ -542,6 +542,12 @@ def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
         default_fill_value(data_type)
 
 
+def test_error_a_constant_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A `ConstantFillValue` holds JSON, which it checks when built, so a value that is not JSON fails where it is written rather than when the data type is used."""
+    with pytest.raises(TypeError, match="ConstantFillValue holds JSON, got <object object"):
+        ConstantFillValue(cast("Any", object()))
+
+
 def test_constant_fill_values_are_equal_when_written_the_same_way() -> None:
     """Two `ConstantFillValue`s are equal, and hash equal, when their values are written the same way, so two data types that differ only in their default are not the same definition. `0`, `False` and `0.0` are three defaults."""
     defaults = [ConstantFillValue(0), ConstantFillValue(False), ConstantFillValue(0.0)]

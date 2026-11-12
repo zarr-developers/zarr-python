@@ -143,6 +143,14 @@ class ConstantFillValue:
     value: JSONValue
     """The default fill value, as a document writes it."""
 
+    def __post_init__(self) -> None:
+        """Check that `value` is JSON, and hold it with arrays as tuples, so it cannot be changed through a reference to what was given. Raises `TypeError` for a value that is not JSON."""
+        refined, problems = refine_json(self.value, ())
+        if len(problems) != 0:
+            msg = f"ConstantFillValue holds JSON, got {self.value!r}: {problems[0].message}"
+            raise TypeError(msg)
+        object.__setattr__(self, "value", refined)
+
     def __call__(self, configuration: object, nested: object) -> JSONValue:
         """Return `value`, whatever the configuration and the nested declarations."""
         return self.value
