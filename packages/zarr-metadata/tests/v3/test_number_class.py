@@ -2,7 +2,7 @@
 
 `cast_value` accepts only data types that model real numbers, on either
 side of the cast, and wraps only to an integral one. `scale_offset`
-accepts only data types with arithmetic. Each reads the number class that
+accepts the same data types. Each reads the number class that
 the data type's definition declares, and accepts a data type that
 declares none, since nothing is known of its values.
 """
@@ -39,8 +39,6 @@ NUMBER_CLASSES = {
             "uint16",
             "uint32",
             "uint64",
-            "numpy.datetime64",
-            "numpy.timedelta64",
         ],
         "integral",
     ),
@@ -52,6 +50,8 @@ NUMBER_CLASSES = {
             "bytes",
             "fixed_length_utf32",
             "null_terminated_bytes",
+            "numpy.datetime64",
+            "numpy.timedelta64",
             "r*",
             "raw_bytes",
             "string",
@@ -97,7 +97,7 @@ def _chunk(data_type: str) -> Chunk:
 
 _NO_REALS = 'expected a chunk of a data type that models real numbers, got "{}"'
 _NO_REAL_TARGET = 'expected a data type that models real numbers, got "{}"'
-_NO_ARITHMETIC = 'expected a chunk of a data type with arithmetic, got "{}"'
+_NO_SCALING = 'expected a chunk of an integer or floating-point data type, got "{}"'
 _NO_WRAP = 'expected an integral data_type to wrap to, got "{}"'
 
 
@@ -132,12 +132,12 @@ _NO_WRAP = 'expected an integral data_type to wrap to, got "{}"'
             "int8",
             [((0, "configuration", "out_of_range"), _NO_WRAP.format("acme.floating_point"))],
         ),
-        # scale_offset takes every kind of number.
+        # scale_offset takes the same data types.
         ("scale_offset", "acme.integral", []),
         ("scale_offset", "acme.floating_point", []),
-        ("scale_offset", "acme.complex", []),
         ("scale_offset", "acme.unknown", []),
-        ("scale_offset", "acme.non_numeric", [((0,), _NO_ARITHMETIC.format("acme.non_numeric"))]),
+        ("scale_offset", "acme.complex", [((0,), _NO_SCALING.format("acme.complex"))]),
+        ("scale_offset", "acme.non_numeric", [((0,), _NO_SCALING.format("acme.non_numeric"))]),
     ],
 )
 def test_the_arithmetic_codecs_read_the_number_class(

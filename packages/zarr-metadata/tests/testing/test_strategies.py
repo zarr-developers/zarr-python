@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast, get_args, get_ori
 import pytest
 from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
+from typing_extensions import TypedDict
 
 from tests.testing._shares import share_of
 from zarr_metadata import UNSET
@@ -523,6 +524,18 @@ def test_fill_values_of_a_field_no_definition_reads_is_a_lookup_error() -> None:
         fill_values(STRUCT_DATA_TYPE, configuration, strategies=without_float32)
 
 
+class _AcmeIntConfiguration(TypedDict, closed=True):
+    """The configuration of `acme.int`: the member a refused draw leaves out."""
+
+    bits: int
+
+
+_ACME_INT = DataTypeDefinition(
+    name="acme.int", configuration=_AcmeIntConfiguration, number_class="integral"
+)
+"""An integer type with a member it requires, which `cast_value` casts to."""
+
+
 def test_a_refused_nested_draw_is_a_value_error() -> None:
     """A field a configuration holds is read as it is drawn, so a strategy that draws a refused one is caught there."""
     refused = DataTypeStrategy(
@@ -531,7 +544,7 @@ def test_a_refused_nested_draw_is_a_value_error() -> None:
     )
     strategies: Strategies = {
         CAST_VALUE_CODEC: DEFAULT_STRATEGIES[CAST_VALUE_CODEC],
-        NUMPY_DATETIME64_DATA_TYPE: refused,
+        _ACME_INT: refused,
     }
     with pytest.raises(ValueError, match="read in the strategies. scope, is refused"):
         find(
@@ -626,56 +639,25 @@ def test_scale_offset_reaches_every_spelling_of_a_float(
     )
 
 
-@pytest.mark.parametrize("definition", [COMPLEX64_DATA_TYPE, COMPLEX128_DATA_TYPE], ids=_id)
-@pytest.mark.parametrize("member", ["offset", "scale"])
-@pytest.mark.parametrize("part", [0, 1])
-@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
-def test_scale_offset_reaches_a_non_finite_part_of_a_complex(
-    definition: DataTypeDefinition[Any], member: str, part: int, value: str
-) -> None:
-    """A complex number's `offset` and `scale` are pairs of float fill values, either of them non-finite."""
-    chunk = Chunk(None, _read(definition, definition.name))
-    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
-    assert configurations is not None
-    find(
-        configurations,
-        lambda configuration: (
-            member in configuration
-            and cast("tuple[object, object]", configuration[member])[part] == value
-        ),
-        settings=_REACH,
-    )
-
-
 def _is_zero_spelled(value: object, width: int) -> bool:
     """Whether a float fill value is zero of either sign, by its value alone."""
     bits = _bits(value)
     return value == 0 if bits is None else bits in (0, 2 ** (width - 1))
 
 
-@pytest.mark.parametrize(
-    ("definition", "width"),
-    [
-        *_FLOAT_BITS.items(),
-        (COMPLEX64_DATA_TYPE, 32),
-        (COMPLEX128_DATA_TYPE, 64),
-    ],
-    ids=str,
-)
+@pytest.mark.parametrize(("definition", "width"), list(_FLOAT_BITS.items()), ids=str)
 @given(data=st.data())
 def test_scale_offset_scale_is_never_zero(
     definition: DataTypeDefinition[Any], width: int, data: st.DataObject
 ) -> None:
-    """No spelling of a float, nor of both parts of a complex number, draws a scale of zero: decoding divides by it."""
+    """No spelling of a float draws a scale of zero: decoding divides by it."""
     chunk = Chunk(None, _read(definition, definition.name))
     configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
     assert configurations is not None
     configuration = data.draw(configurations)
     assert list(SCALE_OFFSET_CODEC.chunk_rules(configuration, {}, chunk)) == []
     if "scale" in configuration:
-        scale = configuration["scale"]
-        parts = scale if isinstance(scale, tuple) else (scale,)
-        assert not all(_is_zero_spelled(part, width) for part in parts)
+        assert not _is_zero_spelled(configuration["scale"], width)
 
 
 def _entries(dimension: object) -> tuple[object, ...]:
@@ -940,11 +922,9 @@ _REAL_NUMBERS = [
     in {
         *(f"{sign}int{bits}" for sign in ("", "u") for bits in (8, 16, 32, 64)),
         *(f"float{bits}" for bits in (16, 32, 64)),
-        "numpy.datetime64",
-        "numpy.timedelta64",
     }
 ]
-"""The data types `cast_value` casts to: integers and floats, and the numpy times, which are signed 64-bit integers."""
+"""The data types `cast_value` casts to: integers and floats."""
 
 
 @pytest.mark.parametrize("definition", _REAL_NUMBERS, ids=_id)

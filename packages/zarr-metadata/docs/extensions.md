@@ -112,9 +112,9 @@ Other kinds declare more:
   size. It declares what kind of numbers its values are (`number_class`:
   `"integral"`, `"floating_point"`, `"complex"` or `"non_numeric"`), which
   the codecs that are defined only for some kinds of numbers read:
-  `cast_value` refuses a data type that does not model real numbers, and
-  `scale_offset` one whose values are not numbers. A data type that does
-  not declare it is accepted by both.
+  `cast_value` and `scale_offset` refuse a data type that declares
+  complex or non-numeric values. A data type that does not declare it is
+  accepted by both.
 - A chunk grid declares which shapes it fits (`shape_rules`) and its chunk
   lengths (`chunk_lengths`).
 - A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,

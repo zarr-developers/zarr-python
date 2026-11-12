@@ -27,13 +27,13 @@ NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=numpy_time_fill_value_canonical,
     storage=numpy_time_storage,
-    number_class="integral",
+    number_class="non_numeric",
 )
 """The `numpy.timedelta64` data type.
 
-Its number class is integral: like `numpy.datetime64`, it is stored as
-signed 64-bit integers, and is compatible with any codec that supports
-arrays of those.
+Its number class is non-numeric, as that of `numpy.datetime64` is: its
+values are durations, and neither `cast_value` nor `scale_offset` names it
+among the data types it supports.
 """
 
 

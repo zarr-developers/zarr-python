@@ -22,7 +22,6 @@ from hypothesis import strategies as st
 from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.definition._definition import AcceptedDeclaration
 from zarr_metadata.testing._data_type import (
-    COMPLEX_WIDTHS,
     FLOAT_WIDTHS,
     INTEGER_RANGES,
     float_fill_values,
@@ -39,7 +38,7 @@ from zarr_metadata.testing._draw import (
 )
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, MAX_RANK, CodecStrategy
 from zarr_metadata.v3._definition import Chunk, DataTypeDefinition, storage_of
-from zarr_metadata.v3.codec._arithmetic import NO_REAL_NUMBERS, NOT_NUMBERS
+from zarr_metadata.v3.codec._arithmetic import NO_REAL_NUMBERS
 from zarr_metadata.v3.codec.blosc import (
     BLOSC_CNAME,
     BLOSC_CODEC,
@@ -73,8 +72,6 @@ from zarr_metadata.v3.codec.zstd import (
     ZSTD_MIN_LEVEL,
     ZstdCodecConfiguration,
 )
-from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
-from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -115,12 +112,6 @@ _ENDIAN: Final = st.sampled_from(ENDIANNESS)
 
 _SMALL_NUMBERS: Final = st.integers(0, 127)
 """Values every integral and floating-point data type holds: for a chunk whose data type is not known."""
-
-_NUMPY_TIMES: Final = frozenset({NUMPY_DATETIME64_DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE})
-"""The numpy time types, each stored as a signed 64-bit integer."""
-
-_NUMPY_TIME_RANGE: Final = (-(2**63) + 1, 2**63 - 1)
-"""The signed 64-bit integers but the least, which numpy reads as `NaT`: the finite numpy times."""
 
 
 @st.composite
@@ -190,18 +181,14 @@ def _offsets_and_scales(
 def _scale_offset(
     chunk: Chunk, _strategies: Strategies
 ) -> st.SearchStrategy[ScaleOffsetCodecConfiguration] | None:
-    """An `offset` and a `scale`, each a value of the data type the codec is handed, the scale not zero; None for a data type whose values are not numbers.
+    """An `offset` and a `scale`, each a value of the data type the codec is handed, the scale not zero; None for a data type whose values are not integers or floating-point numbers.
 
     Each is a fill value of the chunk's data type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43),
     so a float's is in every spelling a fill value takes, a `NaN` and an
-    infinity among them, and a complex number's is a pair of them. The
-    scale is drawn non-zero in any spelling, so that decoding never divides
-    by zero; a scale small enough that decoding overflows is still drawn. A
-    numpy time is drawn as the signed 64-bit integer it is stored as, never
-    `NaT`, since it "is compatible with any codec that supports arrays of
-    signed 64-bit integers"
-    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
+    infinity among them. The scale is drawn non-zero in any spelling, so
+    that decoding never divides by zero; a scale small enough that decoding
+    overflows is still drawn.
     A data type this package does not define, whose values it cannot
     draw, takes only the configuration with neither, the identity.
     Handed a chunk whose data type is unknown, the values are small
@@ -212,22 +199,15 @@ def _scale_offset(
     if definition is None:
         offset: st.SearchStrategy[JSONValue] = _SMALL_NUMBERS
         scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)
-    elif definition.number_class in NOT_NUMBERS:
+    elif definition.number_class in NO_REAL_NUMBERS:
         return None
-    elif definition in INTEGER_RANGES or definition in _NUMPY_TIMES:
-        low, high = INTEGER_RANGES.get(definition, _NUMPY_TIME_RANGE)
+    elif definition in INTEGER_RANGES:
+        low, high = INTEGER_RANGES[definition]
         offset = st.integers(low, high)
         scale = st.integers(low, high).filter(lambda value: value != 0)
     elif definition in FLOAT_WIDTHS:
         offset = float_fill_values(FLOAT_WIDTHS[definition])
         scale = offset.filter(lambda value: not is_zero_float(value))
-    elif definition in COMPLEX_WIDTHS:
-        part = float_fill_values(COMPLEX_WIDTHS[definition])
-        offset = st.tuples(part, part)
-        # Non-zero in either part is a non-zero complex number.
-        scale = st.tuples(part, part).filter(
-            lambda pair: not (is_zero_float(pair[0]) and is_zero_float(pair[1]))
-        )
     else:
         return st.builds(ScaleOffsetCodecConfiguration)
     return _offsets_and_scales(offset, scale)

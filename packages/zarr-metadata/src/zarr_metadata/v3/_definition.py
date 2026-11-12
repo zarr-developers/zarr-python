@@ -137,7 +137,7 @@ numbers: floating-point and integral data types"
 and its `wrap` mode is "Only permitted when data_type is an integral
 type"
 (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L84).
-Values that are truth values, text, byte strings or records are
+Values that are truth values, times, text, byte strings or records are
 `non_numeric`.
 """
 
