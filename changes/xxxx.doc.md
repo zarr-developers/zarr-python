@@ -1,0 +1,1 @@
+The `custom_dtype` example runs under pytest 9.2. It passed `-c` and its own path to `pytest.main` as one argument, which pytest 9.2 rejects. It now passes `-c os.devnull`, so pytest reads no configuration file, and it no longer leaves a directory named ` ` (a single space) in the working directory under earlier pytest releases.

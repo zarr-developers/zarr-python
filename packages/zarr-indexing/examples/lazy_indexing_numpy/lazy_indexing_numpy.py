@@ -12,6 +12,7 @@
 Demonstrate lazy indexing over a plain NumPy array with zarr_indexing.LazyArray
 """
 
+import os
 import sys
 
 import numpy as np
@@ -128,16 +129,20 @@ def test_parts() -> None:
 
 
 if __name__ == "__main__":
-    # Run the example with printed output, and a dummy pytest configuration file specified.
-    # Without the dummy configuration file, at test time pytest will attempt to use the
-    # configuration file in the project root, which will error because Zarr is using some
-    # plugins that are not installed in this example.
+    # Run the example with printed output and no pytest configuration file. Without
+    # `-c os.devnull`, pytest would use the configuration file of an enclosing project,
+    # which can require plugins and options this example's environment lacks. Before
+    # pytest 9.2, a `/dev/null` configuration file puts the rootdir at `/dev`, where the
+    # cache cannot be written, so `-p no:cacheprovider` turns the cache off.
     sys.exit(
         pytest.main(
             [
                 "-s",
                 __file__,
-                f"-c {__file__}",
+                "-c",
+                os.devnull,
+                "-p",
+                "no:cacheprovider",
                 # Suppress: "PytestAssertRewriteWarning: Module already imported so
                 # cannot be rewritten; zarr"
                 "-W",
