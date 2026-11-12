@@ -4,8 +4,7 @@
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
 #   "zarr-indexing>=0.1",
 #   "dask[array]==2025.3.0",
-#   "numpy==2.4.3",
-#   "pytest==9.0.2"
+#   "numpy==2.4.3"
 # ]
 # ///
 #
@@ -14,29 +13,25 @@
 Demonstrate using zarr_indexing.LazyArray with Dask
 """
 
-import os
-import sys
 import time
 
 import dask
 import dask.array as da
 import numpy as np
-import pytest
 import zarr
 from dask.base import tokenize
 
-from zarr_indexing import EagerArrayAdapter, LazyArray
+from zarr_indexing import EagerArrayAdapter, LazyArray, Partition
 
 
-@pytest.fixture
-def source() -> zarr.Array:
-    """A chunked Zarr array to wrap."""
+def make_source() -> zarr.Array:
+    """Create a chunked Zarr array to wrap."""
     array = zarr.create_array(store={}, shape=(40, 30), chunks=(10, 10), dtype="i4")
     array[:] = np.arange(40 * 30).reshape(40, 30)
     return array
 
 
-def test_from_array(source: zarr.Array) -> None:
+def wrap_with_from_array(source: zarr.Array) -> None:
     """Adapt lazy selections for `dask.array.from_array`."""
     lazy = LazyArray(source)
 
@@ -53,7 +48,13 @@ def test_from_array(source: zarr.Array) -> None:
     assert np.array_equal(array.compute(scheduler="threads"), source[5:35, 3:27])
 
 
-def test_parts_as_tasks(source: zarr.Array) -> None:
+@dask.delayed
+def read_part(part: Partition) -> np.ndarray:
+    """Read one partition's sub-view, as a Dask task."""
+    return part.view.result()
+
+
+def compute_parts_as_tasks(source: zarr.Array) -> None:
     """Build one task per partition and compute them in parallel."""
     view = LazyArray(source)[5:35, 3:27]
 
@@ -65,11 +66,7 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     # A partition carries a sub-view to resolve and where its result belongs, so
     # reads can run concurrently with this source and reader; assembly below
     # places the returned blocks sequentially.
-    @dask.delayed
-    def read(part: object) -> np.ndarray:
-        return part.view.result()
-
-    blocks = dask.compute(*[read(part) for part in parts], scheduler="threads")
+    blocks = dask.compute(*[read_part(part) for part in parts], scheduler="threads")
 
     result = np.empty(view.shape, dtype=view.dtype)
     for part, block in zip(parts, blocks, strict=True):
@@ -83,7 +80,7 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     print(f"{len(complete)} of {len(parts)} parts cover their chunk completely")
 
 
-def test_tokenize(source: zarr.Array) -> None:
+def compare_tokens(source: zarr.Array) -> None:
     """Check token equality for these unchanged source and selection pairs."""
     lazy = LazyArray(source)
 
@@ -99,7 +96,23 @@ def test_tokenize(source: zarr.Array) -> None:
     assert tokenize(lazy[0:20][5:10]) == tokenize(lazy[5:10])
 
 
-def test_indexing_only_workload() -> None:
+def dask_chain(data: np.ndarray, depth: int) -> da.Array:
+    """Apply `depth` leading slices to a Dask array, one graph layer each."""
+    array = da.from_array(data, chunks=(1, 4))
+    for _ in range(depth):
+        array = array[1:]
+    return array
+
+
+def lazy_chain(data: np.ndarray, depth: int) -> LazyArray:
+    """Apply `depth` leading slices to a LazyArray, composed into one transform."""
+    view = LazyArray.from_numpy(data)
+    for _ in range(depth):
+        view = view[1:]
+    return view
+
+
+def time_indexing_only_workload() -> None:
     """Compare an accumulating task graph with a fused transform.
 
     This measures repeated leading slices at several depths. LazyArray retains
@@ -111,22 +124,10 @@ def test_indexing_only_workload() -> None:
     """
     data = np.zeros((2000, 4), dtype="i4")  # 2000 chunks, one row each
 
-    def dask_chain(depth: int) -> da.Array:
-        array = da.from_array(data, chunks=(1, 4))
-        for _ in range(depth):
-            array = array[1:]
-        return array
-
-    def lazy_chain(depth: int) -> LazyArray:
-        view = LazyArray.from_numpy(data)
-        for _ in range(depth):
-            view = view[1:]
-        return view
-
     # Read once through each path first, so the timings below exclude the cost
     # of importing and initializing the machinery.
-    dask_chain(1)[:2].compute(scheduler="synchronous")
-    lazy_chain(1)[:2].result()
+    dask_chain(data, 1)[:2].compute(scheduler="synchronous")
+    lazy_chain(data, 1)[:2].result()
 
     header = (
         f"{'selections':>10} {'dask compose':>13} {'dask read':>10} {'layers':>7}"
@@ -135,7 +136,7 @@ def test_indexing_only_workload() -> None:
     print(header)
     for depth in (1, 5, 20):
         start = time.perf_counter()
-        chained = dask_chain(depth)
+        chained = dask_chain(data, depth)
         dask_compose = time.perf_counter() - start
 
         start = time.perf_counter()
@@ -143,7 +144,7 @@ def test_indexing_only_workload() -> None:
         dask_read = time.perf_counter() - start
 
         start = time.perf_counter()
-        view = lazy_chain(depth)
+        view = lazy_chain(data, depth)
         lazy_compose = time.perf_counter() - start
 
         start = time.perf_counter()
@@ -160,25 +161,13 @@ def test_indexing_only_workload() -> None:
         )
 
 
+def main() -> None:
+    source = make_source()
+    wrap_with_from_array(source)
+    compute_parts_as_tasks(source)
+    compare_tokens(source)
+    time_indexing_only_workload()
+
+
 if __name__ == "__main__":
-    # Run the example with printed output and no pytest configuration file. Without
-    # `-c os.devnull`, pytest would use the configuration file of an enclosing project,
-    # which can require plugins and options this example's environment lacks. Before
-    # pytest 9.2, a `/dev/null` configuration file puts the rootdir at `/dev`, where the
-    # cache cannot be written, so `-p no:cacheprovider` turns the cache off.
-    sys.exit(
-        pytest.main(
-            [
-                "-s",
-                __file__,
-                "-c",
-                os.devnull,
-                "-p",
-                "no:cacheprovider",
-                # Suppress: "PytestAssertRewriteWarning: Module already imported so
-                # cannot be rewritten; zarr"
-                "-W",
-                "ignore::pytest.PytestAssertRewriteWarning",
-            ]
-        )
-    )
+    main()

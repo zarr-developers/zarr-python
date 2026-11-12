@@ -2,8 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "zarr-indexing>=0.1",
-#   "numpy==2.4.3",
-#   "pytest==9.0.2"
+#   "numpy==2.4.3"
 # ]
 # ///
 #
@@ -12,16 +11,12 @@
 Demonstrate lazy indexing over a plain NumPy array with zarr_indexing.LazyArray
 """
 
-import os
-import sys
-
 import numpy as np
-import pytest
 
 from zarr_indexing import LazyArray
 
 
-def test_wrap_and_compose() -> None:
+def wrap_and_compose() -> None:
     """Wrap an array, compose selections without reading, then materialize once."""
     data = np.arange(12 * 8).reshape(12, 8)
     lazy = LazyArray.from_numpy(data)
@@ -58,7 +53,7 @@ def test_wrap_and_compose() -> None:
     assert np.array_equal(np.asarray(view), data[2:10, ::2])
 
 
-def test_iteration_and_writes() -> None:
+def iterate_and_write() -> None:
     """Iterate lazy rows and synchronously write through a composed view."""
     data = np.arange(24).reshape(6, 4)
     view = LazyArray.from_numpy(data)[1:5][::2]
@@ -72,7 +67,7 @@ def test_iteration_and_writes() -> None:
     assert data[3, 0] == 99
 
 
-def test_box_and_query_selections() -> None:
+def compare_box_and_query_selections() -> None:
     """Distinguish selections that describe a region from selections that gather points."""
     data = np.arange(12 * 8).reshape(12, 8)
     lazy = LazyArray.from_numpy(data)
@@ -100,7 +95,7 @@ def test_box_and_query_selections() -> None:
     assert not query[0:2, 0:2].is_box
 
 
-def test_parts() -> None:
+def assemble_from_parts() -> None:
     """Iterate the partitions a view covers, and assemble the result from them."""
     data = np.arange(12 * 8).reshape(12, 8)
 
@@ -128,25 +123,12 @@ def test_parts() -> None:
     )
 
 
+def main() -> None:
+    wrap_and_compose()
+    iterate_and_write()
+    compare_box_and_query_selections()
+    assemble_from_parts()
+
+
 if __name__ == "__main__":
-    # Run the example with printed output and no pytest configuration file. Without
-    # `-c os.devnull`, pytest would use the configuration file of an enclosing project,
-    # which can require plugins and options this example's environment lacks. Before
-    # pytest 9.2, a `/dev/null` configuration file puts the rootdir at `/dev`, where the
-    # cache cannot be written, so `-p no:cacheprovider` turns the cache off.
-    sys.exit(
-        pytest.main(
-            [
-                "-s",
-                __file__,
-                "-c",
-                os.devnull,
-                "-p",
-                "no:cacheprovider",
-                # Suppress: "PytestAssertRewriteWarning: Module already imported so
-                # cannot be rewritten; zarr"
-                "-W",
-                "ignore::pytest.PytestAssertRewriteWarning",
-            ]
-        )
-    )
+    main()
