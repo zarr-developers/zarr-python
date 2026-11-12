@@ -95,6 +95,11 @@ def _fill_value_rules(
         )
 
 
+def _fill_value_default(configuration: RawBytesConfiguration, nested: Nested) -> tuple[int, ...]:
+    """Return one zero byte value for each 8 bits of the size."""
+    return (0,) * (configuration["bits"] // 8)
+
+
 def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:
     """Return single-byte storage for `r8`. Return None (unknown) for wider raw bits, because the spec does not yet say anything about their byte order.
 
@@ -112,6 +117,7 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     configuration=RawBytesConfiguration,
     rules=_rules,
     fill_value=RawBytesFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     storage=_storage,
 )
