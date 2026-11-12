@@ -460,7 +460,7 @@ def read_array_metadata_v2(
 
 
 class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV2ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+    """The members `ZarrV2ArrayMetadata.replace` takes: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `attributes` (meaning no
     `.zattrs`), `dimension_separator` (read as `"."`), and any member the
@@ -497,7 +497,7 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, JSONValue | UNSET]
     """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
 
-    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    A key the spec defines, or that `replace` takes by name, raises `TypeError`.
     """
 
 
@@ -522,7 +522,7 @@ class ZarrV2ArrayMetadata(Keyed):
     the constructor reads `document` in `context` and raises
     `MetadataValidationError` with every problem, so no model is invalid.
     Two models are equal when their documents mean the same thing in
-    their scopes, as the model key defines. `update` reads new members
+    their scopes, as the model key defines. `replace` reads new members
     in the model's own scope. `with_context` and `refined_in` read the
     document in another scope. A model pickles as its pair.
     """
@@ -579,7 +579,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV2Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `replace` reads new members in this scope."""
         return self._context
 
     @property
@@ -739,7 +739,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
+    def replace(self, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
         """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed.
 
         Raises `MetadataValidationError` when the resulting document has a
@@ -754,6 +754,10 @@ class ZarrV2ArrayMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
@@ -811,7 +815,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def create_default(
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
     ) -> ZarrV2ArrayMetadata:
-        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
+        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `replace` takes, including `UNSET` to drop a member.
 
         A member that depends on another is derived from it when that
         member is given and it is not:

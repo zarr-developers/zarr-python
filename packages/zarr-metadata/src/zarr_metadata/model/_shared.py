@@ -108,11 +108,11 @@ def other_members(
 def member_changes(
     members: Mapping[str, object], update: type, spec_members: frozenset[str]
 ) -> dict[str, object]:
-    """The document members that `members`, given to a model's `update` or `create_default`, set: each member that `update` (the model's update TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
+    """The document members that `members`, given to a model's `replace` or `create_default`, set: each member that `update` (the model's `Update` TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
 
     Raises `TypeError` for a member that `update` does not declare, and
     for a member of `extra_fields` that the spec defines (one of
-    `spec_members`) or that `update` takes by name. So a misspelled
+    `spec_members`) or that `replace` takes by name. So a misspelled
     member is never written as a member the spec does not define, which a
     reader that must understand every such member would refuse. Also
     raises `TypeError` for a declaration given where a member's JSON goes.
@@ -144,7 +144,7 @@ def member_changes(
         # `extra_fields` itself is the mapping, so a member of that name is
         # given in it like any other member the spec does not define.
         if key in declared and key != "extra_fields":
-            msg = f"{key!r} is a member that update takes by name; give it by name, not in extra_fields"
+            msg = f"{key!r} is a member that replace takes by name; give it by name, not in extra_fields"
             raise TypeError(msg)
         if key in spec_members:
             msg = f"{key!r} is a member the spec defines, which extra_fields does not hold"

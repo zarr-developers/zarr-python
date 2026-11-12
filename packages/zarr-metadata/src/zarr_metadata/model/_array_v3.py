@@ -459,7 +459,7 @@ def _waived(value: object) -> bool:
 
 
 class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV3ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+    """The members `ZarrV3ArrayMetadata.replace` takes: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `dimension_names`, `attributes`,
     `storage_transformers`, and any member the spec does not define. Those
@@ -498,7 +498,7 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
     """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
 
-    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    A key the spec defines, or that `replace` takes by name, raises `TypeError`.
     """
 
 
@@ -518,7 +518,7 @@ class ZarrV3ArrayMetadata(Keyed):
     `context` and raises `MetadataValidationError` with every problem, so
     no model is invalid. Two models are equal when their documents mean
     the same thing in their scopes, as the model key defines. The scope
-    itself is not compared. `update` reads new members in the model's own
+    itself is not compared. `replace` reads new members in the model's own
     scope. `with_context` and `refined_in` read the document in another
     scope. A model pickles as its pair, provided the definitions in its
     scope can be pickled, which requires their functions to be defined at
@@ -577,7 +577,7 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV3Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `replace` reads new members in this scope."""
         return self._context
 
     @property
@@ -713,10 +713,10 @@ class ZarrV3ArrayMetadata(Keyed):
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+    def replace(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
         """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
 
-        Raises `TypeError` for a member the update does not take. Raises
+        Raises `TypeError` for a member `replace` does not take. Raises
         `MetadataValidationError` when the resulting document has a
         problem. So members that depend on each other must be passed
         together, for example a `shape` with a grid that fits it.
@@ -729,6 +729,10 @@ class ZarrV3ArrayMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
@@ -795,7 +799,7 @@ class ZarrV3ArrayMetadata(Keyed):
         context: ZarrV3Context | None = None,
         **overrides: Unpack[ZarrV3ArrayMetadataUpdate],
     ) -> ZarrV3ArrayMetadata:
-        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
+        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `replace` takes, including `UNSET` to drop a member.
 
         A member that depends on another is derived from it when that
         member is given and it is not:
