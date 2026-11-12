@@ -16,6 +16,7 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Final,
@@ -30,7 +31,6 @@ from typing import (
 
 from typing_extensions import TypeAliasType, is_typeddict
 
-from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     ValidationProblem,
     is_object,
@@ -73,6 +73,10 @@ from zarr_metadata.v3._common import (
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
+
+if TYPE_CHECKING:
+    from zarr_metadata._common import JSONValue
+    from zarr_metadata.v3.codec.bytes import BytesCodecObject
 
 
 def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
@@ -123,7 +127,7 @@ def unknown_storage(*_: object) -> None:
     """The storage of a data type that does not declare it: unknown."""
 
 
-def little_endian_bytes_codec(*_: object) -> JSONValue:
+def little_endian_bytes_codec(*_: object) -> BytesCodecObject:
     """The array -> bytes codec of a data type that does not declare one: `bytes` with little `endian`, which encodes values of any fixed size."""
     return {"name": "bytes", "configuration": {"endian": "little"}}
 
@@ -227,7 +231,9 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
 
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
     """How the values are stored, given the configuration and the nested declarations; None when unknown."""
-    array_bytes_codec_default: Callable[[C, Nested], JSONValue] = little_endian_bytes_codec
+    array_bytes_codec_default: Callable[[C, Nested], ZarrV3CodecDeclaration] = (
+        little_endian_bytes_codec
+    )
     """The array -> bytes codec that encodes the values of an array built without codecs, such as `vlen-utf8` for `string`."""
 
     def _refusal(self) -> str | None:

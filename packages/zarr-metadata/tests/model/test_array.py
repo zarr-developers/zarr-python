@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from zarr_metadata.typed_json import JSONValue
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3 import ZarrV3NamedConfigJSON
+    from zarr_metadata.v3.definition import ZarrV3CodecDeclaration
 
 # --- public exports --------------------------------------------------------
 
@@ -364,7 +365,7 @@ def _grid(*chunk_shape: int) -> dict[str, Any]:
     return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
 
 
-def _acme_vlen_text(configuration: EmptyConfiguration, nested: Nested) -> "JSONValue":
+def _acme_vlen_text(configuration: EmptyConfiguration, nested: Nested) -> "ZarrV3CodecDeclaration":
     """The `acme.vlen-text` codec, alone."""
     return {"name": "acme.vlen-text"}
 
