@@ -45,7 +45,7 @@ maintainers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    'packaging>=22.0',
+    'packaging>=24.0',
     'numpy>=2',
     # 0.16.6 and 0.17.1 refuse to unpickle untrusted data (GHSA-jqc8-qjfv-5m6r); 0.17.0 does not.
     'numcodecs>=0.16.6,!=0.17.0',
@@ -250,7 +250,7 @@ python = "3.12"
 features = ["remote"]
 dependency-groups = ["remote-tests"]
 extra-dependencies = [
-    'packaging==22.*',
+    'packaging==24.*',
     'numpy==2.0.*',
     'numcodecs==0.16.*',
     'fsspec==2023.10.0',
@@ -261,10 +261,6 @@ extra-dependencies = [
     'obstore==0.5.*',
     'msgspec==0.19.*',
 ]
-
-[tool.hatch.envs.min_deps.env-vars]
-# Keep pytest<9.2 here so packaging==22.* (our declared floor) still resolves.
-UV_OVERRIDE = "{root}/ci/min_deps-overrides.txt"
 
 [tool.hatch.envs.default]
 installer = "uv"
