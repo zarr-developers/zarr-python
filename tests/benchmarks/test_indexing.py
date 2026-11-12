@@ -52,6 +52,29 @@ def test_slice_indexing(
     benchmark(getitem, data, indexer)
 
 
+@pytest.mark.parametrize("store", ["memory", "memory_get_latency"], indirect=["store"])
+@pytest.mark.parametrize("shards", shards, ids=str)
+def test_iterate(
+    store: Store,
+    shards: tuple[int, ...] | None,
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark iterating over the rows of an array with `for row in array`."""
+    data = create_array(
+        store=store,
+        shape=(105,) * 3,
+        dtype="uint8",
+        chunks=(10,) * 3,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    data[:] = 1
+    benchmark(list, data)
+
+
 # Benchmark for Morton order optimization with power-of-2 shards
 # Morton order is used internally by sharding codec for chunk iteration
 morton_shards = (

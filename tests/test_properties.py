@@ -331,6 +331,22 @@ def test_block_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_iter(data: st.DataObject) -> None:
+    # Iteration reads whole rows of chunks (shards, for sharded arrays) at a time.
+    # Whatever the grid, it must yield the same rows as NumPy iteration over the
+    # array's contents, and the same arrays as integer indexing.
+    zarray, nparray = data.draw(block_test_arrays())
+    rows = list(zarray)
+    assert len(rows) == len(nparray)
+    for i, (row, expected) in enumerate(zip(rows, nparray, strict=True)):
+        assert_array_equal(expected, row)
+        assert row.shape == zarray[i].shape
+        assert row.dtype == zarray[i].dtype
+
+
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_roundtrip_array_metadata_from_store(
