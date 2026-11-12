@@ -24,15 +24,18 @@ from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
 
 from tests.testing._shares import share_of
+from zarr_metadata import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
     AcceptedDeclaration,
     Definition,
     EmptyConfiguration,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.model import ZarrV3ArrayMetadata
 from zarr_metadata.testing._draw import scope_with
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
@@ -171,6 +174,29 @@ def test_fill_values_fit_their_data_type(
     value = data.draw(fill_values(definition, configuration))
     assert fill_value_problems(data_type, value) == ()
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
+
+
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_default_fill_values_fit_their_data_type(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """Every data type this package defines has a default fill value for every configuration, which the data type accepts, through JSON too."""
+    data_type = _read(definition, data.draw(declarations(definition)))
+    value = default_fill_value(data_type)
+    assert value is not UNSET
+    assert fill_value_problems(data_type, value) == ()
+    assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
+
+
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_create_default_reads_every_data_type_given_alone(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """`create_default` given only a data type this package defines, in any configuration, derives a fill value and an array -> bytes codec that the read accepts."""
+    declaration = data.draw(declarations(definition))
+    ZarrV3ArrayMetadata.create_default(context=ZARR_PYTHON_CONTEXT, data_type=declaration)
 
 
 @pytest.mark.parametrize("definition", _CHUNK_GRIDS, ids=_id)

@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import Nested
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, multi_byte
 
 FIXED_LENGTH_UTF32_DATA_TYPE_NAME: Final = "fixed_length_utf32"
@@ -103,6 +103,7 @@ FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     configuration=FixedLengthUtf32Configuration,
     rules=_rules,
     fill_value=FixedLengthUtf32FillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=multi_byte,

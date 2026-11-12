@@ -24,6 +24,9 @@ from zarr_metadata._json import (
 )
 from zarr_metadata.definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
+    EmptyConfiguration,
+    Nested,
     UnclaimedDeclaration,
     canonical_of,
     configuration_of,
@@ -51,19 +54,24 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
+from zarr_metadata.v3._definition import variable_length
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
     ArrayExtraFieldDefinition,
     CodecDefinition,
+    DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
     from zarr_metadata.typed_json import JSONValue
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3 import ZarrV3NamedConfigJSON
+    from zarr_metadata.v3.definition import ZarrV3CodecDeclaration
 
 # --- public exports --------------------------------------------------------
 
@@ -350,13 +358,187 @@ def test_v3_create_default_is_valid_empty_array() -> None:
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
 
 
-def test_v3_create_default_applies_overrides() -> None:
-    """V3 create_default applies keyword overrides over the defaults."""
-    m = ZarrV3ArrayMetadata.create_default(shape=(4, 4), attributes={"a": 1})
-    assert m.shape == (4, 4)
-    assert m.attributes == {"a": 1}
-    # un-overridden fields keep their defaults
-    assert m.data_type.to_json() == "uint8"
+_LITTLE_BYTES: dict[str, Any] = {"name": "bytes", "configuration": {"endian": "little"}}
+
+
+def _grid(*chunk_shape: int) -> dict[str, Any]:
+    return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+
+
+def _acme_vlen_text(configuration: EmptyConfiguration, nested: Nested) -> "ZarrV3CodecDeclaration":
+    """The `acme.vlen-text` codec, alone."""
+    return {"name": "acme.vlen-text"}
+
+
+_ACME_TEXT_CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(
+        data_types=[
+            DataTypeDefinition(
+                name="acme.text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                array_bytes_codec_default=_acme_vlen_text,
+                storage=variable_length,
+            ),
+            DataTypeDefinition(
+                name="acme.bare-text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                storage=variable_length,
+            ),
+        ],
+        codecs=[
+            CodecDefinition(
+                name="acme.vlen-text",
+                configuration=EmptyConfiguration,
+                kind="array_bytes",
+                size="dynamic",
+            )
+        ],
+    )
+)
+"""A scope with an extension's data types whose values vary in size: `acme.text`, which declares its array -> bytes codec `acme.vlen-text`, and `acme.bare-text`, which declares none."""
+
+
+@pytest.mark.parametrize(
+    ("model", "context", "overrides", "expected"),
+    [
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {},
+            {"chunk_grid": _grid(), "fill_value": 0, "codecs": (_LITTLE_BYTES,)},
+        ),
+        (ZarrV3ArrayMetadata, None, {"shape": (4, 0)}, {"chunk_grid": _grid(4, 1)}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "bool"}, {"fill_value": False}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "float32"}, {"fill_value": 0.0}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "complex64"}, {"fill_value": (0.0, 0.0)}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "r16"}, {"fill_value": (0, 0)}),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {
+                "data_type": {
+                    "name": "numpy.datetime64",
+                    "configuration": {"unit": "s", "scale_factor": 1},
+                }
+            },
+            {"fill_value": "NaT"},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {
+                "data_type": {
+                    "name": "struct",
+                    "configuration": {
+                        "fields": (
+                            {"name": "a", "data_type": "int16"},
+                            {"name": "b", "data_type": "bool"},
+                        )
+                    },
+                }
+            },
+            {"fill_value": {"a": 0, "b": False}, "codecs": (_LITTLE_BYTES,)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"data_type": "string"},
+            {"fill_value": "", "codecs": ({"name": "vlen-utf8"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"data_type": "bytes"},
+            {"fill_value": "", "codecs": ({"name": "vlen-bytes"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            ZARR_PYTHON_CONTEXT,
+            {"data_type": "variable_length_bytes"},
+            {"fill_value": "", "codecs": ({"name": "vlen-bytes"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            _ACME_TEXT_CONTEXT,
+            {"data_type": "acme.text"},
+            {"fill_value": "", "codecs": ({"name": "acme.vlen-text"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            ZARR_PYTHON_CONTEXT,
+            {"data_type": {"name": "raw_bytes", "configuration": {"length_bytes": 2}}},
+            {"fill_value": "AAA="},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"shape": (4,), "chunk_grid": _grid(2), "data_type": "bool", "fill_value": True},
+            {"chunk_grid": _grid(2), "fill_value": True},
+        ),
+        (ZarrV2ArrayMetadata, None, {}, {"chunks": (), "fill_value": 0}),
+        (ZarrV2ArrayMetadata, None, {"shape": (0, 3)}, {"chunks": (1, 3)}),
+        (ZarrV2ArrayMetadata, None, {"shape": (4,), "chunks": (2,)}, {"chunks": (2,)}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|b1"}, {"fill_value": False}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<c8"}, {"fill_value": (0.0, 0.0)}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|V2"}, {"fill_value": "AAA="}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<U2"}, {"fill_value": ""}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<M8[s]"}, {"fill_value": "NaT"}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|O"}, {"fill_value": None}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|b1", "fill_value": True}, {"fill_value": True}),
+    ],
+)
+def test_create_default_derives_the_members_not_given(
+    model: Any,  # noqa: ANN401
+    context: Any,  # noqa: ANN401
+    overrides: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    """`create_default` derives each member that depends on a member given, when it is not given itself: the chunk grid (v3) or chunks (v2) from `shape`, one chunk covering the array with a length of 1 for a dimension of length 0; the fill value from the data type's default, `null` for a v2 dtype with none; and, in v3, the codecs from the array -> bytes codec the data type declares, such as `vlen-utf8` for `string` or an extension's own codec, and `bytes` for a data type that declares none. A member given is kept. The document writes the members in the order it always has."""
+    document = dict(model.create_default(context=context, **overrides).to_json())
+    assert {key: document[key] for key in expected} == expected
+    assert [type(document[key]) for key in expected] == [type(expected[key]) for key in expected]
+    order = (
+        ["zarr_format", "node_type", "shape", "fill_value", "data_type", "chunk_grid", "codecs"]
+        if model is ZarrV3ArrayMetadata
+        else ["zarr_format", "shape", "chunks", "dtype", "fill_value", "order"]
+    )
+    assert [key for key in document if key in order] == order
+
+
+def test_error_create_default_needs_a_fill_value_for_a_data_type_without_a_default() -> None:
+    """A data type that nothing in scope claims has no default fill value, so `create_default` needs one given: the fill value is reported missing."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(data_type="acme.unknown")
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "missing_key")]
+
+
+def test_error_create_default_derives_bytes_for_a_data_type_that_declares_no_codec() -> None:
+    """A data type that declares no array -> bytes codec gets `bytes`, which refuses a data type whose values vary in size. The note names the codecs filled in, since the caller did not write them."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(context=_ACME_TEXT_CONTEXT, data_type="acme.bare-text")
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 0), "invalid_value")]
+    (note,) = getattr(raised.value, "__notes__", [])
+    assert 'codecs = [{"name": "bytes", "configuration": {"endian": "little"}}]' in note
+
+
+def test_error_create_default_reports_a_member_dropped_and_derives_nothing_from_it() -> None:
+    """A member given as `UNSET` is left out and derives nothing, so the members derived from it keep their defaults, and the only problem is the member dropped. `data_type` is not typed to take `UNSET`, since a document needs it, but an untyped caller can pass it."""
+    dropped = cast("dict[str, Any]", {"data_type": UNSET})
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(**dropped)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("data_type",), "missing_key")]
+
+
+def test_error_create_default_names_the_members_it_filled_in() -> None:
+    """When the document has a problem, the error notes each member `create_default` filled in, since a default may not fit a member given: here, `dimension_names` given without `shape`."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(dimension_names=("x",))
+    notes = getattr(raised.value, "__notes__", [])
+    assert len(notes) == 1
+    assert notes[0].startswith("create_default filled in the members not given: shape = [], ")
+    assert "dimension_names" not in notes[0]
 
 
 @pytest.mark.parametrize(
@@ -396,7 +578,7 @@ def test_v3_create_default_applies_overrides() -> None:
 def test_create_default_takes_the_members_replace_takes(
     model: object, members: dict[str, Any]
 ) -> None:
-    """Every model's `create_default` takes the same keyword members as its `replace`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
+    """Every model's `create_default` takes the same keyword members as its `replace`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. For members that no other member is derived from, applying them at creation gives the same model as applying them afterwards: `replace` derives nothing, so a `shape` or data type given to it keeps the grid and fill value of the model it is called on."""
     kind = cast("Any", model)
     assert kind.create_default(**members) == kind.create_default().replace(**members)
 
@@ -415,15 +597,7 @@ def test_v2_create_default_is_valid_empty_array() -> None:
     assert ZarrV2ArrayMetadata.from_json(m.to_json()) == m
 
 
-def test_v2_create_default_applies_overrides() -> None:
-    """V2 create_default applies keyword overrides over the defaults."""
-    m = ZarrV2ArrayMetadata.create_default(shape=(8,), attributes={"k": "v"})
-    assert m.shape == (8,)
-    assert m.attributes == {"k": "v"}
-    assert m.dtype.to_json() == "|u1"  # default dtype unchanged
-
-
-# --- V3 replace-------------------------------------------------------------
+# --- V3 replace ------------------------------------------------------------
 
 # Cluster 3: replace same-shape pairs across versions — parametrized
 
@@ -1813,9 +1987,9 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
     ("members", "problems"),
     [
         ({"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
-        # The default fill value, 0, is not a boolean. A data type requires
-        # a fill value of that type.
-        ({"data_type": "bool"}, [(("fill_value",), "invalid_type")]),
+        # A fill value given, 0, is not a boolean. A data type requires a
+        # fill value of that type.
+        ({"data_type": "bool", "fill_value": 0}, [(("fill_value",), "invalid_type")]),
         # Values of more than one byte require an `endian`.
         (
             {"data_type": "int16", "codecs": ({"name": "bytes"},)},
@@ -1886,6 +2060,32 @@ def test_error_create_default_reports_a_shape_it_cannot_read(shape: object, kind
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ArrayMetadata.create_default(shape=shape)  # pyright: ignore[reportArgumentType]
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), kind)]
+
+
+@pytest.mark.parametrize(
+    ("model", "members", "problems"),
+    [
+        (ZarrV3ArrayMetadata, {"data_type": 5}, [(("data_type",), "invalid_type")]),
+        (ZarrV3ArrayMetadata, {"data_type": "r12"}, [(("data_type",), "invalid_value")]),
+        (
+            ZarrV3ArrayMetadata,
+            {"data_type": {"name": "fixed_length_utf32", "configuration": {"length_bytes": 3}}},
+            [(("data_type", "configuration", "length_bytes"), "invalid_value")],
+        ),
+        (ZarrV2ArrayMetadata, {"dtype": 5}, [(("dtype",), "invalid_type")]),
+        (ZarrV2ArrayMetadata, {"dtype": "<i3"}, [(("dtype",), "invalid_value")]),
+    ],
+    ids=["v3-a-number", "v3-bits", "v3-configuration", "v2-a-number", "v2-size"],
+)
+def test_error_create_default_reports_a_data_type_it_cannot_read(
+    model: Any,  # noqa: ANN401
+    members: dict[str, Any],
+    problems: list[tuple[tuple[str | int, ...], str]],
+) -> None:
+    """A data type with a problem derives nothing: the fill value and codecs keep their defaults, so the data type's problem is the only one reported, as for a shape it cannot read."""
+    with pytest.raises(MetadataValidationError) as raised:
+        model.create_default(**members)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
 
 
 def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_name() -> None:
