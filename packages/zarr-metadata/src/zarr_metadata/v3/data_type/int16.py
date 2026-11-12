@@ -4,25 +4,19 @@ Zarr v3 `int16` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Annotated, Final, Literal
+from typing import Final
 
-from annotated_types import Interval
-
-from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     multi_byte,
 )
-
-INT16_DATA_TYPE_NAME: Final = "int16"
-"""The `data_type` value for the `int16` type."""
-
-Int16DataTypeName = Literal["int16"]
-"""Literal type of the `data_type` field for `int16`."""
-
-Int16FillValue = Annotated[int, Interval(ge=-(2**15), le=2**15 - 1)]
-"""Permitted JSON shape of the `fill_value` field for `int16`: a JSON integer in [-32768, 32767]."""
-
+from zarr_metadata.v3._types.data_type import (
+    INT16_DATA_TYPE_NAME,
+    Int16DataTypeName,
+    Int16FillValue,
+)
 
 INT16_DATA_TYPE: Final = DataTypeDefinition(
     name=INT16_DATA_TYPE_NAME,

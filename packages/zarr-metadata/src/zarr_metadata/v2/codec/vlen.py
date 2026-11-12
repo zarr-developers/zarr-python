@@ -4,18 +4,10 @@ from __future__ import annotations
 
 from typing import Final
 
-from typing_extensions import ReadOnly, TypedDict
-
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
+from zarr_metadata.v2._types.codec import ZarrV2VLenArrayParameters
 from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
-
-
-class ZarrV2VLenArrayParameters(TypedDict, closed=True):
-    """`numcodecs.VLenArray(dtype)`: the element type of each array."""
-
-    dtype: ReadOnly[str]
-    """The dtype of the elements of each variable-length array."""
 
 
 def _vlen_array_canonical(configuration: ZarrV2VLenArrayParameters) -> ZarrV2VLenArrayParameters:

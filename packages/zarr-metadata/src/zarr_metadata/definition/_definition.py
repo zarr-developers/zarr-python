@@ -58,9 +58,9 @@ from typing import (
     get_type_hints,
 )
 
-from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
+from typing_extensions import TypeAliasType, TypeVar, is_typeddict
 
-from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
+from zarr_metadata._common import EmptyConfiguration, JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
     Problems,
     ValidationProblem,
@@ -164,10 +164,6 @@ class ConstantFillValue:
     def __hash__(self) -> int:
         """The hash of the value as written."""
         return hash(json_text(self.value))
-
-
-class EmptyConfiguration(TypedDict, closed=True):
-    """The configuration of a definition with nothing to configure. Its declaration is written with its name only."""
 
 
 _DECLARATION_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
@@ -1864,7 +1860,6 @@ __all__ = [
     "C",
     "Context",
     "Definition",
-    "EmptyConfiguration",
     "Nested",
     "Problems",
     "RefusedDeclaration",

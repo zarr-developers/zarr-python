@@ -71,12 +71,12 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecDeclaration,
     ZarrV3StorageTransformerDeclaration,
 )
+from zarr_metadata.v3._types.codec import BYTES_CODEC_NAME, BytesCodecObject
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.v3.codec.bytes import BytesCodecObject
 
 
 def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
@@ -129,7 +129,7 @@ def unknown_storage(*_: object) -> None:
 
 def little_endian_bytes_codec(*_: object) -> BytesCodecObject:
     """The array -> bytes codec of a data type that does not declare one: `bytes` with little `endian`, which encodes values of any fixed size."""
-    return {"name": "bytes", "configuration": {"endian": "little"}}
+    return {"name": BYTES_CODEC_NAME, "configuration": {"endian": "little"}}
 
 
 RAW_BYTES_NAME: Final = "r*"

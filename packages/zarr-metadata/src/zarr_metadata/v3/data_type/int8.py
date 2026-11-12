@@ -4,25 +4,15 @@ Zarr v3 `int8` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Annotated, Final, Literal
+from typing import Final
 
-from annotated_types import Interval
-
-from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     single_byte,
 )
-
-INT8_DATA_TYPE_NAME: Final = "int8"
-"""The `data_type` value for the `int8` type."""
-
-Int8DataTypeName = Literal["int8"]
-"""Literal type of the `data_type` field for `int8`."""
-
-Int8FillValue = Annotated[int, Interval(ge=-(2**7), le=2**7 - 1)]
-"""Permitted JSON shape of the `fill_value` field for `int8`: a JSON integer in [-128, 127]."""
-
+from zarr_metadata.v3._types.data_type import INT8_DATA_TYPE_NAME, Int8DataTypeName, Int8FillValue
 
 INT8_DATA_TYPE: Final = DataTypeDefinition(
     name=INT8_DATA_TYPE_NAME,
