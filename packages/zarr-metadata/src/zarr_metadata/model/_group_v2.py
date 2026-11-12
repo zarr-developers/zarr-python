@@ -374,8 +374,9 @@ class ZarrV2GroupMetadata(Keyed):
                 del document[key]
         return type(self)(document, context=self._context)
 
-    __replace__ = replace
-    """`copy.replace(model, **members)` calls `replace`, so the model takes part in the protocol `copy.replace` (Python 3.13) defines."""
+    def __replace__(self, /, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""

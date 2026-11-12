@@ -383,8 +383,9 @@ class ZarrV3GroupMetadata(Keyed):
                 del document[key]
         return type(self)(document, context=self._context)
 
-    __replace__ = replace
-    """`copy.replace(model, **members)` calls `replace`, so the model takes part in the protocol `copy.replace` (Python 3.13) defines."""
+    def __replace__(self, /, **members: Unpack[ZarrV3GroupMetadataUpdate]) -> ZarrV3GroupMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""

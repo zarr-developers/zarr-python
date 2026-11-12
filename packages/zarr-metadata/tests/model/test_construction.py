@@ -41,7 +41,10 @@ from zarr_metadata.v3.definition import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from typing_extensions import Unpack
+
     from zarr_metadata.definition import Nested
+    from zarr_metadata.model import ZarrV3ArrayMetadataUpdate
 
 ARRAY = ZarrV3ArrayMetadata.create_default(
     shape=(4,),
@@ -288,6 +291,22 @@ def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fiel
     removed = added.replace(extra_fields={"acme.flag": UNSET})
     assert "acme.flag" not in removed.to_json()
     assert removed.to_json()["acme.other"] == {"must_understand": False}
+
+
+class _MarkingArray(ZarrV3ArrayMetadata):
+    """An array model whose `replace` also sets an attribute, to show which `replace` a call reached."""
+
+    def replace(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        members["attributes"] = {"via": "override"}
+        return super().replace(**members)
+
+
+def test_copy_replace_calls_a_subclass_s_override_of_replace() -> None:
+    """`__replace__` calls `replace` rather than being the base class's `replace`, so a subclass that overrides `replace` changes what `__replace__` and `copy.replace` do."""
+    model = _MarkingArray.create_default()
+    assert model.__replace__(fill_value=3).attributes == {"via": "override"}
+    if sys.version_info >= (3, 13):
+        assert copy.replace(model, fill_value=3).attributes == {"via": "override"}
 
 
 @pytest.mark.parametrize(
