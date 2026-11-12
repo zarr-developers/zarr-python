@@ -11,6 +11,10 @@ entire hierarchy, especially when the metadata is being served over a network.
 Consolidated metadata essentially stores all the metadata for a hierarchy in the
 metadata of the root Group.
 
+This page describes how to use consolidated metadata from Python. For a precise
+description of what is written to the store, intended for other implementations,
+see [Consolidated metadata format](consolidated_metadata_format.md).
+
 ## Usage
 
 If consolidated metadata is present in a Zarr Group's metadata then it is used
@@ -84,9 +88,9 @@ print(output.getvalue())
 !!! info "Added in version 3.1.1"
     The keys in the consolidated metadata are sorted prior to writing. Keys are
     sorted in ascending order by path depth, where a path is defined as a sequence
-    of strings joined by `"/"`. For keys with the same path length, lexicographic
-    order is used to break the tie. This behavior ensures deterministic metadata
-    output for a given group.
+    of strings joined by `"/"`. For keys with the same depth, the tie is broken by
+    comparing the paths after Unicode NFKC normalization and case-folding. This
+    behavior ensures deterministic metadata output for a given group.
 
 ### Controlling the use of consolidated metadata
 
