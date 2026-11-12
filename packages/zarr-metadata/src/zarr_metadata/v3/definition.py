@@ -47,6 +47,12 @@ as many bytes as it needs. A struct's storage depends on its fields.
 The `bytes` codec requires an `endian` for multi-byte numbers, and a
 struct rejects a field whose values vary in size. A data type that does
 not declare storage leaves it unknown.
+`array_bytes_codec_default`, a function of the same arguments, gives the
+array -> bytes codec that encodes the values of an array whose document
+is built without codecs, as a model's `create_default` builds it:
+`vlen-utf8` for `string`, and `bytes` with little `endian` for a data
+type that does not declare it. `default_array_bytes_codec(data_type)`
+calls it for a data type declaration the scope read.
 
 A chunk grid declares which array shapes it fits with `shape_rules`, a
 function that yields the spec violations in a grid with its
@@ -125,6 +131,7 @@ from zarr_metadata.v3._definition import (
     Lengths,
     StorageClass,
     StorageTransformerDefinition,
+    default_array_bytes_codec,
     storage_of,
 )
 from zarr_metadata.v3._pipeline import Stage
@@ -156,6 +163,7 @@ __all__ = [
     "ZarrV3Kind",
     "ZarrV3StaticCodecDeclaration",
     "ZarrV3StorageTransformerDeclaration",
+    "default_array_bytes_codec",
     "storage_of",
 ]
 

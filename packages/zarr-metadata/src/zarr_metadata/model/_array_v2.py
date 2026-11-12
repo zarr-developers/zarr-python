@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
@@ -34,6 +35,7 @@ from zarr_metadata.definition._definition import (
     UnclaimedDeclaration,
     declaration_key,
     declarations_of,
+    default_fill_value,
     fill_value_problems,
     held,
     resolve,
@@ -45,9 +47,11 @@ from zarr_metadata.definition._scope import refines as refines_declaration
 from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
+    Derived,
     StoreKey,
     attributes_of,
     check_literal,
+    created,
     dimension_lengths,
     load_store_json,
     located_conflicts,
@@ -807,42 +811,41 @@ class ZarrV2ArrayMetadata(Keyed):
     def create_default(
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
     ) -> ZarrV2ArrayMetadata:
-        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`.
+        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
+
+        A member that depends on another is derived from it when that
+        member is given and it is not:
+
+        - `chunks`, from `shape`: one chunk covering the array, with a
+          length of 1 for a dimension of length 0, as for a v3 regular
+          grid. One chunk is the simplest that fits, not a recommendation:
+          a large array wants smaller chunks.
+        - `fill_value`, from `dtype`: the dtype's default, from its
+          `fill_value_default`, such as `0`, `false` or `""`, and `null`,
+          which means no fill value, for a dtype that has none (such as
+          `|O`) or that nothing in `context` claims.
+
+        A member given with a problem derives nothing, so the members
+        derived from it keep their defaults, and the problem is the only
+        one reported.
 
         Raises `MetadataValidationError` when the resulting document has a
-        problem. Overriding `shape` without `chunks` sets `chunks` equal to
-        `shape`, so one chunk covers the array. Overriding `chunks` without
-        `shape` keeps the scalar default shape, which chunks of another
-        rank do not fit. A dtype given without a fill value gets a fill
-        value of `0` when its family accepts `0`, and `null` otherwise.
-        Every family accepts `null`.
+        problem, with a note naming each member that was not given and
+        its value. So `chunks` given without `shape` must have no
+        dimensions, as the default shape has none.
         """
-        document: dict[str, object] = {
-            "zarr_format": 2,
-            "shape": (),
-            "chunks": (),
-            "dtype": "|u1",
-            "fill_value": 0,
-            "order": "C",
-            "compressor": None,
-            "filters": None,
-            "dimension_separator": ".",
-        }
+        context = scoped(context, CORE_V2_CONTEXT)
         given = member_changes(
             overrides, ZarrV2ArrayMetadataUpdate, _ARRAY_METADATA_STANDARD_KEYS_V2
         )
-        if "shape" in given and "chunks" not in given:
-            lengths, _ = dimension_lengths(given, "shape")
-            if lengths is not None:
-                given["chunks"] = lengths
-        if "dtype" in given and "fill_value" not in given:
-            dtype, _ = resolve(
-                given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2_CONTEXT)
-            )
-            if len(fill_value_problems(dtype, 0)) != 0:
-                given["fill_value"] = None
-        merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}
-        return cls(merged, context=context)
+        return created(
+            cls,
+            context,
+            fixed={"zarr_format": 2},
+            defaults=_DEFAULT_MEMBERS,
+            derived=_DERIVED_MEMBERS,
+            given=given,
+        )
 
     @classmethod
     def from_json(
@@ -879,3 +882,42 @@ class ZarrV2ArrayMetadata(Keyed):
         if reading.metadata is None:
             raise MetadataValidationError(reading.problems)
         return reading.metadata
+
+
+_DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
+    {
+        "shape": (),
+        "chunks": (),
+        "dtype": "|u1",
+        "fill_value": 0,
+        "order": "C",
+        "compressor": None,
+        "filters": None,
+        "dimension_separator": ".",
+    }
+)
+"""The document of `ZarrV2ArrayMetadata.create_default` given nothing: a scalar `|u1` array, without its `zarr_format`."""
+
+
+def _derived_chunks(document: Mapping[str, object], context: ZarrV2Context) -> object:
+    """One chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The chunks as they are when the shape has a problem, which the read reports."""
+    lengths, _ = dimension_lengths(document, "shape")
+    if lengths is None:
+        return document["chunks"]
+    return tuple(max(length, 1) for length in lengths)
+
+
+def _derived_fill_value(document: Mapping[str, object], context: ZarrV2Context) -> object:
+    """The default fill value of the document's `dtype` in `context`, and `null` (no fill value) when it has none or nothing in scope claims it. The fill value as it is when the dtype has a problem, which the read reports."""
+    dtype, problems = resolve(document["dtype"], ZarrV2DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["fill_value"]
+    found = default_fill_value(dtype)
+    return None if found is UNSET else found
+
+
+_DERIVED_MEMBERS: Final[tuple[Derived[ZarrV2Context], ...]] = (
+    Derived("chunks", "shape", _derived_chunks),
+    Derived("fill_value", "dtype", _derived_fill_value),
+)
+"""The members of `ZarrV2ArrayMetadata.create_default` derived from a member given."""
