@@ -14,47 +14,19 @@ bits, `r*`, in `zarr_metadata.v3.data_type.raw`.
 
 import base64
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import ReadOnly, TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata._numpy import Base64Bytes
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, single_byte
+from zarr_metadata.v3._types.data_type import (
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME,
+    ZarrPythonRawBytes,
+    ZarrPythonRawBytesConfiguration,
+    ZarrPythonRawBytesDataTypeName,
+    ZarrPythonRawBytesFillValue,
+)
 from zarr_metadata.v3.data_type._byte import base64_decoded, base64_problems, base64_spelling
-
-ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME: Final = "raw_bytes"
-"""The `name` field value of zarr-python's `raw_bytes` data type."""
-
-ZarrPythonRawBytesDataTypeName = Literal["raw_bytes"]
-"""Literal type of the `name` field of zarr-python's `raw_bytes` data type."""
-
-
-class ZarrPythonRawBytesConfiguration(TypedDict, closed=True):
-    """Configuration for zarr-python's `raw_bytes` data type."""
-
-    length_bytes: ReadOnly[int]
-    """The size in bytes of every value, at least 1."""
-
-
-class ZarrPythonRawBytes(TypedDict, closed=True):
-    """zarr-python's `raw_bytes` data type metadata."""
-
-    name: ZarrPythonRawBytesDataTypeName
-    """The data type's name, `"raw_bytes"`."""
-    configuration: ZarrPythonRawBytesConfiguration
-    """The data type's parameters."""
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this data type must refuse the document.
-
-    Absent means `true`. The spec does not permit `false` for a data type
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
-    """
-
-
-ZarrPythonRawBytesFillValue = Base64Bytes
-"""Permitted JSON shape of the `fill_value` field for zarr-python's `raw_bytes`: the bytes as a `Base64Bytes` string, which zarr-python writes `length_bytes` long."""
 
 
 def _rules(
@@ -102,11 +74,17 @@ def _fill_value_canonical(
     return base64_spelling(data)
 
 
+def _fill_value_default(configuration: ZarrPythonRawBytesConfiguration, nested: Nested) -> str:
+    """Return `length_bytes` null bytes in base64, as zarr-python writes the default fill value."""
+    return base64_spelling(bytes(configuration["length_bytes"]))
+
+
 ZARR_PYTHON_RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME,
     configuration=ZarrPythonRawBytesConfiguration,
     rules=_rules,
     fill_value=ZarrPythonRawBytesFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=single_byte,

@@ -5,9 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import TypedDict
+from typing import Final, Literal
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
@@ -16,133 +14,24 @@ from zarr_metadata.definition._definition import (
     Nested,
     fill_value_problems,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeDeclaration
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
 )
-from zarr_metadata.v3.codec._arithmetic import FLOATING_POINT, NO_REAL_NUMBERS
-
-CAST_VALUE_CODEC_NAME: Final = "cast_value"
-"""The `name` field value of the `cast_value` codec."""
-
-CastValueCodecName = Literal["cast_value"]
-"""Literal type of the `name` field of the `cast_value` codec."""
-
-CastRoundingMode = Literal[
-    "nearest-even",
-    "towards-zero",
-    "towards-positive",
-    "towards-negative",
-    "nearest-away",
-]
-"""Literal type of permitted values for the `rounding` configuration field.
-
-Defaults to `"nearest-even"` if absent.
-"""
-
-CAST_ROUNDING_MODE: Final = (
-    "nearest-even",
-    "towards-zero",
-    "towards-positive",
-    "towards-negative",
-    "nearest-away",
+from zarr_metadata.v3._types.codec import (
+    CAST_OUT_OF_RANGE_MODE,
+    CAST_ROUNDING_MODE,
+    CAST_VALUE_CODEC_NAME,
+    CastOutOfRangeMode,
+    CastRoundingMode,
+    CastValueCodecConfiguration,
+    CastValueCodecMetadata,
+    CastValueCodecName,
+    CastValueCodecObject,
+    ScalarMap,
+    ScalarMapEntry,
 )
-"""Tuple of permitted values for the `rounding` field of the `cast_value` codec."""
-
-CastOutOfRangeMode = Literal["clamp", "wrap"]
-"""Literal type of permitted values for the `out_of_range` configuration field.
-
-If absent, out-of-range values are an encoding/decoding error.
-"""
-
-CAST_OUT_OF_RANGE_MODE: Final = ("clamp", "wrap")
-"""Tuple of permitted values for the `out_of_range` field of the `cast_value` codec."""
-
-ScalarMapEntry = tuple[JSONValue, JSONValue]
-"""A single `[input, output]` mapping in a `scalar_map` direction.
-
-Each scalar is encoded as a fill value of its data type. For a float,
-the infinities are `"Infinity"` and `"-Infinity"`, as the core encoding
-writes them. The codec's own example writes `"+Infinity"` instead.
-"""
-
-
-class ScalarMap(TypedDict, closed=True):
-    """Optional encode/decode scalar overrides for the cast_value codec."""
-
-    encode: NotRequired[tuple[ScalarMapEntry, ...]]
-    """The `[input, output]` pairs applied when encoding: input in the array's data type, output in `data_type`.
-
-    Each scalar is written in its data type's fill value encoding. Where an
-    input repeats, the first pair applies.
-    """
-    decode: NotRequired[tuple[ScalarMapEntry, ...]]
-    """The `[input, output]` pairs applied when decoding: input in `data_type`, output in the array's data type.
-
-    Each scalar is written in its data type's fill value encoding. Where an
-    input repeats, the first pair applies.
-    """
-
-
-class CastValueCodecConfiguration(TypedDict, closed=True):
-    """
-    Configuration for the Zarr v3 `cast_value` codec.
-
-    `data_type` is the target data type that input values are cast to. It
-    is the same shape as the top-level array `data_type` field: either a
-    bare-string primitive name or a `{name, configuration}` envelope.
-    """
-
-    data_type: ZarrV3DataTypeDeclaration
-    """The data type values are cast to when encoding, and the one the decoder is handed.
-
-    The codec is defined only for data types that model real numbers, the
-    integer and floating-point types: a boolean, raw-bits, string, bytes,
-    struct or complex type is refused, here and as the data type the codec
-    is handed.
-    """
-    rounding: NotRequired[CastRoundingMode]
-    """How a value `data_type` cannot represent exactly is rounded.
-
-    Absent means `"nearest-even"`.
-    """
-    out_of_range: NotRequired[CastOutOfRangeMode]
-    """How a value outside the range of `data_type` is brought into it, after rounding.
-
-    `"clamp"` takes the nearest bound; `"wrap"` takes the value congruent
-    modulo 2^N, N being the width in bits of `data_type`, and is permitted
-    only when `data_type` is an integral type. Absent means an out-of-range
-    value is an encoding or decoding error.
-    """
-    scalar_map: NotRequired[ScalarMap]
-    """Scalars mapped explicitly, in place of `rounding` and `out_of_range`."""
-
-
-class CastValueCodecObject(TypedDict, closed=True):
-    """`cast_value` codec metadata in object form."""
-
-    name: CastValueCodecName
-    """The codec's name, `"cast_value"`."""
-    configuration: CastValueCodecConfiguration
-    """The codec's parameters."""
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this codec must refuse the document.
-
-    Absent means `true`. The spec permits `false` for a codec
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
-    though `resolve` reports a `false` as a problem at every extension point.
-    """
-
-
-CastValueCodecMetadata = CastValueCodecObject
-"""Permitted JSON shape for `cast_value` codec metadata.
-
-`configuration.data_type` is required, so only the object form is valid;
-the short-hand-name form is not permitted by the spec for this codec.
-  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md#L33-L36 and #L46-L48 (required fields)
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
-"""
+from zarr_metadata.v3.codec._arithmetic import FLOATING_POINT, NO_REAL_NUMBERS
 
 
 def _scalars(

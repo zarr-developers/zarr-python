@@ -31,11 +31,8 @@ from typing import TYPE_CHECKING
 from zarr_metadata._renamed import renamed_scope
 from zarr_metadata.v2._context import ZarrV2Context, ZarrV2ContextSlots, ZarrV2Kind
 from zarr_metadata.v2._core import CORE_V2_CONTEXT, RENAMED_SCOPES_V2
-from zarr_metadata.v2._definition import (
-    ZarrV2CodecDefinition,
-    ZarrV2DataTypeDeclaration,
-    ZarrV2DataTypeDefinition,
-)
+from zarr_metadata.v2._declaration_json import ZarrV2DataTypeDeclaration
+from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
 
 __all__ = [
     "CORE_V2_CONTEXT",

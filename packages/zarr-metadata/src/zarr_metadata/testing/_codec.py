@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, Any, Final
 from hypothesis import reject
 from hypothesis import strategies as st
 
-from zarr_metadata.definition._definition import AcceptedDeclaration, EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import AcceptedDeclaration
 from zarr_metadata.testing._data_type import (
     COMPLEX_WIDTHS,
     FLOAT_WIDTHS,

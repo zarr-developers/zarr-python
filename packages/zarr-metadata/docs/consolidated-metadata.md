@@ -100,7 +100,7 @@ Which context the documents are read in:
 To write consolidated metadata:
 
 1. Build a `ZarrV3ConsolidatedMetadata`.
-2. Pass it to the group's `update`.
+2. Pass it to the group's `replace`.
 
 The group reads the listed models in its own context. It refuses a model
 that its context reads differently. Then it writes the document.

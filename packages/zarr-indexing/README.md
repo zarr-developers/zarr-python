@@ -2,7 +2,8 @@
 
 Composable, lazy coordinate transforms for Zarr array indexing.
 
-Documentation: <https://zarr-indexing.readthedocs.io/>
+[![PyPI](https://img.shields.io/pypi/v/zarr-indexing)](https://pypi.org/project/zarr-indexing/)
+[![Docs](https://img.shields.io/badge/docs-readthedocs-blue)](https://zarr-indexing.readthedocs.io/)
 
 This package implements TensorStore-inspired index transforms. The core idea:
 each supported indexing operation (slicing, fancy indexing, etc.) produces a coordinate

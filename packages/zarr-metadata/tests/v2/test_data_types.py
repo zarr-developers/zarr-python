@@ -14,6 +14,7 @@ from zarr_metadata.definition import (
     UnclaimedDeclaration,
     canonical_fill_value,
     canonical_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -61,7 +62,9 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
         ("<M8[ns]", "datetime64", "<M8[ns]"),
         (">M8[10s]", "datetime64", ">M8[10s]"),
         ("<M8[μs]", "datetime64", "<M8[us]"),
+        ("<M8[generic]", "datetime64", "<M8[generic]"),
         ("<m8[D]", "timedelta64", "<m8[D]"),
+        (">m8[2generic]", "timedelta64", ">m8[2generic]"),
         ([["x", "<f4"], ["y", "<i4", [2]]], "struct", (("x", "<f4"), ("y", "<i4", (2,)))),
         ([["r", "|u1"], ["s", [["t", "<f4"]]]], "struct", (("r", "|u1"), ("s", (("t", "<f4"),)))),
         # NumPy names the padding fields of an aligned struct "", and zarr 2.x writes them.
@@ -207,6 +210,33 @@ def test_every_family_takes_its_fill_values(
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
+
+
+@pytest.mark.parametrize(
+    ("dtype", "default"),
+    [
+        ("|b1", False),
+        ("<i2", 0),
+        (">u8", 0),
+        ("<f4", 0.0),
+        ("<c16", (0.0, 0.0)),
+        ("|S3", ""),
+        ("<U3", ""),
+        ("|V3", "AAAA"),
+        ("<M8[ns]", "NaT"),
+        ("<m8[10s]", "NaT"),
+        ([["x", "<f4"], ["y", "|b1"]], "AAAAAAA="),
+        ([["x", "<i2", [2]]], "AAAAAA=="),
+        ("|O", UNSET),
+    ],
+)
+def test_every_family_has_a_default_fill_value_it_takes(dtype: object, default: object) -> None:
+    """Each family's default fill value is the value zarr-python uses for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`, which zarr-python writes as the ticks value of not-a-time. `|O` has none, since its values may be of any type: zarr-python writes `""` for one its filter makes strings, which the dtype alone does not say."""
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
+    found = default_fill_value(resolved)
+    assert (found, type(found)) == (default, type(default))
+    if found is not UNSET:
+        assert fill_value_problems(resolved, found) == ()
 
 
 @pytest.mark.parametrize(

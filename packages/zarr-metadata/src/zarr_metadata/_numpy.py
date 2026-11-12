@@ -24,8 +24,9 @@ NUMPY_TIME_UNITS: Final = (
     "ps",
     "fs",
     "as",
+    "generic",
 )
-"""The units NumPy accepts for a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units). The v3 types also accept `"generic"`."""
+"""The units NumPy accepts for a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units), and `"generic"`, NumPy's unit-less unit, which NumPy parses in brackets (`<M8[generic]`) though its own `dtype.str` omits it. The v2 spec's unit table does not list `generic`, but zarr-python writes it (zarr-developers/zarr-python#4580)."""
 
 NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` that numpy stores, because the field is a signed int32."""

@@ -200,6 +200,13 @@ distinct `float32`) as equal to `0.0`.
 `canonical_fill_value(data_type, value)` returns the canonical spelling,
 or `UNSET` for a fill value with a problem. A data type that does not
 declare `fill_value_canonical` keeps each value as written.
+`fill_value_default` gives the fill value of an array whose document is
+built without one, as a model's `create_default` builds it. It receives
+the configuration and the nested declarations, and returns `UNSET` when
+the type has none, which is what a data type that does not declare it
+gets. `ConstantFillValue(0)` is a default that does not depend on the
+configuration. `default_fill_value(data_type)` calls it for a data type
+declaration the scope read.
 
 **The simplest spelling.** A declaration without problems has a simplest
 equivalent spelling, and declarations are compared by it. Each nested declaration is
@@ -264,11 +271,12 @@ written; an extra field named after a member the spec defines, whose
 built from it does.
 """
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     Context,
     Definition,
-    EmptyConfiguration,
     Nested,
     RefusedDeclaration,
     ResolvedDeclaration,
@@ -277,6 +285,7 @@ from zarr_metadata.definition._definition import (
     canonical_fill_value,
     canonical_of,
     configuration_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
     with_problems,
@@ -291,6 +300,7 @@ __all__ = [
     "AcceptedDeclaration",
     "ClaimKey",
     "Conflict",
+    "ConstantFillValue",
     "Context",
     "Definition",
     "EmptyConfiguration",
@@ -303,6 +313,7 @@ __all__ = [
     "canonical_fill_value",
     "canonical_of",
     "configuration_of",
+    "default_fill_value",
     "fill_value_problems",
     "resolve",
     "with_problems",
