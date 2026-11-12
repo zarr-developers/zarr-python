@@ -49,6 +49,7 @@ from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     check_literal,
+    created,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -392,9 +393,9 @@ class ZarrV2GroupMetadata(Keyed):
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2GroupMetadataUpdate]
     ) -> ZarrV2GroupMetadata:
         """Return a group with no `.zattrs`, with `overrides` applied, read in `context`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        changes = member_changes(overrides, ZarrV2GroupMetadataUpdate, frozenset())
-        given = {key: value for key, value in changes.items() if value is not UNSET}
-        return cls({"zarr_format": 2, **given}, context=context)
+        context = scoped(context, CORE_V2_CONTEXT)
+        given = member_changes(overrides, ZarrV2GroupMetadataUpdate, frozenset())
+        return created(cls, context, fixed={"zarr_format": 2}, defaults={}, derived=(), given=given)
 
     @classmethod
     def from_json(

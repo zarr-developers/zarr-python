@@ -9,6 +9,7 @@ from typing import Final, Literal
 
 from zarr_metadata._numpy import Base64Bytes, base64_bytes
 from zarr_metadata.definition._definition import (
+    ConstantFillValue,
     EmptyConfiguration,
     Nested,
 )
@@ -54,6 +55,7 @@ BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=BytesFillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,

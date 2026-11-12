@@ -11,8 +11,10 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import (
     Nested,
+    default_fill_value,
     fill_value_problems,
     spelled_canonically,
 )
@@ -160,6 +162,20 @@ def _fill_value_canonical(
     return spelled
 
 
+def _fill_value_default(
+    configuration: StructConfiguration, nested: Nested
+) -> dict[str, JSONValue] | UNSET:
+    """Return each field's default fill value, by field name. `UNSET` when a field's type has no default, or the reading of the struct does not hold a reading of that field type."""
+    defaults: dict[str, JSONValue] = {}
+    for index, member in enumerate(configuration["fields"]):
+        field_type = nested.get(("fields", index, "data_type"))
+        found = UNSET if field_type is None else default_fill_value(field_type)
+        if found is UNSET:
+            return UNSET
+        defaults[member["name"]] = found
+    return defaults
+
+
 def _storage(configuration: StructConfiguration, nested: Nested) -> StorageClass | None:
     """Return the storage of the packed field values: multi-byte if any field holds multi-byte numbers, and single-byte if every field is single-byte.
 
@@ -192,6 +208,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     configuration=StructConfiguration,
     rules=_rules,
     fill_value=StructFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=_storage,

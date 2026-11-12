@@ -125,6 +125,27 @@ def fill_value_as_written(configuration: object, nested: object, value: T) -> T:
     return value
 
 
+def no_fill_value_default(*_: object) -> UNSET:
+    """The default fill value of a data type that declares none: `UNSET`, so a document built without a fill value must be given one."""
+    return UNSET
+
+
+@dataclass(frozen=True, slots=True)
+class ConstantFillValue:
+    """A data type's default fill value that is the same for every configuration, such as `0` for `int8`.
+
+    It is a value and not a closure, so a definition that holds it can be
+    pickled and compares equal to its loaded copy.
+    """
+
+    value: JSONValue
+    """The default fill value, as a document writes it."""
+
+    def __call__(self, configuration: object, nested: object) -> JSONValue:
+        """Return `value`, whatever the configuration and the nested declarations."""
+        return self.value
+
+
 class EmptyConfiguration(TypedDict, closed=True):
     """The configuration of a definition with nothing to configure. Its declaration is written with its name only."""
 
@@ -434,7 +455,10 @@ class WithFillValue(Definition[C]):
     typed fill value. `fill_value_canonical` writes a fill value without
     problems in the single canonical spelling of its value. So two fill
     values are the same value of the type exactly when their canonical
-    spellings are written the same way.
+    spellings are written the same way. `fill_value_default` gives the
+    fill value of an array whose document is built without one, as the
+    models' `create_default` builds it. It receives the configuration and
+    the nested declarations, and returns `UNSET` when the type has none.
     """
 
     fill_value: object = JSONValue
@@ -443,6 +467,8 @@ class WithFillValue(Definition[C]):
     """The spec violations in a fill value of that shape, located in the fill value."""
     fill_value_canonical: Callable[[C, Nested, Any], JSONValue] = fill_value_as_written
     """A fill value without problems, in the single canonical spelling of its value."""
+    fill_value_default: Callable[[C, Nested], JSONValue | UNSET] = no_fill_value_default
+    """The fill value of an array built without one, such as `0` for `int8`; `UNSET` when the type has none."""
 
     def _refusal(self) -> str | None:
         try:
@@ -1347,6 +1373,37 @@ def canonical_fill_value(data_type: ResolvedDeclaration[F], value: object) -> JS
         return UNSET
     refined, _ = refine_json(value, ())
     return spelled_canonically(data_type, refined)
+
+
+def default_fill_value(data_type: ResolvedDeclaration[F]) -> JSONValue | UNSET:
+    """The fill value of an array of `data_type` (a data type declaration a scope read) whose document is built without one, as the data type's `fill_value_default` gives it; `UNSET` when the scope did not read the data type or the type has no default.
+
+    The default is the extension author's code. Its result is checked to
+    be JSON, and not against the data type's fill value rules: a document
+    built with it is read, and the read reports a default that the type
+    rejects. If it raises an error, a note is added that says which data
+    type's default raised it.
+    """
+    if not isinstance(data_type, AcceptedDeclaration):
+        return UNSET
+    definition, configuration = data_type.definition, data_type.configuration
+    found = asked(
+        definition,
+        "fill_value_default",
+        lambda: cast(
+            "object", definition.fill_value_default(read_only(configuration), data_type.nested)
+        ),
+    )
+    if found is UNSET:
+        return UNSET
+    refined, problems = refine_json(found, ())
+    if len(problems) != 0:
+        msg = (
+            f"{definition.name!r}: its fill_value_default gives JSON or UNSET, got {found!r}: "
+            f"{problems[0].message}"
+        )
+        raise TypeError(msg)
+    return refined
 
 
 def spelled_canonically(data_type: ResolvedDeclaration[F], value: JSONValue) -> JSONValue:

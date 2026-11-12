@@ -28,6 +28,7 @@ from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -522,3 +523,19 @@ def test_a_complex_fill_value_keeps_what_its_component_rules_found() -> None:
     (found,) = rules({}, {}, (1.0, 0))
     assert (found.loc, found.message, found.kind) == ((1, "x"), "expected >= 1", "invalid_value")
     assert (found.input, dict(found.ctx)) == (0, {"ge": 1})
+
+
+def _not_json_default(configuration: object, nested: object) -> object:
+    return object()
+
+
+def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A data type whose `fill_value_default` gives a value that is not JSON is the extension author's bug, a `TypeError` naming the data type."""
+    definition = DataTypeDefinition(
+        name="acme.odd",
+        configuration=EmptyConfiguration,
+        fill_value_default=cast("Any", _not_json_default),
+    )
+    data_type, _ = resolve("acme.odd", DataTypeDefinition, ZarrV3Context(data_types=[definition]))
+    with pytest.raises(TypeError, match="'acme.odd': its fill_value_default gives JSON or UNSET"):
+        default_fill_value(data_type)

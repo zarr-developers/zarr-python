@@ -13,7 +13,7 @@ import base64
 from typing import Final, Literal
 
 from zarr_metadata._numpy import Base64Bytes
-from zarr_metadata.definition._definition import EmptyConfiguration, Nested
+from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, variable_length
 from zarr_metadata.v3.data_type._byte import base64_fill_value_rules, base64_spelling
 
@@ -38,6 +38,7 @@ VARIABLE_LENGTH_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=VariableLengthBytesFillValue,
+    fill_value_default=ConstantFillValue(""),
     fill_value_rules=base64_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,

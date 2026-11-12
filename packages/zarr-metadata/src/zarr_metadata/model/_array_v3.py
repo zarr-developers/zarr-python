@@ -37,8 +37,10 @@ from zarr_metadata.definition._definition import (
     declaration_key,
     declaration_kind,
     declarations_of,
+    default_fill_value,
     fill_value_problems,
     held,
+    resolve,
     resolve_refined,
     spelled_canonically,
 )
@@ -47,9 +49,11 @@ from zarr_metadata.definition._scope import refines as refines_declaration
 from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
+    Derived,
     StoreKey,
     attributes_of,
     check_literal,
+    created,
     dimension_lengths,
     load_store_json,
     located_conflicts,
@@ -78,6 +82,11 @@ from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
 )
+from zarr_metadata.v3.codec.vlen_bytes import VLEN_BYTES_CODEC_NAME
+from zarr_metadata.v3.codec.vlen_utf8 import VLEN_UTF8_CODEC_NAME
+from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE_NAME
+from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE_NAME
+from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -792,40 +801,42 @@ class ZarrV3ArrayMetadata(Keyed):
     ) -> ZarrV3ArrayMetadata:
         """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
 
+        A member that depends on another is derived from it when that
+        member is given and it is not:
+
+        - `chunk_grid`, from `shape`: one regular chunk covering the array,
+          with a length of 1 for a dimension of length 0, since "Chunk
+          sizes must be greater than zero"
+          (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
+          One chunk is the simplest grid that fits, not a recommendation:
+          a large array wants smaller chunks.
+        - `fill_value`, from `data_type`: the data type's default, from its
+          `fill_value_default`, such as `0`, `false` or `""`. A data type
+          that has none, or that nothing in `context` claims, needs a
+          `fill_value`.
+        - `codecs`, from `data_type`: `vlen-utf8` for `string`,
+          `vlen-bytes` for `bytes` and `variable_length_bytes`, as
+          zarr-python chooses, and `bytes` with little `endian` for any
+          other data type.
+
         Raises `MetadataValidationError` when the resulting document has a
-        problem. So members that depend on each other must be passed
-        together: a data type with a fill value of that type, or a grid
-        with the shape it fits. The default codec is `bytes` with little
-        `endian`, which accepts a data type of any fixed size. Overriding
-        `shape` without `chunk_grid` derives a consistent default grid: one
-        regular chunk covering the array (`chunk_shape` equal to `shape`,
-        with a length of 1 for a dimension of length 0, since "Chunk sizes
-        must be greater than zero",
-        https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
+        problem, with a note naming each member that was not given and
+        its value. So members that depend on each other in other ways must
+        be passed together, such as `dimension_names` with the `shape`
+        they name.
         """
-        # The grid is derived only from a valid shape. An invalid shape
-        # derives no grid, and the read reports it.
-        changes = member_changes(
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
+        given = member_changes(
             overrides, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
         )
-        lengths, _ = dimension_lengths(changes, "shape")
-        document: dict[str, object] = {
-            "zarr_format": 3,
-            "node_type": "array",
-            "shape": (),
-            "fill_value": 0,
-            "data_type": "uint8",
-            "chunk_grid": {
-                "name": "regular",
-                "configuration": {"chunk_shape": tuple(max(length, 1) for length in lengths or ())},
-            },
-            "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
-            "chunk_key_encoding": {"name": "default"},
-        }
-        merged = {
-            key: value for key, value in {**document, **changes}.items() if value is not UNSET
-        }
-        return cls(merged, context=context)
+        return created(
+            cls,
+            context,
+            fixed={"zarr_format": 3, "node_type": "array"},
+            defaults=_DEFAULT_MEMBERS,
+            derived=_DERIVED_MEMBERS,
+            given=given,
+        )
 
     @classmethod
     def from_json(
@@ -855,6 +866,59 @@ class ZarrV3ArrayMetadata(Keyed):
         """
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
+
+
+_DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
+    {
+        "shape": (),
+        "fill_value": 0,
+        "data_type": "uint8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": ()}},
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "chunk_key_encoding": {"name": "default"},
+    }
+)
+"""The document of `ZarrV3ArrayMetadata.create_default` given nothing, without its `zarr_format` and `node_type`: a scalar `uint8` array."""
+
+_VARIABLE_LENGTH_SERIALIZERS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        STRING_DATA_TYPE_NAME: VLEN_UTF8_CODEC_NAME,
+        BYTES_DATA_TYPE_NAME: VLEN_BYTES_CODEC_NAME,
+        VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME: VLEN_BYTES_CODEC_NAME,
+    }
+)
+"""The array -> bytes codec `create_default` derives for each data type whose values vary in size, by the name of its definition, as zarr-python chooses it (https://github.com/zarr-developers/zarr-python/blob/0981311c07f0a8dc8650b74e33bd385ccb411f26/src/zarr/core/array.py#L5114-L5139)."""
+
+
+def _derived_chunk_grid(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. A chunk of no dimensions when the shape has a problem, which the read reports."""
+    lengths, _ = dimension_lengths(document, "shape")
+    chunk_shape = tuple(max(length, 1) for length in lengths or ())
+    return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+
+
+def _derived_fill_value(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """The default fill value of the document's `data_type` in `context`; `UNSET` when it has none."""
+    data_type, _ = resolve(document.get("data_type", UNSET), DataTypeDefinition, context)
+    return default_fill_value(data_type)
+
+
+def _derived_codecs(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """The array -> bytes codec for the document's `data_type` in `context`, alone."""
+    data_type, _ = resolve(document.get("data_type", UNSET), DataTypeDefinition, context)
+    name = data_type.definition.name if isinstance(data_type, AcceptedDeclaration) else None
+    serializer = _VARIABLE_LENGTH_SERIALIZERS.get(name) if name is not None else None
+    if serializer is not None:
+        return ({"name": serializer},)
+    return ({"name": "bytes", "configuration": {"endian": "little"}},)
+
+
+_DERIVED_MEMBERS: Final[tuple[Derived[ZarrV3Context], ...]] = (
+    Derived("chunk_grid", ("shape",), _derived_chunk_grid),
+    Derived("fill_value", ("data_type",), _derived_fill_value),
+    Derived("codecs", ("data_type",), _derived_codecs),
+)
+"""The members of `ZarrV3ArrayMetadata.create_default` derived from a member given."""
 
 
 def array_key_of(

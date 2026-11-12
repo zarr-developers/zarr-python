@@ -12,6 +12,7 @@ from zarr_metadata._numpy import (
     NumpyTimeTicks,
     numpy_time_fill_value_canonical,
 )
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type._rules import time_rules
 from zarr_metadata.v2.data_type.scalar import (
@@ -65,6 +66,7 @@ DATETIME64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=time_rules("M"),
     canonical=_canonical,
     fill_value=ZarrV2TimeFillValue,
+    fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=_fill_value_canonical,
 )
 """`<M8[unit]`: a point in time, as ticks of the unit since the epoch."""
@@ -75,6 +77,7 @@ TIMEDELTA64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=time_rules("m"),
     canonical=_canonical,
     fill_value=ZarrV2TimeFillValue,
+    fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=_fill_value_canonical,
 )
 """`<m8[unit]`: a duration, as ticks of the unit."""

@@ -8,7 +8,7 @@ from typing import Annotated, Final, Literal
 
 from annotated_types import Interval
 
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     single_byte,
@@ -28,6 +28,7 @@ INT8_DATA_TYPE: Final = DataTypeDefinition(
     name=INT8_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=Int8FillValue,
+    fill_value_default=ConstantFillValue(0),
     storage=single_byte,
 )
 """The `int8` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""

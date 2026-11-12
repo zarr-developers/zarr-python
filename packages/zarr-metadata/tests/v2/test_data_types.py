@@ -14,6 +14,7 @@ from zarr_metadata.definition import (
     UnclaimedDeclaration,
     canonical_fill_value,
     canonical_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -209,6 +210,35 @@ def test_every_family_takes_its_fill_values(
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
+
+
+@pytest.mark.parametrize(
+    ("dtype", "default"),
+    [
+        ("|b1", False),
+        ("<i2", 0),
+        (">u8", 0),
+        ("<f4", 0.0),
+        ("<c16", (0.0, 0.0)),
+        ("|S3", ""),
+        ("<U3", ""),
+        ("|V3", "AAAA"),
+        ("<M8[ns]", "NaT"),
+        ("<m8[10s]", "NaT"),
+        ([["x", "<f4"], ["y", "|b1"]], "AAAAAAA="),
+        ([["x", "<i2", [2]]], "AAAAAA=="),
+        ("|O", UNSET),
+    ],
+)
+def test_every_family_has_the_default_fill_value_zarr_python_writes(
+    dtype: object, default: object
+) -> None:
+    """Each family's default fill value is the one zarr-python writes for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`. `|O` has none, since its values may be of any type."""
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
+    found = default_fill_value(resolved)
+    assert (found, type(found)) == (default, type(default))
+    if found is not UNSET:
+        assert fill_value_problems(resolved, found) == ()
 
 
 @pytest.mark.parametrize(

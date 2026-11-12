@@ -68,6 +68,7 @@ from zarr_metadata.model._shared import (
     StoreKey,
     attributes_of,
     check_literal,
+    created,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -435,9 +436,14 @@ class ZarrV3GroupMetadata(Keyed):
         changes = member_changes(
             overrides, ZarrV3GroupMetadataUpdate, GroupExtraFieldDefinition.spec_members
         )
-        given = {key: value for key, value in changes.items() if value is not UNSET}
-        document = {"zarr_format": 3, "node_type": "group", **_written(given, context)}
-        return cls(document, context=context)
+        return created(
+            cls,
+            context,
+            fixed={"zarr_format": 3, "node_type": "group"},
+            defaults={},
+            derived=(),
+            given=_written(changes, context),
+        )
 
     @classmethod
     def from_json(

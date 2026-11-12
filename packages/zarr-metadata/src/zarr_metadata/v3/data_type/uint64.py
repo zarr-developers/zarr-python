@@ -8,7 +8,7 @@ from typing import Annotated, Final, Literal
 
 from annotated_types import Interval
 
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     multi_byte,
@@ -28,6 +28,7 @@ UINT64_DATA_TYPE: Final = DataTypeDefinition(
     name=UINT64_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=Uint64FillValue,
+    fill_value_default=ConstantFillValue(0),
     storage=multi_byte,
 )
 """The `uint64` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""

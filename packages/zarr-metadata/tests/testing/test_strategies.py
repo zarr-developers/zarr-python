@@ -24,11 +24,13 @@ from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
 
 from tests.testing._shares import share_of
+from zarr_metadata import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
     AcceptedDeclaration,
     Definition,
     EmptyConfiguration,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -169,6 +171,19 @@ def test_fill_values_fit_their_data_type(
     configuration = data.draw(data_type_configurations(definition))
     data_type = _read(definition, data.draw(declarations(definition, st.just(configuration))))
     value = data.draw(fill_values(definition, configuration))
+    assert fill_value_problems(data_type, value) == ()
+    assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
+
+
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_default_fill_values_fit_their_data_type(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """Every data type this package defines has a default fill value for every configuration, which the data type accepts, through JSON too."""
+    data_type = _read(definition, data.draw(declarations(definition)))
+    value = default_fill_value(data_type)
+    assert value is not UNSET
     assert fill_value_problems(data_type, value) == ()
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
 

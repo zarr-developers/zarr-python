@@ -6,7 +6,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 
 from typing import Final, Literal
 
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     variable_length,
@@ -26,6 +26,7 @@ STRING_DATA_TYPE: Final = DataTypeDefinition(
     name=STRING_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=StringFillValue,
+    fill_value_default=ConstantFillValue(""),
     storage=variable_length,
 )
 """The `string` data type. It is written as a bare name and has no configuration.
