@@ -1,9 +1,10 @@
 """The kinds of metadata in a Zarr v3 document, and the scopes this package provides for it.
 
 The kind of metadata a definition defines is its type: `CodecDefinition`
-(with the codec's `kind`, and its `size`: `"static"` if the output size
-is determined by the input size, or `"dynamic"` if it depends on the
-values), `DataTypeDefinition`, `ChunkGridDefinition`,
+(built as one of its kinds, `ArrayArrayCodecDefinition`,
+`ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`, with its
+`size`: `"static"` if the output size is determined by the input size,
+or `"dynamic"` if it depends on the values), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`, and, for
 the members of a document that the spec does not define,
 `ArrayExtraFieldDefinition` and `GroupExtraFieldDefinition`. What a
@@ -68,8 +69,8 @@ with None where the lengths are unknown.
 A codec is checked against its input. The array passes its first codec
 a `Chunk`: the lengths of the grid's chunks along each of the array's
 dimensions, and the array's data type declaration, with None for unknown
-parts. A codec that receives an array declares the spec violations for
-a given chunk with `chunk_rules`, located in its configuration (for
+parts. A codec that receives an array, an `ArrayCodecDefinition`,
+declares the spec violations for a given chunk with `chunk_rules`, located in its configuration (for
 example, a `transpose` whose `order` has the wrong number of axes). An
 array -> array codec declares what it passes to the next codec with
 `transition`, whatever its chunk rules found. For example, `transpose`
@@ -118,7 +119,11 @@ from zarr_metadata.v3._core import (
     ZARR_PYTHON_CONTEXT,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
     ArrayExtraFieldDefinition,
+    BytesBytesCodecDefinition,
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -140,7 +145,11 @@ __all__ = [
     "CORE_AND_EXTENSIONS_CONTEXT",
     "CORE_CONTEXT",
     "ZARR_PYTHON_CONTEXT",
+    "ArrayArrayCodecDefinition",
+    "ArrayBytesCodecDefinition",
+    "ArrayCodecDefinition",
     "ArrayExtraFieldDefinition",
+    "BytesBytesCodecDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",

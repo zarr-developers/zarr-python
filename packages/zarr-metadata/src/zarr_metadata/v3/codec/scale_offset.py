@@ -14,8 +14,8 @@ from zarr_metadata.definition._definition import (
     fill_value_problems,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
     Chunk,
-    CodecDefinition,
 )
 from zarr_metadata.v3._types.codec import (
     SCALE_OFFSET_CODEC_NAME,
@@ -86,10 +86,9 @@ def _transition(
     return chunk
 
 
-SCALE_OFFSET_CODEC: Final = CodecDefinition(
+SCALE_OFFSET_CODEC: Final = ArrayArrayCodecDefinition(
     name=SCALE_OFFSET_CODEC_NAME,
     configuration=ScaleOffsetCodecConfiguration,
-    kind="array_array",
     size="static",
     rules=_rules,
     chunk_rules=_chunk_rules,

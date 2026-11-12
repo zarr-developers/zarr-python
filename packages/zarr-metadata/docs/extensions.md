@@ -33,7 +33,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import Nested
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
 class AcmeLz4Configuration(TypedDict, closed=True):
@@ -51,10 +51,9 @@ def acme_lz4_rules(
         )
 
 
-ACME_LZ4 = CodecDefinition(
+ACME_LZ4 = BytesBytesCodecDefinition(
     name="acme.lz4",
     configuration=AcmeLz4Configuration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_lz4_rules,
 )
@@ -113,10 +112,12 @@ Other kinds declare more:
   size.
 - A chunk grid declares which shapes it fits (`shape_rules`) and its chunk
   lengths (`chunk_lengths`).
-- A codec declares:
-    - what it checks about the chunk it receives (`chunk_rules`),
-    - what it hands on (`transition`),
-    - any pipelines it contains (`pipelines`).
+- A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,
+  `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`. A codec that
+  receives an array declares what it checks about the chunk it receives
+  (`chunk_rules`) and any pipelines it contains (`pipelines`), and an
+  array -> array codec also declares what it hands on (`transition`). A
+  bytes -> bytes codec receives bytes, so it declares none of these.
 
 The [`zarr_metadata.v3.definition`](api/v3/definition.md) docstring
 describes each of these.

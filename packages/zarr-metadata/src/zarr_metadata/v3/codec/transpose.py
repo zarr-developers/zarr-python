@@ -10,8 +10,8 @@ from typing import Final
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
     Chunk,
-    CodecDefinition,
 )
 from zarr_metadata.v3._types.codec import (
     TRANSPOSE_CODEC_NAME,
@@ -74,10 +74,9 @@ def _transition(configuration: TransposeCodecConfiguration, nested: Nested, chun
     return Chunk(tuple(lengths[axis] for axis in order), chunk.data_type)
 
 
-TRANSPOSE_CODEC: Final = CodecDefinition(
+TRANSPOSE_CODEC: Final = ArrayArrayCodecDefinition(
     name=TRANSPOSE_CODEC_NAME,
     configuration=TransposeCodecConfiguration,
-    kind="array_array",
     size="static",
     rules=_rules,
     chunk_rules=_chunk_rules,

@@ -74,7 +74,7 @@ can be used on its own by a caller that has only JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
-    resolved                # RefusedDeclaration(..., definition=CodecDefinition(name='gzip'), ...)
+    resolved                # RefusedDeclaration(..., definition=BytesBytesCodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
@@ -125,7 +125,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import Nested
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
 class AcmeLz4Configuration(TypedDict, closed=True):
@@ -143,10 +143,9 @@ def acme_lz4_rules(
         )
 
 
-ACME_LZ4 = CodecDefinition(
+ACME_LZ4 = BytesBytesCodecDefinition(
     name="acme.lz4",
     configuration=AcmeLz4Configuration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_lz4_rules,
 )

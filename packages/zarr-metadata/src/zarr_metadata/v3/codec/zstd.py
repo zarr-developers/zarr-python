@@ -8,7 +8,7 @@ proposed the codec, was never merged).
 
 from typing import Final
 
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import BytesBytesCodecDefinition
 from zarr_metadata.v3._types.codec import (
     ZSTD_CODEC_NAME,
     ZSTD_MAX_LEVEL,
@@ -34,11 +34,10 @@ def _canonical(configuration: ZstdCodecConfiguration) -> ZstdCodecConfiguration:
     return simpler
 
 
-ZSTD_CODEC: Final = CodecDefinition(
+ZSTD_CODEC: Final = BytesBytesCodecDefinition(
     name=ZSTD_CODEC_NAME,
     configuration=ZstdCodecConfiguration,
     canonical=_canonical,
-    kind="bytes_bytes",
     size="dynamic",
 )
 """The `zstd` codec."""

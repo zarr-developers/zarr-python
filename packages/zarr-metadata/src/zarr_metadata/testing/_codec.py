@@ -81,7 +81,12 @@ if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
     from zarr_metadata.definition._definition import ResolvedDeclaration
     from zarr_metadata.testing._strategy import Configurations, Strategies
-    from zarr_metadata.v3._definition import CodecDefinition, CodecSize, Lengths
+    from zarr_metadata.v3._definition import (
+        ArrayBytesCodecDefinition,
+        CodecDefinition,
+        CodecSize,
+        Lengths,
+    )
 
 _BLOSC_MAX_TYPESIZE: Final = 255
 """The widest element c-blosc takes: `BLOSC_MAX_TYPESIZE`."""
@@ -235,7 +240,7 @@ def _zstd(draw: st.DrawFn) -> ZstdCodecConfiguration:
     return configuration
 
 
-def _vlen(definition: CodecDefinition[Any]) -> CodecStrategy:
+def _vlen(definition: ArrayBytesCodecDefinition[Any]) -> CodecStrategy:
     """A codec with nothing to configure that takes only some data types: none for a chunk of another, which its own chunk rules say."""
     return CodecStrategy(
         configurations=lambda chunk, _strategies: (

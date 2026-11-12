@@ -61,6 +61,7 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
     ZARR_PYTHON_CONTEXT,
+    ArrayBytesCodecDefinition,
     ArrayExtraFieldDefinition,
     CodecDefinition,
     DataTypeDefinition,
@@ -388,10 +389,9 @@ _ACME_TEXT_CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
             ),
         ],
         codecs=[
-            CodecDefinition(
+            ArrayBytesCodecDefinition(
                 name="acme.vlen-text",
                 configuration=EmptyConfiguration,
-                kind="array_bytes",
                 size="dynamic",
             )
         ],

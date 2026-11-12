@@ -15,8 +15,8 @@ from zarr_metadata.definition._definition import (
     fill_value_problems,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
     Chunk,
-    CodecDefinition,
 )
 from zarr_metadata.v3._types.codec import (
     CAST_OUT_OF_RANGE_MODE,
@@ -129,10 +129,9 @@ def _transition(configuration: CastValueCodecConfiguration, nested: Nested, chun
     return Chunk(chunk.lengths, nested.get(("data_type",)))
 
 
-CAST_VALUE_CODEC: Final = CodecDefinition(
+CAST_VALUE_CODEC: Final = ArrayArrayCodecDefinition(
     name=CAST_VALUE_CODEC_NAME,
     configuration=CastValueCodecConfiguration,
-    kind="array_array",
     size="static",
     rules=_rules,
     chunk_rules=_chunk_rules,

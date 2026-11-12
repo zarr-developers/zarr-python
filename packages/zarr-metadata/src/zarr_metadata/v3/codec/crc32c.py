@@ -10,7 +10,7 @@ key is absent from the metadata.
 from typing import Final
 
 from zarr_metadata._common import EmptyConfiguration
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import BytesBytesCodecDefinition
 from zarr_metadata.v3._types.codec import (
     CRC32C_CODEC_NAME,
     Crc32cCodecMetadata,
@@ -18,8 +18,8 @@ from zarr_metadata.v3._types.codec import (
     Crc32cCodecObject,
 )
 
-CRC32C_CODEC: Final = CodecDefinition(
-    name=CRC32C_CODEC_NAME, configuration=EmptyConfiguration, kind="bytes_bytes", size="static"
+CRC32C_CODEC: Final = BytesBytesCodecDefinition(
+    name=CRC32C_CODEC_NAME, configuration=EmptyConfiguration, size="static"
 )
 """The `crc32c` codec. A checksum has no configuration."""
 

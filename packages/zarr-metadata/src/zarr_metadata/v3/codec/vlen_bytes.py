@@ -14,7 +14,7 @@ from typing import Final
 from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
-from zarr_metadata.v3._definition import Chunk, CodecDefinition
+from zarr_metadata.v3._definition import ArrayBytesCodecDefinition, Chunk
 from zarr_metadata.v3._types.codec import (
     VLEN_BYTES_CODEC_NAME,
     VlenBytesCodecMetadata,
@@ -42,10 +42,9 @@ def _chunk_rules(
     yield from vlen_problems(chunk, _COMPATIBLE)
 
 
-VLEN_BYTES_CODEC: Final = CodecDefinition(
+VLEN_BYTES_CODEC: Final = ArrayBytesCodecDefinition(
     name=VLEN_BYTES_CODEC_NAME,
     configuration=EmptyConfiguration,
-    kind="array_bytes",
     size="dynamic",
     chunk_rules=_chunk_rules,
 )

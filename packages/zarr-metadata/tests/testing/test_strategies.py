@@ -80,6 +80,9 @@ from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_CONTEXT,
     ZARR_PYTHON_CONTEXT,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
+    BytesBytesCodecDefinition,
     Chunk,
     ChunkGridDefinition,
     CodecDefinition,
@@ -236,6 +239,8 @@ def _chunks(draw: st.DrawFn) -> Chunk:
 def _handed_problems(codec: Any, chunk: Chunk) -> list[object]:  # noqa: ANN401
     """What is wrong with `codec`, a codec field read, handed `chunk`: by its chunk rules, and in each pipeline it holds."""
     definition = codec.definition
+    if not isinstance(definition, ArrayCodecDefinition):
+        return []  # a bytes -> bytes codec is handed bytes, not the chunk
     problems: list[object] = list(definition.chunk_rules(codec.configuration, codec.nested, chunk))
     handed = definition.pipelines(codec.configuration, codec.nested, chunk)
     for member, inner in handed.items():
@@ -245,13 +250,15 @@ def _handed_problems(codec: Any, chunk: Chunk) -> list[object]:  # noqa: ANN401
 
 
 def _holds_pipelines(definition: CodecDefinition[Any]) -> bool:
-    return definition.pipelines is not no_pipelines
+    return isinstance(definition, ArrayCodecDefinition) and definition.pipelines is not no_pipelines
 
 
 def _encoders_refuse(data: st.DataObject, chunk: Chunk) -> bool:
     """Whether every array -> bytes codec that holds no pipelines refuses a chunk of `chunk`'s data type."""
     of_data_type = Chunk(None, chunk.data_type)
-    encoders = [d for d in _CODECS if d.kind == "array_bytes" and not _holds_pipelines(d)]
+    encoders = [
+        d for d in _CODECS if isinstance(d, ArrayBytesCodecDefinition) and not _holds_pipelines(d)
+    ]
     for encoder in encoders:
         codec = _read(encoder, data.draw(declarations(encoder)))
         if list(encoder.chunk_rules(codec.configuration, codec.nested, of_data_type)) == []:
@@ -277,6 +284,7 @@ def test_codecs_take_their_chunk(
         if _holds_pipelines(definition):
             assert _encoders_refuse(data, chunk)
             return
+        assert isinstance(definition, ArrayCodecDefinition)
         codec = _read(definition, data.draw(declarations(definition)))
         assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) != []
         return
@@ -966,8 +974,8 @@ def test_cast_value_draws_only_real_number_data_types(declaration: ZarrV3Declara
     assert target.definition in _REAL_NUMBERS
 
 
-_PLAIN_GZIP = CodecDefinition(
-    name=GZIP_CODEC.name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+_PLAIN_GZIP = BytesBytesCodecDefinition(
+    name=GZIP_CODEC.name, configuration=EmptyConfiguration, size="dynamic"
 )
 """A codec named as one the defaults hold, with a configuration of its own."""
 
@@ -1010,10 +1018,9 @@ def test_a_later_definition_replaces_a_default_of_its_name(pipeline: tuple[Any, 
 _PLAIN_STRUCT = DataTypeDefinition(name=STRUCT_DATA_TYPE.name, configuration=EmptyConfiguration)
 """A data type named as the struct the defaults hold, with a configuration of its own."""
 
-_PLAIN_SHARD = CodecDefinition(
+_PLAIN_SHARD = ArrayBytesCodecDefinition(
     name=SHARDING_INDEXED_CODEC.name,
     configuration=EmptyConfiguration,
-    kind="array_bytes",
     size="dynamic",
 )
 """A codec named as the shard the defaults hold, with a configuration of its own."""

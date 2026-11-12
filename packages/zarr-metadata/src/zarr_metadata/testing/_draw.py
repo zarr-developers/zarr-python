@@ -12,7 +12,7 @@ what it was drawn for.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 
 from hypothesis import reject
 from hypothesis import strategies as st
@@ -21,7 +21,15 @@ from zarr_metadata.definition._definition import AcceptedDeclaration, resolve
 from zarr_metadata.testing._strategy import NOTHING_KNOWN
 from zarr_metadata.v3._context import ZarrV3Context
 from zarr_metadata.v3._core import CORE_CONTEXT
-from zarr_metadata.v3._definition import CodecDefinition, DataTypeDefinition, no_pipelines
+from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
+    BytesBytesCodecDefinition,
+    CodecDefinition,
+    DataTypeDefinition,
+    no_pipelines,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -39,7 +47,10 @@ if TYPE_CHECKING:
     )
     from zarr_metadata.v3 import ZarrV3DeclarationJSON
     from zarr_metadata.v3._context import ZarrV3ContextSlots
-    from zarr_metadata.v3._definition import Chunk, CodecKind, CodecSize
+    from zarr_metadata.v3._definition import Chunk, CodecSize
+
+K = TypeVar("K", bound="CodecDefinition[Any]")
+"""A kind of codec: the class of its definitions."""
 
 _MAX_ARRAY_ARRAY: Final = 2
 """The most array -> array codecs a pipeline is drawn with."""
@@ -221,20 +232,20 @@ def fill_values_of(
 
 def _taking(
     chunk: Chunk,
-    kind: CodecKind,
+    kind: type[K],
     sizes: frozenset[CodecSize],
     strategies: Strategies,
     *,
     holding: bool = True,
-) -> list[tuple[CodecDefinition[Any], Configurations]]:
+) -> list[tuple[K, Configurations]]:
     """Each codec of `kind` and one of `sizes` that `strategies` draw for, that takes `chunk`, with its configurations.
 
     Without `holding`, a codec that holds pipelines of its own is left
     out: what one of those takes depends on what its pipelines do.
     """
-    taking: list[tuple[CodecDefinition[Any], Configurations]] = []
+    taking: list[tuple[K, Configurations]] = []
     for definition in sorted(scope_of(strategies).codecs.values(), key=lambda d: d.name):
-        if definition.kind != kind or definition.size not in sizes:
+        if not isinstance(definition, kind) or definition.size not in sizes:
             continue
         if not holding and _holds_pipelines(definition):
             continue
@@ -246,7 +257,7 @@ def _taking(
 
 
 def _holds_pipelines(definition: CodecDefinition[Any]) -> bool:
-    return definition.pipelines is not no_pipelines
+    return isinstance(definition, ArrayCodecDefinition) and definition.pipelines is not no_pipelines
 
 
 def pipelines_for(
@@ -258,15 +269,15 @@ def pipelines_for(
     that holds pipelines of its own takes a chunk only if what it holds
     does, so it settles nothing.
     """
-    if len(_taking(chunk, "array_bytes", sizes, strategies, holding=False)) == 0:
+    if len(_taking(chunk, ArrayBytesCodecDefinition, sizes, strategies, holding=False)) == 0:
         return None
     return _walk(chunk, strategies, sizes)
 
 
 @st.composite
 def _codec(
-    draw: st.DrawFn, options: Sequence[tuple[CodecDefinition[Any], Configurations]]
-) -> tuple[CodecDefinition[Any], ZarrV3DeclarationJSON]:
+    draw: st.DrawFn, options: Sequence[tuple[K, Configurations]]
+) -> tuple[K, ZarrV3DeclarationJSON]:
     definition, configurations = draw(st.sampled_from(options))
     return definition, draw(any_spelling(definition, configurations))
 
@@ -285,7 +296,7 @@ def _walk(
     codecs: list[ZarrV3DeclarationJSON] = []
     handed = chunk
     for _ in range(draw(st.integers(0, _MAX_ARRAY_ARRAY))):
-        options = _taking(handed, "array_array", sizes, strategies)
+        options = _taking(handed, ArrayArrayCodecDefinition, sizes, strategies)
         if len(options) == 0:
             break
         definition, declaration = draw(_codec(options))
@@ -293,11 +304,11 @@ def _walk(
         assert isinstance(codec, AcceptedDeclaration)
         handed = definition.transition(codec.configuration, codec.nested, handed)
         codecs.append(declaration)
-    options = _taking(handed, "array_bytes", sizes, strategies)
+    options = _taking(handed, ArrayBytesCodecDefinition, sizes, strategies)
     if len(options) == 0:
         reject()  # what the array -> array codecs handed on, no array -> bytes codec takes
     codecs.append(draw(_codec(options))[1])
-    options = _taking(NOTHING_KNOWN, "bytes_bytes", sizes, strategies)
+    options = _taking(NOTHING_KNOWN, BytesBytesCodecDefinition, sizes, strategies)
     if len(options) != 0:
         count = draw(st.integers(0, _MAX_BYTES_BYTES))
         codecs.extend(draw(_codec(options))[1] for _ in range(count))

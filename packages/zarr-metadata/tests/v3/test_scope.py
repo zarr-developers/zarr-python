@@ -32,6 +32,7 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
     ArrayExtraFieldDefinition,
+    BytesBytesCodecDefinition,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -50,9 +51,7 @@ SHARD = {
     },
 }
 
-MY_GZIP = CodecDefinition(
-    name="gzip", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
-)
+MY_GZIP = BytesBytesCodecDefinition(name="gzip", configuration=EmptyConfiguration, size="dynamic")
 """A private definition of the name `gzip`: a second definition under the same name, which takes no configuration.
 
 Definitions compare by their contents, so a definition rebuilt from the
@@ -109,9 +108,9 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
     )
     assert error.conflicts[0].key == (CodecDefinition, "bytes")
     assert str(error) == (
-        "codec 'bytes' at ('codecs', 0): claimed CodecDefinition(name='bytes') of "
+        "codec 'bytes' at ('codecs', 0): claimed ArrayBytesCodecDefinition(name='bytes') of "
         "BytesCodecConfiguration, found no definition; "
-        "codec 'gzip': claimed no definition, found CodecDefinition(name='gzip') of "
+        "codec 'gzip': claimed no definition, found BytesBytesCodecDefinition(name='gzip') of "
         "GzipCodecConfiguration"
     )
 
@@ -448,9 +447,7 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
     assert refines(read, unread)
 
 
-OTHER_GZIP = CodecDefinition(
-    name="gzip", configuration=EmptyConfiguration, kind="bytes_bytes", size="static"
-)
+OTHER_GZIP = BytesBytesCodecDefinition(name="gzip", configuration=EmptyConfiguration, size="static")
 """A second definition under the core gzip's name, which makes a union conflict."""
 
 

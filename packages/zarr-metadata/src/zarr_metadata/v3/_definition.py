@@ -11,8 +11,8 @@ codec receives, how a data type's values are stored, the raw bits name
 
 from __future__ import annotations
 
-import dataclasses
 import re
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import (
@@ -300,48 +300,18 @@ as for every compressor.
 """
 
 
-_UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
-    "array_array": (),
-    "array_bytes": ("transition",),
-    "bytes_bytes": ("chunk_rules", "transition", "pipelines"),
-}
-"""The functions that are never called for a codec of each kind. A bytes -> bytes codec receives bytes, and only an array -> array codec passes on a chunk."""
-
-
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class CodecDefinition(Definition[C], kind=True, format=3):
+class CodecDefinition(Definition[C], ABC, kind=True, format=3):
     """A codec: what it converts its input to, and whether the size of its output is static.
 
-    A codec that receives an array (array -> array, array -> bytes)
-    declares the spec violations for a given input `Chunk` with
-    `chunk_rules`. It receives the configuration, the nested declarations as the
-    scope read them, and the chunk, and it locates its problems in the
-    configuration. For example, a `bytes` codec without `endian` that
-    receives a multi-byte data type is a problem. An array -> array codec
-    also declares its output with `transition`: given its input chunk, it
-    returns the chunk the next codec receives. For example, `transpose`
-    permutes the axes, and `cast_value` changes the data type. These two
-    functions correspond to the spec: a codec computes its output from the
-    shape and data type of its input, and "If the
-    decoded_representation_type is not supported, this algorithm must
-    fail with an error"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
-    The transition is called for every input chunk, whatever the chunk
-    rules found, so it must return only what is true in either case. For
-    example, a `transpose` whose `order` has the wrong number of axes
-    passes on unknown lengths. A codec that does not declare its output
-    passes the next codec a chunk with nothing known about it.
-
-    A codec that contains its own pipelines declares what each one
-    receives with `pipelines`. Given the codec's input chunk, it returns
-    the chunk that the first codec of each pipeline receives, keyed by the
-    configuration member that holds the pipeline. For example, a shard's
-    inner codecs receive its inner chunks, and its index codecs receive
-    the shard index. Like the transition, it is called whatever the chunk
-    rules found, and must return only what is true in either case. A
-    function that is never called for a codec of its kind is rejected,
-    such as the chunk rules of a bytes -> bytes codec, which receives
-    bytes.
+    A codec is one of three kinds, each its own class:
+    `ArrayArrayCodecDefinition`, `ArrayBytesCodecDefinition` and
+    `BytesBytesCodecDefinition`. The kind fixes where the codec may sit in
+    a pipeline, and what it is asked: a codec that receives an array, an
+    `ArrayCodecDefinition`, is asked about the chunk it receives, and a
+    bytes -> bytes codec, which receives bytes, is asked nothing about
+    them. This class holds what every codec declares, and is not built
+    itself.
     """
 
     label: ClassVar[str] = "codec"
@@ -356,39 +326,22 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     codecs of static size.
     """
 
-    kind: CodecKind
-    """What the codec does to what it is handed: array -> array, array -> bytes or bytes -> bytes.
-
-    It fixes where the codec may sit in a pipeline, and which of `chunk_rules`,
-    `transition` and `pipelines` it may be given: building a definition with
-    one its kind is never asked raises `TypeError`.
-    """
     size: CodecSize
     """Whether the size of what the codec gives out is fixed by the size of what it is handed.
 
     Where a member takes only codecs of static size, a codec of dynamic size
     is a problem.
     """
-    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
-    """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
-    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
-    """The chunk the next codec receives, given the chunk this array -> array codec receives."""
-    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
-    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
+
+    @property
+    @abstractmethod
+    def kind(self) -> CodecKind:
+        """What the codec does to what it is handed: array -> array, array -> bytes or bytes -> bytes. It fixes where the codec may sit in a pipeline."""
 
     def _refusal(self) -> str | None:
-        kind: object = self.kind
-        if kind not in get_args(CodecKind):
-            return f"{self.name!r}: kind is one of {get_args(CodecKind)!r}, got {kind!r}"
         size: object = self.size
         if size not in get_args(CodecSize):
             return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
-        defaults = {
-            attribute.name: attribute.default for attribute in dataclasses.fields(CodecDefinition)
-        }
-        for attribute in _UNASKED[self.kind]:
-            if getattr(self, attribute) is not defaults[attribute]:
-                return f"{self.name!r}: {attribute}, which no codec of kind {kind!r} is asked"
         return None
 
     @classmethod
@@ -406,6 +359,78 @@ class CodecDefinition(Definition[C], kind=True, format=3):
             "may be used here",
             "invalid_value",
         )
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayCodecDefinition(CodecDefinition[C]):
+    """A codec that receives an array: an array -> array or an array -> bytes codec.
+
+    It declares the spec violations for a given input `Chunk` with
+    `chunk_rules`. They receive the configuration, the nested declarations
+    as the scope read them, and the chunk, and they locate their problems
+    in the configuration. For example, a `bytes` codec without `endian`
+    that receives a multi-byte data type is a problem. This corresponds to
+    the spec: a codec computes its output from the shape and data type of
+    its input, and "If the decoded_representation_type is not supported,
+    this algorithm must fail with an error"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
+
+    A codec that contains its own pipelines declares what each one
+    receives with `pipelines`. Given the codec's input chunk, it returns
+    the chunk that the first codec of each pipeline receives, keyed by the
+    configuration member that holds the pipeline. For example, a shard's
+    inner codecs receive its inner chunks, and its index codecs receive
+    the shard index. It is called whatever the chunk rules found, and must
+    return only what is true in either case.
+    """
+
+    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
+    """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
+    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
+    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayArrayCodecDefinition(ArrayCodecDefinition[C]):
+    """An array -> array codec, such as `transpose`.
+
+    It declares its output with `transition`: given its input chunk, it
+    returns the chunk the next codec receives. For example, `transpose`
+    permutes the axes, and `cast_value` changes the data type. The
+    transition is called for every input chunk, whatever the chunk rules
+    found, so it must return only what is true in either case. For
+    example, a `transpose` whose `order` has the wrong number of axes
+    passes on unknown lengths. A codec that does not declare its output
+    passes the next codec a chunk with nothing known about it.
+    """
+
+    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
+    """The chunk the next codec receives, given the chunk this codec receives."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"array_array"`: the codec sits before the array -> bytes codec, and hands an array on."""
+        return "array_array"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayBytesCodecDefinition(ArrayCodecDefinition[C]):
+    """An array -> bytes codec, such as `bytes`: the one codec of a pipeline that turns the array into bytes."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"array_bytes"`: the codec turns the array into bytes, exactly once in a pipeline."""
+        return "array_bytes"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class BytesBytesCodecDefinition(CodecDefinition[C]):
+    """A bytes -> bytes codec, such as `gzip`. It receives bytes, which have no shape or data type, so it is asked nothing about them."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"bytes_bytes"`: the codec sits after the array -> bytes codec."""
+        return "bytes_bytes"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -796,7 +821,11 @@ __all__ = [
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
     "STATIC_SIZE_ALIASES",
+    "ArrayArrayCodecDefinition",
+    "ArrayBytesCodecDefinition",
+    "ArrayCodecDefinition",
     "ArrayExtraFieldDefinition",
+    "BytesBytesCodecDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
