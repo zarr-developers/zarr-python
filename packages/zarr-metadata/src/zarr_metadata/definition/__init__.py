@@ -264,11 +264,11 @@ written; an extra field named after a member the spec defines, whose
 built from it does.
 """
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
     Context,
     Definition,
-    EmptyConfiguration,
     Nested,
     RefusedDeclaration,
     ResolvedDeclaration,

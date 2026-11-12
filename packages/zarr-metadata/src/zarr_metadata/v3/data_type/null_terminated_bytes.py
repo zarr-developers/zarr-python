@@ -10,47 +10,19 @@ This module describes what zarr-python writes. Its definition is in the
 
 import base64
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import ReadOnly, TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata._numpy import Base64Bytes
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, single_byte
+from zarr_metadata.v3._types.data_type import (
+    NULL_TERMINATED_BYTES_DATA_TYPE_NAME,
+    NullTerminatedBytes,
+    NullTerminatedBytesConfiguration,
+    NullTerminatedBytesDataTypeName,
+    NullTerminatedBytesFillValue,
+)
 from zarr_metadata.v3.data_type._byte import base64_decoded, base64_problems, base64_spelling
-
-NULL_TERMINATED_BYTES_DATA_TYPE_NAME: Final = "null_terminated_bytes"
-"""The `name` field value of the `null_terminated_bytes` data type."""
-
-NullTerminatedBytesDataTypeName = Literal["null_terminated_bytes"]
-"""Literal type of the `name` field of the `null_terminated_bytes` data type."""
-
-
-class NullTerminatedBytesConfiguration(TypedDict, closed=True):
-    """Configuration for the `null_terminated_bytes` data type."""
-
-    length_bytes: ReadOnly[int]
-    """The size in bytes of every value, at least 1."""
-
-
-class NullTerminatedBytes(TypedDict, closed=True):
-    """`null_terminated_bytes` data type metadata."""
-
-    name: NullTerminatedBytesDataTypeName
-    """The data type's name, `"null_terminated_bytes"`."""
-    configuration: NullTerminatedBytesConfiguration
-    """The data type's parameters."""
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this data type must refuse the document.
-
-    Absent means `true`. The spec does not permit `false` for a data type
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
-    """
-
-
-NullTerminatedBytesFillValue = Base64Bytes
-"""Permitted JSON shape of the `fill_value` field for `null_terminated_bytes`: the bytes, without their trailing null bytes, as a `Base64Bytes` string."""
 
 
 def _rules(

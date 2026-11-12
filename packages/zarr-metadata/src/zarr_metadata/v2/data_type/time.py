@@ -2,41 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge
-from typing_extensions import ReadOnly, TypedDict
+from typing import TYPE_CHECKING, Final
 
 from zarr_metadata._numpy import (
-    NumpyTimeScaleFactor,
-    NumpyTimeTicks,
     numpy_time_fill_value_canonical,
 )
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type._rules import time_rules
-from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,
+from zarr_metadata.v2._types.data_type import (
+    ZarrV2TimeConfiguration,
+    ZarrV2TimeFillValue,
 )
+from zarr_metadata.v2.data_type._rules import time_rules
 
 if TYPE_CHECKING:
     from zarr_metadata.definition._definition import Nested
-
-
-class ZarrV2TimeConfiguration(TypedDict, closed=True):
-    """The configuration that a time typestr carries. For example, `<M8[10ns]` is `{"byteorder": "<", "itemsize": 8, "unit": "ns", "scale_factor": 10}`."""
-
-    byteorder: ReadOnly[ZarrV2ByteOrder]
-    """The byte order that the typestr writes, `<` or `>`."""
-    itemsize: ReadOnly[Annotated[int, Ge(0)]]
-    """The size in bytes that the typestr writes, which must be 8."""
-    unit: NotRequired[ReadOnly[str]]
-    """The NumPy time unit in brackets, such as `ns`. The canonical form writes `μs` as `us`.
-
-    An array's dtype must have one. Only a codec's dtype parameter may leave
-    it out, as in `<M8`.
-    """
-    scale_factor: NotRequired[ReadOnly[NumpyTimeScaleFactor]]
-    """The number of units in one tick, such as the `10` of `[10ns]`, or 1 when the brackets write no number."""
 
 
 def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguration:
@@ -44,10 +23,6 @@ def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguratio
     if configuration.get("unit") == "μs":
         return {**configuration, "unit": "us"}
     return configuration
-
-
-ZarrV2TimeFillValue = NumpyTimeTicks | Literal["NaT"] | None
-"""A v2 time fill value: a count of ticks, `"NaT"`, or null."""
 
 
 def _fill_value_canonical(

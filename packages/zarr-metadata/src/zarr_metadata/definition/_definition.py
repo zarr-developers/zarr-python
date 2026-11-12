@@ -58,9 +58,9 @@ from typing import (
     get_type_hints,
 )
 
-from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
+from typing_extensions import TypeAliasType, TypeVar, is_typeddict
 
-from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
+from zarr_metadata._common import EmptyConfiguration, JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
     Problems,
     ValidationProblem,
@@ -123,10 +123,6 @@ def unchanged(configuration: T) -> T:
 def fill_value_as_written(configuration: object, nested: object, value: T) -> T:
     """The canonical spelling of a fill value for a data type that has only one spelling per value: the fill value as written."""
     return value
-
-
-class EmptyConfiguration(TypedDict, closed=True):
-    """The configuration of a definition with nothing to configure. Its declaration is written with its name only."""
 
 
 _DECLARATION_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
@@ -1787,7 +1783,6 @@ __all__ = [
     "C",
     "Context",
     "Definition",
-    "EmptyConfiguration",
     "Nested",
     "Problems",
     "RefusedDeclaration",

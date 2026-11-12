@@ -9,79 +9,19 @@ array's dtype compares, so `<i1` and `|i1` are one parameter.
 
 from __future__ import annotations
 
-from typing import Annotated, Final, NotRequired
+from typing import Final
 
-from annotated_types import Ge, Interval, Le
-from typing_extensions import ReadOnly, TypedDict
-
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
+from zarr_metadata.v2._types.codec import (
+    ZarrV2AsTypeParameters,
+    ZarrV2BitRoundParameters,
+    ZarrV2DeltaParameters,
+    ZarrV2FixedScaleOffsetParameters,
+    ZarrV2QuantizeParameters,
+    ZarrV2ShuffleParameters,
+)
 from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
-
-
-class ZarrV2ShuffleParameters(TypedDict, closed=True):
-    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger one to C as a `Py_ssize_t`, so it is at most 2**63 - 1 on a 64-bit platform, and raises `OverflowError` for any other."""
-
-    elementsize: NotRequired[ReadOnly[Annotated[int, Le(2**63 - 1)]]]
-    """The size in bytes of the elements whose bytes are shuffled. Absent means 4."""
-
-
-class ZarrV2DeltaParameters(TypedDict, closed=True):
-    """`numcodecs.Delta(dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
-
-    dtype: ReadOnly[str]
-    """The dtype of the decoded data."""
-    astype: NotRequired[ReadOnly[str | None]]
-    """The dtype of the encoded data. Absent or null means `dtype`."""
-
-
-class ZarrV2FixedScaleOffsetParameters(TypedDict, closed=True):
-    """`numcodecs.FixedScaleOffset(offset, scale, dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
-
-    offset: ReadOnly[float | int]
-    """The value subtracted from each element before it is scaled."""
-    scale: ReadOnly[float | int]
-    """The factor that each element is multiplied by after the offset is subtracted. The product is rounded to the nearest integer."""
-    dtype: ReadOnly[str]
-    """The dtype of the decoded data."""
-    astype: NotRequired[ReadOnly[str | None]]
-    """The dtype of the encoded data. Absent or null means `dtype`."""
-
-
-class ZarrV2QuantizeParameters(TypedDict, closed=True):
-    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype`, and `astype` when present, name a float. When `astype` is omitted or null, it equals `dtype`.
-
-    `digits` is the number of decimal digits to keep, and may be negative.
-    numcodecs computes `10.0 ** -digits` and a power of two above it, which
-    overflow a float outside -308 to 307.
-    """
-
-    digits: ReadOnly[Annotated[int, Interval(ge=-308, le=307)]]
-    """The number of decimal digits of precision to keep."""
-    dtype: ReadOnly[str]
-    """The float dtype of the decoded data."""
-    astype: NotRequired[ReadOnly[str | None]]
-    """The float dtype of the encoded data. Absent or null means `dtype`."""
-
-
-class ZarrV2BitRoundParameters(TypedDict, closed=True):
-    """`numcodecs.BitRound(keepbits)`."""
-
-    keepbits: ReadOnly[Annotated[int, Ge(0)]]
-    """The number of mantissa bits to keep.
-
-    numcodecs refuses, when encoding, a value above the mantissa width of the
-    data's float type: 10, 23 or 52 bits.
-    """
-
-
-class ZarrV2AsTypeParameters(TypedDict, closed=True):
-    """`numcodecs.AsType(encode_dtype, decode_dtype)`."""
-
-    encode_dtype: ReadOnly[str]
-    """The dtype of the encoded data."""
-    decode_dtype: ReadOnly[str]
-    """The dtype of the decoded data."""
 
 
 def _shuffle_canonical(configuration: ZarrV2ShuffleParameters) -> ZarrV2ShuffleParameters:

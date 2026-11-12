@@ -5,17 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from zarr_metadata.v2._definition import CODE_POINT_BYTES, ZarrV2DataTypeDefinition
+from zarr_metadata.v2._types.data_type import ZarrV2Base64FillValue, ZarrV2ScalarConfiguration
 from zarr_metadata.v2.data_type._rules import orderless_at, sized, sized_base64_rules
-from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._json import ValidationProblem
     from zarr_metadata.definition._definition import Nested
-
-ZarrV2Base64FillValue = str | None
-"""A fill value that the v2 spec encodes as base64, for a fixed-length byte string, void, or a structured type (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193), or null."""
 
 
 def _void_fill_value_rules(

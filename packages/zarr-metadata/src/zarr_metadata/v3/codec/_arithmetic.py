@@ -21,16 +21,18 @@ types.
 from typing import Final
 
 from zarr_metadata.v3._definition import RAW_BYTES_NAME
-from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.fixed_length_utf32 import FIXED_LENGTH_UTF32_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.null_terminated_bytes import NULL_TERMINATED_BYTES_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.variable_length_bytes import VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME
-from zarr_metadata.v3.data_type.zarr_python_raw_bytes import ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME
+from zarr_metadata.v3._types.data_type import (
+    BOOL_DATA_TYPE_NAME,
+    BYTES_DATA_TYPE_NAME,
+    COMPLEX64_DATA_TYPE_NAME,
+    COMPLEX128_DATA_TYPE_NAME,
+    FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
+    NULL_TERMINATED_BYTES_DATA_TYPE_NAME,
+    STRING_DATA_TYPE_NAME,
+    STRUCT_DATA_TYPE_NAME,
+    VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
+    ZARR_PYTHON_RAW_BYTES_DATA_TYPE_NAME,
+)
 
 FLOATING_POINT: Final = frozenset(
     {

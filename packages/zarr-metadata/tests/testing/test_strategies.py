@@ -57,13 +57,13 @@ from zarr_metadata.v3._definition import (
     variable_length,
 )
 from zarr_metadata.v3._pipeline import read_pipeline
+from zarr_metadata.v3._types.data_type import FloatSpecialFillValue
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
-from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
 from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE

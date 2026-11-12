@@ -9,45 +9,20 @@ empty object, `"configuration": {}`.
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
+from typing import Final
 
-from typing_extensions import TypedDict
-
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import EmptyConfiguration, Nested
+from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import Chunk, CodecDefinition
+from zarr_metadata.v3._types.codec import (
+    VLEN_UTF8_CODEC_NAME,
+    VlenUtf8CodecMetadata,
+    VlenUtf8CodecName,
+    VlenUtf8CodecObject,
+)
+from zarr_metadata.v3._types.data_type import STRING_DATA_TYPE_NAME
 from zarr_metadata.v3.codec._vlen import vlen_problems
-from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE_NAME
-
-VLEN_UTF8_CODEC_NAME: Final = "vlen-utf8"
-"""The `name` field value of the `vlen-utf8` codec."""
-
-VlenUtf8CodecName = Literal["vlen-utf8"]
-"""Literal type of the `name` field of the `vlen-utf8` codec."""
-
-
-class VlenUtf8CodecObject(TypedDict, closed=True):
-    """`vlen-utf8` codec metadata in object form. The codec has no configuration fields."""
-
-    name: VlenUtf8CodecName
-    """The codec's name, `"vlen-utf8"`."""
-    configuration: NotRequired[EmptyConfiguration]
-    """The codec's parameters, of which there are none.
-
-    Absent, or an empty mapping.
-    """
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this codec must refuse the document.
-
-    Absent means `true`. The spec permits `false` for a codec
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
-    though `resolve` reports a `false` as a problem at every extension point.
-    """
-
-
-VlenUtf8CodecMetadata = VlenUtf8CodecObject | VlenUtf8CodecName
-"""Permitted JSON shapes for `vlen-utf8` codec metadata: the object form, or the bare name, since the codec has no configuration."""
-
 
 _COMPATIBLE: Final = frozenset({STRING_DATA_TYPE_NAME})
 

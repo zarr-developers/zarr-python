@@ -5,14 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Final
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata._typed_json import Schemas, is_alias
 from zarr_metadata.definition._context import scoped
-from zarr_metadata.definition._definition import (
-    Definition,
-    EmptyConfiguration,
-    as_kind,
-    declaration_kind,
-)
+from zarr_metadata.definition._definition import Definition, as_kind, declaration_kind
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._context import ZarrV3Context, ZarrV3Kind, is_v3_kind
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
