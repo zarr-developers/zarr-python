@@ -246,6 +246,14 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 ]
 
 
+class OffsetChunkGridMetadataConfig(TypedDict):
+    offset: Sequence[int]
+    base_chunk_grid: RegularChunkGridMetadataJSON
+
+
+OffsetChunkGridMetadataJSON = NamedRequiredConfig[Literal["offset"], OffsetChunkGridMetadataConfig]
+
+
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[int | Sequence[int]],
 ) -> tuple[int | tuple[int, ...], ...]:
@@ -296,6 +304,70 @@ class RegularChunkGridMetadata(Metadata):
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
         return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
+
+
+def _parse_int_tuple(data: object, name: str, ndim: int | None = None) -> tuple[int, ...]:
+    if isinstance(data, (str, bytes)) or not isinstance(data, Sequence):
+        raise TypeError(f"{name} must be a sequence of integers, got {data!r}")
+    parsed = tuple(data)
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in parsed):
+        raise TypeError(f"{name} must be a sequence of integers, got {data!r}")
+    if ndim is not None and len(parsed) != ndim:
+        raise ValueError(f"{name} has {len(parsed)} element(s), expected {ndim}")
+    return parsed
+
+
+@dataclass(frozen=True, kw_only=True)
+class OffsetChunkGridMetadata(Metadata):
+    """A chunk grid that shifts a ``regular`` base grid so that the base grid's chunk 0
+    begins at array coordinate ``offset`` along each dimension."""
+
+    offset: tuple[int, ...]
+    base_chunk_grid: RegularChunkGridMetadata
+
+    def __post_init__(self) -> None:
+        base: object = self.base_chunk_grid
+        if isinstance(base, Mapping):
+            base = parse_chunk_grid(base)  # type: ignore[arg-type]
+        if isinstance(base, OffsetChunkGridMetadata):
+            raise ValueError(  # noqa: TRY004
+                "An offset chunk grid cannot wrap another offset chunk grid."
+            )
+        if isinstance(base, Metadata) and not isinstance(base, RegularChunkGridMetadata):
+            raise ValueError(  # noqa: TRY004
+                f"An offset chunk grid over a {base.to_dict()['name']!r} base chunk grid "
+                "is not supported; only a 'regular' base chunk grid is."
+            )
+        if not isinstance(base, RegularChunkGridMetadata):
+            raise TypeError(f"base_chunk_grid must be a chunk grid, got {base!r}")
+        object.__setattr__(self, "base_chunk_grid", base)
+        object.__setattr__(self, "offset", _parse_int_tuple(self.offset, "offset", base.ndim))
+
+    @property
+    def ndim(self) -> int:
+        return self.base_chunk_grid.ndim
+
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        return self.base_chunk_grid.chunk_shape
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {
+            "name": "offset",
+            "configuration": {
+                "offset": self.offset,
+                "base_chunk_grid": cast("JSON", self.base_chunk_grid.to_dict()),
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: OffsetChunkGridMetadataJSON) -> Self:  # type: ignore[override]
+        parse_named_configuration(data, "offset")
+        configuration = data["configuration"]
+        return cls(
+            offset=configuration["offset"],  # type: ignore[arg-type]
+            base_chunk_grid=configuration["base_chunk_grid"],  # type: ignore[arg-type]
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -381,7 +453,9 @@ class RectilinearChunkGridMetadata(Metadata):
         return cls(chunk_shapes=tuple(parsed))
 
 
-ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
+ChunkGridMetadata = (
+    RegularChunkGridMetadata | RectilinearChunkGridMetadata | OffsetChunkGridMetadata
+)
 
 
 class RectilinearChunksDisabledError(ValueError):
@@ -457,16 +531,89 @@ def parse_chunk_grid(
     --------
     create_chunk_grid_metadata : Construct a chunk grid from user-facing input.
     """
-    if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
+    if isinstance(
+        data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata, OffsetChunkGridMetadata)
+    ):
         return data
 
     data = expand_short_hand_name(data)
     name, _ = parse_named_configuration(data)
     if name == "regular":
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
+    if name == "offset":
+        return OffsetChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     if name == "rectilinear":
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
+
+
+class BoundsJSON(TypedDict):
+    inclusive_min: Sequence[int]
+    exclusive_max: Sequence[int]
+
+
+_INT64_MIN: Final = -(2**63)
+_INT64_MAX: Final = 2**63 - 1
+
+
+def _check_int64(values: Iterable[int], name: str) -> None:
+    for value in values:
+        if not _INT64_MIN <= value <= _INT64_MAX:
+            raise ValueError(f"{name} {value} is not representable as a signed 64-bit integer.")
+
+
+def parse_inclusive_min(data: Iterable[int] | None, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Parse the lower bound of each dimension, all zeros when `data` is None, and check that
+    it, `shape` and the upper bound it implies are representable as signed 64-bit integers."""
+    parsed = (
+        (0,) * len(shape)
+        if data is None
+        else _parse_int_tuple(tuple(data), "inclusive_min", len(shape))
+    )
+    _check_int64(parsed, "inclusive_min entry")
+    _check_int64(shape, "shape entry")
+    _check_int64((lo + n for lo, n in zip(parsed, shape, strict=True)), "exclusive_max entry")
+    return parsed
+
+
+def parse_bounds(data: object) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Read a stored ``bounds`` member as ``(inclusive_min, shape)``."""
+    if not isinstance(data, Mapping) or set(data) != {"inclusive_min", "exclusive_max"}:
+        raise ValueError(
+            "bounds must be an object with exactly the members 'inclusive_min' and "
+            f"'exclusive_max', got {data!r}"
+        )
+    inclusive_min = _parse_int_tuple(data["inclusive_min"], "bounds.inclusive_min")
+    exclusive_max = _parse_int_tuple(
+        data["exclusive_max"], "bounds.exclusive_max", len(inclusive_min)
+    )
+    _check_int64(exclusive_max, "bounds.exclusive_max entry")
+    for axis, (lo, hi) in enumerate(zip(inclusive_min, exclusive_max, strict=True)):
+        if lo > hi:
+            raise ValueError(
+                f"bounds.inclusive_min[{axis}] = {lo} exceeds bounds.exclusive_max[{axis}] = {hi}."
+            )
+    shape = tuple(hi - lo for lo, hi in zip(inclusive_min, exclusive_max, strict=True))
+    return parse_inclusive_min(inclusive_min, shape), shape
+
+
+def parse_shape_or_bounds(data: Mapping[str, object]) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Read ``shape`` or ``bounds``, whichever a stored array document carries, as
+    ``(shape, inclusive_min)``."""
+    has_shape, has_bounds = "shape" in data, "bounds" in data
+    if has_shape and has_bounds:
+        raise ValueError(
+            "Array metadata must contain exactly one of 'shape' and 'bounds', not both."
+        )
+    if not (has_shape or has_bounds):
+        raise ValueError(
+            "Array metadata must contain exactly one of 'shape' and 'bounds'; neither is present."
+        )
+    if has_bounds:
+        inclusive_min, shape = parse_bounds(data["bounds"])
+        return shape, inclusive_min
+    shape = parse_shapelike(data["shape"])  # type: ignore[arg-type]
+    return shape, parse_inclusive_min(None, shape)
 
 
 class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
@@ -480,7 +627,8 @@ class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: i
     zarr_format: Literal[3]
     node_type: Literal["array"]
     data_type: str | NamedConfig[str, Mapping[str, JSON]]
-    shape: tuple[int, ...]
+    shape: NotRequired[tuple[int, ...]]
+    bounds: NotRequired[BoundsJSON]
     chunk_grid: str | NamedConfig[str, Mapping[str, JSON]]
     chunk_key_encoding: str | NamedConfig[str, Mapping[str, JSON]]
     fill_value: JSON
@@ -498,6 +646,7 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
     "node_type",
     "data_type",
     "shape",
+    "bounds",
     "chunk_grid",
     "chunk_key_encoding",
     "fill_value",
@@ -511,6 +660,9 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: tuple[int, ...]
+    inclusive_min: tuple[int, ...]
+    bounded: bool = False
+    """Whether the stored document carries ``bounds`` rather than ``shape``."""
     data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGridMetadata
     chunk_key_encoding: ChunkKeyEncoding
@@ -539,12 +691,15 @@ class ArrayV3Metadata(Metadata):
         dimension_names: DimensionNamesLike,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
+        inclusive_min: Iterable[int] | None = None,
+        bounded: bool = False,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
         shape_parsed = parse_shapelike(shape)
+        inclusive_min_parsed = parse_inclusive_min(inclusive_min, shape_parsed)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
@@ -581,6 +736,8 @@ class ArrayV3Metadata(Metadata):
         validate_codecs(codecs_parsed_partial, data_type)
 
         object.__setattr__(self, "shape", shape_parsed)
+        object.__setattr__(self, "inclusive_min", inclusive_min_parsed)
+        object.__setattr__(self, "bounded", bool(bounded) or any(inclusive_min_parsed))
         object.__setattr__(self, "data_type", data_type)
         object.__setattr__(self, "chunk_grid", chunk_grid_parsed)
         object.__setattr__(self, "chunk_key_encoding", chunk_key_encoding_parsed)
@@ -598,6 +755,10 @@ class ArrayV3Metadata(Metadata):
             raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
         if isinstance(self.chunk_grid, RectilinearChunkGridMetadata):
             validate_rectilinear_edges(self.chunk_grid.chunk_shapes, self.shape)
+            if any(self.inclusive_min):
+                raise ValueError(
+                    "A rectilinear chunk grid needs every entry of `inclusive_min` to be 0."
+                )
         if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
             raise ValueError(
                 "`dimension_names` and `shape` need to have the same number of dimensions."
@@ -633,7 +794,7 @@ class ArrayV3Metadata(Metadata):
             # Inner chunks are always regular, whatever the shape of the outer
             # (shard) grid.
             return sharding_codec.chunk_shape
-        if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
+        if not isinstance(self.chunk_grid, (RegularChunkGridMetadata, OffsetChunkGridMetadata)):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
                 "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
@@ -644,7 +805,7 @@ class ArrayV3Metadata(Metadata):
     @property
     def shards(self) -> tuple[int, ...] | None:
         if self.sharding_codec is not None:
-            if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
+            if not isinstance(self.chunk_grid, (RegularChunkGridMetadata, OffsetChunkGridMetadata)):
                 msg = (
                     "The `shards` attribute is only defined for arrays using regular chunk grids. "
                     "This array has a rectilinear chunk grid. Use `write_chunk_sizes` for general access."
@@ -659,8 +820,45 @@ class ArrayV3Metadata(Metadata):
             return sharding_codec.codecs
         return self.codecs
 
+    @property
+    def grid_origin(self) -> tuple[int, ...]:
+        """Array coordinate at which chunk grid index 0 begins, per dimension."""
+        if isinstance(self.chunk_grid, OffsetChunkGridMetadata):
+            return self.chunk_grid.offset
+        return (0,) * self.ndim
+
+    def _first_chunk_divmod(self) -> tuple[tuple[int, int], ...]:
+        if not isinstance(self.chunk_grid, (RegularChunkGridMetadata, OffsetChunkGridMetadata)):
+            return ((0, 0),) * self.ndim
+        return tuple(
+            divmod(lo - origin, size)
+            for lo, origin, size in zip(
+                self.inclusive_min, self.grid_origin, self.chunk_grid.chunk_shape, strict=True
+            )
+        )
+
+    @property
+    def first_chunk(self) -> tuple[int, ...]:
+        """Grid index of the chunk holding the first element, per dimension."""
+        return tuple(index for index, _ in self._first_chunk_divmod())
+
+    @property
+    def first_chunk_offset(self) -> tuple[int, ...]:
+        """Position of the first element inside its chunk, per dimension."""
+        return tuple(position for _, position in self._first_chunk_divmod())
+
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
+        first = self.first_chunk
+        if any(first):
+            chunk_coords = tuple(c + f for c, f in zip(chunk_coords, first, strict=True))
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
+
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
+        chunk_coords = self.chunk_key_encoding.decode_chunk_key(chunk_key)
+        first = self.first_chunk
+        if any(first):
+            chunk_coords = tuple(c - f for c, f in zip(chunk_coords, first, strict=True))
+        return chunk_coords
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         check_storable(self)
@@ -711,9 +909,12 @@ class ArrayV3Metadata(Metadata):
         )
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)
+        shape, inclusive_min = parse_shape_or_bounds(_data)
 
         metadata = cls(
-            shape=_data_typed["shape"],
+            shape=shape,
+            inclusive_min=inclusive_min,
+            bounded="bounds" in _data,
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],
             codecs=_data_typed["codecs"],
@@ -732,6 +933,17 @@ class ArrayV3Metadata(Metadata):
         out_dict = super().to_dict()
         extra_fields = out_dict.pop("extra_fields")
         out_dict = out_dict | extra_fields  # type: ignore[operator]
+        out_dict.pop("inclusive_min")
+        out_dict.pop("bounded")
+        if self.bounded:
+            bounds: JSON = {
+                "inclusive_min": self.inclusive_min,
+                "exclusive_max": tuple(
+                    lo + n for lo, n in zip(self.inclusive_min, self.shape, strict=True)
+                ),
+            }
+            del out_dict["shape"]
+            out_dict["bounds"] = bounds
 
         out_dict["chunk_grid"] = self.chunk_grid.to_dict()
 
