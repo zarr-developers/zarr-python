@@ -393,12 +393,12 @@ def test_v3_create_default_applies_overrides() -> None:
         "v2-group-unset",
     ],
 )
-def test_create_default_takes_the_members_update_takes(
+def test_create_default_takes_the_members_replace_takes(
     model: object, members: dict[str, Any]
 ) -> None:
-    """Every model's `create_default` takes the same keyword members as its `update`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
+    """Every model's `create_default` takes the same keyword members as its `replace`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
     kind = cast("Any", model)
-    assert kind.create_default(**members) == kind.create_default().update(**members)
+    assert kind.create_default(**members) == kind.create_default().replace(**members)
 
 
 def test_v2_create_default_is_valid_empty_array() -> None:
@@ -423,56 +423,56 @@ def test_v2_create_default_applies_overrides() -> None:
     assert m.dtype.to_json() == "|u1"  # default dtype unchanged
 
 
-# --- V3 update -------------------------------------------------------------
+# --- V3 replace-------------------------------------------------------------
 
-# Cluster 3: update same-shape pairs across versions — parametrized
+# Cluster 3: replace same-shape pairs across versions — parametrized
 
-UPDATE_NEW_INSTANCE_PARAMS = [
+REPLACE_NEW_INSTANCE_PARAMS = [
     pytest.param(ZarrV3ArrayMetadata, id="v3"),
     pytest.param(ZarrV2ArrayMetadata, id="v2"),
 ]
 
 
-@pytest.mark.parametrize("model_cls", UPDATE_NEW_INSTANCE_PARAMS)
-def test_update_returns_new_instance(
+@pytest.mark.parametrize("model_cls", REPLACE_NEW_INSTANCE_PARAMS)
+def test_replace_returns_new_instance(
     model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
 ) -> None:
-    """update returns a new instance with the field replaced, leaving the original unchanged."""
+    """`replace` returns a new instance with the field replaced, leaving the original unchanged."""
     base = model_cls.create_default(shape=(10,))
-    updated = base.update(shape=(20,))
+    updated = base.replace(shape=(20,))
     assert updated.shape == (20,)
     assert base.shape == (10,)  # original unchanged
     assert isinstance(updated, model_cls)
 
 
-UPDATE_NO_ARGS_PARAMS = [
+REPLACE_NO_ARGS_PARAMS = [
     pytest.param(ZarrV3ArrayMetadata, id="v3"),
     pytest.param(ZarrV2ArrayMetadata, id="v2"),
 ]
 
 
-@pytest.mark.parametrize("model_cls", UPDATE_NO_ARGS_PARAMS)
-def test_update_no_args_returns_equal_model(
+@pytest.mark.parametrize("model_cls", REPLACE_NO_ARGS_PARAMS)
+def test_replace_no_args_returns_equal_model(
     model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
 ) -> None:
-    """update with no arguments returns a model equal to the original."""
+    """`replace` with no arguments returns a model equal to the original."""
     base = model_cls.create_default()
-    updated = base.update()
+    updated = base.replace()
     assert updated == base
 
 
-# V3-only update tests — kept direct (extra_fields is v3-specific)
+# V3-only replace tests — kept direct (extra_fields is v3-specific)
 
 
-def test_update_can_add_an_extension_member() -> None:
-    """update can add a member the spec does not define, which the model holds in extra_fields."""
+def test_replace_can_add_an_extension_member() -> None:
+    """`replace` can add a member the spec does not define, which the model holds in extra_fields."""
     base = ZarrV3ArrayMetadata.create_default()
-    updated = base.update(extra_fields={"my_ext": {"must_understand": False}})
+    updated = base.replace(extra_fields={"my_ext": {"must_understand": False}})
     assert _written_extra_fields(updated) == {"my_ext": {"must_understand": False}}
 
 
-def test_update_reads_every_member_in_the_models_own_scope() -> None:
-    """`update` reads the new document in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed. Use `with_context` to read it in another scope.
+def test_replace_reads_every_member_in_the_models_own_scope() -> None:
+    """`replace` reads the new document in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed. Use `with_context` to read it in another scope.
 
     `zstd` is an extension, so `CORE_CONTEXT` leaves it unclaimed and unchecked.
     """
@@ -480,15 +480,15 @@ def test_update_reads_every_member_in_the_models_own_scope() -> None:
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     base = ZarrV3ArrayMetadata.create_default(context=CORE_CONTEXT, codecs=(little, zstd))
     assert isinstance(base.codecs[1], UnclaimedDeclaration)
-    kept = base.update(attributes={"k": 1})
+    kept = base.replace(attributes={"k": 1})
     assert kept.codecs[1] == base.codecs[1]
     assert kept.context == CORE_CONTEXT
-    given = base.with_context(CORE_AND_EXTENSIONS_CONTEXT).update(codecs=(little, zstd))
+    given = base.with_context(CORE_AND_EXTENSIONS_CONTEXT).replace(codecs=(little, zstd))
     assert isinstance(given.codecs[1], AcceptedDeclaration)
 
 
-def test_update_leaves_out_a_member_given_as_unset() -> None:
-    """`update` removes each member that a document may omit when it is given as `UNSET`: `dimension_names`, `attributes`, and a member the spec does not define."""
+def test_replace_leaves_out_a_member_given_as_unset() -> None:
+    """`replace` removes each member that a document may omit when it is given as `UNSET`: `dimension_names`, `attributes`, and a member the spec does not define."""
     base = ZarrV3ArrayMetadata.create_default(
         shape=(2,),
         dimension_names=("x",),
@@ -496,9 +496,9 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
         extra_fields={"my_ext": {"must_understand": False}},
     )
     for updated, member in (
-        (base.update(dimension_names=UNSET), "dimension_names"),
-        (base.update(attributes=UNSET), "attributes"),
-        (base.update(extra_fields={"my_ext": UNSET}), "my_ext"),
+        (base.replace(dimension_names=UNSET), "dimension_names"),
+        (base.replace(attributes=UNSET), "attributes"),
+        (base.replace(extra_fields={"my_ext": UNSET}), "my_ext"),
     ):
         written = updated.to_json()
         assert member not in written
@@ -678,7 +678,7 @@ def test_two_v2_models_are_one_array_when_their_documents_are_written_alike(
 ) -> None:
     """A v2 model compares by what its document means. For a float type, a fill value written as an integer or as a float is the same value, `0.0` and `-0.0` are different values, and `NaN` equals `NaN`."""
     model = ZarrV2ArrayMetadata.create_default(shape=(2,), chunks=(2,), dtype="<f4")
-    models = [model.update(fill_value=cast("JSONValue", value)) for value in (left, right)]
+    models = [model.replace(fill_value=cast("JSONValue", value)) for value in (left, right)]
     assert (models[0] == models[1]) is same
     if same:
         assert hash(models[0]) == hash(models[1])
@@ -697,12 +697,12 @@ def test_a_model_pickles_and_copies_with_its_definitions() -> None:
         assert configuration_of(again.codecs[1], GZIP_CODEC) == {"level": 1}
 
 
-def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
-    """update replaces each member it is given whole, and keeps the others."""
+def test_replace_replaces_a_member_rather_than_merging_into_it() -> None:
+    """`replace` replaces each member it is given whole, and keeps the others."""
     base = ZarrV3ArrayMetadata.create_default(
         extra_fields={"a": {"must_understand": False, "x": 1}, "b": {"must_understand": False}}
     )
-    updated = base.update(extra_fields={"a": {"must_understand": False}})
+    updated = base.replace(extra_fields={"a": {"must_understand": False}})
     assert _written_extra_fields(updated) == {
         "a": {"must_understand": False},
         "b": {"must_understand": False},
@@ -1855,19 +1855,19 @@ def test_error_create_default_refuses_a_document_with_a_problem(
     ],
     ids=["fill-value-out-of-range", "shape-without-its-grid"],
 )
-def test_error_update_refuses_a_document_with_a_problem(
+def test_error_replace_refuses_a_document_with_a_problem(
     members: ZarrV3ArrayMetadataUpdate, problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(**members)
+        base.replace(**members)
     assert [(p.loc, p.kind) for p in raised.value.problems] == problems
 
 
-def test_error_update_refuses_to_leave_out_a_member_a_document_holds() -> None:
+def test_error_replace_refuses_to_leave_out_a_member_a_document_holds() -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(shape=UNSET)  # pyright: ignore[reportArgumentType]
+        base.replace(shape=UNSET)  # pyright: ignore[reportArgumentType]
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), "missing_key")]
 
 
@@ -2314,7 +2314,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     '.', not '/': chunk keys of real-world default-separator v2 arrays look
     like '0.0'. The model reports '.' and compares equal to a document that
     writes '.', but `to_json` and `to_key_value` write the document as it was
-    read, without the key. `update` with `UNSET` removes the key."""
+    read, without the key. `replace` with `UNSET` removes the key."""
     explicit = ZarrV2ArrayMetadata.create_default()
     doc = dict(explicit.to_json())
     del doc["dimension_separator"]
@@ -2324,7 +2324,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     assert b"dimension_separator" not in model.to_key_value()[".zarray"]
     assert model == explicit
     assert hash(model) == hash(explicit)
-    removed = explicit.update(dimension_separator=UNSET)
+    removed = explicit.replace(dimension_separator=UNSET)
     assert "dimension_separator" not in removed.to_json()
     assert removed.dimension_separator == "."
 
@@ -2438,11 +2438,11 @@ def test_error_a_declaration_object_in_a_document_is_not_json() -> None:
     ]
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
-    # `update` refuses a declaration among the members it is given with a
-    # `TypeError`, as `test_error_update_takes_declarations_as_json` shows.
+    # `replace` refuses a declaration among the members it is given with a
+    # `TypeError`, as `test_error_replace_takes_declarations_as_json` shows.
     model = ZarrV3ArrayMetadata.create_default(shape=(2,))
     with pytest.raises(TypeError, match="to_json"):
-        model.update(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
+        model.replace(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
 
 
 def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
