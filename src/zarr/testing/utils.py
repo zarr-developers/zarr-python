@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-import pytest
+from zarr.testing._deps import missing_dependency
+
+try:
+    import pytest
+except ImportError as e:
+    raise missing_dependency("pytest", __name__) from e
 
 from zarr.core.buffer import Buffer
 
