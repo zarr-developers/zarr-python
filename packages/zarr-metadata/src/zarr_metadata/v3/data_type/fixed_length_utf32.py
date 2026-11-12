@@ -79,6 +79,7 @@ FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=multi_byte,
+    number_class="non_numeric",
 )
 """The `fixed_length_utf32` data type: NumPy's `<U` / `>U`.
 

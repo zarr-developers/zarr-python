@@ -24,6 +24,7 @@ INT64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=Int64FillValue,
     fill_value_default=ConstantFillValue(0),
     storage=multi_byte,
+    number_class="integral",
 )
 """The `int64` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 

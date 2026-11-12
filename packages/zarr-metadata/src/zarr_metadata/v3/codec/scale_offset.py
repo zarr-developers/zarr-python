@@ -59,7 +59,7 @@ def _chunk_rules(
     source = chunk.data_type
     if not isinstance(source, AcceptedDeclaration):
         return
-    if source.definition.name in NOT_NUMBERS:
+    if source.definition.number_class in NOT_NUMBERS:
         yield ValidationProblem(
             (),
             f"expected a chunk of a data type with arithmetic, got {shown(source.name)}",

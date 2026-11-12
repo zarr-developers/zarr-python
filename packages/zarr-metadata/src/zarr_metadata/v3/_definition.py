@@ -127,6 +127,21 @@ def unknown_storage(*_: object) -> None:
     """The storage of a data type that does not declare it: unknown."""
 
 
+NumberClass = Literal["integral", "floating_point", "complex", "non_numeric"]
+"""What kind of numbers a data type's values are: integers, floating-point numbers, complex numbers, or not numbers at all.
+
+A codec that is defined only for some kinds of numbers reads this. For
+example, `cast_value` "is only defined for data types that model real
+numbers: floating-point and integral data types"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L5-L9),
+and its `wrap` mode is "Only permitted when data_type is an integral
+type"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L84).
+Values that are truth values, text, byte strings or records are
+`non_numeric`.
+"""
+
+
 def little_endian_bytes_codec(*_: object) -> BytesCodecObject:
     """The array -> bytes codec of a data type that does not declare one: `bytes` with little `endian`, which encodes values of any fixed size."""
     return {"name": BYTES_CODEC_NAME, "configuration": {"endian": "little"}}
@@ -197,6 +212,13 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     any fixed size, so a data type whose values vary in size declares its
     own.
 
+    `number_class` declares what kind of numbers the values are: integral,
+    floating-point, complex, or not numbers. A codec that is defined only
+    for some kinds of numbers reads it, as `cast_value` reads it to accept
+    only data types that model real numbers. A data type that does not
+    declare it leaves its number class unknown, and such a codec accepts
+    it, since nothing is known of its values.
+
     A data type named the way a document writes raw bits of one size (such
     as `r16`) is rejected. That name is read as `r*`, so this definition
     would never be used.
@@ -235,8 +257,16 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
         little_endian_bytes_codec
     )
     """The array -> bytes codec that encodes the values of an array built without codecs, such as `vlen-utf8` for `string`."""
+    number_class: NumberClass | None = None
+    """What kind of numbers the values are, such as `"integral"` for `int8`; None when unknown."""
 
     def _refusal(self) -> str | None:
+        number_class = cast("object", self.number_class)
+        if number_class is not None and number_class not in get_args(NumberClass):
+            return (
+                f"{self.name!r}: number_class is one of {get_args(NumberClass)!r} or None, "
+                f"got {number_class!r}"
+            )
         if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
             return (
                 f"{self.name!r} is how a document writes raw bits of one size, which read as "
@@ -836,6 +866,7 @@ __all__ = [
     "ExtraFieldDefinition",
     "GroupExtraFieldDefinition",
     "Lengths",
+    "NumberClass",
     "StorageClass",
     "StorageTransformerDefinition",
     "chunk_grid_lengths",

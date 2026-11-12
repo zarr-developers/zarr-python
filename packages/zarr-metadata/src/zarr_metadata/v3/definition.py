@@ -54,6 +54,12 @@ is built without codecs, as a model's `create_default` builds it:
 `vlen-utf8` for `string`, and `bytes` with little `endian` for a data
 type that does not declare it. `default_array_bytes_codec(data_type)`
 calls it for a data type declaration the scope read.
+A data type also declares what kind of numbers its values are with
+`number_class`, a `NumberClass`: integral, floating-point, complex, or
+not numbers. A codec that is defined only for some kinds of numbers
+reads it: `cast_value` accepts only data types that model real numbers,
+and `scale_offset` only those with arithmetic. A data type that does not
+declare it leaves its number class unknown, and those codecs accept it.
 
 A chunk grid declares which array shapes it fits with `shape_rules`, a
 function that yields the spec violations in a grid with its
@@ -134,6 +140,7 @@ from zarr_metadata.v3._definition import (
     ExtraFieldDefinition,
     GroupExtraFieldDefinition,
     Lengths,
+    NumberClass,
     StorageClass,
     StorageTransformerDefinition,
     default_array_bytes_codec,
@@ -160,6 +167,7 @@ __all__ = [
     "ExtraFieldDefinition",
     "GroupExtraFieldDefinition",
     "Lengths",
+    "NumberClass",
     "Stage",
     "StorageClass",
     "StorageTransformerDefinition",

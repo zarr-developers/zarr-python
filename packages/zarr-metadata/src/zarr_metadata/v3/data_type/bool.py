@@ -20,6 +20,7 @@ BOOL_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=BoolFillValue,
     fill_value_default=ConstantFillValue(False),
     storage=single_byte,
+    number_class="non_numeric",
 )
 """The `bool` data type. It is written as a bare name and has no configuration."""
 

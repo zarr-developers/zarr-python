@@ -29,8 +29,14 @@ NUMPY_DATETIME64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=numpy_time_fill_value_canonical,
     storage=numpy_time_storage,
+    number_class="integral",
 )
-"""The `numpy.datetime64` data type."""
+"""The `numpy.datetime64` data type.
+
+Its number class is integral, since it "is compatible with any codec that
+supports arrays of signed 64-bit integers"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L120).
+"""
 
 
 __all__ = [

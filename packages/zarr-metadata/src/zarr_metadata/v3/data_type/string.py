@@ -32,6 +32,7 @@ STRING_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=ConstantFillValue(""),
     storage=variable_length,
     array_bytes_codec_default=_array_bytes_codec_default,
+    number_class="non_numeric",
 )
 """The `string` data type. It is written as a bare name and has no configuration.
 

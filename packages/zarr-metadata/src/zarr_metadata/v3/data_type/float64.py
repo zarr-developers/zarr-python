@@ -47,6 +47,7 @@ FLOAT64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=float_fill_value_rules("float64", hex_float64),
     fill_value_canonical=float_fill_value_canonical(64),
     storage=multi_byte,
+    number_class="floating_point",
 )
 """The `float64` data type. It is written as a bare name and has no configuration. Its fill value is a number, a named value or a hex string."""
 

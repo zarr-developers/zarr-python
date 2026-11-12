@@ -35,10 +35,11 @@ from zarr_metadata.testing._draw import (
     fill_values_of,
     pipelines_for,
     read,
+    scope_of,
 )
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS, MAX_RANK, CodecStrategy
 from zarr_metadata.v3._definition import Chunk, DataTypeDefinition, storage_of
-from zarr_metadata.v3.codec._arithmetic import FLOATING_POINT, NO_REAL_NUMBERS, NOT_NUMBERS
+from zarr_metadata.v3.codec._arithmetic import NO_REAL_NUMBERS, NOT_NUMBERS
 from zarr_metadata.v3.codec.blosc import (
     BLOSC_CNAME,
     BLOSC_CODEC,
@@ -86,6 +87,7 @@ if TYPE_CHECKING:
         CodecDefinition,
         CodecSize,
         Lengths,
+        NumberClass,
     )
 
 _BLOSC_MAX_TYPESIZE: Final = 255
@@ -210,7 +212,7 @@ def _scale_offset(
     if definition is None:
         offset: st.SearchStrategy[JSONValue] = _SMALL_NUMBERS
         scale: st.SearchStrategy[JSONValue] = st.integers(1, 127)
-    elif definition.name in NOT_NUMBERS:
+    elif definition.number_class in NOT_NUMBERS:
         return None
     elif definition in INTEGER_RANGES or definition in _NUMPY_TIMES:
         low, high = INTEGER_RANGES.get(definition, _NUMPY_TIME_RANGE)
@@ -256,9 +258,11 @@ def _unchunked(configurations: Configurations) -> CodecStrategy:
     return CodecStrategy(configurations=lambda _chunk, _strategies: configurations)
 
 
-def _name_read(data_type: ResolvedDeclaration[DataTypeDefinition[Any]] | None) -> str | None:
-    """The name of the definition that accepted `data_type`; None when none did."""
-    return data_type.definition.name if isinstance(data_type, AcceptedDeclaration) else None
+def _number_class_read(
+    data_type: ResolvedDeclaration[DataTypeDefinition[Any]] | None,
+) -> NumberClass | None:
+    """The number class the definition that accepted `data_type` declares; None when none accepted it, or it declares none."""
+    return data_type.definition.number_class if isinstance(data_type, AcceptedDeclaration) else None
 
 
 def _source_scalars(chunk: Chunk, strategies: Strategies) -> st.SearchStrategy[JSONValue]:
@@ -299,7 +303,7 @@ def _cast_value_configuration(
         declaration, DataTypeDefinition, strategies
     )
     modes: tuple[CastOutOfRangeMode, ...] = CAST_OUT_OF_RANGE_MODE
-    if _name_read(target) in FLOATING_POINT:
+    if _number_class_read(target) == "floating_point":
         modes = tuple(mode for mode in modes if mode != "wrap")
     configuration = CastValueCodecConfiguration(data_type=declaration)
     if draw(st.booleans()):
@@ -325,9 +329,14 @@ def _cast_value(
     of its direction; `wrap` is drawn only for a type that is not
     floating-point.
     """
-    if _name_read(chunk.data_type) in NO_REAL_NUMBERS:
+    if _number_class_read(chunk.data_type) in NO_REAL_NUMBERS:
         return None
-    targets = [name for name in data_type_names(strategies) if name not in NO_REAL_NUMBERS]
+    data_types = scope_of(strategies).data_types
+    targets = [
+        name
+        for name in data_type_names(strategies)
+        if data_types[name].number_class not in NO_REAL_NUMBERS
+    ]
     if len(targets) == 0:
         return None
     return _cast_value_configuration(targets, _source_scalars(chunk, strategies), strategies)

@@ -7,3 +7,18 @@ receives an array, an `ArrayCodecDefinition`, has `chunk_rules` and
 `pipelines`, an array -> array codec also has `transition`, and a bytes ->
 bytes codec, which receives bytes, has none of them, so building one with any
 of them is a `TypeError` from the class itself.
+
+A v3 data type definition declares what kind of numbers its values are with
+`number_class`, a `NumberClass`: `"integral"`, `"floating_point"`,
+`"complex"` or `"non_numeric"`. `cast_value` and `scale_offset` read it to
+decide which data types they accept, where each kept a list of data type
+names, so a data type defined elsewhere is judged by what it declares:
+`cast_value` refuses one that declares complex or non-numeric values, on
+either side of the cast, and refuses to `wrap` to one that declares
+floating-point values, and `scale_offset` refuses one that declares
+non-numeric values. A data type that declares no number class is accepted by
+both, as before. Every data type this package defines declares its own, and is
+accepted or refused as before. A data type defined elsewhere under one of the
+float names the `cast_value` spec lists, such as `bfloat16`, was refused as a
+`wrap` target by its name, and is now refused once it declares
+`"floating_point"`.

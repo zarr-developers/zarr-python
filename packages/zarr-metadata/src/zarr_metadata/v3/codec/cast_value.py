@@ -17,6 +17,7 @@ from zarr_metadata.definition._definition import (
 from zarr_metadata.v3._definition import (
     ArrayArrayCodecDefinition,
     Chunk,
+    NumberClass,
 )
 from zarr_metadata.v3._types.codec import (
     CAST_OUT_OF_RANGE_MODE,
@@ -31,7 +32,7 @@ from zarr_metadata.v3._types.codec import (
     ScalarMap,
     ScalarMapEntry,
 )
-from zarr_metadata.v3.codec._arithmetic import FLOATING_POINT, NO_REAL_NUMBERS
+from zarr_metadata.v3.codec._arithmetic import NO_REAL_NUMBERS
 
 
 def _scalars(
@@ -68,21 +69,25 @@ def _rules(
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L84);
     and a scalar of the target type is encoded with its fill value
     encoding. These rules check the target data type, which the scope
-    read. The chunk rules check the input data type. If the target does
-    not model real numbers, that is the only problem reported for it.
+    read, by the number class its definition declares. The chunk rules
+    check the input data type. If the target does not model real numbers,
+    that is the only problem reported for it. A target that does not
+    declare its number class is accepted, since nothing is known of its
+    values.
     """
     target = nested.get(("data_type",))
     if not isinstance(target, AcceptedDeclaration):
         return
-    name, written = target.definition.name, target.name
-    if name in NO_REAL_NUMBERS:
+    number_class: NumberClass | None = target.definition.number_class
+    written = target.name
+    if number_class in NO_REAL_NUMBERS:
         yield ValidationProblem(
             ("data_type",),
             f"expected a data type that models real numbers, got {shown(written)}",
             "invalid_value",
         )
         return
-    if configuration.get("out_of_range") == "wrap" and name in FLOATING_POINT:
+    if configuration.get("out_of_range") == "wrap" and number_class == "floating_point":
         yield ValidationProblem(
             ("out_of_range",),
             f"expected an integral data_type to wrap to, got {shown(written)}",
@@ -106,7 +111,7 @@ def _chunk_rules(
     source = chunk.data_type
     if not isinstance(source, AcceptedDeclaration):
         return
-    if source.definition.name in NO_REAL_NUMBERS:
+    if source.definition.number_class in NO_REAL_NUMBERS:
         yield ValidationProblem(
             (),
             f"expected a chunk of a data type that models real numbers, got {shown(source.name)}",
