@@ -56,7 +56,7 @@ type that does not declare it. `default_array_bytes_codec(data_type)`
 calls it for a data type declaration the scope read.
 A data type also declares what kind of numbers its values are with
 `number_class`, a `NumberClass`: integral, floating-point, complex, or
-not numbers. A codec that is defined only for some kinds of numbers
+not plain numbers. A codec that is defined only for some kinds of numbers
 reads it: `cast_value` and `scale_offset` refuse a data type that
 declares complex or non-numeric values, as the numpy time types do. A
 data type that does not declare it leaves its number class unknown, and

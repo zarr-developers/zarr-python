@@ -128,7 +128,7 @@ def unknown_storage(*_: object) -> None:
 
 
 NumberClass = Literal["integral", "floating_point", "complex", "non_numeric"]
-"""What kind of numbers a data type's values are: integers, floating-point numbers, complex numbers, or not numbers at all.
+"""What kind of numbers a data type's values are: integers, floating-point numbers, complex numbers, or values that are not plain numbers.
 
 A codec that is defined only for some kinds of numbers reads this. For
 example, `cast_value` "is only defined for data types that model real
@@ -137,8 +137,11 @@ numbers: floating-point and integral data types"
 and its `wrap` mode is "Only permitted when data_type is an integral
 type"
 (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L84).
-Values that are truth values, times, text, byte strings or records are
-`non_numeric`.
+`non_numeric` is every other kind of value: truth values, times, text,
+byte strings, records and lists, and a value that may be missing, such
+as an optional integer, whose values are an integer or nothing. A record
+or a list of numbers, or an optional number, holds numbers but is not one,
+so the codecs that read the number class treat it as they treat text.
 """
 
 
@@ -213,7 +216,7 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     own.
 
     `number_class` declares what kind of numbers the values are: integral,
-    floating-point, complex, or not numbers. A codec that is defined only
+    floating-point, complex, or not plain numbers. A codec that is defined only
     for some kinds of numbers reads it, as `cast_value` reads it to accept
     only data types that model real numbers. A data type that does not
     declare it leaves its number class unknown, and such a codec accepts

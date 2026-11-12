@@ -23,7 +23,7 @@ from typing import Final
 from zarr_metadata.v3._definition import NumberClass
 
 NO_REAL_NUMBERS: Final[frozenset[NumberClass]] = frozenset({"non_numeric", "complex"})
-"""The number classes that neither codec takes: values that are not numbers, and complex numbers.
+"""The number classes that neither codec takes: values that are not plain numbers, and complex numbers.
 
 Addition, subtraction, multiplication and division are well-defined on
 complex numbers, but the `scale_offset` spec names none of the complex
