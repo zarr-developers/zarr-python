@@ -13,6 +13,7 @@ New to Zarr-Python? Start here:
 
 Learn the essential building blocks:
 
+- **[What is Zarr? The six layers](layers.md)** - The six layers of "Zarr": format, specification, Store ABC, standard stores, Python API, and extensions — and how projects map to them
 - **[Arrays](arrays.md)** - Learn the fundamentals of working with arrays
 - **[Groups](groups.md)** - Organize your data with groups
 - **[Attributes](attributes.md)** - Attach metadata to your arrays and groups
