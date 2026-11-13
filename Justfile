@@ -64,6 +64,10 @@ hypothesis *args:
 doctest *args:
     hatch run doctest:pytest tests/test_docs.py -v "$@"
 
+# Run each example script against the local checkout, in its PEP 723 environment
+test-examples *args:
+    hatch run {{ quote(hatch_env) }}:pytest --run-examples tests/test_examples.py -v "$@"
+
 # Run the benchmark suite
 benchmark *args:
     hatch run {{ quote(hatch_env) }}:pytest --benchmark-enable tests/benchmarks "$@"

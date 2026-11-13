@@ -15,10 +15,20 @@ build:
       # to PR builds ("external" versions) because origin/main is only a
       # meaningful diff base there. The shared docs config and header script
       # live outside the package directory but change this site too.
+      # The diff is taken against the merge base (origin/main...HEAD), not
+      # against the tip of main: a two-dot diff also reports everything that
+      # landed on main after the PR branched, which made every PR that was
+      # behind main build every site. The checkout is shallow, so fetch the
+      # full history first; without a merge base the diff fails and the build
+      # runs, which is the safe default.
       - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- packages/zarr-metadata packages/mkdocs-base.yml packages/source-version.js;
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ];
         then
-          exit 183;
+          git fetch --quiet --unshallow origin main pull/$READTHEDOCS_VERSION_NAME/head || true;
+          if git diff --quiet origin/main...HEAD -- packages/zarr-metadata packages/mkdocs-base.yml packages/source-version.js;
+          then
+            exit 183;
+          fi
         fi
     install:
       - pip install --upgrade pip

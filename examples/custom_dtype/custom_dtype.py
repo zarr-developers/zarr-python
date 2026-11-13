@@ -2,8 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
-#   "ml_dtypes==0.5.4",
-#   "pytest==8.4.1"
+#   "ml_dtypes==0.5.4"
 # ]
 # ///
 #
@@ -13,13 +12,12 @@ Demonstrate how to extend Zarr Python by defining a new data type
 """
 
 import json
-import sys
+import tempfile
 from pathlib import Path
 from typing import ClassVar, Literal, Self, TypeGuard, overload
 
 import ml_dtypes  # necessary to add extra dtypes to NumPy
 import numpy as np
-import pytest
 
 import zarr
 from zarr.dtype import ZDType, check_dtype_spec_no_object_codec_v2, data_type_registry
@@ -210,12 +208,11 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
 data_type_registry.register(Int2._zarr_v3_name, Int2)
 
 
-# this parametrized function will create arrays in zarr v2 and v3 using our new data type
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
+# this function creates an array in the given zarr format using our new data type
+def create_and_read_int2_array(store_path: Path, zarr_format: ZarrFormat) -> None:
     # create array and write values
     z_w = zarr.create_array(
-        store=tmp_path,
+        store=store_path,
         shape=(4,),
         dtype="int2",
         zarr_format=zarr_format,
@@ -224,30 +221,22 @@ def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     z_w[:] = [-1, -2, 0, 1]
 
     # open the array
-    z_r = zarr.open_array(tmp_path, mode="r")
+    z_r = zarr.open_array(store_path, mode="r")
 
     print(z_r.info_complete())
 
     # look at the array metadata
-    meta_file = tmp_path / (".zarray" if zarr_format == 2 else "zarr.json")
+    meta_file = store_path / (".zarray" if zarr_format == 2 else "zarr.json")
     print(json.dumps(json.loads(meta_file.read_text()), indent=2))
 
 
+def main() -> None:
+    # create an array in zarr v2 and in zarr v3, each in its own temporary directory
+    zarr_formats: tuple[ZarrFormat, ...] = (2, 3)
+    for zarr_format in zarr_formats:
+        with tempfile.TemporaryDirectory() as store_dir:
+            create_and_read_int2_array(Path(store_dir), zarr_format)
+
+
 if __name__ == "__main__":
-    # Run the example with printed output, and a dummy pytest configuration file specified.
-    # Without the dummy configuration file, at test time pytest will attempt to use the
-    # configuration file in the project root, which will error because Zarr is using some
-    # plugins that are not installed in this example.
-    sys.exit(
-        pytest.main(
-            [
-                "-s",
-                __file__,
-                f"-c {__file__}",
-                # Suppress: "PytestAssertRewriteWarning: Module already imported so
-                # cannot be rewritten; zarr"
-                "-W",
-                "ignore::pytest.PytestAssertRewriteWarning",
-            ]
-        )
-    )
+    main()

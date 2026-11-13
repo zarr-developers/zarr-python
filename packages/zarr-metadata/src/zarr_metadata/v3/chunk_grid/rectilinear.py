@@ -5,85 +5,32 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata._typed_json import Loc
-from zarr_metadata.v3._definition import ChunkGridDefinition, Lengths, Nested
-
-RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
-"""The `name` field value of the rectilinear chunk grid."""
-
-RectilinearChunkGridName = Literal["rectilinear"]
-"""Literal type of the `name` field of the rectilinear chunk grid."""
-
-RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
-"""JSON shape for one dimension's rectilinear spec.
-
-Either a bare integer (uniform shorthand for a regular dimension within
-a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
-pairs.
-"""
-
-
-class RectilinearChunkGridConfiguration(TypedDict, closed=True):
-    """Configuration for the rectilinear chunk grid."""
-
-    kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpec, ...]
-
-
-class RectilinearChunkGridObject(TypedDict, closed=True):
-    """Rectilinear chunk grid metadata in object form."""
-
-    name: RectilinearChunkGridName
-    configuration: RectilinearChunkGridConfiguration
-    must_understand: NotRequired[bool]
-
-
-RectilinearChunkGridMetadata = RectilinearChunkGridObject
-"""Permitted JSON shape for rectilinear chunk grid metadata.
-
-`kind` and `chunk_shapes` are required, so only the object form is valid;
-the short-hand-name form is not permitted by the spec for this grid.
-  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L59-L62
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
-"""
-
-
-def _not_positive(loc: Loc, value: int) -> ValidationProblem:
-    return ValidationProblem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
-
-
-def _rules(
-    configuration: RectilinearChunkGridConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Every extent, and every run's length and count, is at least 1."""
-    for axis, spec in enumerate(configuration["chunk_shapes"]):
-        if isinstance(spec, int):
-            if spec < 1:
-                yield _not_positive(("chunk_shapes", axis), spec)
-            continue
-        for index, entry in enumerate(spec):
-            if isinstance(entry, int):
-                if entry < 1:
-                    yield _not_positive(("chunk_shapes", axis, index), entry)
-                continue
-            for position, value in enumerate(entry):
-                if value < 1:
-                    yield _not_positive(("chunk_shapes", axis, index, position), value)
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import (
+    ChunkGridDefinition,
+    Lengths,
+)
+from zarr_metadata.v3._types.chunk_grid import (
+    RECTILINEAR_CHUNK_GRID_NAME,
+    RectilinearChunkGridConfiguration,
+    RectilinearChunkGridMetadata,
+    RectilinearChunkGridName,
+    RectilinearChunkGridObject,
+    RectilinearDimSpec,
+)
 
 
 def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
-    """One dimension's chunk sizes in their simplest equivalent form.
+    """Return one dimension's chunk sizes in their simplest equivalent form.
 
     Runs of equal sizes collapse to `[size, count]` pairs, because that is
     the spelling that does not grow with the number of chunks: a million
     equal chunks is two numbers, not a million. A run of one stays a bare
-    size, and `[size, 1]` collapses to one, since a pair says nothing extra
-    there. Adjacent spellings of the same size merge, which is what makes
+    size, and `[size, 1]` collapses to a bare size, because a pair adds no
+    information there. Adjacent spellings of the same size merge, which makes
     this idempotent: `[[32, 2], 32]` and `[32, [32, 2]]` both become
     `[[32, 3]]`.
 
@@ -111,14 +58,14 @@ def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
 def canonical_chunk_shapes(
     chunk_shapes: tuple[RectilinearDimSpec, ...],
 ) -> tuple[RectilinearDimSpec, ...]:
-    """Every dimension's chunk sizes in their simplest equivalent form."""
+    """Return every dimension's chunk sizes in their simplest equivalent form."""
     return tuple(canonical_dim_spec(spec) for spec in chunk_shapes)
 
 
 def _canonical(
     configuration: RectilinearChunkGridConfiguration,
 ) -> RectilinearChunkGridConfiguration:
-    """Run-length encoded, which is the spelling that does not grow as the array does."""
+    """Run-length encode the chunk sizes, because that spelling does not grow as the array grows."""
     return RectilinearChunkGridConfiguration(
         kind=configuration["kind"],
         chunk_shapes=canonical_chunk_shapes(configuration["chunk_shapes"]),
@@ -128,12 +75,13 @@ def _canonical(
 def _shape_rules(
     configuration: RectilinearChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
 ) -> Iterator[ValidationProblem]:
-    """Chunk lengths for each of the array's dimensions, which cover it.
+    """Check that there are chunk lengths for each of the array's dimensions, and that they cover the dimension.
 
     "The length of `chunk_shapes` MUST match the number of dimensions of
     the array", and "The sum of the edge lengths MUST equal or exceed `L`"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
-    A bare integer repeats until it covers the dimension, so it always does.
+    A bare integer repeats until it covers the dimension, so it always
+    passes this check.
     """
     chunk_shapes = configuration["chunk_shapes"]
     if len(chunk_shapes) != len(shape):
@@ -159,13 +107,14 @@ def _shape_rules(
 def _chunk_lengths(
     configuration: RectilinearChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
 ) -> Lengths:
-    """Along each axis, every chunk length its entry lists.
+    """Return, for each axis, every chunk length that its entry lists.
 
-    A bare integer is the length of every chunk along its axis; a list
-    gives each chunk's length, a `[length, count]` pair `count` of them
+    A bare integer is the length of every chunk along its axis. A list
+    gives the length of each chunk, and a `[length, count]` pair gives
+    `count` chunks of that length
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
-    Every length listed counts, a chunk past the array's edge too, which
-    the array grows into when it is resized.
+    Every listed length counts, including the length of a chunk past the
+    array's edge, which the array grows into when it is resized.
     """
     return tuple(
         frozenset({spec})
@@ -178,7 +127,6 @@ def _chunk_lengths(
 RECTILINEAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=RECTILINEAR_CHUNK_GRID_NAME,
     configuration=RectilinearChunkGridConfiguration,
-    rules=_rules,
     canonical=_canonical,
     shape_rules=_shape_rules,
     chunk_lengths=_chunk_lengths,

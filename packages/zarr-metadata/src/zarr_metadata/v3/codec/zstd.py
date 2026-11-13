@@ -6,75 +6,39 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 proposed the codec, was never merged).
 """
 
-from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
+from typing import Final
 
-from typing_extensions import TypedDict
+from zarr_metadata.v3._definition import BytesBytesCodecDefinition
+from zarr_metadata.v3._types.codec import (
+    ZSTD_CODEC_NAME,
+    ZSTD_MAX_LEVEL,
+    ZSTD_MIN_LEVEL,
+    ZstdCodecConfiguration,
+    ZstdCodecMetadata,
+    ZstdCodecName,
+    ZstdCodecObject,
+)
 
-from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition, Nested
 
-ZSTD_CODEC_NAME: Final = "zstd"
-"""The `name` field value of the `zstd` codec."""
+def _canonical(configuration: ZstdCodecConfiguration) -> ZstdCodecConfiguration:
+    """Remove a `checksum` of `false`, because an absent `checksum` means the same thing.
 
-ZstdCodecName = Literal["zstd"]
-"""Literal type of the `name` field of the `zstd` codec."""
-
-
-class ZstdCodecConfiguration(TypedDict, closed=True):
+    The spec says of `checksum` that it "should be omitted if false"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/zstd/README.md?plain=1#L17-L19),
+    so the two spellings describe the same codec.
     """
-    Configuration for the Zarr v3 `zstd` codec.
-
-    `level` is required; `checksum` is optional ("Should be omitted if
-    false").
-      https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/zstd/README.md#L9-L19
-    """
-
-    level: int
-    checksum: NotRequired[bool]
+    if configuration.get("checksum") is not False:
+        return configuration
+    simpler = configuration.copy()
+    del simpler["checksum"]
+    return simpler
 
 
-class ZstdCodecObject(TypedDict, closed=True):
-    """`zstd` codec metadata in object form."""
-
-    name: ZstdCodecName
-    configuration: ZstdCodecConfiguration
-    must_understand: NotRequired[bool]
-
-
-ZstdCodecMetadata = ZstdCodecObject
-"""Permitted JSON shape for `zstd` codec metadata.
-
-`level` is required, so only the object form is valid; the short-hand-name
-form is not permitted by the spec for this codec.
-  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/zstd/README.md#L9-L19
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
-"""
-
-ZSTD_MIN_LEVEL: Final = -131072
-"""The lowest `level` zstd accepts: ZSTD_minCLevel(), -(1 << 17)."""
-
-ZSTD_MAX_LEVEL: Final = 22
-"""The highest `level` zstd accepts: ZSTD_maxCLevel()."""
-
-
-def _rules(configuration: ZstdCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """`level` is one zstd accepts."""
-    level = configuration["level"]
-    if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
-        yield ValidationProblem(
-            ("level",),
-            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
-            "invalid_value",
-        )
-
-
-ZSTD_CODEC: Final = CodecDefinition(
+ZSTD_CODEC: Final = BytesBytesCodecDefinition(
     name=ZSTD_CODEC_NAME,
     configuration=ZstdCodecConfiguration,
-    kind="bytes_bytes",
+    canonical=_canonical,
     size="dynamic",
-    rules=_rules,
 )
 """The `zstd` codec."""
 

@@ -9,26 +9,21 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 from collections.abc import Iterator
-from typing import Final, NewType
-
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
     DataTypeDefinition,
-    Nested,
     StorageClass,
 )
-from zarr_metadata.v3.data_type._integer import byte_value_problems
-
-RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
-"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
-
-"raw bits, variable size given by *, limited to be a multiple of 8":
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47
-"""
+from zarr_metadata.v3._types.data_type import (
+    RawBytesConfiguration,
+    RawBytesDataTypeName,
+    RawBytesFillValue,
+)
 
 
 def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
@@ -46,26 +41,8 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     return RawBytesDataTypeName(value)
 
 
-RawBytesFillValue = tuple[int, ...]
-"""Permitted JSON shape of the `fill_value` field for `r<N>`.
-
-A JSON array of N/8 integers in `[0, 255]` (one per byte).
-"""
-
-
-class RawBytesConfiguration(TypedDict, closed=True):
-    """What a raw-bytes name carries: its size in bits, `{"bits": 16}` for `r16`.
-
-    A document writes the name, never this object. The definition of `r*`
-    reads a name into it, and the simplest spelling writes it back as the
-    name.
-    """
-
-    bits: int
-
-
 def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """ "raw bits, variable size given by *, limited to be a multiple of 8" -- and zero bits is not a type."""
+    """Check the size: "raw bits, variable size given by *, limited to be a multiple of 8". Zero bits is not a valid type."""
     bits = configuration["bits"]
     if bits == 0 or bits % 8 != 0:
         yield ValidationProblem(
@@ -78,9 +55,9 @@ def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[Val
 def _fill_value_rules(
     configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
 ) -> Iterator[ValidationProblem]:
-    """One byte value, an integer in `[0, 255]`, for each 8 of the size.
+    """Check that the fill value has one byte value for each 8 bits of the size.
 
-    The spec's text says `N` values for `r<N>`, but `N` counts bits
+    The spec text says `N` values for `r<N>`, but `N` counts bits
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
     and one value is one byte.
     """
@@ -89,14 +66,18 @@ def _fill_value_rules(
         yield ValidationProblem(
             (), f"expected {expected} byte values, got {len(value)}", "invalid_value"
         )
-    yield from byte_value_problems(value)
+
+
+def _fill_value_default(configuration: RawBytesConfiguration, nested: Nested) -> tuple[int, ...]:
+    """Return one zero byte value for each 8 bits of the size."""
+    return (0,) * (configuration["bits"] // 8)
 
 
 def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:
-    """One byte, for `r8`; unknown for wider raw bits, of whose byte order the spec says nothing yet.
+    """Return single-byte storage for `r8`. Return None (unknown) for wider raw bits, because the spec does not yet say anything about their byte order.
 
     "r8, r16, and r24 should be understood as fall-back types of
-    respectively 1, 2, and 3 byte length", and of byte order the spec
+    respectively 1, 2, and 3 byte length". About byte order, the spec
     says only that it looks for "more feedback and prototypes of code
     using the r*, raw bits, for various endianness"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L908).
@@ -109,15 +90,17 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     configuration=RawBytesConfiguration,
     rules=_rules,
     fill_value=RawBytesFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     storage=_storage,
+    number_class="non_numeric",
 )
-"""Raw bits, `r*`: one data type, whose name carries its size.
+"""Raw bits, `r*`: a single data type whose name carries its size.
 
-`r16` reads as `r*` with `{"bits": 16}`, and a size that is not a
-positive multiple of 8 is a problem of the field that names it. The
-simplest spelling writes the size back into the name, in decimal: `r008`
-is `r8`.
+`r16` reads as `r*` with `{"bits": 16}`. A size that is not a positive
+multiple of 8 is a problem of the declaration that names it. The simplest
+spelling writes the size back into the name in decimal, so `r008`
+becomes `r8`.
 """
 
 

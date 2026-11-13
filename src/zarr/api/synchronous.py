@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from typing_extensions import deprecated
-
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
-from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -69,7 +66,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -186,6 +182,7 @@ def open(
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
 ) -> AnyArray | Group:
     """Open a group or array using file-mode-like semantics.
@@ -210,6 +207,11 @@ def open(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration. Groups have no runtime
+        configuration, so passing `config` when a group is opened or created raises a
+        `TypeError`.
     **kwargs
         Additional parameters are passed through to `zarr.open_array` or
         `zarr.open_group`.
@@ -237,6 +239,7 @@ def open(
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
+            config=config,
             **kwargs,
         )
     )
@@ -263,7 +266,7 @@ def save(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
-    """Save an array or group of arrays to the local file system.
+    """Save an array or group of arrays to a store.
 
     Parameters
     ----------
@@ -304,7 +307,7 @@ def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
-    """Save a NumPy array to the local file system.
+    """Save a NumPy array to a store.
 
     Follows a similar API to the NumPy save() function.
 
@@ -347,7 +350,7 @@ def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Save several NumPy arrays to the local file system.
+    """Save several NumPy arrays to a store.
 
     Follows a similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -380,31 +383,6 @@ def save_group(
             **kwargs,
         )
     )
-
-
-@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
-def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
@@ -452,18 +430,15 @@ def group(
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. Not implemented.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     cache_attrs : bool, optional
-        If True (default), user attributes will be cached for attribute read
-        operations. If False, user attributes are reloaded from the store prior
-        to all attribute read operations.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     synchronizer : object, optional
-        Array synchronizer.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     path : str, optional
         Group path within store.
     meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     storage_options : dict
@@ -522,23 +497,18 @@ def open_group(
         (fail if exists). On a store that cannot delete keys, 'w' raises an
         error instead of replacing an existing node.
     cache_attrs : bool, optional
-        If True (default), user attributes will be cached for attribute read
-        operations. If False, user attributes are reloaded from the store prior
-        to all attribute read operations.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     synchronizer : object, optional
-        Array synchronizer.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     path : str, optional
         Group path within store.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. See the
-        [storage documentation in the user guide][user-guide-store-like]
-        for a description of all valid StoreLike values.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
     use_consolidated : bool or str, default None
@@ -703,15 +673,14 @@ def create(
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
     synchronizer : object, optional
-        Array synchronizer.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     overwrite : bool, optional
         If True, delete all pre-existing data in `store` at `path` before
         creating the array.
     path : str, optional
         Path under which array is stored.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -732,18 +701,13 @@ def create(
 
         To create an array with no filters, provide an empty iterable or the value `None`.
     cache_metadata : bool, optional
-        If True, array configuration metadata will be cached for the
-        lifetime of the object. If False, array metadata will be reloaded
-        prior to all data access and modification operations (may incur
-        overhead depending on storage and data access pattern).
+        Ignored. Deprecated and will be removed in a release after February 2027.
     cache_attrs : bool, optional
-        If True (default), user attributes will be cached for attribute read
-        operations. If False, user attributes are reloaded from the store prior
-        to all attribute read operations.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     read_only : bool, optional
-        True if array should be protected against modification.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     object_codec : Codec, optional
-        A codec to encode object arrays, only needed if dtype=object.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
         Zarr format 2 only. Zarr format 3 arrays should use `chunk_key_encoding` instead.
@@ -760,7 +724,7 @@ def create(
         which instructs Zarr to choose the default Zarr format value defined in the
         runtime configuration.
     meta_array : array-like, optional
-        Not implemented.
+        Ignored. Deprecated and will be removed in a release after February 2027.
     attributes : dict[str, JSON], optional
         A dictionary of user attributes to store with the array.
     chunk_shape : ChunksLike, optional
@@ -775,6 +739,13 @@ def create(
 
         The elements of `codecs` specify the transformation from array values to stored bytes.
         Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
+        The [Zarr format 3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-encoding)
+        requires, in order, zero or more array -> array codecs
+        ([`zarr.abc.codec.ArrayArrayCodec`][]), exactly one array -> bytes codec
+        ([`zarr.abc.codec.ArrayBytesCodec`][]), and zero or more bytes -> bytes codecs
+        ([`zarr.abc.codec.BytesBytesCodec`][]). Elsewhere in Zarr-Python these are
+        called filters, the serializer, and compressors; those names are Zarr-Python
+        aliases, not terms defined in the specification.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;
@@ -928,10 +899,13 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no `compressors` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_compressors`
-        in [`zarr.config`][zarr.config].
+        returns another bytestream. These values must be instances of
+        [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+        [`zarr.abc.codec.BytesBytesCodec`][]. Multiple compressors may be provided
+        for Zarr format 3. Codecs that take an array and return bytes are serializers
+        and must be supplied with `serializer` instead.
+        If no `compressors` are provided, the default for Zarr format 3 is
+        `(ZstdCodec(),)`.
         Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
@@ -943,9 +917,11 @@ def create_array(
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no `serializer` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_serializer`
-        in [`zarr.config`][zarr.config].
+        Codecs that are instances of [`zarr.abc.codec.ArrayBytesCodec`][] must be
+        supplied here, not with `compressors`.
+        If no `serializer` is provided, a default serializer is chosen based on the data type:
+        `VLenUTF8Codec` for variable-length strings, `VLenBytesCodec` for variable-length
+        bytes, and `BytesCodec` otherwise.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -1401,6 +1377,7 @@ def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Open an array using file-mode-like semantics.
@@ -1418,6 +1395,9 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1434,6 +1414,7 @@ def open_array(
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
+                config=config,
                 **kwargs,
             )
         )
