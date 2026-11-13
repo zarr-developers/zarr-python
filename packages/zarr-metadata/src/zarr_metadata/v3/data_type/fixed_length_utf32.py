@@ -5,48 +5,20 @@ See https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb660
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import ReadOnly, TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, multi_byte
-
-FIXED_LENGTH_UTF32_DATA_TYPE_NAME: Final = "fixed_length_utf32"
-"""The `name` field value of the `fixed_length_utf32` data type."""
-
-FixedLengthUtf32DataTypeName = Literal["fixed_length_utf32"]
-"""Literal type of the `name` field of the `fixed_length_utf32` data type."""
+from zarr_metadata.v3._types.data_type import (
+    FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
+    FixedLengthUtf32,
+    FixedLengthUtf32Configuration,
+    FixedLengthUtf32DataTypeName,
+    FixedLengthUtf32FillValue,
+)
 
 _CODE_POINT_BYTES: Final = 4
-
-
-class FixedLengthUtf32Configuration(TypedDict, closed=True):
-    """Configuration for the `fixed_length_utf32` data type."""
-
-    length_bytes: ReadOnly[int]
-    """The size in bytes of every value: a positive multiple of 4, since
-    each code point takes 4 bytes."""
-
-
-class FixedLengthUtf32(TypedDict, closed=True):
-    """`fixed_length_utf32` data type metadata."""
-
-    name: FixedLengthUtf32DataTypeName
-    """The data type's name, `"fixed_length_utf32"`."""
-    configuration: FixedLengthUtf32Configuration
-    """The data type's parameters."""
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this data type must refuse the document.
-
-    Absent means `true`. The spec does not permit `false` for a data type
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581).
-    """
-
-
-FixedLengthUtf32FillValue = str
-"""Permitted JSON shape of the `fill_value` field for `fixed_length_utf32`: a JSON string of at most `length_bytes / 4` code points."""
 
 
 def _rules(
@@ -107,6 +79,7 @@ FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=multi_byte,
+    number_class="non_numeric",
 )
 """The `fixed_length_utf32` data type: NumPy's `<U` / `>U`.
 

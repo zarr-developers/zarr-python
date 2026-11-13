@@ -51,6 +51,7 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
+    BytesBytesCodecDefinition,
     CodecDefinition,
     ZarrV3Context,
 )
@@ -642,9 +643,7 @@ def test_error_a_consolidated_envelope_reports_the_members_it_lacks_in_its_order
     ]
 
 
-ACME_X = CodecDefinition(
-    name="acme.x", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
-)
+ACME_X = BytesBytesCodecDefinition(name="acme.x", configuration=EmptyConfiguration, size="dynamic")
 
 
 def test_group_replace_keeps_the_documents_it_holds() -> None:

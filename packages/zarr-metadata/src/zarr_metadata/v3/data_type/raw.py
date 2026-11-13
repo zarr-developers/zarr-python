@@ -9,9 +9,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 from collections.abc import Iterator
-from typing import Final, NewType
-
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
@@ -21,14 +19,11 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     StorageClass,
 )
-from zarr_metadata.v3.data_type._byte import ByteValue
-
-RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
-"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
-
-"raw bits, variable size given by *, limited to be a multiple of 8":
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47
-"""
+from zarr_metadata.v3._types.data_type import (
+    RawBytesConfiguration,
+    RawBytesDataTypeName,
+    RawBytesFillValue,
+)
 
 
 def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
@@ -44,28 +39,6 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     if bits == 0 or bits % 8 != 0:
         raise ValueError(f"Expected 'r<N>' where N is a positive multiple of 8, got {value!r}")
     return RawBytesDataTypeName(value)
-
-
-RawBytesFillValue = tuple[ByteValue, ...]
-"""Permitted JSON shape of the `fill_value` field for `r<N>`.
-
-A JSON array of N/8 integers in `[0, 255]` (one per byte).
-"""
-
-
-class RawBytesConfiguration(TypedDict, closed=True):
-    """The configuration that a raw-bytes name carries: its size in bits, such as `{"bits": 16}` for `r16`.
-
-    A document writes the name, never this object. The definition of `r*`
-    reads a name into this object, and the simplest spelling writes it
-    back as the name.
-    """
-
-    bits: int
-    """The size in bits that the name writes, `16` for `r16`.
-
-    A positive multiple of 8.
-    """
 
 
 def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
@@ -120,6 +93,7 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     storage=_storage,
+    number_class="non_numeric",
 )
 """Raw bits, `r*`: a single data type whose name carries its size.
 

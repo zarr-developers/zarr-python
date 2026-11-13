@@ -10,25 +10,21 @@ in `CORE_AND_EXTENSIONS_CONTEXT`.
 """
 
 import base64
-from typing import Final, Literal
+from typing import Final
 
-from zarr_metadata._numpy import Base64Bytes
-from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration, Nested
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue, Nested
 from zarr_metadata.v3._definition import DataTypeDefinition, variable_length
+from zarr_metadata.v3._types.data_type import (
+    VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME,
+    VariableLengthBytesDataTypeName,
+    VariableLengthBytesFillValue,
+)
 from zarr_metadata.v3.data_type._byte import (
     base64_fill_value_rules,
     base64_spelling,
     vlen_bytes_codec,
 )
-
-VARIABLE_LENGTH_BYTES_DATA_TYPE_NAME: Final = "variable_length_bytes"
-"""The `data_type` value for the `variable_length_bytes` type."""
-
-VariableLengthBytesDataTypeName = Literal["variable_length_bytes"]
-"""Literal type of the `data_type` field for `variable_length_bytes`."""
-
-VariableLengthBytesFillValue = Base64Bytes
-"""Permitted JSON shape of the `fill_value` field for `variable_length_bytes`: a `Base64Bytes` string, which is what zarr-python writes and reads."""
 
 
 def _fill_value_canonical(
@@ -47,6 +43,7 @@ VARIABLE_LENGTH_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
     array_bytes_codec_default=vlen_bytes_codec,
+    number_class="non_numeric",
 )
 """zarr-python's `variable_length_bytes` data type. It is written as a bare name and has no configuration, and each value is stored in as many bytes as it needs."""
 

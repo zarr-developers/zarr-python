@@ -4,25 +4,19 @@ Zarr v3 `uint64` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Annotated, Final, Literal
+from typing import Final
 
-from annotated_types import Interval
-
-from zarr_metadata.definition._definition import ConstantFillValue, EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     multi_byte,
 )
-
-UINT64_DATA_TYPE_NAME: Final = "uint64"
-"""The `data_type` value for the `uint64` type."""
-
-Uint64DataTypeName = Literal["uint64"]
-"""Literal type of the `data_type` field for `uint64`."""
-
-Uint64FillValue = Annotated[int, Interval(ge=0, le=2**64 - 1)]
-"""Permitted JSON shape of the `fill_value` field for `uint64`: a JSON integer in [0, 2**64 - 1]."""
-
+from zarr_metadata.v3._types.data_type import (
+    UINT64_DATA_TYPE_NAME,
+    Uint64DataTypeName,
+    Uint64FillValue,
+)
 
 UINT64_DATA_TYPE: Final = DataTypeDefinition(
     name=UINT64_DATA_TYPE_NAME,
@@ -30,6 +24,7 @@ UINT64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=Uint64FillValue,
     fill_value_default=ConstantFillValue(0),
     storage=multi_byte,
+    number_class="integral",
 )
 """The `uint64` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 

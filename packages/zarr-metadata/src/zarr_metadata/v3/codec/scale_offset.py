@@ -5,11 +5,8 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
+from typing import Final
 
-from typing_extensions import TypedDict
-
-from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
@@ -17,77 +14,17 @@ from zarr_metadata.definition._definition import (
     fill_value_problems,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
     Chunk,
-    CodecDefinition,
 )
-from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
-
-SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
-"""The `name` field value of the `scale_offset` codec."""
-
-ScaleOffsetCodecName = Literal["scale_offset"]
-"""Literal type of the `name` field of the `scale_offset` codec."""
-
-
-class ScaleOffsetCodecConfiguration(TypedDict, closed=True):
-    """
-    Configuration for the Zarr v3 `scale_offset` codec.
-
-    Both fields are optional. A missing `offset` is the additive identity
-    (e.g. 0 for numeric types); a missing `scale` is the multiplicative
-    identity (e.g. 1). Each scalar is encoded as a fill value of the input
-    data type of the codec: an integer for an integer type, and for a
-    float type a number, `"NaN"`, `"Infinity"`, `"-Infinity"` or a hex
-    string.
-    """
-
-    offset: NotRequired[JSONValue]
-    """The quantity subtracted from each value when encoding.
-
-    Absent means the additive identity, e.g. 0. A fill value of the data
-    type the codec is handed.
-    """
-    scale: NotRequired[JSONValue]
-    """The quantity each value is multiplied by when encoding, after `offset` is subtracted.
-
-    Absent means the multiplicative identity, e.g. 1. A fill value of the
-    data type the codec is handed.
-    """
-
-
-class ScaleOffsetCodecObject(TypedDict, closed=True):
-    """`scale_offset` codec metadata in object form.
-
-    `configuration` is itself optional per spec — when both `offset` and
-    `scale` are at their identity defaults, the codec is a no-op and the
-    entire `configuration` field may be omitted.
-      https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md#L18 and #L35
-    """
-
-    name: ScaleOffsetCodecName
-    """The codec's name, `"scale_offset"`."""
-    configuration: NotRequired[ScaleOffsetCodecConfiguration]
-    """The codec's parameters.
-
-    May be absent when neither `offset` nor `scale` is set, which makes the
-    codec a no-op.
-    """
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this codec must refuse the document.
-
-    Absent means `true`. The spec permits `false` for a codec
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
-    though `resolve` reports a `false` as a problem at every extension point.
-    """
-
-
-ScaleOffsetCodecMetadata = ScaleOffsetCodecObject | ScaleOffsetCodecName
-"""Permitted JSON shapes for `scale_offset` codec metadata.
-
-The configuration has no required keys (both `offset` and `scale` are
-optional, and the configuration itself is optional), so the short-hand-name
-form is permitted in addition to the object form.
-"""
+from zarr_metadata.v3._types.codec import (
+    SCALE_OFFSET_CODEC_NAME,
+    ScaleOffsetCodecConfiguration,
+    ScaleOffsetCodecMetadata,
+    ScaleOffsetCodecName,
+    ScaleOffsetCodecObject,
+)
+from zarr_metadata.v3.codec._arithmetic import NO_REAL_NUMBERS
 
 
 def _rules(
@@ -109,12 +46,15 @@ def _rules(
 def _chunk_rules(
     configuration: ScaleOffsetCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Iterator[ValidationProblem]:
-    """Check that the input data type supports arithmetic, and that `offset` and `scale` are values of that type.
+    """Check that the input data type is an integer or floating-point type, and that `offset` and `scale` are values of that type.
 
     The codec "is only defined for data types where multiplication,
-    division, addition, and subtraction are well-defined"
+    division, addition, and subtraction are well-defined", and of the data
+    types its repository defines it supports the integer, unsigned integer
+    and floating-point types
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L5-L9),
-    and each of `offset` and `scale` "MUST be encoded to JSON using the
+    so a data type that declares complex or non-numeric values is refused.
+    Each of `offset` and `scale` "MUST be encoded to JSON using the
     Zarr V3 fill value encoding for the input array's data type"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43).
     The rules, not the chunk rules, reject a null.
@@ -122,10 +62,10 @@ def _chunk_rules(
     source = chunk.data_type
     if not isinstance(source, AcceptedDeclaration):
         return
-    if source.definition.name in NOT_NUMBERS:
+    if source.definition.number_class in NO_REAL_NUMBERS:
         yield ValidationProblem(
             (),
-            f"expected a chunk of a data type with arithmetic, got {shown(source.name)}",
+            f"expected a chunk of an integer or floating-point data type, got {shown(source.name)}",
             "invalid_value",
         )
         return
@@ -149,10 +89,9 @@ def _transition(
     return chunk
 
 
-SCALE_OFFSET_CODEC: Final = CodecDefinition(
+SCALE_OFFSET_CODEC: Final = ArrayArrayCodecDefinition(
     name=SCALE_OFFSET_CODEC_NAME,
     configuration=ScaleOffsetCodecConfiguration,
-    kind="array_array",
     size="static",
     rules=_rules,
     chunk_rules=_chunk_rules,
