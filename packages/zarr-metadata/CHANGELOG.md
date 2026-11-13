@@ -2,6 +2,37 @@
 
 <!-- towncrier release notes start -->
 
+## 0.8.0 (2026-11-12)
+
+### Features
+
+- **Breaking:** `create_default` derives each member that depends on a member given, unless that member is given too. A data type brings its default fill value and, in v3, its array -> bytes codec: `vlen-utf8` for `string`, `vlen-bytes` for `bytes` and `variable_length_bytes`, and `bytes` otherwise, so `ZarrV3ArrayMetadata.create_default(data_type="string")` now works. Some defaults change: a time data type gets `"NaT"` where it got `0`, `|O` gets `null` where it got `0`, and in v2 `|b1` gets `false`, `|S` and `<U` get `""`, and `|V` and structs get null bytes, where these got `null`. The defaults come from new hooks on a data type definition, `fill_value_default` and, in v3, `array_bytes_codec_default`, so an extension data type can declare its own, with `ConstantFillValue` for a default that does not depend on the configuration. `zarr_metadata.definition.default_fill_value` and `zarr_metadata.v3.definition.default_array_bytes_codec` read them. ([#4621](https://github.com/zarr-developers/zarr-python/pull/4621))
+
+- **Breaking:** A v3 codec is defined with the class of its kind, `ArrayArrayCodecDefinition`, `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`, instead of `CodecDefinition(kind=...)`, and `CodecDefinition` is now their abstract base. Only a codec that receives an array, an `ArrayCodecDefinition`, takes `chunk_rules` and `pipelines`, and only an array -> array codec takes `transition`, so giving one to a codec that cannot use it is a `TypeError`.
+
+    A v3 data type definition declares what kind of numbers its values are with `number_class`, a `NumberClass`: `"integral"`, `"floating_point"`, `"complex"` or `"non_numeric"`. `cast_value` and `scale_offset` read it instead of a list of data type names, so a data type defined elsewhere is judged by what it declares: both refuse one that declares complex or non-numeric values, `cast_value` refuses to `wrap` to one that declares floating-point values, and one that declares no number class is accepted by both, as before. ([#4628](https://github.com/zarr-developers/zarr-python/pull/4628))
+
+### Bugfixes
+
+- `ZarrV2ArrayMetadata.create_default(shape=...)` derives a chunk length of 1 for a dimension of length 0, as the v3 model does, where it wrote 0, which zarr-python repairs to 1 on read. ([#4621](https://github.com/zarr-developers/zarr-python/pull/4621))
+
+- **Breaking:** `cast_value` and `scale_offset` refuse data types their specs do not list, which they accepted: both refuse `numpy.datetime64` and `numpy.timedelta64`, which `cast_value` also refuses as the data type it casts to, and `scale_offset` refuses `complex64` and `complex128`. `zarr_metadata.testing.strategies` no longer draws these combinations. ([#4628](https://github.com/zarr-developers/zarr-python/pull/4628))
+
+### Deprecations and Removals
+
+- **Breaking:** The models' `update` method is now `replace`, the name Python gives a method that returns a changed copy of an immutable value, as `str.replace`, `datetime.replace` and `dataclasses.replace` do: `update`, as `dict.update` uses it, says that the object itself changes. It takes the same members and returns a new model, read in the model's own scope, as before. Each model also defines `__replace__`, so `copy.replace(model, attributes={"a": 1})` works on Python 3.13 and later. To migrate, rename each `model.update(...)` call to `model.replace(...)`. The `...Update` TypedDicts that type its members keep their names. ([#4622](https://github.com/zarr-developers/zarr-python/pull/4622))
+
+### Misc
+
+- The types of every extension (each codec's, data type's, chunk grid's and
+    chunk key encoding's name constants, `Literal` types, configuration and object
+    `TypedDict`s and metadata aliases, in both formats) now live in private modules
+    that hold types only and import no definition. A definition of one kind can
+    therefore import the types of another kind at run time, as a data type that
+    names its default codec does. Every name keeps its public import paths, since
+    each extension's module re-exports its types. ([#4627](https://github.com/zarr-developers/zarr-python/pull/4627))
+
+
 ## 0.7.0 (2026-11-11)
 
 ### Features
