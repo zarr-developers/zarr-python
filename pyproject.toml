@@ -503,3 +503,6 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
+
+[project.entry-points."zarr.url_adapters"]
+zip = "zarr.storage._zip_url_adapter:ZipAdapter"

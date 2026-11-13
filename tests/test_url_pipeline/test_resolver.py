@@ -229,6 +229,7 @@ class TestEntryPointLoading:
         # two threads resolving different schemes at once, one with a slow
         # import, must not drop a third, unrelated pending entry point
         pending = zarr.registry._url_adapter_registry.lazy_load_list
+        pending.clear()  # drop installed entry points, e.g. the builtin zip:
         for scheme, prelude in [
             ("slow", "import time\ntime.sleep(0.3)\n"),
             ("quick", ""),
