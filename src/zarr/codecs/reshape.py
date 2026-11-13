@@ -71,11 +71,6 @@ class ReshapeCodec(ArrayArrayCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "reshape", "configuration": {"shape": self.shape}}
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        """Evolve the codec from an array specification."""
-        self._compute_output_shape(array_spec.shape)
-        return self
-
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """Resolve the output metadata after applying this codec."""
         output_shape = self._compute_output_shape(chunk_spec.shape)
