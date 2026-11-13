@@ -8,7 +8,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
-from zarr.codecs import BytesCodec, TransposeCodec
+from zarr.codecs import BytesCodec, ScaleOffset, TransposeCodec
 from zarr.codecs.cast_value import CAST_VALUE_RS_MIN_VERSION, CastValue
 from zarr.storage import MemoryStore
 
@@ -610,3 +610,24 @@ def test_enforce_contiguous_arrays() -> None:
 
     array[:] = data
     assert_array_equal(array[:], data)
+
+
+@requires_cast_value_rs
+@pytest.mark.parametrize("shards", [None, (8,)], ids=["unsharded", "sharded"])
+def test_codec_validated_against_the_dtype_it_sees(shards: tuple[int, ...] | None) -> None:
+    """A codec behind `cast_value` is validated against the cast's target data type,
+    not the array's: a `scale_offset` scale of 0.5 is representable in float32, which
+    the codec sees, though not in the array's int16."""
+    store = MemoryStore()
+    data = np.arange(8, dtype="int16")
+    arr = zarr.create_array(
+        store,
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=(4,),
+        shards=shards,
+        filters=[CastValue(data_type="float32"), ScaleOffset(scale=0.5)],
+        compressors=None,
+    )
+    arr[:] = data
+    assert_array_equal(zarr.open_array(store, mode="r")[:], data)
