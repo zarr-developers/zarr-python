@@ -22,6 +22,7 @@ from zarr.core.common import (
     product,
 )
 from zarr.core.config import parse_indexing_order
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -317,6 +318,13 @@ def test_parse_shapelike_invalid_iterable_types(data: Any) -> None:
     """
     with pytest.raises(TypeError, match="Expected an iterable of integers"):
         parse_shapelike(data)
+
+
+@pytest.mark.parametrize(("data", "expected"), [(True, (1,)), ([True], (1,)), ((True, 1), (1, 1))])
+def test_parse_shapelike_bool_deprecated(data: Any, expected: tuple[int, ...]) -> None:
+    """Bools still parse as ints for backward compatibility, but warn."""
+    with pytest.warns(ZarrDeprecationWarning, match="Boolean values"):
+        assert parse_shapelike(data) == expected
 
 
 @pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,)])
