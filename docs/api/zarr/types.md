@@ -1,0 +1,5 @@
+---
+title: types
+---
+
+::: zarr.types
