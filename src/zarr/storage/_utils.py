@@ -90,16 +90,24 @@ def parse_store_url(url: str) -> ParsedStoreUrl:
 
     parsed = urlparse(url)
 
-    # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
-    name = parsed.netloc or None
+    # Since we're allowing windows paths to carry URL separator characters,
+    # we'll do the same for posix paths as well
+    if parsed.scheme == "":
+        abs_path = Path(url).absolute()
+        return ParsedStoreUrl(scheme="", name=None, path=str(abs_path), raw=url)
 
-    # For URLs with a scheme and netloc (like memory://store/path or s3://bucket/key),
-    # strip the leading slash from the path component.
-    # For local paths (no scheme), preserve the path as-is.
-    if parsed.scheme and parsed.netloc:
-        path = parsed.path.lstrip("/")
+    if parsed.scheme == "file":
+        if parsed.query:
+            raise ValueError(f"Query is not supported in file:// URLs: {parsed.query}")
+        if parsed.fragment:
+            raise ValueError(f"Fragments are not supported in file:// URLs: {parsed.fragment}")
+        name = None
+        # mimic fsspec and interpret file://a/b as ./a/b
+        path = str(Path(parsed.netloc + parsed.path).absolute())
     else:
-        path = parsed.path
+        # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
+        name = parsed.netloc or None
+        path = parsed.path.lstrip("/")
 
     return ParsedStoreUrl(scheme=parsed.scheme, name=name, path=path, raw=url)
 
