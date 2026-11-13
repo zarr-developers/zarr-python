@@ -32,6 +32,7 @@ from zarr.core.indexing import (
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
+    last_occurrences,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -507,17 +508,127 @@ def test_setitem_zarr_array_as_value() -> None:
     assert_array_equal(dst2[2:7], np.arange(2, 7))
 
 
-@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
-def test_setitem_repeated_index():
-    """oindex assignment with repeated indices writes the last value for each duplicated index position."""
-    array = zarr.array(data=np.zeros((4,)), chunks=(1,))
-    indexer = np.array([-1, -1, 0, 0])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([3, 0, 0, 1]))
+@pytest.mark.parametrize("chunks", [(1,), (2,), (4,)])
+@pytest.mark.parametrize("via", ["oindex", "vindex", "getitem"])
+def test_setitem_repeated_index(chunks: tuple[int, ...], via: str) -> None:
+    """Assignment with repeated indices writes the last value given for each repeated position, as NumPy does."""
+    array = zarr.zeros((4,), chunks=chunks, dtype="f8")
+    expected = np.zeros((4,))
+    for indexer, value in [
+        (np.array([-1, -1, 0, 0]), [0, 1, 2, 3]),
+        (np.array([-1, 0, 0, -1]), [0, 1, 2, 3]),
+        (np.array([3, 3, 3]), [7, 8, 9]),
+    ]:
+        if via == "oindex":
+            array.oindex[(indexer,)] = value
+        elif via == "vindex":
+            array.vindex[(indexer,)] = value
+        else:
+            array[indexer] = value
+        expected[indexer] = value
+        assert_array_equal(array[:], expected)
 
-    indexer = np.array([-1, 0, 0, -1])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([2, 0, 0, 3]))
+
+def test_set_orthogonal_selection_repeated_index_2d() -> None:
+    """Repeats along both dimensions of an orthogonal selection resolve like NumPy's ix_ assignment."""
+    rows = np.array([0, 5, 0, -1, 2])
+    cols = np.array([1, 1, 4, 4, 2])
+    value = np.arange(1, 26).reshape(5, 5)
+    expected = np.zeros((6, 6), dtype="i8")
+    expected[np.ix_(rows, cols)] = value
+    for chunks in [(2, 3), (6, 6), (1, 1)]:
+        array = zarr.zeros((6, 6), chunks=chunks, dtype="i8")
+        array.oindex[rows, cols] = value
+        assert_array_equal(array[:], expected)
+
+    # a scalar is written once per selected element whatever the repeats
+    array = zarr.zeros((6, 6), chunks=(2, 3), dtype="i8")
+    array.oindex[rows, cols] = 7
+    expected = np.zeros((6, 6), dtype="i8")
+    expected[np.ix_(rows, cols)] = 7
+    assert_array_equal(array[:], expected)
+
+    # repeats combined with an integer, a slice and a Boolean array along other dimensions
+    for selection, np_selection in [
+        ((3, cols), (3, cols)),
+        ((slice(1, 4), cols), np.ix_(np.arange(1, 4), cols)),
+        ((np.array([1, 0, 1, 1, 0, 0], dtype=bool), cols), np.ix_([0, 2, 3], cols)),
+    ]:
+        array = zarr.zeros((6, 6), chunks=(2, 3), dtype="i8")
+        expected = np.zeros((6, 6), dtype="i8")
+        value = np.arange(1, 1 + array.oindex[selection].size).reshape(
+            array.oindex[selection].shape
+        )
+        array.oindex[selection] = value
+        expected[np_selection] = value
+        assert_array_equal(array[:], expected)
+
+
+def test_set_coordinate_selection_repeated_points() -> None:
+    """Repeated points in a coordinate selection keep the last value, including across chunk boundaries."""
+    rows = np.array([0, 5, 0, -1, 2, 0])
+    cols = np.array([1, 2, 1, 2, 2, -5])
+    value = np.arange(1, 7)
+    expected = np.zeros((6, 6), dtype="i8")
+    expected[rows, cols] = value
+    for chunks in [(2, 3), (6, 6), (1, 1)]:
+        array = zarr.zeros((6, 6), chunks=chunks, dtype="i8")
+        array.vindex[rows, cols] = value
+        assert_array_equal(array[:], expected)
+
+    # multidimensional coordinate arrays and broadcasting between them
+    rows2 = np.array([[0, 5], [0, 5]])
+    cols2 = np.array([[1, 2], [1, 2]])
+    value2 = np.array([[1, 2], [3, 4]])
+    array = zarr.zeros((6, 6), chunks=(2, 3), dtype="i8")
+    array.vindex[rows2, cols2] = value2
+    expected = np.zeros((6, 6), dtype="i8")
+    expected[rows2, cols2] = value2
+    assert_array_equal(array[:], expected)
+
+    array = zarr.zeros((6, 6), chunks=(2, 3), dtype="i8")
+    array.vindex[np.array([0, 0, 5]), 2] = np.arange(3)
+    expected = np.zeros((6, 6), dtype="i8")
+    expected[np.array([0, 0, 5]), 2] = np.arange(3)
+    assert_array_equal(array[:], expected)
+
+    # the sorted single-array path
+    coords = np.repeat(np.arange(0, 200, 7), 3)
+    value = np.arange(coords.size)
+    array = zarr.zeros((200,), chunks=(10,), dtype="i8")
+    array.vindex[coords] = value
+    expected = np.zeros((200,), dtype="i8")
+    expected[coords] = value
+    assert_array_equal(array[:], expected)
+
+
+def test_setitem_repeated_index_value_shape_mismatch() -> None:
+    """A value that does not fit the selection is rejected rather than written in part."""
+    array = zarr.zeros((7,), chunks=(3,), dtype="i8")
+    with pytest.raises(ValueError, match="shape mismatch"):
+        array.oindex[np.array([0, 0, 1])] = np.arange(5)
+    assert_array_equal(array[:], np.zeros((7,)))
+
+
+@pytest.mark.parametrize(
+    ("indices", "expected"),
+    [
+        ([], None),
+        ([3], None),
+        ([0, 1, 2], None),
+        ([2, 1, 0], None),
+        ([0, 0], [1]),
+        ([0, 0, 3, 3, 3, 6], [1, 4, 5]),
+        ([6, 6, 3, 1, 1], [1, 2, 4]),
+        ([2, 0, 2, 1, 0], [2, 3, 4]),
+    ],
+)
+def test_last_occurrences(indices: list[int], expected: list[int] | None) -> None:
+    result = last_occurrences(np.array(indices, dtype=np.intp))
+    if expected is None:
+        assert result is None
+    else:
+        assert_array_equal(result, np.array(expected, dtype=np.intp))
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]
