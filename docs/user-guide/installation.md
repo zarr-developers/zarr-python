@@ -21,10 +21,10 @@ pip install zarr
 ```
 
 There are a number of optional dependency groups you can install for extra functionality.
-These can be installed using `pip install "zarr[<extra>]"`, e.g. `pip install "zarr[gpu]"`
+These can be installed using `pip install "zarr[<extra>]"`, e.g. `pip install "zarr[cuda]"`
 
 - `remote`: support for reading/writing to remote data stores (fsspec, obstore)
-- `gpu`: support for GPUs (cupy)
+- `cuda`: support for NVIDIA CUDA GPUs (cupy, nvidia-nvcomp)
 - `cli`: support for the `zarr` [command-line interface](cli.md) (typer)
 - `optional`: support for path-like access to local and remote stores (universal-pathlib)
 - `cast-value-rs`: support for the `cast_value` codec (cast-value-rs)
