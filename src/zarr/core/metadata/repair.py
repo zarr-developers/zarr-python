@@ -1,9 +1,9 @@
 """Repairs that read invalid stored array metadata documents written by older software.
 
-This is the only place invalid metadata is read leniently. A repair maps a stored
-array metadata document (parsed JSON) to a valid one. `ArrayV2Metadata.from_dict` and
-`ArrayV3Metadata.from_dict` apply the repairs for their Zarr format, so every path
-that parses a stored document, including consolidated metadata, goes through them.
+A repair maps a stored array metadata document (parsed JSON) to a valid one.
+`ArrayV2Metadata.from_dict` and `ArrayV3Metadata.from_dict` apply the repairs for their
+Zarr format, so every path that parses a stored document, including consolidated
+metadata, goes through them.
 
 A reading warns only where the user must act on it; a reading that gives what zarr
 read from the same document before these repairs existed is silent, so a document
@@ -15,7 +15,9 @@ marked (see `mark_repaired`), silent or not, so the array stores the repair befo
 writes chunks under it. A repair that only respells a value zarr already read the
 same way (`true` as 1, `4.0` as 4) moves no chunks, so it is not marked.
 
-To read another kind of invalid document, add a repair to `ARRAY_REPAIRS`.
+To read another kind of invalid document, add a repair to `ARRAY_REPAIRS` and the kind
+of document it reads to `zarr.core.metadata.ledger.LEDGER`, which lists every kind of
+non-conformant or unregistered metadata zarr reads or writes, repaired or not.
 """
 
 from __future__ import annotations
@@ -191,6 +193,8 @@ def _read_chunk_shape(
     return edges, Reading(moves_chunks, warning)
 
 
+# NON-CONFORMANT: chunk-size-zero
+# NON-CONFORMANT: chunk-size-true
 def _invalid_chunk_sizes_v2(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     shape = doc.get("shape")
     if not _is_int_list(shape):
@@ -241,6 +245,7 @@ def _read_codecs(codecs: list[JSON]) -> list[JSON] | None:
     return [stored if new is None else new for stored, new in zip(codecs, read, strict=True)]
 
 
+# NON-CONFORMANT: chunk-size-true
 def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     stored = doc.get("codecs")
     if not isinstance(stored, list) or (codecs := _read_codecs(stored)) is None:
@@ -261,6 +266,9 @@ def _inner_chunk_shape(doc: ArrayDocument) -> list[int] | None:
     return []
 
 
+# NON-CONFORMANT: chunk-size-zero
+# NON-CONFORMANT: chunk-size-true
+# NON-CONFORMANT: regular-grid-edge-lists
 def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     grid = doc.get("chunk_grid")
     shape = doc.get("shape")
@@ -341,6 +349,8 @@ def _respelled(read: JSON, stored: JSON) -> bool:
     return type(read) is not type(stored)
 
 
+# NON-CONFORMANT: chunk-size-true
+# NON-CONFORMANT: rectilinear-float-edges
 def _invalid_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     grid = doc.get("chunk_grid")
     if not (isinstance(grid, Mapping) and grid.get("name") == "rectilinear"):
