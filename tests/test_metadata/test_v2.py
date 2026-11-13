@@ -408,6 +408,10 @@ def test_structured_dtype_fill_value_serialization(
         *((f"{b}b1", "|b1", np.array([True, False, True])) for b in "<>|"),
         *((f"{b}i1", "|i1", np.array([-128, 0, 127], dtype=np.int8)) for b in "<>|"),
         *((f"{b}u1", "|u1", np.array([0, 128, 255], dtype=np.uint8)) for b in "<>|"),
+        *((f"{b}S3", "|S3", np.array([b"a", b"bc", b"def"])) for b in "<>|"),
+        *((f"{b}S1", "|S1", np.array([b"a", b"b", b"c"])) for b in "<|"),
+        # NCZarr's spelling of netCDF NC_CHAR is kept
+        (">S1", ">S1", np.array([b"a", b"b", b"c"])),
         (
             [["a", "<i1"], ["b", ">u1"]],
             [["a", "|i1"], ["b", "|u1"]],
@@ -421,7 +425,8 @@ def test_open_v2_byte_order_irrelevant_dtype(
 ) -> None:
     """
     An array whose data type is written with any byte order character, where the byte order is not
-    relevant, reads the stored data and writes the data type back with the canonical "|".
+    relevant, reads the stored data and writes the data type back with the canonical "|", except
+    for the NCZarr ">S1", which is written back as it was read.
     """
     metadata = {
         "zarr_format": 2,
