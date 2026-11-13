@@ -37,6 +37,7 @@ from zarr_metadata.v3.data_type.bytes import (
     BytesDataTypeName,
     BytesFillValue,
     base64_bytes,
+    base64_fill_value_rules,
 )
 from zarr_metadata.v3.data_type.complex64 import (
     COMPLEX64_DATA_TYPE,
@@ -338,6 +339,7 @@ __all__ = [
     "ZarrPythonRawBytesDataTypeName",
     "ZarrPythonRawBytesFillValue",
     "base64_bytes",
+    "base64_fill_value_rules",
     "hex_float16",
     "hex_float32",
     "hex_float64",

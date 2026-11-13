@@ -25,7 +25,12 @@ read a store that another writer made with a known writer bug, use
 `read_repaired_node_metadata_v3` or `read_repaired_node_metadata_v2`.
 They undo each bug with `repair_node_metadata_v3` or
 `repair_node_metadata_v2` before the strict read, and report what they
-changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
+changed. A reader accepts a declaration that nothing in its scope claims
+(an unknown codec, or an unknown top-level member), and a model lists each
+one a reader must understand in `unclaimed_declarations`. To also report
+each one as a problem, so that a reading has no problems exactly when a
+reader can open the node, use `read_openable_node_metadata_v3`.
+`zarr_metadata.json_schema` writes a JSON Schema of what the v3
 readers read, except for the rules. One declaration on its own is read with
 `zarr_metadata.definition.resolve`.
 
@@ -36,10 +41,13 @@ store keys and undecodable bytes. The v3 constructors take the same
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
 scope and raises `MetadataValidationError` with every problem, so an
 invalid model is never built. `to_json` returns the document as written.
-`update` reads new members in the model's own scope. `with_context` and
+`replace` reads new members in the model's own scope. `with_context` and
 `refined_in` read the document in another scope. `to_key_value` writes
-the model as it is. A v3 group reads its `consolidated_metadata` as an
-envelope and does not read the documents it lists, because consolidated
+the model as it is, with a `JSONWriter`, or a mapping of its settings, deciding how
+the bytes are spelled (indentation, key order, ASCII escaping, trailing
+newline); the default is that of `json.dumps`. A v3 group reads its
+`consolidated_metadata` as an envelope and does not read the documents
+it lists, because consolidated
 metadata is a convention of the reference implementation, not core
 metadata. `ZarrV3ConsolidatedMetadata` and
 `read_consolidated_metadata_v3` read those documents. The model also
@@ -91,7 +99,9 @@ from zarr_metadata.model._group_v3 import (
     read_consolidated_metadata_v3,
     read_group_metadata_v3,
     read_node_metadata_v3,
+    read_openable_node_metadata_v3,
 )
+from zarr_metadata.model._json_writer import JSONWriter, JSONWriterLike, JSONWriterSchema
 from zarr_metadata.model._repair import (
     Repair,
     RepairKind,
@@ -116,6 +126,9 @@ from zarr_metadata.v3._hierarchy import (
 
 __all__ = [
     "UNSET",
+    "JSONWriter",
+    "JSONWriterLike",
+    "JSONWriterSchema",
     "Repair",
     "RepairKind",
     "ZarrV2ArrayMetadata",
@@ -160,6 +173,7 @@ __all__ = [
     "read_group_metadata_v3",
     "read_node_metadata_v2",
     "read_node_metadata_v3",
+    "read_openable_node_metadata_v3",
     "read_repaired_consolidated_metadata_v2",
     "read_repaired_node_metadata_v2",
     "read_repaired_node_metadata_v3",

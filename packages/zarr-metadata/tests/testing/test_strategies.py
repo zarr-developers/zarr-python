@@ -22,17 +22,21 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast, get_args, get_ori
 import pytest
 from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
+from typing_extensions import TypedDict
 
 from tests.testing._shares import share_of
+from zarr_metadata import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition import (
     AcceptedDeclaration,
     Definition,
     EmptyConfiguration,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
 from zarr_metadata.definition._definition import as_kind, canonicalize, kind_of, unchanged
+from zarr_metadata.model import ZarrV3ArrayMetadata
 from zarr_metadata.testing._draw import scope_with
 from zarr_metadata.testing._strategy import EMPTY_CONFIGURATIONS
 from zarr_metadata.testing.strategies import (
@@ -57,13 +61,13 @@ from zarr_metadata.v3._definition import (
     variable_length,
 )
 from zarr_metadata.v3._pipeline import read_pipeline
+from zarr_metadata.v3._types.data_type import FloatSpecialFillValue
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
-from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
 from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
@@ -77,6 +81,9 @@ from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_CONTEXT,
     ZARR_PYTHON_CONTEXT,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
+    BytesBytesCodecDefinition,
     Chunk,
     ChunkGridDefinition,
     CodecDefinition,
@@ -173,6 +180,29 @@ def test_fill_values_fit_their_data_type(
     assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
 
 
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_default_fill_values_fit_their_data_type(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """Every data type this package defines has a default fill value for every configuration, which the data type accepts, through JSON too."""
+    data_type = _read(definition, data.draw(declarations(definition)))
+    value = default_fill_value(data_type)
+    assert value is not UNSET
+    assert fill_value_problems(data_type, value) == ()
+    assert fill_value_problems(data_type, json.loads(json.dumps(value))) == ()
+
+
+@pytest.mark.parametrize("definition", _DATA_TYPES, ids=_id)
+@given(data=st.data())
+def test_create_default_reads_every_data_type_given_alone(
+    definition: DataTypeDefinition[Any], data: st.DataObject
+) -> None:
+    """`create_default` given only a data type this package defines, in any configuration, derives a fill value and an array -> bytes codec that the read accepts."""
+    declaration = data.draw(declarations(definition))
+    ZarrV3ArrayMetadata.create_default(context=ZARR_PYTHON_CONTEXT, data_type=declaration)
+
+
 @pytest.mark.parametrize("definition", _CHUNK_GRIDS, ids=_id)
 @given(data=st.data(), shape=_SHAPES)
 def test_chunk_grids_fit_their_shape(
@@ -210,6 +240,8 @@ def _chunks(draw: st.DrawFn) -> Chunk:
 def _handed_problems(codec: Any, chunk: Chunk) -> list[object]:  # noqa: ANN401
     """What is wrong with `codec`, a codec field read, handed `chunk`: by its chunk rules, and in each pipeline it holds."""
     definition = codec.definition
+    if not isinstance(definition, ArrayCodecDefinition):
+        return []  # a bytes -> bytes codec is handed bytes, not the chunk
     problems: list[object] = list(definition.chunk_rules(codec.configuration, codec.nested, chunk))
     handed = definition.pipelines(codec.configuration, codec.nested, chunk)
     for member, inner in handed.items():
@@ -219,13 +251,15 @@ def _handed_problems(codec: Any, chunk: Chunk) -> list[object]:  # noqa: ANN401
 
 
 def _holds_pipelines(definition: CodecDefinition[Any]) -> bool:
-    return definition.pipelines is not no_pipelines
+    return isinstance(definition, ArrayCodecDefinition) and definition.pipelines is not no_pipelines
 
 
 def _encoders_refuse(data: st.DataObject, chunk: Chunk) -> bool:
     """Whether every array -> bytes codec that holds no pipelines refuses a chunk of `chunk`'s data type."""
     of_data_type = Chunk(None, chunk.data_type)
-    encoders = [d for d in _CODECS if d.kind == "array_bytes" and not _holds_pipelines(d)]
+    encoders = [
+        d for d in _CODECS if isinstance(d, ArrayBytesCodecDefinition) and not _holds_pipelines(d)
+    ]
     for encoder in encoders:
         codec = _read(encoder, data.draw(declarations(encoder)))
         if list(encoder.chunk_rules(codec.configuration, codec.nested, of_data_type)) == []:
@@ -251,6 +285,7 @@ def test_codecs_take_their_chunk(
         if _holds_pipelines(definition):
             assert _encoders_refuse(data, chunk)
             return
+        assert isinstance(definition, ArrayCodecDefinition)
         codec = _read(definition, data.draw(declarations(definition)))
         assert list(definition.chunk_rules(codec.configuration, codec.nested, chunk)) != []
         return
@@ -489,6 +524,18 @@ def test_fill_values_of_a_field_no_definition_reads_is_a_lookup_error() -> None:
         fill_values(STRUCT_DATA_TYPE, configuration, strategies=without_float32)
 
 
+class _AcmeIntConfiguration(TypedDict, closed=True):
+    """The configuration of `acme.int`: the member a refused draw leaves out."""
+
+    bits: int
+
+
+_ACME_INT = DataTypeDefinition(
+    name="acme.int", configuration=_AcmeIntConfiguration, number_class="integral"
+)
+"""An integer type with a member it requires, which `cast_value` casts to."""
+
+
 def test_a_refused_nested_draw_is_a_value_error() -> None:
     """A field a configuration holds is read as it is drawn, so a strategy that draws a refused one is caught there."""
     refused = DataTypeStrategy(
@@ -497,7 +544,7 @@ def test_a_refused_nested_draw_is_a_value_error() -> None:
     )
     strategies: Strategies = {
         CAST_VALUE_CODEC: DEFAULT_STRATEGIES[CAST_VALUE_CODEC],
-        NUMPY_DATETIME64_DATA_TYPE: refused,
+        _ACME_INT: refused,
     }
     with pytest.raises(ValueError, match="read in the strategies. scope, is refused"):
         find(
@@ -592,56 +639,25 @@ def test_scale_offset_reaches_every_spelling_of_a_float(
     )
 
 
-@pytest.mark.parametrize("definition", [COMPLEX64_DATA_TYPE, COMPLEX128_DATA_TYPE], ids=_id)
-@pytest.mark.parametrize("member", ["offset", "scale"])
-@pytest.mark.parametrize("part", [0, 1])
-@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
-def test_scale_offset_reaches_a_non_finite_part_of_a_complex(
-    definition: DataTypeDefinition[Any], member: str, part: int, value: str
-) -> None:
-    """A complex number's `offset` and `scale` are pairs of float fill values, either of them non-finite."""
-    chunk = Chunk(None, _read(definition, definition.name))
-    configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
-    assert configurations is not None
-    find(
-        configurations,
-        lambda configuration: (
-            member in configuration
-            and cast("tuple[object, object]", configuration[member])[part] == value
-        ),
-        settings=_REACH,
-    )
-
-
 def _is_zero_spelled(value: object, width: int) -> bool:
     """Whether a float fill value is zero of either sign, by its value alone."""
     bits = _bits(value)
     return value == 0 if bits is None else bits in (0, 2 ** (width - 1))
 
 
-@pytest.mark.parametrize(
-    ("definition", "width"),
-    [
-        *_FLOAT_BITS.items(),
-        (COMPLEX64_DATA_TYPE, 32),
-        (COMPLEX128_DATA_TYPE, 64),
-    ],
-    ids=str,
-)
+@pytest.mark.parametrize(("definition", "width"), list(_FLOAT_BITS.items()), ids=str)
 @given(data=st.data())
 def test_scale_offset_scale_is_never_zero(
     definition: DataTypeDefinition[Any], width: int, data: st.DataObject
 ) -> None:
-    """No spelling of a float, nor of both parts of a complex number, draws a scale of zero: decoding divides by it."""
+    """No spelling of a float draws a scale of zero: decoding divides by it."""
     chunk = Chunk(None, _read(definition, definition.name))
     configurations = codec_configurations(SCALE_OFFSET_CODEC, chunk)
     assert configurations is not None
     configuration = data.draw(configurations)
     assert list(SCALE_OFFSET_CODEC.chunk_rules(configuration, {}, chunk)) == []
     if "scale" in configuration:
-        scale = configuration["scale"]
-        parts = scale if isinstance(scale, tuple) else (scale,)
-        assert not all(_is_zero_spelled(part, width) for part in parts)
+        assert not _is_zero_spelled(configuration["scale"], width)
 
 
 def _entries(dimension: object) -> tuple[object, ...]:
@@ -906,11 +922,9 @@ _REAL_NUMBERS = [
     in {
         *(f"{sign}int{bits}" for sign in ("", "u") for bits in (8, 16, 32, 64)),
         *(f"float{bits}" for bits in (16, 32, 64)),
-        "numpy.datetime64",
-        "numpy.timedelta64",
     }
 ]
-"""The data types `cast_value` casts to: integers and floats, and the numpy times, which are signed 64-bit integers."""
+"""The data types `cast_value` casts to: integers and floats."""
 
 
 @pytest.mark.parametrize("definition", _REAL_NUMBERS, ids=_id)
@@ -940,8 +954,8 @@ def test_cast_value_draws_only_real_number_data_types(declaration: ZarrV3Declara
     assert target.definition in _REAL_NUMBERS
 
 
-_PLAIN_GZIP = CodecDefinition(
-    name=GZIP_CODEC.name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+_PLAIN_GZIP = BytesBytesCodecDefinition(
+    name=GZIP_CODEC.name, configuration=EmptyConfiguration, size="dynamic"
 )
 """A codec named as one the defaults hold, with a configuration of its own."""
 
@@ -984,10 +998,9 @@ def test_a_later_definition_replaces_a_default_of_its_name(pipeline: tuple[Any, 
 _PLAIN_STRUCT = DataTypeDefinition(name=STRUCT_DATA_TYPE.name, configuration=EmptyConfiguration)
 """A data type named as the struct the defaults hold, with a configuration of its own."""
 
-_PLAIN_SHARD = CodecDefinition(
+_PLAIN_SHARD = ArrayBytesCodecDefinition(
     name=SHARDING_INDEXED_CODEC.name,
     configuration=EmptyConfiguration,
-    kind="array_bytes",
     size="dynamic",
 )
 """A codec named as the shard the defaults hold, with a configuration of its own."""

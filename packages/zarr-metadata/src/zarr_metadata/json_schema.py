@@ -15,13 +15,15 @@ or type alias is written once in `$defs`, under its name. JSON Schema
 accepts a number with no fractional part, such as `1.0`, as an integer,
 while `check` requires `1`:
 
-    from zarr_metadata.json_schema import json_schema
+```python
+from zarr_metadata.json_schema import json_schema
 
-    json_schema(GzipCodecConfiguration)
-    # {'$schema': 'https://json-schema.org/draft/2020-12/schema',
-    #  'type': 'object',
-    #  'properties': {'level': {'type': 'integer', 'minimum': 0, 'maximum': 9}},
-    #  'required': ['level'], 'additionalProperties': False}
+json_schema(GzipCodecConfiguration)
+# {'$schema': 'https://json-schema.org/draft/2020-12/schema',
+#  'type': 'object',
+#  'properties': {'level': {'type': 'integer', 'minimum': 0, 'maximum': 9}},
+#  'required': ['level'], 'additionalProperties': False}
+```
 
 **One v3 declaration.** `declaration_json_schema_v3(kind, context=None)` writes one declaration
 read as `kind` in the scope `context`: a declaration that a definition in

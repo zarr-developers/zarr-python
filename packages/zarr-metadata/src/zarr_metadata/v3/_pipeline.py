@@ -43,6 +43,8 @@ from zarr_metadata.definition._definition import (
     ruled,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayCodecDefinition,
     Chunk,
     CodecDefinition,
     CodecKind,
@@ -131,7 +133,8 @@ def read_pipeline(
             stages.append(Stage(codec, handed))
             handed = None
             continue
-        if definition.kind == "bytes_bytes":
+        if not isinstance(definition, ArrayCodecDefinition):
+            # A bytes -> bytes codec receives bytes, which are not a chunk.
             stages.append(Stage(codec, None))
             handed = None
             continue
@@ -145,7 +148,7 @@ def read_pipeline(
             inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
-        if definition.kind == "array_bytes":
+        if not isinstance(definition, ArrayArrayCodecDefinition):
             handed = None
         elif not isinstance(codec, AcceptedDeclaration):
             handed = Chunk()
@@ -202,7 +205,7 @@ def _order_problems(
 
 
 def _chunk_problems(
-    definition: CodecDefinition[Any],
+    definition: ArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
@@ -235,7 +238,7 @@ def _codec_problems(
 
 
 def _inner_pipelines(
-    definition: CodecDefinition[Any],
+    definition: ArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
@@ -299,7 +302,7 @@ def _held(
 
 
 def _handed_on(
-    definition: CodecDefinition[Any],
+    definition: ArrayArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,

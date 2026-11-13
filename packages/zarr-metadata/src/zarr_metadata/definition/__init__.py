@@ -74,7 +74,7 @@ can be used on its own by a caller that has only JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
-    resolved                # RefusedDeclaration(..., definition=CodecDefinition(name='gzip'), ...)
+    resolved                # RefusedDeclaration(..., definition=BytesBytesCodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
@@ -116,40 +116,41 @@ compares equal after loading, only if its definitions can. A lambda or
 a closure cannot be pickled, and a `functools.partial` can be pickled
 but does not compare equal to its loaded copy.
 
-    from collections.abc import Iterator
-    from typing import Annotated, NotRequired
+```python
+from collections.abc import Iterator
+from typing import Annotated, NotRequired
 
-    from annotated_types import Ge
-    from typing_extensions import TypedDict
+from annotated_types import Ge
+from typing_extensions import TypedDict
 
-    from zarr_metadata import ValidationProblem
-    from zarr_metadata.definition import Nested
-    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
-
-
-    class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: Annotated[int, Ge(1)]
-        dictionary: NotRequired[str]
-        dictionary_size: NotRequired[Annotated[int, Ge(1)]]
+from zarr_metadata import ValidationProblem
+from zarr_metadata.definition import Nested
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
-    def acme_lz4_rules(
-        configuration: AcmeLz4Configuration, nested: Nested
-    ) -> Iterator[ValidationProblem]:
-        if "dictionary" in configuration and "dictionary_size" not in configuration:
-            yield ValidationProblem(
-                ("dictionary_size",), "a dictionary needs its size", "missing_key"
-            )
+class AcmeLz4Configuration(TypedDict, closed=True):
+    acceleration: Annotated[int, Ge(1)]
+    dictionary: NotRequired[str]
+    dictionary_size: NotRequired[Annotated[int, Ge(1)]]
 
 
-    ACME_LZ4 = CodecDefinition(
-        name="acme.lz4",
-        configuration=AcmeLz4Configuration,
-        kind="bytes_bytes",
-        size="dynamic",
-        rules=acme_lz4_rules,
-    )
-    CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_LZ4]))
+def acme_lz4_rules(
+    configuration: AcmeLz4Configuration, nested: Nested
+) -> Iterator[ValidationProblem]:
+    if "dictionary" in configuration and "dictionary_size" not in configuration:
+        yield ValidationProblem(
+            ("dictionary_size",), "a dictionary needs its size", "missing_key"
+        )
+
+
+ACME_LZ4 = BytesBytesCodecDefinition(
+    name="acme.lz4",
+    configuration=AcmeLz4Configuration,
+    size="dynamic",
+    rules=acme_lz4_rules,
+)
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_LZ4]))
+```
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,
@@ -198,6 +199,13 @@ distinct `float32`) as equal to `0.0`.
 `canonical_fill_value(data_type, value)` returns the canonical spelling,
 or `UNSET` for a fill value with a problem. A data type that does not
 declare `fill_value_canonical` keeps each value as written.
+`fill_value_default` gives the fill value of an array whose document is
+built without one, as a model's `create_default` builds it. It receives
+the configuration and the nested declarations, and returns `UNSET` when
+the type has none, which is what a data type that does not declare it
+gets. `ConstantFillValue(0)` is a default that does not depend on the
+configuration. `default_fill_value(data_type)` calls it for a data type
+declaration the scope read.
 
 **The simplest spelling.** A declaration without problems has a simplest
 equivalent spelling, and declarations are compared by it. Each nested declaration is
@@ -262,11 +270,12 @@ written; an extra field named after a member the spec defines, whose
 built from it does.
 """
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     Context,
     Definition,
-    EmptyConfiguration,
     Nested,
     RefusedDeclaration,
     ResolvedDeclaration,
@@ -275,6 +284,7 @@ from zarr_metadata.definition._definition import (
     canonical_fill_value,
     canonical_of,
     configuration_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
     with_problems,
@@ -289,6 +299,7 @@ __all__ = [
     "AcceptedDeclaration",
     "ClaimKey",
     "Conflict",
+    "ConstantFillValue",
     "Context",
     "Definition",
     "EmptyConfiguration",
@@ -301,6 +312,7 @@ __all__ = [
     "canonical_fill_value",
     "canonical_of",
     "configuration_of",
+    "default_fill_value",
     "fill_value_problems",
     "resolve",
     "with_problems",

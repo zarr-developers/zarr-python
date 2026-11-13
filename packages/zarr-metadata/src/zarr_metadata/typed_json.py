@@ -6,14 +6,16 @@ TypedDict, such as `ZarrV3ArrayMetadataJSON` or `GzipCodecConfiguration`.
 value against the TypedDict and returns a value of the TypedDict (or
 None) and every problem, each located in the value:
 
-    import json
+```python
+import json
 
-    from zarr_metadata import ZarrV3ArrayMetadataJSON
-    from zarr_metadata.typed_json import check
+from zarr_metadata import ZarrV3ArrayMetadataJSON
+from zarr_metadata.typed_json import check
 
-    document, problems = check(json.loads(raw), ZarrV3ArrayMetadataJSON)
-    for problem in problems:
-        print(problem.loc, problem.kind, problem.message)
+document, problems = check(json.loads(raw), ZarrV3ArrayMetadataJSON)
+for problem in problems:
+    print(problem.loc, problem.kind, problem.message)
+```
 
 `check` reads a TypedDict as the typing spec defines it, regardless of
 how its module writes annotations:

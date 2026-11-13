@@ -37,20 +37,24 @@ from zarr_metadata.definition._definition import (
     declaration_key,
     declaration_kind,
     declarations_of,
+    default_fill_value,
     fill_value_problems,
     held,
+    resolve,
     resolve_refined,
     spelled_canonically,
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
 from zarr_metadata.definition._scope import refines as refines_declaration
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
+    Derived,
     StoreKey,
     attributes_of,
     check_literal,
+    created,
     dimension_lengths,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -72,6 +76,7 @@ from zarr_metadata.v3._definition import (
     Lengths,
     StorageTransformerDefinition,
     chunk_grid_lengths,
+    default_array_bytes_codec,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3.array import (
@@ -443,18 +448,18 @@ def must_understand_subset(
     }
 
 
-def waived_members(values: Mapping[str, ZarrV3ExtensionField]) -> list[str]:
+def waived_members(values: Mapping[str, object]) -> list[str]:
     """The keys of the extra fields in `values` (by key, as written) that say `"must_understand": false`, which a reader may ignore."""
     return [key for key, value in values.items() if _waived(value)]
 
 
-def _waived(value: ZarrV3ExtensionField) -> bool:
+def _waived(value: object) -> bool:
     """Whether `value`, an extra field as written, is an object that says `"must_understand": false`."""
-    return isinstance(value, Mapping) and value.get("must_understand") is False
+    return is_object(value) and value.get("must_understand") is False
 
 
 class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV3ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+    """The members `ZarrV3ArrayMetadata.replace` takes: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `dimension_names`, `attributes`,
     `storage_transformers`, and any member the spec does not define. Those
@@ -493,7 +498,7 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
     """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
 
-    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    A key the spec defines, or that `replace` takes by name, raises `TypeError`.
     """
 
 
@@ -513,7 +518,7 @@ class ZarrV3ArrayMetadata(Keyed):
     `context` and raises `MetadataValidationError` with every problem, so
     no model is invalid. Two models are equal when their documents mean
     the same thing in their scopes, as the model key defines. The scope
-    itself is not compared. `update` reads new members in the model's own
+    itself is not compared. `replace` reads new members in the model's own
     scope. `with_context` and `refined_in` read the document in another
     scope. A model pickles as its pair, provided the definitions in its
     scope can be pickled, which requires their functions to be defined at
@@ -572,7 +577,7 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV3Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `replace` reads new members in this scope."""
         return self._context
 
     @property
@@ -581,19 +586,20 @@ class ZarrV3ArrayMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
-        """The document as written, refined. The result shares no objects with the model."""
+        """The document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3ArrayMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+        """The document as a store holds it: JSON bytes at `zarr.json`, spelled by `writer`, a `JSONWriter` or a mapping of its settings.
 
         `NaN`, `Infinity` and `-Infinity` in `attributes` are written as
         bare tokens, as zarr-python writes them. A strict JSON parser
         rejects these tokens.
         """
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)}
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
@@ -707,10 +713,10 @@ class ZarrV3ArrayMetadata(Keyed):
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+    def replace(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
         """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
 
-        Raises `TypeError` for a member the update does not take. Raises
+        Raises `TypeError` for a member `replace` does not take. Raises
         `MetadataValidationError` when the resulting document has a
         problem. So members that depend on each other must be passed
         together, for example a `shape` with a grid that fits it.
@@ -723,6 +729,10 @@ class ZarrV3ArrayMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
@@ -789,42 +799,48 @@ class ZarrV3ArrayMetadata(Keyed):
         context: ZarrV3Context | None = None,
         **overrides: Unpack[ZarrV3ArrayMetadataUpdate],
     ) -> ZarrV3ArrayMetadata:
-        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
+        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `replace` takes, including `UNSET` to drop a member.
+
+        A member that depends on another is derived from it when that
+        member is given and it is not:
+
+        - `chunk_grid`, from `shape`: one regular chunk covering the array,
+          with a length of 1 for a dimension of length 0, since "Chunk
+          sizes must be greater than zero"
+          (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
+          One chunk is the simplest grid that fits, not a recommendation:
+          a large array wants smaller chunks.
+        - `fill_value`, from `data_type`: the data type's default, from its
+          `fill_value_default`, such as `0`, `false` or `""`. A data type
+          that has none, or that nothing in `context` claims, needs a
+          `fill_value`.
+        - `codecs`, from `data_type`: the array -> bytes codec its
+          `array_bytes_codec_default` gives, such as `vlen-utf8` for
+          `string`, and `bytes` with little `endian` for a data type that
+          does not declare one or that nothing in `context` claims.
+
+        A member given with a problem derives nothing, so the members
+        derived from it keep their defaults, and the problem is the only
+        one reported.
 
         Raises `MetadataValidationError` when the resulting document has a
-        problem. So members that depend on each other must be passed
-        together: a data type with a fill value of that type, or a grid
-        with the shape it fits. The default codec is `bytes` with little
-        `endian`, which accepts a data type of any fixed size. Overriding
-        `shape` without `chunk_grid` derives a consistent default grid: one
-        regular chunk covering the array (`chunk_shape` equal to `shape`,
-        with a length of 1 for a dimension of length 0, since "Chunk sizes
-        must be greater than zero",
-        https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
+        problem, with a note naming each member that was not given and
+        its value. So members that depend on each other in other ways must
+        be passed together, such as `dimension_names` with the `shape`
+        they name.
         """
-        # The grid is derived only from a valid shape. An invalid shape
-        # derives no grid, and the read reports it.
-        changes = member_changes(
+        context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
+        given = member_changes(
             overrides, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
         )
-        lengths, _ = dimension_lengths(changes, "shape")
-        document: dict[str, object] = {
-            "zarr_format": 3,
-            "node_type": "array",
-            "shape": (),
-            "fill_value": 0,
-            "data_type": "uint8",
-            "chunk_grid": {
-                "name": "regular",
-                "configuration": {"chunk_shape": tuple(max(length, 1) for length in lengths or ())},
-            },
-            "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
-            "chunk_key_encoding": {"name": "default"},
-        }
-        merged = {
-            key: value for key, value in {**document, **changes}.items() if value is not UNSET
-        }
-        return cls(merged, context=context)
+        return created(
+            cls,
+            context,
+            fixed={"zarr_format": 3, "node_type": "array"},
+            defaults=_DEFAULT_MEMBERS,
+            derived=_DERIVED_MEMBERS,
+            given=given,
+        )
 
     @classmethod
     def from_json(
@@ -835,6 +851,10 @@ class ZarrV3ArrayMetadata(Keyed):
         Raises `MetadataValidationError` with every problem the read finds.
         `read_array_metadata_v3` returns the reading this model is built
         from, and the problems of a document that has any.
+        A declaration that nothing in `context` claims, such as an unknown
+        codec or an unknown top-level member, is not a problem; the model
+        lists each one a reader must understand in `unclaimed_declarations`.
+        `read_openable_node_metadata_v3` reports each one as a problem.
         """
         return cls(data, context=context)
 
@@ -850,6 +870,53 @@ class ZarrV3ArrayMetadata(Keyed):
         """
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
+
+
+_DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
+    {
+        "shape": (),
+        "fill_value": 0,
+        "data_type": "uint8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": ()}},
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "chunk_key_encoding": {"name": "default"},
+    }
+)
+"""The document of `ZarrV3ArrayMetadata.create_default` given nothing, without its `zarr_format` and `node_type`: a scalar `uint8` array."""
+
+
+def _derived_chunk_grid(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """One regular chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The grid as it is when the shape has a problem, which the read reports."""
+    lengths, _ = dimension_lengths(document, "shape")
+    if lengths is None:
+        return document["chunk_grid"]
+    chunk_shape = tuple(max(length, 1) for length in lengths)
+    return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+
+
+def _derived_fill_value(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """The default fill value of the document's `data_type` in `context`; `UNSET` when the data type has none or nothing in scope claims it. The fill value as it is when the data type has a problem, which the read reports."""
+    data_type, problems = resolve(document["data_type"], DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["fill_value"]
+    return default_fill_value(data_type)
+
+
+def _derived_codecs(document: Mapping[str, object], context: ZarrV3Context) -> object:
+    """The array -> bytes codec that the document's `data_type` declares in `context`, alone. The codecs as they are when nothing in scope claims the data type, or it has a problem, which the read reports."""
+    data_type, problems = resolve(document["data_type"], DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["codecs"]
+    codec = default_array_bytes_codec(data_type)
+    return document["codecs"] if codec is UNSET else (codec,)
+
+
+_DERIVED_MEMBERS: Final[tuple[Derived[ZarrV3Context], ...]] = (
+    Derived("chunk_grid", "shape", _derived_chunk_grid),
+    Derived("fill_value", "data_type", _derived_fill_value),
+    Derived("codecs", "data_type", _derived_codecs),
+)
+"""The members of `ZarrV3ArrayMetadata.create_default` derived from a member given."""
 
 
 def array_key_of(
@@ -919,7 +986,9 @@ def read_array_metadata_v3(
     type. Unknown top-level keys are allowed (they map to
     `extra_fields`). A reader must understand each one that does not
     declare `must_understand: false`; the model reports these as
-    `must_understand_fields`.
+    `must_understand_fields`, and every declaration a reader must
+    understand, at any depth, as `unclaimed_declarations`.
+    `read_openable_node_metadata_v3` reports each of those as a problem.
 
     To apply a policy over the declarations (for example, allow only the core
     spec's declarations), iterate over the reading's `declarations()`. A value that
