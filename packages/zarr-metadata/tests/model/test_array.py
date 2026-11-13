@@ -23,14 +23,17 @@ from zarr_metadata._json import (
     validate_json,
 )
 from zarr_metadata.definition import (
-    AcceptedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    ConstantFillValue,
+    EmptyConfiguration,
+    Nested,
+    UnclaimedDeclaration,
     canonical_of,
     configuration_of,
     resolve,
     with_problems,
 )
-from zarr_metadata.definition._definition import fields_of
+from zarr_metadata.definition._definition import declarations_of
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -51,19 +54,25 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
+from zarr_metadata.v3._definition import variable_length
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    ZARR_PYTHON_CONTEXT,
+    ArrayBytesCodecDefinition,
     ArrayExtraFieldDefinition,
     CodecDefinition,
+    DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
     from zarr_metadata.typed_json import JSONValue
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3 import ZarrV3NamedConfigJSON
+    from zarr_metadata.v3.definition import ZarrV3CodecDeclaration
 
 # --- public exports --------------------------------------------------------
 
@@ -233,7 +242,7 @@ def test_v3_a_data_type_with_nothing_to_configure_is_written_by_its_bare_name(
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
     }
     model = ZarrV3ArrayMetadata.from_json(document)
-    # The document is written back as it was written. The field on its own
+    # The document is written back as it was written. The declaration on its own
     # is written by its bare name, which every reader accepts.
     assert model.to_json()["data_type"] == data_type
     assert model.data_type.to_json() == "int32"
@@ -350,13 +359,186 @@ def test_v3_create_default_is_valid_empty_array() -> None:
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
 
 
-def test_v3_create_default_applies_overrides() -> None:
-    """V3 create_default applies keyword overrides over the defaults."""
-    m = ZarrV3ArrayMetadata.create_default(shape=(4, 4), attributes={"a": 1})
-    assert m.shape == (4, 4)
-    assert m.attributes == {"a": 1}
-    # un-overridden fields keep their defaults
-    assert m.data_type.to_json() == "uint8"
+_LITTLE_BYTES: dict[str, Any] = {"name": "bytes", "configuration": {"endian": "little"}}
+
+
+def _grid(*chunk_shape: int) -> dict[str, Any]:
+    return {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+
+
+def _acme_vlen_text(configuration: EmptyConfiguration, nested: Nested) -> "ZarrV3CodecDeclaration":
+    """The `acme.vlen-text` codec, alone."""
+    return {"name": "acme.vlen-text"}
+
+
+_ACME_TEXT_CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(
+        data_types=[
+            DataTypeDefinition(
+                name="acme.text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                array_bytes_codec_default=_acme_vlen_text,
+                storage=variable_length,
+            ),
+            DataTypeDefinition(
+                name="acme.bare-text",
+                configuration=EmptyConfiguration,
+                fill_value_default=ConstantFillValue(""),
+                storage=variable_length,
+            ),
+        ],
+        codecs=[
+            ArrayBytesCodecDefinition(
+                name="acme.vlen-text",
+                configuration=EmptyConfiguration,
+                size="dynamic",
+            )
+        ],
+    )
+)
+"""A scope with an extension's data types whose values vary in size: `acme.text`, which declares its array -> bytes codec `acme.vlen-text`, and `acme.bare-text`, which declares none."""
+
+
+@pytest.mark.parametrize(
+    ("model", "context", "overrides", "expected"),
+    [
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {},
+            {"chunk_grid": _grid(), "fill_value": 0, "codecs": (_LITTLE_BYTES,)},
+        ),
+        (ZarrV3ArrayMetadata, None, {"shape": (4, 0)}, {"chunk_grid": _grid(4, 1)}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "bool"}, {"fill_value": False}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "float32"}, {"fill_value": 0.0}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "complex64"}, {"fill_value": (0.0, 0.0)}),
+        (ZarrV3ArrayMetadata, None, {"data_type": "r16"}, {"fill_value": (0, 0)}),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {
+                "data_type": {
+                    "name": "numpy.datetime64",
+                    "configuration": {"unit": "s", "scale_factor": 1},
+                }
+            },
+            {"fill_value": "NaT"},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {
+                "data_type": {
+                    "name": "struct",
+                    "configuration": {
+                        "fields": (
+                            {"name": "a", "data_type": "int16"},
+                            {"name": "b", "data_type": "bool"},
+                        )
+                    },
+                }
+            },
+            {"fill_value": {"a": 0, "b": False}, "codecs": (_LITTLE_BYTES,)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"data_type": "string"},
+            {"fill_value": "", "codecs": ({"name": "vlen-utf8"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"data_type": "bytes"},
+            {"fill_value": "", "codecs": ({"name": "vlen-bytes"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            ZARR_PYTHON_CONTEXT,
+            {"data_type": "variable_length_bytes"},
+            {"fill_value": "", "codecs": ({"name": "vlen-bytes"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            _ACME_TEXT_CONTEXT,
+            {"data_type": "acme.text"},
+            {"fill_value": "", "codecs": ({"name": "acme.vlen-text"},)},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            ZARR_PYTHON_CONTEXT,
+            {"data_type": {"name": "raw_bytes", "configuration": {"length_bytes": 2}}},
+            {"fill_value": "AAA="},
+        ),
+        (
+            ZarrV3ArrayMetadata,
+            None,
+            {"shape": (4,), "chunk_grid": _grid(2), "data_type": "bool", "fill_value": True},
+            {"chunk_grid": _grid(2), "fill_value": True},
+        ),
+        (ZarrV2ArrayMetadata, None, {}, {"chunks": (), "fill_value": 0}),
+        (ZarrV2ArrayMetadata, None, {"shape": (0, 3)}, {"chunks": (1, 3)}),
+        (ZarrV2ArrayMetadata, None, {"shape": (4,), "chunks": (2,)}, {"chunks": (2,)}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|b1"}, {"fill_value": False}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<c8"}, {"fill_value": (0.0, 0.0)}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|V2"}, {"fill_value": "AAA="}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<U2"}, {"fill_value": ""}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "<M8[s]"}, {"fill_value": "NaT"}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|O"}, {"fill_value": None}),
+        (ZarrV2ArrayMetadata, None, {"dtype": "|b1", "fill_value": True}, {"fill_value": True}),
+    ],
+)
+def test_create_default_derives_the_members_not_given(
+    model: Any,  # noqa: ANN401
+    context: Any,  # noqa: ANN401
+    overrides: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    """`create_default` derives each member that depends on a member given, when it is not given itself: the chunk grid (v3) or chunks (v2) from `shape`, one chunk covering the array with a length of 1 for a dimension of length 0; the fill value from the data type's default, `null` for a v2 dtype with none; and, in v3, the codecs from the array -> bytes codec the data type declares, such as `vlen-utf8` for `string` or an extension's own codec, and `bytes` for a data type that declares none. A member given is kept. The document writes the members in the order it always has."""
+    document = dict(model.create_default(context=context, **overrides).to_json())
+    assert {key: document[key] for key in expected} == expected
+    assert [type(document[key]) for key in expected] == [type(expected[key]) for key in expected]
+    order = (
+        ["zarr_format", "node_type", "shape", "fill_value", "data_type", "chunk_grid", "codecs"]
+        if model is ZarrV3ArrayMetadata
+        else ["zarr_format", "shape", "chunks", "dtype", "fill_value", "order"]
+    )
+    assert [key for key in document if key in order] == order
+
+
+def test_error_create_default_needs_a_fill_value_for_a_data_type_without_a_default() -> None:
+    """A data type that nothing in scope claims has no default fill value, so `create_default` needs one given: the fill value is reported missing."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(data_type="acme.unknown")
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "missing_key")]
+
+
+def test_error_create_default_derives_bytes_for_a_data_type_that_declares_no_codec() -> None:
+    """A data type that declares no array -> bytes codec gets `bytes`, which refuses a data type whose values vary in size. The note names the codecs filled in, since the caller did not write them."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(context=_ACME_TEXT_CONTEXT, data_type="acme.bare-text")
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 0), "invalid_value")]
+    (note,) = getattr(raised.value, "__notes__", [])
+    assert 'codecs = [{"name": "bytes", "configuration": {"endian": "little"}}]' in note
+
+
+def test_error_create_default_reports_a_member_dropped_and_derives_nothing_from_it() -> None:
+    """A member given as `UNSET` is left out and derives nothing, so the members derived from it keep their defaults, and the only problem is the member dropped. `data_type` is not typed to take `UNSET`, since a document needs it, but an untyped caller can pass it."""
+    dropped = cast("dict[str, Any]", {"data_type": UNSET})
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(**dropped)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("data_type",), "missing_key")]
+
+
+def test_error_create_default_names_the_members_it_filled_in() -> None:
+    """When the document has a problem, the error notes each member `create_default` filled in, since a default may not fit a member given: here, `dimension_names` given without `shape`."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(dimension_names=("x",))
+    notes = getattr(raised.value, "__notes__", [])
+    assert len(notes) == 1
+    assert notes[0].startswith("create_default filled in the members not given: shape = [], ")
+    assert "dimension_names" not in notes[0]
 
 
 @pytest.mark.parametrize(
@@ -393,12 +575,12 @@ def test_v3_create_default_applies_overrides() -> None:
         "v2-group-unset",
     ],
 )
-def test_create_default_takes_the_members_update_takes(
+def test_create_default_takes_the_members_replace_takes(
     model: object, members: dict[str, Any]
 ) -> None:
-    """Every model's `create_default` takes the same keyword members as its `update`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
+    """Every model's `create_default` takes the same keyword members as its `replace`, including `UNSET` to drop a member and, for a v3 group, a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. For members that no other member is derived from, applying them at creation gives the same model as applying them afterwards: `replace` derives nothing, so a `shape` or data type given to it keeps the grid and fill value of the model it is called on."""
     kind = cast("Any", model)
-    assert kind.create_default(**members) == kind.create_default().update(**members)
+    assert kind.create_default(**members) == kind.create_default().replace(**members)
 
 
 def test_v2_create_default_is_valid_empty_array() -> None:
@@ -415,80 +597,72 @@ def test_v2_create_default_is_valid_empty_array() -> None:
     assert ZarrV2ArrayMetadata.from_json(m.to_json()) == m
 
 
-def test_v2_create_default_applies_overrides() -> None:
-    """V2 create_default applies keyword overrides over the defaults."""
-    m = ZarrV2ArrayMetadata.create_default(shape=(8,), attributes={"k": "v"})
-    assert m.shape == (8,)
-    assert m.attributes == {"k": "v"}
-    assert m.dtype.to_json() == "|u1"  # default dtype unchanged
+# --- V3 replace ------------------------------------------------------------
 
+# Cluster 3: replace same-shape pairs across versions — parametrized
 
-# --- V3 update -------------------------------------------------------------
-
-# Cluster 3: update same-shape pairs across versions — parametrized
-
-UPDATE_NEW_INSTANCE_PARAMS = [
+REPLACE_NEW_INSTANCE_PARAMS = [
     pytest.param(ZarrV3ArrayMetadata, id="v3"),
     pytest.param(ZarrV2ArrayMetadata, id="v2"),
 ]
 
 
-@pytest.mark.parametrize("model_cls", UPDATE_NEW_INSTANCE_PARAMS)
-def test_update_returns_new_instance(
+@pytest.mark.parametrize("model_cls", REPLACE_NEW_INSTANCE_PARAMS)
+def test_replace_returns_new_instance(
     model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
 ) -> None:
-    """update returns a new instance with the field replaced, leaving the original unchanged."""
+    """`replace` returns a new instance with the field replaced, leaving the original unchanged."""
     base = model_cls.create_default(shape=(10,))
-    updated = base.update(shape=(20,))
+    updated = base.replace(shape=(20,))
     assert updated.shape == (20,)
     assert base.shape == (10,)  # original unchanged
     assert isinstance(updated, model_cls)
 
 
-UPDATE_NO_ARGS_PARAMS = [
+REPLACE_NO_ARGS_PARAMS = [
     pytest.param(ZarrV3ArrayMetadata, id="v3"),
     pytest.param(ZarrV2ArrayMetadata, id="v2"),
 ]
 
 
-@pytest.mark.parametrize("model_cls", UPDATE_NO_ARGS_PARAMS)
-def test_update_no_args_returns_equal_model(
+@pytest.mark.parametrize("model_cls", REPLACE_NO_ARGS_PARAMS)
+def test_replace_no_args_returns_equal_model(
     model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
 ) -> None:
-    """update with no arguments returns a model equal to the original."""
+    """`replace` with no arguments returns a model equal to the original."""
     base = model_cls.create_default()
-    updated = base.update()
+    updated = base.replace()
     assert updated == base
 
 
-# V3-only update tests — kept direct (extra_fields is v3-specific)
+# V3-only replace tests — kept direct (extra_fields is v3-specific)
 
 
-def test_update_can_add_an_extension_member() -> None:
-    """update can add a member the spec does not define, which the model holds in extra_fields."""
+def test_replace_can_add_an_extension_member() -> None:
+    """`replace` can add a member the spec does not define, which the model holds in extra_fields."""
     base = ZarrV3ArrayMetadata.create_default()
-    updated = base.update(extra_fields={"my_ext": {"must_understand": False}})
+    updated = base.replace(extra_fields={"my_ext": {"must_understand": False}})
     assert _written_extra_fields(updated) == {"my_ext": {"must_understand": False}}
 
 
-def test_update_reads_every_member_in_the_models_own_scope() -> None:
-    """`update` reads the new document in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed. Use `with_context` to read it in another scope.
+def test_replace_reads_every_member_in_the_models_own_scope() -> None:
+    """`replace` reads the new document in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed. Use `with_context` to read it in another scope.
 
-    `zstd` is an extension, so `CORE` leaves it unclaimed and unchecked.
+    `zstd` is an extension, so `CORE_CONTEXT` leaves it unclaimed and unchecked.
     """
     little: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
-    base = ZarrV3ArrayMetadata.create_default(context=CORE, codecs=(little, zstd))
-    assert isinstance(base.codecs[1], UnclaimedField)
-    kept = base.update(attributes={"k": 1})
+    base = ZarrV3ArrayMetadata.create_default(context=CORE_CONTEXT, codecs=(little, zstd))
+    assert isinstance(base.codecs[1], UnclaimedDeclaration)
+    kept = base.replace(attributes={"k": 1})
     assert kept.codecs[1] == base.codecs[1]
-    assert kept.context == CORE
-    given = base.with_context(CORE_AND_EXTENSIONS).update(codecs=(little, zstd))
-    assert isinstance(given.codecs[1], AcceptedField)
+    assert kept.context == CORE_CONTEXT
+    given = base.with_context(CORE_AND_EXTENSIONS_CONTEXT).replace(codecs=(little, zstd))
+    assert isinstance(given.codecs[1], AcceptedDeclaration)
 
 
-def test_update_leaves_out_a_member_given_as_unset() -> None:
-    """`update` removes each member that a document may omit when it is given as `UNSET`: `dimension_names`, `attributes`, and a member the spec does not define."""
+def test_replace_leaves_out_a_member_given_as_unset() -> None:
+    """`replace` removes each member that a document may omit when it is given as `UNSET`: `dimension_names`, `attributes`, and a member the spec does not define."""
     base = ZarrV3ArrayMetadata.create_default(
         shape=(2,),
         dimension_names=("x",),
@@ -496,9 +670,9 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
         extra_fields={"my_ext": {"must_understand": False}},
     )
     for updated, member in (
-        (base.update(dimension_names=UNSET), "dimension_names"),
-        (base.update(attributes=UNSET), "attributes"),
-        (base.update(extra_fields={"my_ext": UNSET}), "my_ext"),
+        (base.replace(dimension_names=UNSET), "dimension_names"),
+        (base.replace(attributes=UNSET), "attributes"),
+        (base.replace(extra_fields={"my_ext": UNSET}), "my_ext"),
     ):
         written = updated.to_json()
         assert member not in written
@@ -536,7 +710,7 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
         "codec-verbose",
         "empty-configuration",
         "unclaimed",
-        "a-field-a-codec-holds-bare",
+        "a-declaration-a-codec-holds-bare",
     ],
 )
 def test_a_model_is_what_its_document_says_not_how_it_is_spelled(
@@ -574,7 +748,7 @@ _LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 def test_two_models_are_one_array_when_their_fill_values_are_one_value(
     data_type: object, left: object, right: object, same: bool
 ) -> None:
-    """Two models are equal when their fill values are the same value, however each is spelled, just as two fields are equal when they read the same."""
+    """Two models are equal when their fill values are the same value, however each is spelled, just as two declarations are equal when they read the same."""
     codecs = [{"name": "vlen-bytes"} if data_type == "bytes" else _LITTLE]
     document = {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "codecs": codecs}
     models = [
@@ -620,10 +794,10 @@ _NOSHUFFLE = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 
     ],
     ids=["blosc-typesize-noshuffle", "zstd-checksum-false", "default-separator"],
 )
-def test_two_models_are_one_array_when_their_fields_read_the_same(
+def test_two_models_are_one_array_when_their_declarations_read_the_same(
     member: str, left: object, right: object
 ) -> None:
-    """The spec's equivalences, which each definition's `canonical` normalizes, hold for a model's `==`, even though `to_json` writes each field as given."""
+    """The spec's equivalences, which each definition's `canonical` normalizes, hold for a model's `==`, even though `to_json` writes each declaration as given."""
     document = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
     models = [ZarrV3ArrayMetadata.from_json({**document, member: value}) for value in (left, right)]
     assert models[0] == models[1]
@@ -678,7 +852,7 @@ def test_two_v2_models_are_one_array_when_their_documents_are_written_alike(
 ) -> None:
     """A v2 model compares by what its document means. For a float type, a fill value written as an integer or as a float is the same value, `0.0` and `-0.0` are different values, and `NaN` equals `NaN`."""
     model = ZarrV2ArrayMetadata.create_default(shape=(2,), chunks=(2,), dtype="<f4")
-    models = [model.update(fill_value=cast("JSONValue", value)) for value in (left, right)]
+    models = [model.replace(fill_value=cast("JSONValue", value)) for value in (left, right)]
     assert (models[0] == models[1]) is same
     if same:
         assert hash(models[0]) == hash(models[1])
@@ -690,19 +864,19 @@ def test_a_model_pickles_and_copies_with_its_definitions() -> None:
             {"name": "bytes", "configuration": {"endian": "little"}},
             {"name": "gzip", "configuration": {"level": 1}},
         ),
-        context=CORE,
+        context=CORE_CONTEXT,
     )
     for again in (pickle.loads(pickle.dumps(model)), copy.copy(model), copy.deepcopy(model)):
         assert again == model
         assert configuration_of(again.codecs[1], GZIP_CODEC) == {"level": 1}
 
 
-def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
-    """update replaces each member it is given whole, and keeps the others."""
+def test_replace_replaces_a_member_rather_than_merging_into_it() -> None:
+    """`replace` replaces each member it is given whole, and keeps the others."""
     base = ZarrV3ArrayMetadata.create_default(
         extra_fields={"a": {"must_understand": False, "x": 1}, "b": {"must_understand": False}}
     )
-    updated = base.update(extra_fields={"a": {"must_understand": False}})
+    updated = base.replace(extra_fields={"a": {"must_understand": False}})
     assert _written_extra_fields(updated) == {
         "a": {"must_understand": False},
         "b": {"must_understand": False},
@@ -803,12 +977,12 @@ def test_v3_from_json_defaults_for_omitted_optionals() -> None:
 
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
-    """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedField`, written as the document wrote it."""
+    """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedDeclaration`, written as the document wrote it."""
     doc = ZarrV3ArrayMetadata.create_default(
         extra_fields={"my_ext": {"must_understand": False}}
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
-    assert isinstance(model.extra_fields["my_ext"], UnclaimedField)
+    assert isinstance(model.extra_fields["my_ext"], UnclaimedDeclaration)
     assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
 
 
@@ -995,25 +1169,27 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
 
 
 @pytest.mark.parametrize("name", ["bytes", "acme.codec", "urn:example:codec"])
-def test_metadata_field_accepts_a_name_as_the_spec_names_one(name: str) -> None:
+def test_declaration_accepts_a_name_as_the_spec_names_one(name: str) -> None:
     """The envelope check accepts a name in a form the spec allows for an extension name, whether or not a definition in scope claims it."""
-    assert resolve({"name": name}, CodecDefinition, CORE_AND_EXTENSIONS)[1] == ()
+    assert resolve({"name": name}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1] == ()
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
-def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
+def test_declaration_must_understand_must_be_boolean(value: object) -> None:
     """must_understand is a JSON boolean, not a truthy scalar."""
     _, problems = resolve(
-        {"name": "acme.x", "must_understand": value}, CodecDefinition, CORE_AND_EXTENSIONS
+        {"name": "acme.x", "must_understand": value}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
     )
     assert [(problem.loc, problem.kind) for problem in problems] == [
         (("must_understand",), "invalid_type")
     ]
 
 
-def test_metadata_field_rejects_unknown_envelope_member() -> None:
+def test_declaration_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
-    _, problems = resolve({"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS)
+    _, problems = resolve(
+        {"name": "acme.x", "typo": 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )
     assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "unknown_key")]
 
 
@@ -1237,13 +1413,13 @@ def test_json_type_guard_rejects_abstract_sequence() -> None:
     assert parse_json(range(3)) == (0, 1, 2)
 
 
-def test_a_field_read_from_abstract_containers_writes_canonical_containers() -> None:
-    """`resolve` reads a field given as abstract containers, and the field writes canonical containers at every nesting level."""
+def test_a_declaration_read_from_abstract_containers_writes_canonical_containers() -> None:
+    """`resolve` reads a declaration given as abstract containers, and the declaration writes canonical containers at every nesting level."""
     value = UserDict({"name": "example", "configuration": UserDict({"values": range(2)})})
 
-    field, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS)
-    assert isinstance(field, UnclaimedField)
-    written = field.to_json()
+    declaration, problems = resolve(value, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert isinstance(declaration, UnclaimedDeclaration)
+    written = declaration.to_json()
 
     assert problems == ()
     assert isinstance(written, dict)
@@ -1258,7 +1434,7 @@ def test_validate_json_reports_json_in_message() -> None:
     assert "JSON" in problems[0].message
 
 
-METADATA_FIELD_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
+DECLARATION_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
     Expect("bytes", frozenset(), id="bare-string"),
     Expect({"name": "acme.x", "configuration": {"a": 1}}, frozenset(), id="named-config"),
     Expect({"name": "bytes"}, frozenset(), id="name-only"),
@@ -1278,12 +1454,12 @@ METADATA_FIELD_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ..
 ]
 
 
-@pytest.mark.parametrize("case", METADATA_FIELD_VALIDATE_CASES, ids=lambda c: c.id)
-def test_resolve_reports_the_problems_of_a_metadata_field(
+@pytest.mark.parametrize("case", DECLARATION_VALIDATE_CASES, ids=lambda c: c.id)
+def test_resolve_reports_the_problems_of_a_declaration(
     case: Expect[object, frozenset[tuple[str | int, ...]]],
 ) -> None:
-    """`resolve` reports the problems of a metadata-field value, read as a codec."""
-    _, problems = resolve(case.input, CodecDefinition, CORE_AND_EXTENSIONS)
+    """`resolve` reports the problems of a declaration value, read as a codec."""
+    _, problems = resolve(case.input, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert (problems == ()) is (case.output == frozenset())
     assert {p.loc for p in problems} >= case.output
 
@@ -1484,13 +1660,13 @@ def test_metadata_validation_error_holds_problems() -> None:
     problems = [
         ValidationProblem(loc=("shape",), message="missing required key", kind="missing_key"),
         ValidationProblem(
-            loc=("data_type",), message="expected a metadata field", kind="invalid_type"
+            loc=("data_type",), message="expected a declaration", kind="invalid_type"
         ),
     ]
     err = MetadataValidationError(problems)
     assert err.problems == tuple(problems)
     assert "shape: missing required key" in str(err)
-    assert "data_type: expected a metadata field" in str(err)
+    assert "data_type: expected a declaration" in str(err)
 
 
 def test_the_error_pickles_and_copies_as_its_problems() -> None:
@@ -1811,9 +1987,9 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
     ("members", "problems"),
     [
         ({"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
-        # The default fill value, 0, is not a boolean. A data type requires
-        # a fill value of that type.
-        ({"data_type": "bool"}, [(("fill_value",), "invalid_type")]),
+        # A fill value given, 0, is not a boolean. A data type requires a
+        # fill value of that type.
+        ({"data_type": "bool", "fill_value": 0}, [(("fill_value",), "invalid_type")]),
         # Values of more than one byte require an `endian`.
         (
             {"data_type": "int16", "codecs": ({"name": "bytes"},)},
@@ -1853,19 +2029,19 @@ def test_error_create_default_refuses_a_document_with_a_problem(
     ],
     ids=["fill-value-out-of-range", "shape-without-its-grid"],
 )
-def test_error_update_refuses_a_document_with_a_problem(
+def test_error_replace_refuses_a_document_with_a_problem(
     members: ZarrV3ArrayMetadataUpdate, problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(**members)
+        base.replace(**members)
     assert [(p.loc, p.kind) for p in raised.value.problems] == problems
 
 
-def test_error_update_refuses_to_leave_out_a_member_a_document_holds() -> None:
+def test_error_replace_refuses_to_leave_out_a_member_a_document_holds() -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(shape=UNSET)  # pyright: ignore[reportArgumentType]
+        base.replace(shape=UNSET)  # pyright: ignore[reportArgumentType]
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), "missing_key")]
 
 
@@ -1886,6 +2062,32 @@ def test_error_create_default_reports_a_shape_it_cannot_read(shape: object, kind
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), kind)]
 
 
+@pytest.mark.parametrize(
+    ("model", "members", "problems"),
+    [
+        (ZarrV3ArrayMetadata, {"data_type": 5}, [(("data_type",), "invalid_type")]),
+        (ZarrV3ArrayMetadata, {"data_type": "r12"}, [(("data_type",), "invalid_value")]),
+        (
+            ZarrV3ArrayMetadata,
+            {"data_type": {"name": "fixed_length_utf32", "configuration": {"length_bytes": 3}}},
+            [(("data_type", "configuration", "length_bytes"), "invalid_value")],
+        ),
+        (ZarrV2ArrayMetadata, {"dtype": 5}, [(("dtype",), "invalid_type")]),
+        (ZarrV2ArrayMetadata, {"dtype": "<i3"}, [(("dtype",), "invalid_value")]),
+    ],
+    ids=["v3-a-number", "v3-bits", "v3-configuration", "v2-a-number", "v2-size"],
+)
+def test_error_create_default_reports_a_data_type_it_cannot_read(
+    model: Any,  # noqa: ANN401
+    members: dict[str, Any],
+    problems: list[tuple[tuple[str | int, ...], str]],
+) -> None:
+    """A data type with a problem derives nothing: the fill value and codecs keep their defaults, so the data type's problem is the only one reported, as for a shape it cannot read."""
+    with pytest.raises(MetadataValidationError) as raised:
+        model.create_default(**members)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
+
+
 def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_name() -> None:
     """A codec whose configuration is not JSON takes the kind of the definition that claims its name, as a codec refused for a JSON configuration does. `gzip` is a bytes -> bytes codec, so the pipeline still lacks an array -> bytes codec."""
     document = {
@@ -1899,7 +2101,7 @@ def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_na
 
 
 def test_a_shard_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
-    """Every walker of fields uses more than one stack frame per shard, so the deepest nesting the cap allows is where the interpreter's recursion limit would show. One shard deeper is reported as the depth problem."""
+    """Every walker of declarations uses more than one stack frame per shard, so the deepest nesting the cap allows is where the interpreter's recursion limit would show. One shard deeper is reported as the depth problem."""
     little = {"name": "bytes", "configuration": {"endian": "little"}}
 
     def nested(shards: int) -> list[object]:
@@ -1933,7 +2135,7 @@ def test_a_shard_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
     (shard,) = model.codecs
     assert json_text(canonical_of(shard, ())) == json_text(cast("JSONValue", codecs[0]))
     # Each level has a shard and its index codec, plus the innermost codec.
-    assert len(list(with_problems(fields_of(shard), ()))) == 2 * deepest + 1
+    assert len(list(with_problems(declarations_of(shard), ()))) == 2 * deepest + 1
     problems = read_array_metadata_v3({**document, "codecs": nested(deepest + 1)}).problems
     assert {(problem.kind, len(problem.loc), problem.message) for problem in problems} == {
         ("invalid_value", JSON_DEPTH, f"nested deeper than the {JSON_DEPTH} levels a reader walks")
@@ -1957,19 +2159,19 @@ def test_a_model_is_written_as_deep_as_it_is_read() -> None:
     assert copy.deepcopy(model) == model
 
 
-def test_a_field_s_configuration_member_is_counted_from_the_field_s_root() -> None:
-    # `resolve` reads a field on its own, from the field's root. A member
+def test_a_declaration_s_configuration_member_is_counted_from_the_declaration_s_root() -> None:
+    # `resolve` reads a declaration on its own, from the declaration's root. A member
     # of its configuration is two levels down, and the cap counts from the
     # root, not from the member.
     nested: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 2):
         nested = {"x": nested}
-    field = {"name": "acme.x", "configuration": {"y": nested}}
-    _, problems = resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)
+    declaration = {"name": "acme.x", "configuration": {"y": nested}}
+    _, problems = resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert [(len(p.loc), p.kind) for p in problems] == [(JSON_DEPTH, "invalid_value")]
     assert problems[0].loc[:2] == ("configuration", "y")
     shallower = {"name": "acme.x", "configuration": {"y": nested["x"]}}
-    assert resolve(shallower, CodecDefinition, CORE_AND_EXTENSIONS)[1] == ()
+    assert resolve(shallower, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1] == ()
 
 
 def test_a_v2_dtype_of_nested_records_is_read_to_the_levels_a_reader_walks() -> None:
@@ -2312,7 +2514,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     '.', not '/': chunk keys of real-world default-separator v2 arrays look
     like '0.0'. The model reports '.' and compares equal to a document that
     writes '.', but `to_json` and `to_key_value` write the document as it was
-    read, without the key. `update` with `UNSET` removes the key."""
+    read, without the key. `replace` with `UNSET` removes the key."""
     explicit = ZarrV2ArrayMetadata.create_default()
     doc = dict(explicit.to_json())
     del doc["dimension_separator"]
@@ -2322,7 +2524,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     assert b"dimension_separator" not in model.to_key_value()[".zarray"]
     assert model == explicit
     assert hash(model) == hash(explicit)
-    removed = explicit.update(dimension_separator=UNSET)
+    removed = explicit.replace(dimension_separator=UNSET)
     assert "dimension_separator" not in removed.to_json()
     assert removed.dimension_separator == "."
 
@@ -2419,12 +2621,12 @@ def test_error_a_document_nested_deeper_than_a_reader_walks_is_a_problem() -> No
         ZarrV3ArrayMetadata.from_json(document)
 
 
-def test_error_a_field_object_in_a_document_is_not_json() -> None:
-    # An `AcceptedField` built by hand, with a configuration its definition
+def test_error_a_declaration_object_in_a_document_is_not_json() -> None:
+    # An `AcceptedDeclaration` built by hand, with a configuration its definition
     # refuses, and inserted into a document is refused as a non-JSON value.
-    # So nothing built by hand passes as read. A model holds its own fields
+    # So nothing built by hand passes as read. A model holds its own declarations
     # as read.
-    smuggled = AcceptedField(
+    smuggled = AcceptedDeclaration(
         json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
     )
     document = {
@@ -2436,11 +2638,11 @@ def test_error_a_field_object_in_a_document_is_not_json() -> None:
     ]
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
-    # `update` refuses a field among the members it is given with a
-    # `TypeError`, as `test_error_update_takes_fields_as_json` shows.
+    # `replace` refuses a declaration among the members it is given with a
+    # `TypeError`, as `test_error_replace_takes_declarations_as_json` shows.
     model = ZarrV3ArrayMetadata.create_default(shape=(2,))
     with pytest.raises(TypeError, match="to_json"):
-        model.update(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
+        model.replace(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
 
 
 def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
@@ -2451,7 +2653,9 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
     document = {**ZarrV3ArrayMetadata.create_default().to_json(), "zarr_format": 10**5000}
     (problem,) = read_array_metadata_v3(document).problems
     assert problem.message == f"expected 3, got an integer of {(10**5000).bit_length()} bits"
-    (problem,) = resolve({"name": "gzip", 10**5000: 1}, CodecDefinition, CORE_AND_EXTENSIONS)[1]
+    (problem,) = resolve(
+        {"name": "gzip", 10**5000: 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )[1]
     assert problem.message == (
         f"non-string key an integer of {(10**5000).bit_length()} bits in JSON object"
     )
@@ -2463,7 +2667,9 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
         assert (
             problem.message == "expected 3, got a value of type list the interpreter will not write"
         )
-    (problem,) = resolve({"name": "gzip", (10**5000,): 1}, CodecDefinition, CORE_AND_EXTENSIONS)[1]
+    (problem,) = resolve(
+        {"name": "gzip", (10**5000,): 1}, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )[1]
     assert problem.message == (
         "non-string key a value of type tuple the interpreter will not write in JSON object"
     )

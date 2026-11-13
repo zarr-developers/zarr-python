@@ -9,15 +9,16 @@ import pytest
 from zarr_metadata import UNSET
 from zarr_metadata._json import value_at
 from zarr_metadata.definition import (
-    AcceptedField,
-    RefusedField,
-    UnclaimedField,
+    AcceptedDeclaration,
+    RefusedDeclaration,
+    UnclaimedDeclaration,
     canonical_fill_value,
     canonical_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.definition._definition import fields_of
+from zarr_metadata.definition._definition import declarations_of
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
 from zarr_metadata.v2.definition import ZarrV2Context, ZarrV2DataTypeDefinition
 
@@ -61,7 +62,9 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
         ("<M8[ns]", "datetime64", "<M8[ns]"),
         (">M8[10s]", "datetime64", ">M8[10s]"),
         ("<M8[μs]", "datetime64", "<M8[us]"),
+        ("<M8[generic]", "datetime64", "<M8[generic]"),
         ("<m8[D]", "timedelta64", "<m8[D]"),
+        (">m8[2generic]", "timedelta64", ">m8[2generic]"),
         ([["x", "<f4"], ["y", "<i4", [2]]], "struct", (("x", "<f4"), ("y", "<i4", (2,)))),
         ([["r", "|u1"], ["s", [["t", "<f4"]]]], "struct", (("r", "|u1"), ("s", (("t", "<f4"),)))),
         # NumPy names the padding fields of an aligned struct "", and zarr 2.x writes them.
@@ -77,7 +80,7 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
     """Each typestr of a family is read by the family's definition. Its canonical spelling is the typestr NumPy writes: `|` for a type of one byte or with no byte order, and `us` for a microsecond unit. A records array is read as `struct`, and the type of each record is read too. A records array may be empty."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     assert resolved.definition.name == family
     assert problems == ()
     assert canonical_of(resolved, problems) == canonical
@@ -85,9 +88,9 @@ def test_every_family_reads_its_typestrs(value: object, family: str, canonical: 
 
 @pytest.mark.parametrize("value", ["<e2", "<T16", "|a1"])
 def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
-    """A typestr whose type code is not listed in the v2 spec is filed under its own name, which no definition in scope claims. It is read as `UnclaimedField` with no problem, and written back unchanged."""
+    """A typestr whose type code is not listed in the v2 spec is filed under its own name, which no definition in scope claims. It is read as `UnclaimedDeclaration` with no problem, and written back unchanged."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
-    assert isinstance(resolved, UnclaimedField)
+    assert isinstance(resolved, UnclaimedDeclaration)
     assert problems == ()
     assert resolved.to_json() == value
 
@@ -148,9 +151,9 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     ],
 )
 def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at: Loc) -> None:
-    """A typestr with a size, byte order or unit that its family does not accept is refused with one `invalid_value` problem, located at the field. A struct's problems are located at the record and the position inside it, where the document writes them. If a record's type is refused, the problem is reported there and the struct is still read."""
+    """A typestr with a size, byte order or unit that its family does not accept is refused with one `invalid_value` problem, located at the declaration. A struct's problems are located at the record and the position inside it, where the document writes them. If a record's type is refused, the problem is reported there and the struct is still read."""
     kind, problems = _read(value)
-    assert kind is RefusedField or len(at) > 1
+    assert kind is RefusedDeclaration or len(at) > 1
     assert next(loc for loc, _ in problems) == at
     if isinstance(value, str):
         # A typestr is one token: one wrong value, never a key a reader may skip.
@@ -207,6 +210,33 @@ def test_every_family_takes_its_fill_values(
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
+
+
+@pytest.mark.parametrize(
+    ("dtype", "default"),
+    [
+        ("|b1", False),
+        ("<i2", 0),
+        (">u8", 0),
+        ("<f4", 0.0),
+        ("<c16", (0.0, 0.0)),
+        ("|S3", ""),
+        ("<U3", ""),
+        ("|V3", "AAAA"),
+        ("<M8[ns]", "NaT"),
+        ("<m8[10s]", "NaT"),
+        ([["x", "<f4"], ["y", "|b1"]], "AAAAAAA="),
+        ([["x", "<i2", [2]]], "AAAAAA=="),
+        ("|O", UNSET),
+    ],
+)
+def test_every_family_has_a_default_fill_value_it_takes(dtype: object, default: object) -> None:
+    """Each family's default fill value is the value zarr-python uses for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`, which zarr-python writes as the ticks value of not-a-time. `|O` has none, since its values may be of any type: zarr-python writes `""` for one its filter makes strings, which the dtype alone does not say."""
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
+    found = default_fill_value(resolved)
+    assert (found, type(found)) == (default, type(default))
+    if found is not UNSET:
+        assert fill_value_problems(resolved, found) == ()
 
 
 @pytest.mark.parametrize(
@@ -274,11 +304,11 @@ def test_error_a_struct_record_s_problem_holds_the_value_the_document_writes_the
 
 
 def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
-    """`fields_of` places a record's type where the document writes it, `("dtype", 0, 1)`: under neither a `configuration` key nor a `fields` key, which a v2 document does not have."""
+    """`declarations_of` places a record's type where the document writes it, `("dtype", 0, 1)`: under neither a `configuration` key nor a `fields` key, which a v2 document does not have."""
     resolved, _ = resolve(
         [["a", "<i0"], ["b", "<f4"]], ZarrV2DataTypeDefinition, CONTEXT, ("dtype",)
     )
-    assert [loc for loc, _ in fields_of(resolved, ("dtype",))] == [
+    assert [loc for loc, _ in declarations_of(resolved, ("dtype",))] == [
         ("dtype",),
         ("dtype", 0, 1),
         ("dtype", 1, 1),

@@ -1,40 +1,26 @@
-"""The v2 `struct` type: an array of field records. The type of each record is a field of its own."""
+"""The v2 `struct` type: an array of field records. The type of each record is a declaration of its own."""
 
 from __future__ import annotations
 
+import base64
 import math
-from typing import TYPE_CHECKING, Annotated, Any, Final, cast
-
-from annotated_types import Ge
-from typing_extensions import ReadOnly, TypedDict
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import AcceptedField
-from zarr_metadata.v2._definition import (
-    STRUCT_NAME,
-    ZarrV2DataTypeDefinition,
-    ZarrV2DataTypeField,
-    item_bytes,
+from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition._definition import AcceptedDeclaration
+from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, item_bytes
+from zarr_metadata.v2._types.data_type import (
+    ZarrV2Base64FillValue,
+    ZarrV2StructConfiguration,
+    ZarrV2StructRecord,
 )
 from zarr_metadata.v2.data_type._rules import sized_base64_rules
-from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata.definition._definition import Nested
-
-ZarrV2StructRecord = (
-    tuple[str, ZarrV2DataTypeField, tuple[Annotated[int, Ge(0)], ...]]
-    | tuple[str, ZarrV2DataTypeField]
-)
-"""A field record: `[name, dtype]` or `[name, dtype, shape]`. The dtype is a nested field (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L174)."""
-
-
-class ZarrV2StructConfiguration(TypedDict, closed=True):
-    """The records of a structured dtype. The document writes the records as the dtype itself."""
-
-    fields: ReadOnly[tuple[ZarrV2StructRecord, ...]]
 
 
 def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
@@ -61,14 +47,20 @@ def _fill_value_rules(
     yield from sized_base64_rules(value, _record_size(configuration, nested), exact=True)
 
 
+def _fill_value_default(configuration: ZarrV2StructConfiguration, nested: Nested) -> str | UNSET:
+    """Return one record of null bytes, in base64. `UNSET` when the size of a field is not known."""
+    size = _record_size(configuration, nested)
+    return UNSET if size is None else base64.b64encode(bytes(size)).decode("ascii")
+
+
 def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
     """Return the number of bytes that one record of `configuration` takes. Each field takes its item size in bytes times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
     total = 0
     for index, record in enumerate(configuration["fields"]):
-        field = nested.get(("fields", index, 1))
-        if not isinstance(field, AcceptedField):
+        declaration = nested.get(("fields", index, 1))
+        if not isinstance(declaration, AcceptedDeclaration):
             return None
-        size = _item_size(field)
+        size = _item_size(declaration)
         if size is None:
             return None
         shape = record[2] if len(record) == 3 else ()
@@ -76,11 +68,13 @@ def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> in
     return total
 
 
-def _item_size(field: AcceptedField[Any]) -> int | None:
-    """Return the number of bytes that one item of the dtype read as `field` takes, or None when that is not known. A typestr gives the size of its type, which for `U` counts code points of four bytes each."""
-    if field.name == STRUCT_NAME or "fields" in field.configuration:
-        return _record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
-    return item_bytes(field.name)
+def _item_size(declaration: AcceptedDeclaration[Any]) -> int | None:
+    """Return the number of bytes that one item of the dtype read as `declaration` takes, or None when that is not known. A typestr gives the size of its type, which for `U` counts code points of four bytes each."""
+    if declaration.name == STRUCT_NAME or "fields" in declaration.configuration:
+        return _record_size(
+            cast("ZarrV2StructConfiguration", declaration.configuration), declaration.nested
+        )
+    return item_bytes(declaration.name)
 
 
 STRUCT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
@@ -88,6 +82,7 @@ STRUCT_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     configuration=ZarrV2StructConfiguration,
     rules=_rules,
     fill_value=ZarrV2Base64FillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
 )
 """A structured type: an array of field records. The fill value is base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""

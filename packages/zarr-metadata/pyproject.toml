@@ -62,6 +62,7 @@ test = [
     "jsonschema",
     "hypothesis",
     "pytest-examples>=0.0.18",
+    "griffelib",
 ]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root

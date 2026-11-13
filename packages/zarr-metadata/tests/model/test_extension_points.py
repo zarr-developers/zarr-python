@@ -2,8 +2,8 @@
 
 The model checks a document's structure itself. The configuration of a
 codec, data type, chunk grid or chunk key encoding is checked by its
-definition. The definition is found in a scope (`CORE_AND_EXTENSIONS`
-unless a caller passes another), and problems are reported at the field's
+definition. The definition is found in a scope (`CORE_AND_EXTENSIONS_CONTEXT`
+unless a caller passes another), and problems are reported at the declaration's
 location in the document. A name that no definition in the scope claims
 is not checked.
 """
@@ -25,9 +25,9 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
-    CodecDefinition,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    BytesBytesCodecDefinition,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +48,9 @@ class LenientGzipConfiguration(TypedDict, closed=True):
     level: int
 
 
-LENIENT_GZIP = CodecDefinition(
+LENIENT_GZIP = BytesBytesCodecDefinition(
     name="gzip",
     configuration=LenientGzipConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
 )
 """A reader's own gzip definition, which accepts any level. A scope can be extended, and an extension can replace a definition."""
@@ -63,21 +62,24 @@ BAD_GZIP_ARRAY = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"le
 @pytest.mark.parametrize(
     ("document", "context"),
     [
-        (_document(), CORE_AND_EXTENSIONS),
+        (_document(), CORE_AND_EXTENSIONS_CONTEXT),
         (
             _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 5}}]),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
         ),
         (
             _document(codecs=[BYTES, {"name": "acme.lz9", "configuration": {"anything": 1}}]),
-            CORE_AND_EXTENSIONS,
+            CORE_AND_EXTENSIONS_CONTEXT,
         ),
-        (_document(codecs=[BYTES, {"name": "zstd", "configuration": {"level": 99}}]), CORE),
+        (_document(codecs=[BYTES, {"name": "zstd", "configuration": {"level": 99}}]), CORE_CONTEXT),
         (
             _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}]),
-            CORE.update(codecs={**CORE.codecs, "gzip": LENIENT_GZIP}),
+            CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP}}),
         ),
-        (dict(ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json()), CORE_AND_EXTENSIONS),
+        (
+            dict(ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json()),
+            CORE_AND_EXTENSIONS_CONTEXT,
+        ),
     ],
     ids=[
         "default",
@@ -91,7 +93,7 @@ BAD_GZIP_ARRAY = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"le
 def test_a_document_reads_through_the_definitions_in_its_scope(
     document: dict[str, Any], context: ZarrV3Context
 ) -> None:
-    # Definitions in the scope check their fields. Fields with no definition
+    # Definitions in the scope check their declarations. Declarations with no definition
     # in the scope are left to the reader. The model reads in the same scope
     # as the reader, and its output reads back in that scope as the same
     # model.
@@ -152,7 +154,7 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
 def test_error_a_configuration_its_definition_refuses(
     fields: dict[str, Any], loc: tuple[str | int, ...], kind: str
 ) -> None:
-    # The problem is located at the field's position in the document. The
+    # The problem is located at the declaration's position in the document. The
     # reader reports it, and the model refuses the document.
     document = _document(**fields)
     assert [
@@ -173,7 +175,7 @@ def test_error_an_array_in_consolidated_metadata() -> None:
 def test_an_array_in_consolidated_metadata_reads_in_the_scope_it_is_read_in() -> None:
     """An array listed in consolidated metadata is read in the scope the member is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
     member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
-    lenient = CORE.update(codecs={**CORE.codecs, "gzip": LENIENT_GZIP})
+    lenient = CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP}})
     reading = read_consolidated_metadata_v3(member, context=lenient)
     assert reading.problems == ()
     assert reading.metadata is not None
@@ -194,7 +196,7 @@ def test_error_an_envelope_is_judged_once() -> None:
     ] == [(("codecs", 1, "must_understand"), "invalid_value")]
 
 
-def test_error_a_field_that_is_not_json_is_not_read() -> None:
+def test_error_a_declaration_that_is_not_json_is_not_read() -> None:
     # The JSON check runs first. The NaN is reported, and the configuration
     # next to it is not read.
     document = _document(

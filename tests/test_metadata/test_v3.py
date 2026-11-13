@@ -260,6 +260,61 @@ _FLOAT64_CODECS = ({"name": "bytes", "configuration": {"endian": "little"}},)
             ),
             id="extra_fields",
         ),
+        # Zarr V3.1 short-hand names: a bare string is read as `{"name": <string>}`, and
+        # written back in the object form that Zarr V3.0 readers require.
+        Expect(
+            input={"codecs": ["bytes"]},
+            output=minimal_metadata_dict_v3(codecs=_UINT8_CODECS),
+            id="short_hand_codec",
+        ),
+        Expect(
+            input={"codecs": [{"name": "bytes"}, "crc32c"]},
+            output=minimal_metadata_dict_v3(codecs=(*_UINT8_CODECS, {"name": "crc32c"})),
+            id="short_hand_codec_mixed_with_object",
+        ),
+        Expect(
+            input={
+                "codecs": [
+                    {
+                        "name": "sharding_indexed",
+                        "configuration": {
+                            "chunk_shape": [2, 2],
+                            "codecs": ["bytes"],
+                            "index_codecs": [*_FLOAT64_CODECS, "crc32c"],
+                        },
+                    }
+                ]
+            },
+            output=minimal_metadata_dict_v3(
+                codecs=(
+                    {
+                        "name": "sharding_indexed",
+                        "configuration": {
+                            "chunk_shape": (2, 2),
+                            "codecs": _UINT8_CODECS,
+                            "index_codecs": (*_FLOAT64_CODECS, {"name": "crc32c"}),
+                            "index_location": "end",
+                        },
+                    },
+                )
+            ),
+            id="short_hand_codecs_nested_in_sharding",
+        ),
+        Expect(
+            input={"chunk_key_encoding": "v2"},
+            output=minimal_metadata_dict_v3(
+                chunk_key_encoding={"name": "v2", "configuration": {"separator": "."}},
+                codecs=_UINT8_CODECS,
+            ),
+            id="short_hand_chunk_key_encoding",
+        ),
+        Expect(
+            input={"storage_transformers": ["foo"]},
+            output=minimal_metadata_dict_v3(
+                storage_transformers=({"name": "foo"},), codecs=_UINT8_CODECS
+            ),
+            id="short_hand_storage_transformer",
+        ),
     ],
     ids=lambda case: case.id,
 )
@@ -297,6 +352,33 @@ def test_array_metadata_from_dict_fails(case: ExpectFail[dict[str, Any]]) -> Non
     d = minimal_metadata_dict_v3(**case.input)
     with case.raises():
         ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"chunk_grid": "regular"},
+        {"codecs": ["bytes", "gzip"]},
+        {"codecs": ["sharding_indexed"]},
+    ],
+    ids=["chunk_grid", "codec", "sharding_codec"],
+)
+def test_short_hand_name_requiring_configuration_rejected(overrides: dict[str, Any]) -> None:
+    """A short-hand name is only valid for an extension that needs no configuration."""
+    with pytest.raises(ValueError, match="does not have a 'configuration' key"):
+        ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(**overrides))  # type: ignore[arg-type]
+
+
+def test_short_hand_codec_name_unknown_rejected() -> None:
+    """A short-hand codec name with no registered implementation is rejected by name."""
+    with pytest.raises(UnknownCodecError, match="'not-a-codec'"):
+        ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(codecs=["bytes", "not-a-codec"]))  # type: ignore[arg-type]
+
+
+def test_short_hand_chunk_key_encoding_name_unknown_rejected() -> None:
+    """A short-hand chunk key encoding name with no registered implementation is rejected."""
+    with pytest.raises(ValueError, match="'not-an-encoding' not found"):
+        ArrayV3Metadata.from_dict(minimal_metadata_dict_v3(chunk_key_encoding="not-an-encoding"))  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

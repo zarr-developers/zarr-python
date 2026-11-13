@@ -8,8 +8,8 @@ definition.
 
 from typing import Any, Final
 
+from zarr_metadata.v2._declaration_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.data_type.fixed_width import (
     BYTES_DATA_TYPE_V2,
     STR_DATA_TYPE_V2,

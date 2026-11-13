@@ -16,22 +16,12 @@ import struct
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
-from typing import Final, Literal, get_args
+from typing import Final, Literal
 
-from zarr_metadata._common import JSONValue
+from zarr_metadata._common import EmptyConfiguration, JSONValue
 from zarr_metadata._json import ValidationProblem, choices, shown
-from zarr_metadata.definition._definition import (
-    EmptyConfiguration,
-    Nested,
-)
-
-FloatSpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
-"""The named non-finite fill values every IEEE 754 floating-point type takes."""
-
-FLOAT_SPECIAL_FILL_VALUES: Final[tuple[FloatSpecialFillValue, ...]] = get_args(
-    FloatSpecialFillValue
-)
-"""The strings that the fill value rules accept for a float fill value in place of a number."""
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._types.data_type import FLOAT_SPECIAL_FILL_VALUES
 
 
 def float_fill_value_rules(
@@ -246,7 +236,6 @@ class _ComplexCanonical:
 
 
 __all__ = [
-    "FloatSpecialFillValue",
     "FloatWidth",
     "complex_fill_value_canonical",
     "complex_fill_value_rules",

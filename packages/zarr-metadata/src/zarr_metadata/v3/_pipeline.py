@@ -35,14 +35,16 @@ from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
 from zarr_metadata.definition._definition import (
-    AcceptedField,
-    ResolvedField,
+    AcceptedDeclaration,
+    ResolvedDeclaration,
     asked,
     in_document,
     read_only,
     ruled,
 )
 from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayCodecDefinition,
     Chunk,
     CodecDefinition,
     CodecKind,
@@ -67,7 +69,7 @@ def _no_stages() -> Mapping[str, tuple[Stage, ...]]:
 class Stage:
     """One codec of a pipeline, and the chunk it receives."""
 
-    codec: ResolvedField[CodecDefinition[Any]]
+    codec: ResolvedDeclaration[CodecDefinition[Any]]
     """The codec, as the scope read it."""
     incoming: Chunk | None
     """The chunk the codec receives.
@@ -103,9 +105,9 @@ _SPOKEN: Final[Mapping[CodecKind, str]] = {
 
 
 def read_pipeline(
-    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
+    codecs: Sequence[ResolvedDeclaration[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
 ) -> tuple[tuple[Stage, ...], Problems]:
-    """Read `codecs` (codec fields read by a context) as a pipeline that receives `chunk`. Return each codec with the chunk it receives, and the problems found.
+    """Read `codecs` (codec declarations read by a context) as a pipeline that receives `chunk`. Return each codec with the chunk it receives, and the problems found.
 
     First the order is checked: array -> array codecs, then one
     array -> bytes codec, then bytes -> bytes codecs. Then each codec is
@@ -131,23 +133,24 @@ def read_pipeline(
             stages.append(Stage(codec, handed))
             handed = None
             continue
-        if definition.kind == "bytes_bytes":
+        if not isinstance(definition, ArrayCodecDefinition):
+            # A bytes -> bytes codec receives bytes, which are not a chunk.
             stages.append(Stage(codec, None))
             handed = None
             continue
         incoming = Chunk() if handed is None else handed
         at = (*loc, index, "configuration")
         inner = _no_stages()
-        if isinstance(codec, AcceptedField):
+        if isinstance(codec, AcceptedDeclaration):
             configuration, nested = codec.configuration, codec.nested
             found = _chunk_problems(definition, configuration, nested, incoming, at)
             problems.extend(_codec_problems(codec, (*loc, index), at, found))
             inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
-        if definition.kind == "array_bytes":
+        if not isinstance(definition, ArrayArrayCodecDefinition):
             handed = None
-        elif not isinstance(codec, AcceptedField):
+        elif not isinstance(codec, AcceptedDeclaration):
             handed = Chunk()
         else:
             handed = _handed_on(definition, codec.configuration, codec.nested, incoming, at)
@@ -157,7 +160,7 @@ def read_pipeline(
 
 
 def _order_problems(
-    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], loc: Loc
+    codecs: Sequence[ResolvedDeclaration[CodecDefinition[Any]]], loc: Loc
 ) -> Iterator[ValidationProblem]:
     """Array -> array codecs, then one array -> bytes codec, then bytes -> bytes codecs.
 
@@ -202,7 +205,7 @@ def _order_problems(
 
 
 def _chunk_problems(
-    definition: CodecDefinition[Any],
+    definition: ArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
@@ -215,7 +218,7 @@ def _chunk_problems(
 
 
 def _codec_problems(
-    codec: ResolvedField[CodecDefinition[Any]], here: Loc, at: Loc, found: Problems
+    codec: ResolvedDeclaration[CodecDefinition[Any]], here: Loc, at: Loc, found: Problems
 ) -> Problems:
     """`found`, the problems the chunk rules find in `codec` at `here`, located under `at`, its configuration, each moved to where the document writes it.
 
@@ -235,7 +238,7 @@ def _codec_problems(
 
 
 def _inner_pipelines(
-    definition: CodecDefinition[Any],
+    definition: ArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,
@@ -243,7 +246,7 @@ def _inner_pipelines(
 ) -> tuple[Mapping[str, tuple[Stage, ...]], Problems]:
     """Read each pipeline contained in a codec that receives `chunk`, starting from the chunk that the codec's `pipelines` returns.
 
-    A pipeline's codecs are the fields in the configuration member that
+    A pipeline's codecs are the declarations in the configuration member that
     holds it, as the scope read them. Its problems are located at that
     member, under `at`. `pipelines` is the extension author's code, so its
     result is checked: it must map configuration members to chunks, and
@@ -281,10 +284,10 @@ def _held(
     configuration: Mapping[str, object],
     nested: Nested,
     member: str,
-) -> tuple[ResolvedField[CodecDefinition[Any]], ...]:
+) -> tuple[ResolvedDeclaration[CodecDefinition[Any]], ...]:
     """The codecs in configuration member `member`, as the scope read them.
 
-    If the member holds anything other than a list of fields read as
+    If the member holds anything other than a list of declarations read as
     codecs, this raises `TypeError`, because the definition that names the
     member has a bug.
     """
@@ -299,7 +302,7 @@ def _held(
 
 
 def _handed_on(
-    definition: CodecDefinition[Any],
+    definition: ArrayArrayCodecDefinition[Any],
     configuration: Mapping[str, object],
     nested: Nested,
     chunk: Chunk,

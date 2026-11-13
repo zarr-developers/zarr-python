@@ -4,69 +4,31 @@ Zarr `struct` data type (heterogeneous record, zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md
 """
 
-from collections.abc import Iterator, Mapping
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import ReadOnly, TypedDict
+from collections.abc import Iterator
+from typing import Final
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import (
     Nested,
+    default_fill_value,
     fill_value_problems,
     spelled_canonically,
 )
-from zarr_metadata.v3._common import ZarrV3DataTypeField
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     StorageClass,
     storage_of,
 )
-
-STRUCT_DATA_TYPE_NAME: Final = "struct"
-"""The `name` field value of the `struct` data type."""
-
-StructDataTypeName = Literal["struct"]
-"""Literal type of the `name` field of the `struct` data type."""
-
-
-class StructField(TypedDict, closed=True):
-    """
-    A single field entry inside a structured dtype.
-
-    Attributes
-    ----------
-    name
-        The field name (must be unique within a struct and non-empty).
-    data_type
-        The field's data type. Recursive: may be a bare-string primitive
-        or a named-config envelope including another `struct`.
-    """
-
-    name: ReadOnly[str]
-    data_type: ReadOnly[ZarrV3DataTypeField]
-
-
-class StructConfiguration(TypedDict, closed=True):
-    """Configuration for the `struct` data type."""
-
-    fields: ReadOnly[tuple[StructField, ...]]
-
-
-class Struct(TypedDict, closed=True):
-    """`struct` data type metadata."""
-
-    name: StructDataTypeName
-    configuration: StructConfiguration
-    must_understand: NotRequired[bool]
-
-
-StructFillValue = Mapping[str, JSONValue]
-"""Permitted JSON shape of the `fill_value` field for `struct`.
-
-A JSON object mapping each field name to that field's fill value. Field
-fill values are themselves shaped per the field's `data_type`, recursively.
-"""
+from zarr_metadata.v3._types.data_type import (
+    STRUCT_DATA_TYPE_NAME,
+    Struct,
+    StructConfiguration,
+    StructDataTypeName,
+    StructField,
+    StructFillValue,
+)
 
 
 def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
@@ -152,6 +114,20 @@ def _fill_value_canonical(
     return spelled
 
 
+def _fill_value_default(
+    configuration: StructConfiguration, nested: Nested
+) -> dict[str, JSONValue] | UNSET:
+    """Return each field's default fill value, by field name. `UNSET` when a field's type has no default, or the reading of the struct does not hold a reading of that field type."""
+    defaults: dict[str, JSONValue] = {}
+    for index, member in enumerate(configuration["fields"]):
+        field_type = nested.get(("fields", index, "data_type"))
+        found = UNSET if field_type is None else default_fill_value(field_type)
+        if found is UNSET:
+            return UNSET
+        defaults[member["name"]] = found
+    return defaults
+
+
 def _storage(configuration: StructConfiguration, nested: Nested) -> StorageClass | None:
     """Return the storage of the packed field values: multi-byte if any field holds multi-byte numbers, and single-byte if every field is single-byte.
 
@@ -184,11 +160,13 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     configuration=StructConfiguration,
     rules=_rules,
     fill_value=StructFillValue,
+    fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,
     fill_value_canonical=_fill_value_canonical,
     storage=_storage,
+    number_class="non_numeric",
 )
-"""The `struct` data type: a record of named fields. The type of each field is a nested field."""
+"""The `struct` data type: a record of named fields. The type of each field is a nested declaration."""
 
 
 __all__ = [

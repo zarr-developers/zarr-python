@@ -15,7 +15,7 @@ from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text
 from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
-    UnclaimedField,
+    UnclaimedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -49,9 +49,11 @@ from zarr_metadata.v3 import ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
-    CORE,
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    BytesBytesCodecDefinition,
     CodecDefinition,
+    ZarrV3Context,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -147,8 +149,11 @@ def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, .
     return [(p.loc, p.kind) for p in raised.value.problems]
 
 
-def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]:
-    return [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)[1]]
+def _v3_declaration_problems(declaration: object) -> list[tuple[tuple[str | int, ...], str]]:
+    return [
+        (p.loc, p.kind)
+        for p in resolve(declaration, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)[1]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -176,15 +181,19 @@ def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]
             [(("consolidated_metadata", "x"), "unknown_key")],
         ),
         (
-            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1}, "x": 1}),
+            lambda: _v3_declaration_problems(
+                {"name": "gzip", "configuration": {"level": 1}, "x": 1}
+            ),
             [(("x",), "unknown_key")],
         ),
         (
-            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1, "x": 1}}),
+            lambda: _v3_declaration_problems(
+                {"name": "gzip", "configuration": {"level": 1, "x": 1}}
+            ),
             [(("configuration", "x"), "unknown_key")],
         ),
     ],
-    ids=["v2-group", "v2-consolidated", "v3-consolidated", "v3-field", "v3-configuration"],
+    ids=["v2-group", "v2-consolidated", "v3-consolidated", "v3-declaration", "v3-configuration"],
 )
 def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
     problems: Callable[[], list[tuple[tuple[str | int, ...], str]]],
@@ -254,10 +263,10 @@ def test_group_v3_key_value_roundtrip() -> None:
     assert ZarrV3GroupMetadata.from_key_value(model.to_key_value()) == model
 
 
-def test_group_v3_update() -> None:
-    """update replaces the given fields and returns a new instance."""
+def test_group_v3_replace() -> None:
+    """`replace` replaces the given fields and returns a new instance."""
     base = ZarrV3GroupMetadata.create_default()
-    updated = base.update(attributes={"a": 1})
+    updated = base.replace(attributes={"a": 1})
     assert updated.attributes == {"a": 1}
     assert base.attributes == {}
 
@@ -531,7 +540,7 @@ def test_group_v2_missing_required_key() -> None:
 # --- Update TypedDict drift guards ------------------------------------------
 
 
-def test_group_update_keys_match_settable_model_fields() -> None:
+def test_group_replace_keys_match_settable_model_fields() -> None:
     """The v2 group `Update` TypedDict lists exactly the settable model fields.
 
     Guards against drift: adding/removing a settable field on the model
@@ -540,8 +549,8 @@ def test_group_update_keys_match_settable_model_fields() -> None:
     assert set(ZarrV2GroupMetadataUpdate.__annotations__) == {"attributes"}
 
 
-def test_update_takes_every_member_of_the_document_it_may_change() -> None:
-    """Each v3 model's `update` takes every member of its document except `zarr_format` and `node_type`, which it cannot change, and `extra_fields`, which holds the members the spec does not define. A group's `update` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `update` accepts node models there."""
+def test_replace_takes_every_member_of_the_document_it_may_change() -> None:
+    """Each v3 model's `replace` takes every member of its document except `zarr_format` and `node_type`, which it cannot change, and `extra_fields`, which holds the members the spec does not define. A group's `replace` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `replace` accepts node models there."""
     fixed = {"zarr_format", "node_type"}
     for update, document, declared in (
         (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSON, {"extra_fields"}),
@@ -634,14 +643,12 @@ def test_error_a_consolidated_envelope_reports_the_members_it_lacks_in_its_order
     ]
 
 
-ACME_X = CodecDefinition(
-    name="acme.x", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
-)
+ACME_X = BytesBytesCodecDefinition(name="acme.x", configuration=EmptyConfiguration, size="dynamic")
 
 
-def test_group_update_keeps_the_documents_it_holds() -> None:
-    """`update` does not read the consolidated documents again: a child read in an extended scope keeps each field as it was read, and the group keeps its scope."""
-    context = CORE_AND_EXTENSIONS.update(codecs=[*CORE_AND_EXTENSIONS.codecs.values(), ACME_X])
+def test_group_replace_keeps_the_documents_it_holds() -> None:
+    """`replace` does not read the consolidated documents again: a child read in an extended scope keeps each declaration as it was read, and the group keeps its scope."""
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_X]))
     child = ZarrV3ArrayMetadata.create_default(
         context=context, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
@@ -649,31 +656,31 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
         context=context,
         consolidated_metadata={**_INLINE_ENVELOPE, "metadata": {"a": child.to_json()}},
     )
-    updated = group.update(attributes={"k": 1})
+    updated = group.replace(attributes={"k": 1})
     assert updated.attributes == {"k": 1}
     assert updated.context == context
     assert updated.consolidated_metadata == group.consolidated_metadata
 
 
-def test_group_update_writes_the_consolidated_metadata_it_is_given() -> None:
-    """`update` takes consolidated metadata as a document writes it, or as a `ZarrV3ConsolidatedMetadata`, whose document it writes; the group holds the same member either way. `UNSET` removes it. `zstd` is an extension, so `CORE` leaves it unclaimed, and the member read in the group's scope holds it as unclaimed."""
+def test_group_replace_writes_the_consolidated_metadata_it_is_given() -> None:
+    """`replace` takes consolidated metadata as a document writes it, or as a `ZarrV3ConsolidatedMetadata`, whose document it writes; the group holds the same member either way. `UNSET` removes it. `zstd` is an extension, so `CORE_CONTEXT` leaves it unclaimed, and the member read in the group's scope holds it as unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     member = cast("Any", _inline(a=_array(codecs=[LITTLE, zstd])))
-    held = ZarrV3ConsolidatedMetadata(member, context=CORE)
+    held = ZarrV3ConsolidatedMetadata(member, context=CORE_CONTEXT)
     child = held.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
-    assert isinstance(child.codecs[1], UnclaimedField)
-    group = ZarrV3GroupMetadata.create_default(context=CORE)
-    updated = group.update(consolidated_metadata=held)
+    assert isinstance(child.codecs[1], UnclaimedDeclaration)
+    group = ZarrV3GroupMetadata.create_default(context=CORE_CONTEXT)
+    updated = group.replace(consolidated_metadata=held)
     assert updated.consolidated_metadata == held.to_json()
-    assert updated == group.update(consolidated_metadata=member)
-    assert ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=CORE) == held
-    removed = updated.update(consolidated_metadata=UNSET)
+    assert updated == group.replace(consolidated_metadata=member)
+    assert ZarrV3ConsolidatedMetadata(updated.consolidated_metadata, context=CORE_CONTEXT) == held
+    removed = updated.replace(consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
 
 
-def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
-    """Return the locations of a default array's fields, under `at`."""
+def _declarations_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
+    """Return the locations of a default array's declarations, under `at`."""
     points = ("data_type", "chunk_grid", "chunk_key_encoding")
     return [*((*at, point) for point in points), (*at, "codecs", 0)]
 
@@ -681,22 +688,25 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
 @pytest.mark.parametrize(
     ("member", "paths", "locs"),
     [
-        (_inline(a=_array(), g=_group()), ["a", "g"], _fields_of_an_array(*A)),
+        (_inline(a=_array(), g=_group()), ["a", "g"], _declarations_of_an_array(*A)),
         # Every node below the group, including one below another group, at its path.
         (
             _inline(g=_group(), **{"g/b": _array()}),
             ["g", "g/b"],
-            _fields_of_an_array("metadata", "g/b"),
+            _declarations_of_an_array("metadata", "g/b"),
         ),
         # A group's consolidated metadata inside another group's, listing a node
         # the outer group also lists. The listed group's own listing is
         # checked against the outer one, and its documents are not models
         # of the outer member. The listed group's member is its extra field,
-        # which `CORE` reads as an envelope.
+        # which `CORE_CONTEXT` reads as an envelope.
         (
             _inline(g=_group(consolidated_metadata=_inline(b=_array())), **{"g/b": _array()}),
             ["g", "g/b"],
-            [("metadata", "g", "consolidated_metadata"), *_fields_of_an_array("metadata", "g/b")],
+            [
+                ("metadata", "g", "consolidated_metadata"),
+                *_declarations_of_an_array("metadata", "g/b"),
+            ],
         ),
     ],
     ids=["an-array-and-a-group", "paths", "nested"],
@@ -704,12 +714,12 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
 def test_consolidated_metadata_reads_each_document_it_lists(
     member: dict[str, object], paths: list[str], locs: list[tuple[str | int, ...]]
 ) -> None:
-    """`read_consolidated_metadata_v3` reads each document a member lists as the node its `node_type` declares, and the reading's fields are each listed array's fields, located in the member. The model equals the one the constructor builds."""
+    """`read_consolidated_metadata_v3` reads each document a member lists as the node its `node_type` declares, and the reading's declarations are each listed array's declarations, located in the member. The model equals the one the constructor builds."""
     reading = read_consolidated_metadata_v3(member)
     assert reading.problems == ()
     assert reading.metadata is not None
     assert list(reading.metadata.metadata) == paths
-    assert [loc for loc, _ in reading.fields()] == locs
+    assert [loc for loc, _ in reading.declarations()] == locs
     assert reading.metadata == ZarrV3ConsolidatedMetadata(member)
 
 
@@ -861,10 +871,12 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
         reads.append(configuration)
         yield from ()
 
-    context = CORE_AND_EXTENSIONS.update(
-        codecs={
-            **CORE_AND_EXTENSIONS.codecs,
-            "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={
+            "codecs": {
+                **CORE_AND_EXTENSIONS_CONTEXT.codecs,
+                "gzip": dataclasses.replace(GZIP_CODEC, rules=counted),
+            }
         }
     )
     array = _array(codecs=[LITTLE, {"name": "gzip", "configuration": {"level": 5}}])
@@ -952,7 +964,7 @@ def test_error_a_node_type_the_spec_does_not_define(node_type: object, kind: str
     assert isinstance(read, ZarrV3UnknownNodeMetadataReading)
     assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), kind)]
     assert read.metadata is None
-    assert list(read.fields()) == []
+    assert list(read.declarations()) == []
 
 
 def test_error_a_document_without_a_node_type() -> None:
@@ -1468,12 +1480,12 @@ def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_memb
 
 
 def test_a_consolidated_model_given_as_the_member_keeps_the_order_its_document_writes() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given to `update` is written as its document, in the document's key order, so the group writes it the same way the member wrote it."""
+    """A `ZarrV3ConsolidatedMetadata` given to `replace` is written as its document, in the document's key order, so the group writes it the same way the member wrote it."""
     array = ZarrV3ArrayMetadata.create_default(shape=(2,))
     member = ZarrV3ConsolidatedMetadata(
         {"metadata": {"a": array.to_json()}, "kind": "inline", "must_understand": False}
     )
-    group = ZarrV3GroupMetadata.create_default().update(consolidated_metadata=member)
+    group = ZarrV3GroupMetadata.create_default().replace(consolidated_metadata=member)
     written = cast("dict[str, Any]", group.to_json())["consolidated_metadata"]
     assert list(written) == ["metadata", "kind", "must_understand"]
     assert group == ZarrV3GroupMetadata(
