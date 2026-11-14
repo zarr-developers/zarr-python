@@ -1332,7 +1332,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Supports regular chunk grids and one-level sharding with no outer codecs.
         For sharded arrays this reads the shard index, not chunk payloads. Each
         call reads its own index; there is no cross-call cache. For unsharded
-        arrays this calls ``Store.getsize``, whose default implementation reads
+        arrays this calls `Store.getsize`, whose default implementation reads
         the entire object if the store does not provide an efficient size lookup.
 
         Locations describe the current stored representation, not decoded byte
@@ -2498,8 +2498,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Notes
         -----
-        See :meth:`AsyncArray.chunk_byte_range` for supported layouts, IO costs,
-        and the requirement that the source not change while using the location.
+        See [`AsyncArray.chunk_byte_range`][zarr.AsyncArray.chunk_byte_range] for
+        supported layouts, IO costs, and the requirement that the source not change
+        while using the location.
         """
         return sync(self.async_array.chunk_byte_range(coords))
 
