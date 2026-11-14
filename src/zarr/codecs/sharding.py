@@ -588,27 +588,47 @@ class ShardingCodec(
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        """Thread the spec through the inner chain.
+        """Evolve and validate the inner chain against the chunks it encodes.
 
-        Each codec is evolved against the spec produced by the previous one.
-        Evolving every codec against the same unthreaded spec is the bug shape that
-        strips `BytesCodec.endian` behind a dtype-changing codec — and this
-        method runs on the real array-creation path, baking the damaged chain
-        into the evolved instance before the transform builders ever run.
+        Each inner codec is evolved against, validated against, and resolved through
+        the spec the codecs before it leave, as array metadata does for its own codecs,
+        with a regular grid of one inner chunk as its chunk grid. A sharding codec among
+        them is thereby checked against the chunk it splits.
+
+        The spec is threaded for two reasons. A dtype-changing codec changes what the
+        codecs after it see: evolving every codec against the unthreaded spec strips
+        `BytesCodec.endian` behind one. And the fill value the inner chain must encode
+        is the array's fill value as the codecs before this one leave it, which is what
+        an unwritten inner chunk holds. Probing the chain with any other value, such as
+        the data type's default scalar, rejects chains that never see that value.
 
         Parameters
         ----------
         array_spec
-            The base spec to be evolved as we thread it.
+            The spec of the shards this codec encodes.
 
         Returns
         -------
-            This codec with the evolved code chain.
-        """
-        from zarr.core.chunk_utils import evolve_codecs
+            This codec with the evolved codec chain.
 
-        shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = evolve_codecs(self.codecs, shard_spec)
+        Raises
+        ------
+        ValueError
+            If an inner codec is incompatible with the chunk it encodes, or cannot
+            encode the fill value it receives.
+        """
+        evolved: list[Codec] = []
+        spec = self._get_chunk_spec(array_spec)
+        for codec in self.codecs:
+            evolved_codec = codec.evolve_from_array_spec(spec)
+            evolved_codec.validate(
+                shape=spec.shape,
+                dtype=spec.dtype,
+                chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
+            )
+            evolved.append(evolved_codec)
+            spec = evolved_codec.resolve_metadata(spec)
+        evolved_codecs = tuple(evolved)
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
@@ -642,28 +662,6 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
-        self._validate_inner_codecs(dtype)
-
-    def _validate_inner_codecs(self, dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
-        """Validate the codecs that encode each inner chunk, as array metadata validates
-        its codecs: each against the chunk the codecs before it leave it, a regular
-        grid of one inner chunk. A sharding codec among them is thereby checked against
-        the chunk it splits, which `validate` of the outer codec alone does not see.
-        """
-        spec = ArraySpec(
-            shape=self.chunk_shape,
-            dtype=dtype,
-            fill_value=dtype.default_scalar(),
-            config=ArrayConfig.from_dict({}),
-            prototype=default_buffer_prototype(),
-        )
-        for codec in self.codecs:
-            codec.validate(
-                shape=spec.shape,
-                dtype=spec.dtype,
-                chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
-            )
-            spec = codec.resolve_metadata(spec)
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.

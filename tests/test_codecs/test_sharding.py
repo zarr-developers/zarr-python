@@ -19,6 +19,7 @@ from zarr.codecs import (
     BytesCodec,
     Crc32cCodec,
     GzipCodec,
+    ScaleOffset,
     ShardingCodec,
     TransposeCodec,
 )
@@ -1522,3 +1523,87 @@ def test_open_rejects_stored_nested_sharding_with_indivisible_inner_chunk_shape(
     doc["codecs"][0]["configuration"]["codecs"][0]["configuration"]["chunk_shape"] = (4, 7)
     with pytest.raises(ValueError, match="not divisible"):
         ArrayV3Metadata.from_dict(doc)
+
+
+# Each layout pairs codecs with a fill value the inner chain can encode, as the codecs
+# before it leave that value, and one it cannot. The accepted fill value is chosen so
+# that neither the data type's default scalar (0) nor, where a filter precedes the
+# sharding codec, the array's fill value as given would pass the inner chain.
+_INNER_CHAIN_FILL_LAYOUTS: dict[str, tuple[dict[str, Any], int, int]] = {
+    # `scale_offset` inside the shard: the inner chain encodes [100, 65535].
+    "inside-shard": (
+        {"chunks": (4,), "shards": (16,), "filters": [ScaleOffset(offset=100)]},
+        100,
+        0,
+    ),
+    # `scale_offset` before the sharding codec doubles the fill value, so the inner
+    # chain sees 120 for an array fill value of 60, and 80 for 40. Its own
+    # `scale_offset` encodes [100, 65535].
+    "behind-filter": (
+        {
+            "chunks": (16,),
+            "filters": [ScaleOffset(scale=2)],
+            "serializer": ShardingCodec(
+                chunk_shape=(4,), codecs=[ScaleOffset(offset=100), BytesCodec()]
+            ),
+        },
+        60,
+        40,
+    ),
+    # The fill value reaches a sharding codec nested in another one.
+    "nested": (
+        {
+            "chunks": (16,),
+            "serializer": ShardingCodec(
+                chunk_shape=(8,),
+                codecs=[
+                    ShardingCodec(chunk_shape=(4,), codecs=[ScaleOffset(offset=100), BytesCodec()])
+                ],
+            ),
+        },
+        100,
+        0,
+    ),
+}
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize("layout", _INNER_CHAIN_FILL_LAYOUTS)
+def test_sharding_inner_chain_probed_with_array_fill_value(layout: str) -> None:
+    """A sharding codec's inner chain is validated against the array's fill value, as
+    the codecs before it leave it, not against the data type's default scalar
+    (https://github.com/zarr-developers/zarr-python/issues/4511). The array is created,
+    reads its fill value before any write, and round-trips a partial write."""
+    codecs, fill_value, _ = _INNER_CHAIN_FILL_LAYOUTS[layout]
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store, shape=(16,), dtype="uint16", fill_value=fill_value, compressors=None, **codecs
+    )
+    expected = np.full(16, fill_value, dtype="uint16")
+    np.testing.assert_array_equal(arr[:], expected)
+    written = np.arange(110, 114, dtype="uint16")
+    arr[4:8] = written
+    expected[4:8] = written
+    np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], expected)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize("layout", _INNER_CHAIN_FILL_LAYOUTS)
+def test_sharding_rejects_fill_value_inner_chain_cannot_encode(layout: str) -> None:
+    """An array whose fill value the inner chain cannot encode is rejected: an
+    unwritten inner chunk holds the fill value, so the array could not be read before
+    its first write."""
+    codecs, _, fill_value = _INNER_CHAIN_FILL_LAYOUTS[layout]
+    with pytest.raises(ValueError, match="outside the range"):
+        zarr.create_array(
+            MemoryStore(),
+            shape=(16,),
+            dtype="uint16",
+            fill_value=fill_value,
+            compressors=None,
+            **codecs,
+        )
