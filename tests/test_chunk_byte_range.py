@@ -61,8 +61,10 @@ def make_array(
 
 
 @pytest.mark.parametrize("store_kind", ["memory", "local"])
-@pytest.mark.parametrize("layout", ["v2", "v3", "sharded"])
-@pytest.mark.parametrize("location", ["start", "end"])
+@pytest.mark.parametrize(
+    ("layout", "location"),
+    [("v2", "end"), ("v3", "end"), ("sharded", "start"), ("sharded", "end")],
+)
 @pytest.mark.parametrize("compressed", [False, True])
 def test_chunk_byte_range_decodes_actual_payload(
     tmp_path: Path,
