@@ -8,7 +8,6 @@ metadata from only part of what its parts draw would fail.
 
 from __future__ import annotations
 
-import functools
 import json
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,7 +15,7 @@ import pytest
 from hypothesis import find, given, settings
 from hypothesis import strategies as st
 
-from tests.testing._shares import examples_of, share
+from tests.testing._shares import share_of
 from zarr_metadata.definition import AcceptedDeclaration, Definition, resolve
 from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.model import (
@@ -340,29 +339,35 @@ def test_a_data_type_no_codec_takes_is_not_drawn(document: Mapping[str, Any]) ->
     assert document["data_type"] == "int8"
 
 
+_ARRAY_DOCUMENTS = array_documents()
+"""One strategy for every share, so `examples_of` draws its examples once."""
+
 _DOCUMENT_SHARES: dict[str, tuple[Callable[[Mapping[str, Any]], bool], float, float]] = {
-    "no axes": (lambda d: d["shape"] == (), 0.04, 0.34),
-    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.15, 1),
+    "no axes": (lambda d: d["shape"] == (), 0.07, 0.31),
+    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.16, 1),
     "a zero-length axis": (lambda d: 0 in d["shape"], 0.44, 1),
-    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.03, 1),
-    "the first data type": (lambda d: _name(d["data_type"]) == "bool", 0, 0.18),
+    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.02, 1),
 }
 """What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets.
 
-Each bound is set as `_shares` says, from 100 seeds.
+Each bound is set as `_shares` says.
 """
-
-
-@functools.cache
-def _array_document_examples() -> list[Mapping[str, Any]]:
-    """Drawn once for every target, as each counts the same examples."""
-    return examples_of(array_documents())
 
 
 @pytest.mark.parametrize("target", _DOCUMENT_SHARES)
 def test_array_documents_share(target: str) -> None:
     counts, low, high = _DOCUMENT_SHARES[target]
-    assert low <= share(_array_document_examples(), counts) <= high
+    assert low <= share_of(_ARRAY_DOCUMENTS, counts) <= high
+
+
+def test_array_documents_do_not_favor_the_first_data_type() -> None:
+    """`bool`, first of the data types by name, is drawn no more often than the rest would allow.
+
+    Over 1000 examples: over 300, its share moves too much across seeds to
+    tell a fair draw from one that draws it a fifth of the time.
+    """
+    share = share_of(_ARRAY_DOCUMENTS, lambda d: _name(d["data_type"]) == "bool", examples=1000)
+    assert share <= 0.13
 
 
 def _empty_listings(document: Mapping[str, Any]) -> list[Any]:

@@ -1068,7 +1068,9 @@ _HEX_FILL_VALUES = fill_values(FLOAT64_DATA_TYPE, {}).filter(
 )
 
 
-@pytest.mark.parametrize(("kind", "at_least"), [("normal", 0.2), ("NaN", 0.26), ("infinity", 0.01)])
+@pytest.mark.parametrize(
+    ("kind", "at_least"), [("normal", 0.22), ("NaN", 0.25), ("infinity", 0.01)]
+)
 def test_hex_fill_values_are_not_only_small_numbers(kind: str, at_least: float) -> None:
     """Bits drawn as an integer alone are nearly all subnormal."""
     assert share_of(_HEX_FILL_VALUES, lambda value: _float_class(value) == kind) >= at_least
@@ -1108,7 +1110,7 @@ def _shard_inner_lengths(draw: st.DrawFn) -> tuple[int, ...]:
 
 def test_shards_of_a_rectilinear_grid_are_often_divided() -> None:
     """Edges drawn apart rarely share a factor, which leaves a shard only inner chunks of length 1."""
-    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.39
+    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.36
 
 
 def _edge_factor(configuration: Mapping[str, Any]) -> int:
@@ -1156,7 +1158,7 @@ def test_a_long_dimension_keeps_its_edge_factor() -> None:
     edges = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, (2**16 + 1,)).filter(
         lambda configuration: not isinstance(configuration["chunk_shapes"][0], int)
     )
-    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.32
+    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.36
 
 
 def test_divisors_of_a_very_long_shard_are_found_quickly() -> None:
@@ -1178,5 +1180,12 @@ def _field_types(declaration: Any) -> list[str]:  # noqa: ANN401
 
 
 def test_struct_fields_do_not_favor_the_first_data_type() -> None:
-    """A type drawn after a field's name would be `bool` a fifth of the time."""
-    assert share_of(declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool") <= 0.16
+    """A type drawn after a field's name would be `bool` a fifth of the time.
+
+    Over 1000 examples: over 300, the share of `bool` moves too much across
+    seeds to tell a fair draw from one that favors it.
+    """
+    first_is_bool = share_of(
+        declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool", examples=1000
+    )
+    assert first_is_bool <= 0.13
