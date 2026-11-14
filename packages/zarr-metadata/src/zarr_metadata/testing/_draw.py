@@ -278,7 +278,12 @@ def pipelines_for(
 def _codec(
     draw: st.DrawFn, options: Sequence[tuple[K, Configurations]]
 ) -> tuple[K, ZarrV3DeclarationJSON]:
-    definition, configurations = draw(st.sampled_from(options))
+    # An index, not the options: Hypothesis labels a `sampled_from` by
+    # hashing its elements, and each option holds a strategy built for this
+    # draw, whose hash is its address. Labels that follow addresses send
+    # Hypothesis's mutator down different paths from one run to the next, so
+    # a derandomized run would not draw the same examples twice.
+    definition, configurations = options[draw(st.sampled_from(range(len(options))))]
     return definition, draw(any_spelling(definition, configurations))
 
 

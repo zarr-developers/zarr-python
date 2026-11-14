@@ -127,9 +127,11 @@ class ValidationProblem:
     document, `input` shows the change. `ctx` holds what was expected,
     when that is more than a type:
 
-    - `gt`, `ge`, `lt` and `le`: the bounds from the value's type or from
-      a rule, with the names pydantic uses. For example `{"ge": 0, "le": 9}`
-      for a gzip `level`, whose type is `Annotated[int, Interval(ge=0, le=9)]`.
+    - `gt`, `ge`, `lt`, `le`, `multiple_of`, `min_length` and
+      `max_length`: the constraints from the value's type or from a rule,
+      with the names pydantic uses. For example `{"ge": 0, "le": 9}` for a
+      gzip `level`, whose type is `Annotated[int, Interval(ge=0, le=9)]`,
+      or `{"min_length": 1}` for an array document's `codecs`.
     - `expected`: the values of a closed set, like zod's `values`, in the
       order the message lists them. For example the values of a `Literal`,
       of `node_type`, or of `zarr_format`.

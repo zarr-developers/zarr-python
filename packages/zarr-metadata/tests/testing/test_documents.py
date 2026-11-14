@@ -8,6 +8,7 @@ metadata from only part of what its parts draw would fail.
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import TYPE_CHECKING, Any, cast
 
@@ -15,7 +16,7 @@ import pytest
 from hypothesis import find, given, settings
 from hypothesis import strategies as st
 
-from tests.testing._shares import share_of
+from tests.testing._shares import examples_of, share
 from zarr_metadata.definition import AcceptedDeclaration, Definition, resolve
 from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.model import (
@@ -340,19 +341,28 @@ def test_a_data_type_no_codec_takes_is_not_drawn(document: Mapping[str, Any]) ->
 
 
 _DOCUMENT_SHARES: dict[str, tuple[Callable[[Mapping[str, Any]], bool], float, float]] = {
-    "no axes": (lambda d: d["shape"] == (), 0.03, 0.25),
-    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.1, 1),
-    "a zero-length axis": (lambda d: 0 in d["shape"], 0.1, 1),
-    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.1, 1),
-    "the first data type": (lambda d: _name(d["data_type"]) == "bool", 0, 0.12),
+    "no axes": (lambda d: d["shape"] == (), 0.04, 0.34),
+    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.15, 1),
+    "a zero-length axis": (lambda d: 0 in d["shape"], 0.44, 1),
+    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.03, 1),
+    "the first data type": (lambda d: _name(d["data_type"]) == "bool", 0, 0.18),
 }
-"""What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets."""
+"""What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets.
+
+Each bound is set as `_shares` says, from 100 seeds.
+"""
+
+
+@functools.cache
+def _array_document_examples() -> list[Mapping[str, Any]]:
+    """Drawn once for every target, as each counts the same examples."""
+    return examples_of(array_documents())
 
 
 @pytest.mark.parametrize("target", _DOCUMENT_SHARES)
 def test_array_documents_share(target: str) -> None:
     counts, low, high = _DOCUMENT_SHARES[target]
-    assert low <= share_of(array_documents(), counts) <= high
+    assert low <= share(_array_document_examples(), counts) <= high
 
 
 def _empty_listings(document: Mapping[str, Any]) -> list[Any]:

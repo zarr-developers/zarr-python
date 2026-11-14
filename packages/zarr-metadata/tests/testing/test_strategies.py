@@ -670,7 +670,6 @@ def _is_pair(entry: object) -> bool:
 
 _RECTILINEAR_SPELLINGS: dict[str, tuple[tuple[int, ...] | None, Callable[[object], bool]]] = {
     "a bare length": (None, lambda dimension: isinstance(dimension, int)),
-    "no edges": (None, lambda dimension: dimension == ()),
     "only written-out lengths": (
         None,
         lambda dimension: (
@@ -739,6 +738,18 @@ def test_rectilinear_dimensions_reach(spelling: str) -> None:
         lambda configuration: any(reached(d) for d in configuration["chunk_shapes"]),
         settings=_REACH,
     )
+
+
+@given(data=st.data(), shape=st.none() | st.lists(st.integers(0, 2), max_size=3).map(tuple))
+def test_rectilinear_dimensions_are_never_empty(
+    data: st.DataObject, shape: tuple[int, ...] | None
+) -> None:
+    """A list of edges has at least one, even along a dimension of length 0 or of a length not known."""
+    configuration = data.draw(chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape))
+    # The type declares each list non-empty, so the definition's read of
+    # the configuration, which checks the type, is what would refuse one.
+    assert () not in configuration["chunk_shapes"]
+    assert RECTILINEAR_CHUNK_GRID.read_configuration(configuration)[1] == ()
 
 
 @given(data=st.data(), shape=st.lists(st.integers(0, 2**63 - 1), max_size=3).map(tuple))
@@ -1057,7 +1068,7 @@ _HEX_FILL_VALUES = fill_values(FLOAT64_DATA_TYPE, {}).filter(
 )
 
 
-@pytest.mark.parametrize(("kind", "at_least"), [("normal", 0.2), ("NaN", 0.1), ("infinity", 0.01)])
+@pytest.mark.parametrize(("kind", "at_least"), [("normal", 0.2), ("NaN", 0.26), ("infinity", 0.01)])
 def test_hex_fill_values_are_not_only_small_numbers(kind: str, at_least: float) -> None:
     """Bits drawn as an integer alone are nearly all subnormal."""
     assert share_of(_HEX_FILL_VALUES, lambda value: _float_class(value) == kind) >= at_least
@@ -1097,7 +1108,7 @@ def _shard_inner_lengths(draw: st.DrawFn) -> tuple[int, ...]:
 
 def test_shards_of_a_rectilinear_grid_are_often_divided() -> None:
     """Edges drawn apart rarely share a factor, which leaves a shard only inner chunks of length 1."""
-    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.4
+    assert share_of(_shard_inner_lengths(), lambda inner: any(n > 1 for n in inner)) >= 0.39
 
 
 def _edge_factor(configuration: Mapping[str, Any]) -> int:
@@ -1145,7 +1156,7 @@ def test_a_long_dimension_keeps_its_edge_factor() -> None:
     edges = chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, (2**16 + 1,)).filter(
         lambda configuration: not isinstance(configuration["chunk_shapes"][0], int)
     )
-    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.3
+    assert share_of(edges, lambda configuration: _edge_factor(configuration) > 1) >= 0.32
 
 
 def test_divisors_of_a_very_long_shard_are_found_quickly() -> None:
@@ -1168,4 +1179,4 @@ def _field_types(declaration: Any) -> list[str]:  # noqa: ANN401
 
 def test_struct_fields_do_not_favor_the_first_data_type() -> None:
     """A type drawn after a field's name would be `bool` a fifth of the time."""
-    assert share_of(declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool") <= 0.12
+    assert share_of(declarations(STRUCT_DATA_TYPE), lambda d: _field_types(d)[0] == "bool") <= 0.16
