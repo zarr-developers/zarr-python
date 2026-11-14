@@ -25,17 +25,6 @@ from zarr_metadata.v3._types.data_type import (
 from zarr_metadata.v3.data_type._byte import base64_decoded, base64_problems, base64_spelling
 
 
-def _rules(
-    configuration: NullTerminatedBytesConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Check that `length_bytes` is positive. zarr-python refuses a length below 1, since such a type holds no data."""
-    length_bytes = configuration["length_bytes"]
-    if length_bytes < 1:
-        yield ValidationProblem(
-            ("length_bytes",), f"expected a positive size, got {length_bytes}", "invalid_value"
-        )
-
-
 def _fill_value_rules(
     configuration: NullTerminatedBytesConfiguration,
     nested: Nested,
@@ -75,7 +64,6 @@ def _fill_value_canonical(
 NULL_TERMINATED_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=NULL_TERMINATED_BYTES_DATA_TYPE_NAME,
     configuration=NullTerminatedBytesConfiguration,
-    rules=_rules,
     fill_value=NullTerminatedBytesFillValue,
     fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,

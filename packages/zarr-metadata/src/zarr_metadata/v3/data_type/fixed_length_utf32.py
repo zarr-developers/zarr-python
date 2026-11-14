@@ -21,19 +21,6 @@ from zarr_metadata.v3._types.data_type import (
 _CODE_POINT_BYTES: Final = 4
 
 
-def _rules(
-    configuration: FixedLengthUtf32Configuration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Check that `length_bytes` is a "positive integer, multiple of `4`" (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/data-types/fixed_length_utf32/README.md?plain=1#L41)."""
-    length_bytes = configuration["length_bytes"]
-    if length_bytes <= 0 or length_bytes % _CODE_POINT_BYTES != 0:
-        yield ValidationProblem(
-            ("length_bytes",),
-            f"expected a positive multiple of {_CODE_POINT_BYTES}, got {length_bytes}",
-            "invalid_value",
-        )
-
-
 def _fill_value_rules(
     configuration: FixedLengthUtf32Configuration, nested: Nested, value: FixedLengthUtf32FillValue
 ) -> Iterator[ValidationProblem]:
@@ -73,7 +60,6 @@ def _fill_value_canonical(
 FIXED_LENGTH_UTF32_DATA_TYPE: Final = DataTypeDefinition(
     name=FIXED_LENGTH_UTF32_DATA_TYPE_NAME,
     configuration=FixedLengthUtf32Configuration,
-    rules=_rules,
     fill_value=FixedLengthUtf32FillValue,
     fill_value_default=ConstantFillValue(""),
     fill_value_rules=_fill_value_rules,

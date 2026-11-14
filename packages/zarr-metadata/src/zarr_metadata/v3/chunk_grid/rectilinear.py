@@ -1,7 +1,7 @@
 """
 Rectilinear chunk grid (zarr-extensions).
 
-See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md
+See https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md
 """
 
 from collections.abc import Iterator
@@ -79,7 +79,7 @@ def _shape_rules(
 
     "The length of `chunk_shapes` MUST match the number of dimensions of
     the array", and "The sum of the edge lengths MUST equal or exceed `L`"
-    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md?plain=1#L62-L95).
     A bare integer repeats until it covers the dimension, so it always
     passes this check.
     """
@@ -112,7 +112,7 @@ def _chunk_lengths(
     A bare integer is the length of every chunk along its axis. A list
     gives the length of each chunk, and a `[length, count]` pair gives
     `count` chunks of that length
-    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md?plain=1#L62-L95).
     Every listed length counts, including the length of a chunk past the
     array's edge, which the array grows into when it is resized.
     """

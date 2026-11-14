@@ -670,7 +670,6 @@ def _is_pair(entry: object) -> bool:
 
 _RECTILINEAR_SPELLINGS: dict[str, tuple[tuple[int, ...] | None, Callable[[object], bool]]] = {
     "a bare length": (None, lambda dimension: isinstance(dimension, int)),
-    "no edges": (None, lambda dimension: dimension == ()),
     "only written-out lengths": (
         None,
         lambda dimension: (
@@ -739,6 +738,18 @@ def test_rectilinear_dimensions_reach(spelling: str) -> None:
         lambda configuration: any(reached(d) for d in configuration["chunk_shapes"]),
         settings=_REACH,
     )
+
+
+@given(data=st.data(), shape=st.none() | st.lists(st.integers(0, 2), max_size=3).map(tuple))
+def test_rectilinear_dimensions_are_never_empty(
+    data: st.DataObject, shape: tuple[int, ...] | None
+) -> None:
+    """A list of edges has at least one, even along a dimension of length 0 or of a length not known."""
+    configuration = data.draw(chunk_grid_configurations(RECTILINEAR_CHUNK_GRID, shape))
+    # The type declares each list non-empty, so the definition's read of
+    # the configuration, which checks the type, is what would refuse one.
+    assert () not in configuration["chunk_shapes"]
+    assert RECTILINEAR_CHUNK_GRID.read_configuration(configuration)[1] == ()
 
 
 @given(data=st.data(), shape=st.lists(st.integers(0, 2**63 - 1), max_size=3).map(tuple))

@@ -12,7 +12,7 @@ codec's definition and rules.
 
 from typing import Annotated, Final, Literal, NotRequired
 
-from annotated_types import Ge, Interval
+from annotated_types import Ge, Interval, MinLen
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import EmptyConfiguration, JSONValue
@@ -510,12 +510,12 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     One length, at least 1, per axis of the shard the codec is handed, each
     dividing the shard's length along that axis.
     """
-    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    codecs: Annotated[tuple[ZarrV3CodecDeclaration, ...], MinLen(1)]
     """The codec pipeline that encodes each inner chunk.
 
     Like an array's `codecs`, it holds exactly one array -> bytes codec.
     """
-    index_codecs: tuple[ZarrV3StaticCodecDeclaration, ...]
+    index_codecs: Annotated[tuple[ZarrV3StaticCodecDeclaration, ...], MinLen(1)]
     """The codec pipeline that encodes the shard index.
 
     It holds exactly one array -> bytes codec, and only codecs whose output

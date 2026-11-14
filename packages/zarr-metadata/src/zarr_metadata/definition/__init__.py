@@ -163,15 +163,18 @@ a TypedDict, `Mapping[str, V]`, a `NewType` and a type alias. A number's
 type may carry bounds, written with annotated-types and read the way
 pydantic reads them: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at most one
 from each side, at any depth. For example,
-`tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value out of
+`tuple[Annotated[int, Ge(1)], ...]` bounds each element. An integer's
+type may carry a step, `MultipleOf`, at most one. An array's or a
+string's type may bound its length with `MinLen`, `MaxLen` and `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. A value out of
 bounds is an `invalid_value` problem. Its message says what the type
 admits ("expected an integer >= 1, got 0"), and its `ctx` holds the
 bounds. The rules run only on a configuration within its bounds, so a
 rule can rely on them, as pydantic's after-validators and zod's
 refinements do. Until a value out of bounds is fixed, it is the only
 problem reported for the configuration. `Annotated` may also carry a
-note, as a string or a `Doc`. Any other metadata (a `MinLen`, a
-`Predicate`, pydantic's `Field`) is rejected when the definition is
+note, as a string or a `Doc`. Any other metadata (a `Predicate`,
+pydantic's `Field`) is rejected when the definition is
 built, because a type whose constraint the checker does not enforce
 would give false information.
 

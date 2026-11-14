@@ -82,8 +82,10 @@ names `acme.lz4` is then checked against this definition.
 - a `NewType` or a type alias.
 
 A number may carry bounds from annotated-types: `Gt`, `Ge`, `Lt`, `Le` or
-`Interval`. Any other `Annotated` metadata is refused when the definition
-is built.
+`Interval`, and an integer a step, `MultipleOf`. An array or a string may
+bound its length with `MinLen`, `MaxLen` or `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. Any other
+`Annotated` metadata is refused when the definition is built.
 
 **The rules function**
 
