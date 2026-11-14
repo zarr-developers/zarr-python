@@ -1437,6 +1437,65 @@ def test_sharding_truncated_shard_raises(
             ops[op]()
 
 
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+    ],
+)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize(
+    "entry",
+    [(MAX_UINT_64, 8), (0, MAX_UINT_64), (MAX_UINT_64 - 3, 8)],
+    ids=["missing-offset", "missing-length", "overflow"],
+)
+@pytest.mark.parametrize("operation", ["full read", "partial read", "partial write"])
+def test_sharding_invalid_index_preserves_store(
+    pipeline_path: str,
+    store: Store,
+    index_location: IndexLocation,
+    entry: tuple[int, int],
+    operation: str,
+) -> None:
+    """Reject malformed entries before an unrelated partial write can rewrite the shard."""
+    from zarr.core.sync import sync
+
+    prototype = default_buffer_prototype()
+    codec = ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec()], index_location=index_location)
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        array = zarr.create_array(
+            store, shape=(4,), chunks=(4,), dtype="int32", serializer=codec, compressors=None
+        )
+        array[:] = [11, 12, 13, 14]
+        stored = sync(store.get("c/0", prototype))
+        assert stored is not None
+        index_size = codec._shard_index_size((2,))
+        index_start = 0 if index_location == "start" else len(stored) - index_size
+        index = codec._decode_shard_index_sync(stored[index_start : index_start + index_size], (2,))
+        index = _ShardIndex((2,), index.offsets_and_lengths.copy())
+        index.offsets_and_lengths[0] = entry
+        # Encoding the mutated index also updates its checksum.
+        corrupt = bytearray(stored.to_bytes())
+        corrupt[index_start : index_start + index_size] = codec._encode_shard_index_sync(
+            index
+        ).to_bytes()
+        sync(store.set("c/0", prototype.buffer.from_bytes(bytes(corrupt))))
+        operations: dict[str, Callable[[], object]] = {
+            "full read": lambda: array[:],
+            "partial read": lambda: array[:2],
+            "partial write": lambda: array.__setitem__(slice(2, 4), [91, 92]),
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            with pytest.raises(ValueError, match="Invalid shard index"):
+                operations[operation]()
+        after = sync(store.get("c/0", prototype))
+        assert after is not None
+        assert after.to_bytes() == bytes(corrupt)
+
+
 @pytest.mark.filterwarnings(
     "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
 )
