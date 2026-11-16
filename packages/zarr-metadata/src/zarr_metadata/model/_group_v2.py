@@ -48,6 +48,7 @@ from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JS
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
+    canonical_members,
     check_literal,
     load_store_json,
     located_conflicts,
@@ -378,6 +379,11 @@ class ZarrV2GroupMetadata(Keyed):
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
 
+    def canonicalize(self) -> ZarrV2GroupMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope: without `attributes` when they are empty, because a group with no `.zattrs` means the same. The result equals this model, and every model equal to this one gives the same document, apart from the order of the members of an object, which `to_key_value` sorts with `JSONWriter(sort_keys=True)`."""
+        document = canonical_members(self._document, {}, empty=("attributes",))
+        return type(self)(document, context=self._context)
+
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
         context = scoped(context, CORE_V2_CONTEXT)
@@ -585,6 +591,31 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
+
+    def canonicalize(self) -> ZarrV2ConsolidatedMetadata:
+        """Return this document with each node in its simplest equivalent spelling, as that node's `canonicalize` writes it, read in this model's own scope.
+
+        Each node's `.zarray` or `.zgroup` entry is written without the
+        attributes, and its `.zattrs` entry holds them, or is left out
+        when they are empty. Every other entry is kept as written. The
+        result equals this model. Every model equal to this one, in this
+        scope, gives the same document, apart from the order of the
+        members of an object, which a `JSONWriter(sort_keys=True)` sorts.
+        """
+        entries = dict(object_at(self._document, "metadata"))
+        for path, node in self._metadata.items():
+            names = self._files[path]
+            written = cast("dict[str, JSONValue]", node.canonicalize().to_json())
+            attributes = written.pop("attributes", None)
+            for name, key in names.items():
+                if name != ZARR_V2_ATTRIBUTES_STORE_KEY:
+                    entries[key] = written
+                elif attributes is None:
+                    del entries[key]
+                else:
+                    entries[key] = attributes
+        document: dict[str, JSONValue] = {**self._document, "metadata": entries}
+        return type(self)(document, context=self._context)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`, whatever that changes. Raises `MetadataValidationError` when a node has a problem in `context`."""

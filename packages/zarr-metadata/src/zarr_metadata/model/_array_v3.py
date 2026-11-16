@@ -52,6 +52,7 @@ from zarr_metadata.model._shared import (
     Derived,
     StoreKey,
     attributes_of,
+    canonical_members,
     check_literal,
     created,
     dimension_lengths,
@@ -60,6 +61,8 @@ from zarr_metadata.model._shared import (
     member_changes,
     missing_keys,
     reading_of,
+    simplest,
+    simplest_members,
     unclaimed_declarations_of,
 )
 from zarr_metadata.v3._common import ZarrV3DeclarationJSON, ZarrV3ExtensionField
@@ -734,6 +737,29 @@ class ZarrV3ArrayMetadata(Keyed):
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
 
+    def canonicalize(self) -> ZarrV3ArrayMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope.
+
+        The result equals this model. Every model equal to this one, in
+        this scope, gives the same document: `to_json` of each result is
+        the same JSON, apart from the order of the members of an object,
+        which `to_key_value` sorts with `JSONWriter(sort_keys=True)`. So
+        the bytes that writer writes are the same for equal models, and
+        are a key for what the document means.
+
+        Each declaration is written as `canonical_of` writes it, each
+        codec as `codec_for_chunk` returns it for the chunk it receives,
+        and the fill value as `canonical_fill_value` writes it for the
+        data type. `attributes` and `storage_transformers` are left out
+        when empty, because a document without them means the same.
+        Everything else is kept as written: `shape`, `dimension_names`,
+        the attributes, and whatever nothing in scope claims, which only
+        its own definition could simplify. A document that is already in
+        this spelling is returned as it is, in a new model.
+        """
+        document = canonical_array_document_v3(self._reading, self._members)
+        return type(self)(document, context=self._context)
+
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
 
@@ -948,6 +974,30 @@ def array_key_of(
         json_text(members.attributes),
         tuple(declaration_key(held(entry)) for entry in reading.storage_transformers),
         extra_fields_key(reading.extra_fields),
+    )
+
+
+def canonical_array_document_v3(
+    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
+) -> dict[str, JSONValue]:
+    """A v3 array document in its simplest equivalent spelling, from its `reading` and refined `members`, as `ZarrV3ArrayMetadata.canonicalize` reads it.
+
+    It is written from the parts that `array_key_of` compares, so two
+    documents with one key are written the same way, apart from the order
+    of the members of an object.
+    """
+    data_type = held(reading.data_type)
+    spelled: dict[str, JSONValue] = {
+        "data_type": simplest(data_type),
+        "chunk_grid": simplest(reading.chunk_grid),
+        "chunk_key_encoding": simplest(reading.chunk_key_encoding),
+        "fill_value": spelled_canonically(data_type, members.fill_value),
+        "codecs": tuple(simplest(codec) for codec in codecs_for_chunks(reading)),
+        "storage_transformers": tuple(simplest(entry) for entry in reading.storage_transformers),
+        **simplest_members(reading.extra_fields),
+    }
+    return canonical_members(
+        members.document, spelled, empty=("attributes", "storage_transformers")
     )
 
 

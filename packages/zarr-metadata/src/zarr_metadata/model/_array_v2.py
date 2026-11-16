@@ -50,6 +50,7 @@ from zarr_metadata.model._shared import (
     Derived,
     StoreKey,
     attributes_of,
+    canonical_members,
     check_literal,
     created,
     dimension_lengths,
@@ -59,6 +60,7 @@ from zarr_metadata.model._shared import (
     missing_keys,
     other_members,
     reading_of,
+    simplest,
     unclaimed_declarations_of,
 )
 
@@ -771,6 +773,39 @@ class ZarrV2ArrayMetadata(Keyed):
     def __replace__(self, /, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
+
+    def canonicalize(self) -> ZarrV2ArrayMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope.
+
+        The result equals this model. Every model equal to this one, in
+        this scope, gives the same document: `to_json` of each result is
+        the same JSON, apart from the order of the members of an object,
+        which `to_key_value` sorts with `JSONWriter(sort_keys=True)`. So
+        the bytes that writer writes are the same for equal models, and
+        are a key for what the document means.
+
+        The dtype, the compressor and each filter are written as
+        `canonical_of` writes them, and the fill value as
+        `canonical_fill_value` writes it for the dtype. A
+        `dimension_separator` of `"."` is left out, and so are empty
+        `attributes`, because a document without them means the same.
+        Everything else is kept as written: `shape`, `chunks`, `order`,
+        the attributes, and whatever nothing in scope claims.
+        """
+        compressor, filters = self.compressor, self.filters
+        spelled: dict[str, JSONValue] = {
+            "dtype": simplest(self.dtype),
+            "fill_value": spelled_canonically(self.dtype, self._members.fill_value),
+            "compressor": None if compressor is None else simplest(compressor),
+            "filters": None if filters is None else tuple(simplest(entry) for entry in filters),
+        }
+        document = canonical_members(
+            self._document,
+            spelled,
+            empty=("attributes",),
+            defaults={"dimension_separator": ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR},
+        )
+        return type(self)(document, context=self._context)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.

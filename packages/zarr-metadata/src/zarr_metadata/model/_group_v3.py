@@ -67,12 +67,14 @@ from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     attributes_of,
+    canonical_members,
     check_literal,
     load_store_json,
     located_conflicts,
     member_changes,
     missing_keys,
     reading_of,
+    simplest_members,
     unclaimed_declarations_of,
     unexpected_keys,
 )
@@ -392,6 +394,27 @@ class ZarrV3GroupMetadata(Keyed):
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
 
+    def canonicalize(self) -> ZarrV3GroupMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope.
+
+        The result equals this model. Every model equal to this one, in
+        this scope, gives the same document: `to_json` of each result is
+        the same JSON, apart from the order of the members of an object,
+        which `to_key_value` sorts with `JSONWriter(sort_keys=True)`.
+
+        `attributes` is left out when empty, because a document without
+        it means the same, and each extra field a definition in scope
+        claims is written as `canonical_of` writes it. Everything else is
+        kept as written. That includes the documents that
+        `consolidated_metadata` lists, which a group does not read:
+        `consolidated().canonicalize()` returns them in their simplest
+        spelling, and `replace(consolidated_metadata=...)` writes them
+        back into the group.
+        """
+        spelled = simplest_members(self._reading.extra_fields)
+        document = canonical_members(self._document, spelled, empty=("attributes",))
+        return type(self)(document, context=self._context)
+
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
@@ -594,6 +617,20 @@ class ZarrV3ConsolidatedMetadata(Keyed):
 
     def __reduce__(self) -> tuple[type[ZarrV3ConsolidatedMetadata], tuple[object, ZarrV3Context]]:
         return type(self), (self._document, self._context)
+
+    def canonicalize(self) -> ZarrV3ConsolidatedMetadata:
+        """Return this member with each document it lists in its simplest equivalent spelling, as that node's `canonicalize` writes it, read in this model's own scope.
+
+        The result equals this model. Every model equal to this one, in
+        this scope, gives the same member, apart from the order of the
+        members of an object, which a `JSONWriter(sort_keys=True)` sorts.
+        """
+        metadata: dict[str, JSONValue] = {
+            path: cast("JSONValue", node.canonicalize().to_json())
+            for path, node in self._metadata.items()
+        }
+        document: dict[str, JSONValue] = {**self._document, "metadata": metadata}
+        return type(self)(document, context=self._context)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ConsolidatedMetadata:
         """Return this member with every document read in `context`, whatever that changes. Raises `MetadataValidationError` when a document has a problem in `context`. The existing readings are reused when `context` reads every claim of every document identically."""
