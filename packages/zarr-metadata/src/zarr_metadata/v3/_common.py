@@ -1,18 +1,38 @@
-"""The v3 declaration: its JSON type, and the type aliases for members that hold a declaration.
+"""The v3 node types, the v3 declaration's JSON type, and the type aliases for members that hold a declaration.
 
 This module is private. It sits below both code paths that read a declaration:
 the model, which checks the members of a document, and the definitions,
 which read a declaration's configuration. Public consumers import
+`ZarrV3NodeType`, `ZARR_V3_NODE_TYPE`, `is_zarr_v3_node_type` and
 `ZarrV3DeclarationJSON` from `zarr_metadata.v3`, and the aliases from
 `zarr_metadata.v3.definition`. One declaration is read with
 `zarr_metadata.definition.resolve`.
 """
 
-from typing import TypeAlias
+from typing import Final, TypeAlias
 
-from typing_extensions import TypeAliasType
+from typing_extensions import TypeAliasType, TypeIs
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
+from zarr_metadata._hierarchy import NodeType
+
+ZarrV3NodeType = NodeType
+"""Literal type of permitted values for the `node_type` field of v3 metadata.
+
+An array's document declares `"array"`
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L483-L487)
+and a group's `"group"`
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L760-L764).
+"""
+
+ZARR_V3_NODE_TYPE: Final = ("array", "group")
+"""Tuple of permitted values for the `node_type` field of v3 metadata."""
+
+
+def is_zarr_v3_node_type(value: object) -> TypeIs[ZarrV3NodeType]:
+    """Whether `value` is one of `ZARR_V3_NODE_TYPE`, narrowing it to `ZarrV3NodeType`."""
+    return value in ZARR_V3_NODE_TYPE
+
 
 ZarrV3ExtensionField: TypeAlias = JSONValue
 """The JSON value of an unknown top-level v3 metadata field.
@@ -59,12 +79,15 @@ ZarrV3StorageTransformerDeclaration = TypeAliasType(
 
 
 __all__ = [
+    "ZARR_V3_NODE_TYPE",
     "ZarrV3ChunkGridDeclaration",
     "ZarrV3ChunkKeyEncodingDeclaration",
     "ZarrV3CodecDeclaration",
     "ZarrV3DataTypeDeclaration",
     "ZarrV3DeclarationJSON",
     "ZarrV3ExtensionField",
+    "ZarrV3NodeType",
     "ZarrV3StaticCodecDeclaration",
     "ZarrV3StorageTransformerDeclaration",
+    "is_zarr_v3_node_type",
 ]
