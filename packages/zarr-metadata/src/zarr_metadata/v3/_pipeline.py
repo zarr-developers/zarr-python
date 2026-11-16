@@ -33,13 +33,23 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
-from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
+from zarr_metadata._json import (
+    ValidationProblem,
+    copied,
+    is_object,
+    is_tuple,
+    json_text,
+    with_input,
+)
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
     ResolvedDeclaration,
     asked,
     in_document,
+    item_at,
     read_only,
+    respelled,
     ruled,
 )
 from zarr_metadata.v3._definition import (
@@ -53,6 +63,7 @@ from zarr_metadata.v3._definition import (
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
+    from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.definition._definition import (
         Nested,
@@ -326,4 +337,96 @@ def _handed_on(
     return given
 
 
-__all__ = ["Stage", "read_pipeline"]
+def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
+    """The codec of `stage`, in the simplest spelling that means the same for the chunk it receives.
+
+    A codec's own `canonical` reduces the spellings that mean the same
+    thing wherever the codec is used. Some spellings mean the same thing
+    only for some chunks. For example, a `bytes` codec with and without
+    `endian` is one codec for values that take one byte, and two for
+    values that take several. So a codec is compared, and written in its
+    simplest spelling, as the codec this function returns: first each
+    codec of each pipeline it contains, for the chunk that codec
+    receives, and then its own configuration, as its definition's
+    `chunk_canonical` simplifies it for the chunk in `stage`.
+
+    A codec the scope did not read is returned as it is. A codec's own
+    configuration is kept as it is when the codec receives bytes, and
+    when its chunk rules find a problem with it, because a codec with a
+    problem has no simpler spelling. When nothing is simplified, the
+    result is the codec itself. Otherwise it is a new declaration, read
+    by the same definition. `canonical_of` writes it in its simplest
+    spelling, and `==` compares it.
+
+    `chunk_canonical` is the extension author's code, so its result is
+    checked: the definition must allow it, the chunk rules must find no
+    problem with it, and each nested declaration must be where it was. A
+    result that fails a check raises `ValueError`, which indicates a bug
+    in the definition, not in the codec.
+    """
+    codec = stage.codec
+    if not isinstance(codec, AcceptedDeclaration):
+        return codec
+    inner: dict[Loc, ResolvedDeclaration[Any]] = {}
+    for member, stages in stage.inner.items():
+        for index, each in enumerate(stages):
+            simpler = codec_for_chunk(each)
+            if simpler is not each.codec:
+                inner[(member, index)] = simpler
+    configuration = _for_chunk(codec, stage.incoming)
+    if configuration is None and len(inner) == 0:
+        return codec
+    return respelled(codec, codec.configuration if configuration is None else configuration, inner)
+
+
+def _for_chunk(
+    codec: AcceptedDeclaration[CodecDefinition[Any]], chunk: Chunk | None
+) -> Mapping[str, JSONValue] | None:
+    """The configuration of `codec` as its definition's `chunk_canonical` simplifies it for `chunk`, checked; None when nothing is simplified."""
+    definition = codec.definition
+    if chunk is None or not isinstance(definition, ArrayCodecDefinition):
+        return None
+    configuration, nested = codec.configuration, codec.nested
+    if len(_chunk_problems(definition, configuration, nested, chunk, ())) != 0:
+        return None
+    given: object = asked(
+        definition,
+        "chunk_canonical",
+        lambda: cast("object", definition.chunk_canonical(read_only(configuration), nested, chunk)),
+    )
+    if given is configuration:
+        return None
+    if not is_object(given):
+        msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
+        raise TypeError(msg)
+    simplified = cast("dict[str, JSONValue]", copied(cast("JSONValue", dict(given))))
+    if json_text(simplified) == json_text(cast("JSONValue", configuration)):
+        return None
+    _, refused = definition.read_configuration(simplified)
+    found = (
+        *refused,
+        *_chunk_problems(definition, simplified, nested, chunk, ()),
+        *(
+            ValidationProblem(
+                loc, "expected the nested declaration to stay as it is", "invalid_value"
+            )
+            for loc in nested
+            if _text_at(simplified, loc) != _text_at(cast("JSONValue", configuration), loc)
+        ),
+    )
+    if len(found) != 0:
+        msg = (
+            f"{definition.name!r}: its chunk_canonical gave {simplified!r}, which does not hold: "
+            f"{list(found)!r}"
+        )
+        raise ValueError(msg)
+    return simplified
+
+
+def _text_at(configuration: JSONValue, loc: Loc) -> str | None:
+    """The JSON text of the item of `configuration` at `loc`; None when `loc` does not lead into it."""
+    item = item_at(configuration, loc)
+    return None if item is UNSET else json_text(item)
+
+
+__all__ = ["Stage", "codec_for_chunk", "read_pipeline"]

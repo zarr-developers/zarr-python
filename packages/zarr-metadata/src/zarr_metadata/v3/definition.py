@@ -90,6 +90,14 @@ that contains its own pipelines declares what each one receives with
 pipeline. For example, a shard's inner codecs receive its inner chunks,
 and its index codecs receive the shard index. Each pipeline is read the
 same way, and its stages are stored as the codec's `Stage.inner`.
+Two spellings of a codec can mean the same thing for one chunk and not
+for another, which `canonical` cannot tell, since it receives the
+configuration alone. Such a codec declares its simplest spelling for a
+given chunk with `chunk_canonical`. For example, `bytes` drops an
+`endian` when each value takes one byte. `codec_for_chunk` returns the
+codec of a `Stage` in that spelling, with each codec of the pipelines
+it contains simplified for the chunk that one receives. An array model
+compares its codecs this way.
 The reader does not guess. After a codec the scope did not read, or
 after a codec that does not declare its output, the next codec receives
 a chunk with nothing known about it, `Chunk()`, which never causes a
@@ -147,7 +155,7 @@ from zarr_metadata.v3._definition import (
     default_array_bytes_codec,
     storage_of,
 )
-from zarr_metadata.v3._pipeline import Stage
+from zarr_metadata.v3._pipeline import Stage, codec_for_chunk
 
 __all__ = [
     "CORE_AND_EXTENSIONS_CONTEXT",
@@ -181,6 +189,7 @@ __all__ = [
     "ZarrV3Kind",
     "ZarrV3StaticCodecDeclaration",
     "ZarrV3StorageTransformerDeclaration",
+    "codec_for_chunk",
     "default_array_bytes_codec",
     "storage_of",
 ]
