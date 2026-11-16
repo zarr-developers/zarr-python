@@ -1234,8 +1234,26 @@ def own_key(declaration: AcceptedDeclaration[Any]) -> tuple[object, ...]:
 
 
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
-    """The key of each nested declaration, paired with its location."""
-    return tuple((loc, declaration_key(inner)) for loc, inner in nested.items())
+    """The key of each nested declaration, paired with its location, in the order of the locations.
+
+    `nested` holds the declarations in the order the configuration writes
+    them, and the order of the members of a JSON object means nothing.
+    So the key is sorted by location, and a shard that writes
+    `index_codecs` before `codecs` has the same key as one that writes
+    them the other way round. The items of an array keep their order,
+    since their locations are their indices.
+    """
+    return tuple(
+        sorted(
+            ((loc, declaration_key(inner)) for loc, inner in nested.items()),
+            key=lambda item: _location_order(item[0]),
+        )
+    )
+
+
+def _location_order(loc: Loc) -> tuple[tuple[bool, str | int], ...]:
+    """A sort key for a location: a key of an object and an index of an array are never compared with each other."""
+    return tuple((isinstance(step, str), step) for step in loc)
 
 
 def document_json(declaration: ResolvedDeclaration[Any]) -> JSONValue | UNSET:
