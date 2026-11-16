@@ -602,6 +602,15 @@ def test_set_coordinate_selection_repeated_points() -> None:
     assert_array_equal(array[:], expected)
 
 
+def test_set_coordinate_selection_repeated_points_huge_array() -> None:
+    """Repeated points are found without raveling the coordinates, which would overflow
+    for arrays with more than 2**63 elements."""
+    n = 2**33
+    z = zarr.create_array(store={}, shape=(n, n), chunks=(256, 256), dtype="i4", fill_value=0)
+    z.vindex[np.array([5, n - 1, 5]), np.array([7, n - 2, 7])] = np.array([1, 2, 3], dtype="i4")
+    assert_array_equal(z.vindex[np.array([5, n - 1]), np.array([7, n - 2])], [3, 2])
+
+
 def test_setitem_repeated_index_value_shape_mismatch() -> None:
     """A value that does not fit the selection is rejected rather than written in part."""
     array = zarr.zeros((7,), chunks=(3,), dtype="i8")

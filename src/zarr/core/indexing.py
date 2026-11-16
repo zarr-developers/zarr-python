@@ -1442,21 +1442,22 @@ class CoordinateIndexer(Indexer):
             return None
         # self.selection is flat and non-negative, grouped by chunk; sel_sort maps each entry
         # back to its position in the selection as given, which decides what "last" means.
-        linear = np.ravel_multi_index(self.selection, shape)
-        positions = (
-            np.arange(linear.size, dtype=np.intp) if self.sel_sort is None else self.sel_sort
-        )
-        if self.sel_sort is None:
-            keep = last_occurrences(linear)
-            if keep is None:
-                return None
-        else:
-            order = np.lexsort((positions, linear))
-            ordered = linear[order]
-            is_last = np.append(ordered[1:] != ordered[:-1], True)
-            if is_last.all():
-                return None
-            keep = np.sort(order[is_last])
+        # Points are compared coordinate by coordinate rather than through a raveled index,
+        # which could overflow for arrays with more than 2**63 elements.
+        n = self.selection[0].size
+        if n < 2:
+            return None
+        positions = np.arange(n, dtype=np.intp) if self.sel_sort is None else self.sel_sort
+        # lexsort uses the last key as the primary one: sort by point, then by position
+        order = np.lexsort((positions, *reversed(self.selection)))
+        same_as_next = np.ones(n - 1, dtype=bool)
+        for dim_sel in self.selection:
+            ordered = dim_sel[order]
+            same_as_next &= ordered[1:] == ordered[:-1]
+        if not same_as_next.any():
+            return None
+        is_last = np.append(~same_as_next, True)
+        keep = np.sort(order[is_last])
         kept_positions = positions[keep]
         selection = tuple(dim_sel[keep] for dim_sel in self.selection)
         return CoordinateIndexer(selection, shape, chunk_grid), kept_positions
