@@ -2,7 +2,7 @@
 
 These three are one module because they are mutually recursive:
 consolidated metadata holds the documents of arrays and groups, each of
-those is read as a node of either type, and a group's `update` takes a
+those is read as a node of either type, and a group's `replace` takes a
 consolidated metadata model. Split into modules, they would import each
 other.
 """
@@ -62,12 +62,12 @@ from zarr_metadata.model._array_v3 import (
     read_extra_fields_v3,
     waived_members,
 )
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     attributes_of,
     check_literal,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -76,7 +76,12 @@ from zarr_metadata.model._shared import (
     unclaimed_declarations_of,
     unexpected_keys,
 )
-from zarr_metadata.v3._common import ZarrV3ExtensionField
+from zarr_metadata.v3._common import (
+    ZARR_V3_NODE_TYPE,
+    ZarrV3ExtensionField,
+    ZarrV3NodeType,
+    is_zarr_v3_node_type,
+)
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
@@ -116,7 +121,7 @@ ZarrV3NodeMetadataInput = TypeAliasType(
 """An entry of consolidated metadata, at a path, as `ZarrV3ConsolidatedMetadata` accepts it: a document, or a model of one.
 
 An `Input` type is what a constructor accepts. A `JSON` TypedDict is
-what a document writes, and an `Update` type is what `update` replaces.
+what a document writes, and an `Update` type is what `replace` takes.
 Of these three, only an `Input` may hold a model.
 """
 
@@ -141,7 +146,7 @@ class ZarrV3ConsolidatedMetadataInput(TypedDict, closed=True):
 
 
 class ZarrV3GroupMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV3GroupMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove it.
+    """The members `ZarrV3GroupMetadata.replace` takes: each in the form a document writes it, or `UNSET` to remove it.
 
     `consolidated_metadata` is typed as the reference implementation
     writes it, or as any JSON object, such as another group's
@@ -173,7 +178,7 @@ class ZarrV3GroupMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
     """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
 
-    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    A key the spec defines, or that `replace` takes by name, raises `TypeError`.
     """
 
 
@@ -249,7 +254,7 @@ class ZarrV3GroupMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV3Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `replace` reads new members in this scope."""
         return self._context
 
     @property
@@ -258,20 +263,21 @@ class ZarrV3GroupMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
-        """The document as written, refined. The result shares no objects with the model."""
+        """The document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3GroupMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+        """The document as a store holds it: JSON bytes at `zarr.json`, spelled by `writer`, a `JSONWriter` or a mapping of its settings.
 
         `NaN`, `Infinity` and `-Infinity` in `attributes`, or in the
         documents the consolidated metadata lists, are written as bare
         tokens, as zarr-python writes them. A strict JSON parser rejects
         these tokens.
         """
-        return {ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)}
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V3_GROUP_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
@@ -364,12 +370,12 @@ class ZarrV3GroupMetadata(Keyed):
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV3GroupMetadataUpdate]) -> ZarrV3GroupMetadata:
+    def replace(self, **members: Unpack[ZarrV3GroupMetadataUpdate]) -> ZarrV3GroupMetadata:
         """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
 
         A `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` is
         read in this model's scope and written as its document. Raises
-        `TypeError` for a member the update does not take, and
+        `TypeError` for a member `replace` does not take, and
         `MetadataValidationError` when the resulting document has a
         problem, such as a listed model that conflicts with this scope.
         """
@@ -381,6 +387,10 @@ class ZarrV3GroupMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV3GroupMetadataUpdate]) -> ZarrV3GroupMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
@@ -429,7 +439,7 @@ class ZarrV3GroupMetadata(Keyed):
         context: ZarrV3Context | None = None,
         **overrides: Unpack[ZarrV3GroupMetadataUpdate],
     ) -> ZarrV3GroupMetadata:
-        """Return a group with no attributes, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member and a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Raises `MetadataValidationError` when the resulting document has a problem."""
+        """Return a group with no attributes, with any document members in `overrides` applied, read in `context`. `overrides` takes what `replace` takes, including `UNSET` to drop a member and a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Raises `MetadataValidationError` when the resulting document has a problem."""
         context = scoped(context, CORE_AND_EXTENSIONS_CONTEXT)
         changes = member_changes(
             overrides, ZarrV3GroupMetadataUpdate, GroupExtraFieldDefinition.spec_members
@@ -472,7 +482,7 @@ class ZarrV3GroupMetadata(Keyed):
 
 
 def _written(members: Mapping[str, object], context: ZarrV3Context) -> dict[str, object]:
-    """`members`, the members given to `update` or `create_default` of a group read in `context`, with a `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` replaced by its document.
+    """`members`, the members given to `replace` or `create_default` of a group read in `context`, with a `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` replaced by its document.
 
     The models the consolidated metadata lists are read in `context` first,
     as a listing of node models is read: a gain is read again, and a
@@ -504,7 +514,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     member lists, once, as the array or group its `node_type` declares,
     and checks that the documents and the group form a hierarchy with the
     group as its root. Build it to check consolidated metadata before
-    `ZarrV3GroupMetadata.update` writes it into a group. `metadata` maps
+    `ZarrV3GroupMetadata.replace` writes it into a group. `metadata` maps
     each path to the model, in this scope, of the document at that path.
     Each document is stored at its node's path without the leading `/`:
     the node at `/a/b` is at `a/b`. `kind` is `inline` and
@@ -569,7 +579,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         return MappingProxyType(self._metadata)
 
     def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
-        """The member as written, refined. The result shares no objects with the model."""
+        """The member as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("ZarrV3ConsolidatedMetadataJSON", copied(self._document))
 
     def __repr__(self) -> str:
@@ -867,12 +877,8 @@ def _read_node_v3(
     return ZarrV3UnknownNodeMetadataReading(problems), None
 
 
-_NODE_TYPES: Final = ("array", "group")
-"""The node types the spec defines."""
-
-
-def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]]:
-    """The node type `value` declares, one of `_NODE_TYPES`. None, with the problems, when it declares none of them or is not an object.
+def _node_type(value: object) -> tuple[ZarrV3NodeType | None, tuple[ValidationProblem, ...]]:
+    """The node type `value` declares, one of `ZARR_V3_NODE_TYPE`. None, with the problems, when it declares none of them or is not an object.
 
     When a document declares no valid node type, its `zarr_format` is
     checked too, so a document in another format is reported as not v3.
@@ -881,7 +887,7 @@ def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]
         return None, not_an_object(value)
     document = value
     node_type = document.get("node_type")
-    if isinstance(node_type, str) and node_type in _NODE_TYPES:
+    if is_zarr_v3_node_type(node_type):
         return node_type, ()
     problems = [
         *missing_keys(frozenset({"zarr_format"}), document),
@@ -890,7 +896,7 @@ def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]
     if "node_type" not in document:
         problems.append(ValidationProblem(("node_type",), "missing required key", "missing_key"))
     else:
-        problems.append(outside_of(("node_type",), node_type, _NODE_TYPES))
+        problems.append(outside_of(("node_type",), node_type, ZARR_V3_NODE_TYPE))
     return None, with_input(problems, document)
 
 

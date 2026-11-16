@@ -74,7 +74,7 @@ can be used on its own by a caller that has only JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
-    resolved                # RefusedDeclaration(..., definition=CodecDefinition(name='gzip'), ...)
+    resolved                # RefusedDeclaration(..., definition=BytesBytesCodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
@@ -125,7 +125,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import Nested
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
 class AcmeLz4Configuration(TypedDict, closed=True):
@@ -143,10 +143,9 @@ def acme_lz4_rules(
         )
 
 
-ACME_LZ4 = CodecDefinition(
+ACME_LZ4 = BytesBytesCodecDefinition(
     name="acme.lz4",
     configuration=AcmeLz4Configuration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_lz4_rules,
 )
@@ -164,15 +163,18 @@ a TypedDict, `Mapping[str, V]`, a `NewType` and a type alias. A number's
 type may carry bounds, written with annotated-types and read the way
 pydantic reads them: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at most one
 from each side, at any depth. For example,
-`tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value out of
+`tuple[Annotated[int, Ge(1)], ...]` bounds each element. An integer's
+type may carry a step, `MultipleOf`, at most one. An array's or a
+string's type may bound its length with `MinLen`, `MaxLen` and `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. A value out of
 bounds is an `invalid_value` problem. Its message says what the type
 admits ("expected an integer >= 1, got 0"), and its `ctx` holds the
 bounds. The rules run only on a configuration within its bounds, so a
 rule can rely on them, as pydantic's after-validators and zod's
 refinements do. Until a value out of bounds is fixed, it is the only
 problem reported for the configuration. `Annotated` may also carry a
-note, as a string or a `Doc`. Any other metadata (a `MinLen`, a
-`Predicate`, pydantic's `Field`) is rejected when the definition is
+note, as a string or a `Doc`. Any other metadata (a `Predicate`,
+pydantic's `Field`) is rejected when the definition is
 built, because a type whose constraint the checker does not enforce
 would give false information.
 
@@ -200,6 +202,13 @@ distinct `float32`) as equal to `0.0`.
 `canonical_fill_value(data_type, value)` returns the canonical spelling,
 or `UNSET` for a fill value with a problem. A data type that does not
 declare `fill_value_canonical` keeps each value as written.
+`fill_value_default` gives the fill value of an array whose document is
+built without one, as a model's `create_default` builds it. It receives
+the configuration and the nested declarations, and returns `UNSET` when
+the type has none, which is what a data type that does not declare it
+gets. `ConstantFillValue(0)` is a default that does not depend on the
+configuration. `default_fill_value(data_type)` calls it for a data type
+declaration the scope read.
 
 **The simplest spelling.** A declaration without problems has a simplest
 equivalent spelling, and declarations are compared by it. Each nested declaration is
@@ -264,11 +273,12 @@ written; an extra field named after a member the spec defines, whose
 built from it does.
 """
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     Context,
     Definition,
-    EmptyConfiguration,
     Nested,
     RefusedDeclaration,
     ResolvedDeclaration,
@@ -277,6 +287,7 @@ from zarr_metadata.definition._definition import (
     canonical_fill_value,
     canonical_of,
     configuration_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
     with_problems,
@@ -291,6 +302,7 @@ __all__ = [
     "AcceptedDeclaration",
     "ClaimKey",
     "Conflict",
+    "ConstantFillValue",
     "Context",
     "Definition",
     "EmptyConfiguration",
@@ -303,6 +315,7 @@ __all__ = [
     "canonical_fill_value",
     "canonical_of",
     "configuration_of",
+    "default_fill_value",
     "fill_value_problems",
     "resolve",
     "with_problems",

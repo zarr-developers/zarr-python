@@ -187,12 +187,12 @@ def test_a_model_round_trips_through_its_document_pickle_and_copy(
     ],
     ids=["shape", "dtype", "unset-attributes", "null-compressor", "extra", "unset-extra"],
 )
-def test_update_reads_new_members_in_the_models_own_scope(
+def test_replace_reads_new_members_in_the_models_own_scope(
     changes: dict[str, Any], expect: dict[str, Any], absent: tuple[str, ...]
 ) -> None:
-    """`update` replaces the document's members with the given JSON members, takes a member the spec does not define in `extra_fields`, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
+    """`replace` replaces the document's members with the given JSON members, takes a member the spec does not define in `extra_fields`, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
     model = ZarrV2ArrayMetadata({**ARRAY, "extra": 0}, PRIVATE)
-    changed = model.update(**changes)
+    changed = model.replace(**changes)
     assert changed.context is PRIVATE
     document = changed.to_json()
     for key, value in expect.items():
@@ -211,10 +211,10 @@ def test_update_reads_new_members_in_the_models_own_scope(
     ],
     ids=["dtype", "rank", "fill-no-longer-fits"],
 )
-def test_error_update_refuses_a_document_with_a_problem(changes: dict[str, Any], at: Loc) -> None:
+def test_error_replace_refuses_a_document_with_a_problem(changes: dict[str, Any], at: Loc) -> None:
     """A change that produces a document with a problem is refused when the change is made, and the problem is reported at its location. For example, a dtype change that makes the fill value invalid is reported at the fill value."""
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV2ArrayMetadata(ARRAY).update(**changes)
+        ZarrV2ArrayMetadata(ARRAY).replace(**changes)
     assert raised.value.problems[0].loc == at
 
 
@@ -296,11 +296,11 @@ def test_a_group_is_its_document_read_in_its_scope(
     assert copy.deepcopy(model) == model
 
 
-def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
-    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no declaration. Two groups are equal when their attributes are written the same way, and `refines` is that equality. No `.zattrs` counts as empty attributes, so a group with none and a group with an empty one are equal and refine each other."""
+def test_a_group_replaces_moves_scope_and_refines_as_the_arrays_do() -> None:
+    """`replace` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no declaration. Two groups are equal when their attributes are written the same way, and `refines` is that equality. No `.zattrs` counts as empty attributes, so a group with none and a group with an empty one are equal and refine each other."""
     model = ZarrV2GroupMetadata(GROUP)
-    assert model.update(attributes={"h": 2}).attributes == {"h": 2}
-    removed = model.update(attributes=UNSET)
+    assert model.replace(attributes={"h": 2}).attributes == {"h": 2}
+    removed = model.replace(attributes=UNSET)
     assert removed.attributes == {}
     assert ".zattrs" not in removed.to_key_value()
     assert model.refined_in(SMALL).context is SMALL

@@ -5,14 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Final
 
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata._typed_json import Schemas, is_alias
 from zarr_metadata.definition._context import scoped
-from zarr_metadata.definition._definition import (
-    Definition,
-    EmptyConfiguration,
-    as_kind,
-    declaration_kind,
-)
+from zarr_metadata.definition._definition import Definition, as_kind, declaration_kind
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._context import ZarrV3Context, ZarrV3Kind, is_v3_kind
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS_CONTEXT
@@ -278,16 +274,8 @@ def _member_object(schema: Mapping[str, JSONValue], key: str) -> Mapping[str, JS
 
 
 def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
-    """An array document: its TypedDict, at least one codec, and a constraint on its fill value for each data type in scope, which applies when the document names that data type.
-
-    The TypedDict cannot declare a minimum length, so the schema adds it:
-    a pipeline needs its array -> bytes codec, and the reader rejects an
-    empty `codecs`.
-    """
+    """An array document: its TypedDict, and a constraint on its fill value for each data type in scope, which applies when the document names that data type."""
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
-    properties = _member_object(schema, "properties")
-    codecs = _member_object(properties, "codecs")
-    schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     schema = _with_extra_fields(schema, context.array_extra_fields, schemas)
     held: list[JSONValue] = []
     for definition in context.data_types.values():

@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping
 from typing import Annotated, Any, Literal, NewType, NotRequired, cast
 
 import pytest
-from annotated_types import Ge, Gt, Interval, Le, Lt, MinLen
+from annotated_types import Ge, Gt, Interval, Le, Len, Lt, MaxLen, MinLen, MultipleOf, Predicate
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
@@ -169,6 +169,41 @@ SHAPES: list[tuple[str, type, dict[str, Any]]] = [
         "doc",
         _holding(Annotated[int, Ge(0), Doc("a count")]),
         _held({"type": "integer", "description": "a count", "minimum": 0}),
+    ),
+    (
+        "a-step",
+        _holding(Annotated[int, Gt(0), MultipleOf(4)]),
+        _held({"type": "integer", "exclusiveMinimum": 0, "multipleOf": 4}),
+    ),
+    (
+        "non-empty-string",
+        _holding(Annotated[str, MinLen(1)]),
+        _held({"type": "string", "minLength": 1}),
+    ),
+    (
+        "non-empty-array",
+        _holding(Annotated[tuple[int, ...], MinLen(1)]),
+        _held({"type": "array", "items": {"type": "integer"}, "minItems": 1}),
+    ),
+    (
+        "length-range",
+        _holding(Annotated[tuple[int, ...], Len(1, 3)]),
+        _held({"type": "array", "items": {"type": "integer"}, "minItems": 1, "maxItems": 3}),
+    ),
+    # A length bound and the length of a fixed-length array set the same
+    # keyword, and the stricter is kept.
+    (
+        "a-length-on-a-pair",
+        _holding(Annotated[tuple[int, str], MinLen(1), MaxLen(3)]),
+        _held(
+            {
+                "type": "array",
+                "prefixItems": [{"type": "integer"}, {"type": "string"}],
+                "items": False,
+                "minItems": 2,
+                "maxItems": 3,
+            }
+        ),
     ),
     # Metadata that is not a `Doc` adds nothing to the schema.
     ("note", _holding(Annotated[str, "a note"]), _held({"type": "string"})),
@@ -334,7 +369,7 @@ def test_error_a_schema_that_fails_to_write_leaves_nothing_behind() -> None:
 
 def test_json_schema_refuses_metadata_check_does_not_hold_a_value_to() -> None:
     with pytest.raises(TypeError, match="is not a constraint the checker reads"):
-        json_schema(_holding(Annotated[tuple[int, ...], MinLen(1)]))
+        json_schema(_holding(Annotated[int, Predicate(bool)]))
 
 
 _PROPERTY = settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -950,6 +985,7 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(context: ZarrV
         (Le(9), Le(5), {"type": "integer", "maximum": 5}),
         (Ge(5), Ge(9), {"type": "integer", "minimum": 9}),
         (Ge(9), Ge(5), {"type": "integer", "minimum": 9}),
+        (MultipleOf(4), MultipleOf(6), {"type": "integer", "multipleOf": 12}),
     ],
     ids=[
         "gt-looser-inside",
@@ -960,6 +996,7 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(context: ZarrV
         "le-stricter-inside",
         "ge",
         "ge-stricter-inside",
+        "two-steps-are-their-least-common-multiple",
     ],
 )
 def test_the_stricter_of_two_bounds_of_one_keyword_is_kept(

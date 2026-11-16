@@ -937,8 +937,8 @@ class ZipStoreLifecycleMachine(RuleBasedStateMachine):
 
 
 def test_zipstore_close_lifecycle(tmp_path: Path) -> None:
-    run_state_machine_as_test(  # type: ignore[no-untyped-call]
-        lambda: ZipStoreLifecycleMachine(tmp_path),
+    run_state_machine_as_test(
+        lambda: ZipStoreLifecycleMachine(tmp_path),  # type: ignore[arg-type]
         settings=settings(max_examples=50, deadline=None),
     )
 

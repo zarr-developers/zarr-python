@@ -1,6 +1,7 @@
 # zarr-metadata
 
-Documentation: <https://zarr-metadata.readthedocs.io/>
+[![PyPI](https://img.shields.io/pypi/v/zarr-metadata)](https://pypi.org/project/zarr-metadata/)
+[![Docs](https://img.shields.io/badge/docs-readthedocs-blue)](https://zarr-metadata.readthedocs.io/)
 
 Types, models and validators for Zarr metadata documents, with minimal
 dependencies.

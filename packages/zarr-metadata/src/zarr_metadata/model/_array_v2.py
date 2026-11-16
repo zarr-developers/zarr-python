@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
@@ -34,6 +35,7 @@ from zarr_metadata.definition._definition import (
     UnclaimedDeclaration,
     declaration_key,
     declarations_of,
+    default_fill_value,
     fill_value_problems,
     held,
     resolve,
@@ -42,13 +44,15 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
 from zarr_metadata.definition._scope import refines as refines_declaration
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
+    Derived,
     StoreKey,
     attributes_of,
     check_literal,
+    created,
     dimension_lengths,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -62,10 +66,15 @@ from zarr_metadata.model._shared import (
 from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2._declaration_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.array import (
+    ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR,
+    ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZARR_V2_ARRAY_ORDER,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
     ZarrV2ArrayOrder,
+    is_zarr_v2_array_dimension_separator,
+    is_zarr_v2_array_order,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
@@ -235,13 +244,15 @@ def read_array_v2(
             doc["dtype"], refined["dtype"], found, ZarrV2DataTypeDefinition, context, ("dtype",)
         )
         problems.extend(found)
+    order: ZarrV2ArrayOrder | None = None
     if "order" in doc:
         # Checked after refinement, so a value that only compares equal to
         # "C" is refused, like every other value outside the set.
-        order, found = refine_json(doc["order"], ("order",))
-        refined["order"] = order
-        if len(found) != 0 or order not in ("C", "F"):
-            problems.append(outside_of(("order",), doc["order"], ("C", "F")))
+        refined["order"], found = refine_json(doc["order"], ("order",))
+        if len(found) == 0 and is_zarr_v2_array_order(refined["order"]):
+            order = refined["order"]
+        else:
+            problems.append(outside_of(("order",), doc["order"], ZARR_V2_ARRAY_ORDER))
     compressor: ResolvedDeclaration[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     if "compressor" in doc:
         compressor = None
@@ -293,12 +304,20 @@ def read_array_v2(
                 problems.extend(found)
             filters = tuple(read)
             refined["filters"] = tuple(items)
+    dimension_separator: ZarrV2ArrayDimensionSeparator = ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR
     if "dimension_separator" in doc:
-        separator, found = refine_json(doc["dimension_separator"], ("dimension_separator",))
-        refined["dimension_separator"] = separator
-        if len(found) != 0 or separator not in (".", "/"):
+        refined["dimension_separator"], found = refine_json(
+            doc["dimension_separator"], ("dimension_separator",)
+        )
+        if len(found) == 0 and is_zarr_v2_array_dimension_separator(refined["dimension_separator"]):
+            dimension_separator = refined["dimension_separator"]
+        else:
             problems.append(
-                outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
+                outside_of(
+                    ("dimension_separator",),
+                    doc["dimension_separator"],
+                    ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
+                )
             )
     fill_value: JSONValue = None
     if "fill_value" in doc:
@@ -321,16 +340,14 @@ def read_array_v2(
         filters=filters,
         problems=within(with_input(problems, doc), at),
     )
-    if len(problems) != 0 or shape is None or chunks is None or attributes is None:
+    if len(problems) != 0 or shape is None or chunks is None or order is None or attributes is None:
         return reading, None
     members = ArrayMembersV2(
         shape=shape,
         chunks=chunks,
         fill_value=fill_value,
-        order=cast("ZarrV2ArrayOrder", refined["order"]),
-        dimension_separator=cast(
-            "ZarrV2ArrayDimensionSeparator", refined.get("dimension_separator", ".")
-        ),
+        order=order,
+        dimension_separator=dimension_separator,
         attributes=attributes,
         extra_fields=extra_fields,
         document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
@@ -456,7 +473,7 @@ def read_array_metadata_v2(
 
 
 class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
-    """The members `ZarrV2ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+    """The members `ZarrV2ArrayMetadata.replace` takes: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `attributes` (meaning no
     `.zattrs`), `dimension_separator` (read as `"."`), and any member the
@@ -493,7 +510,7 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     extra_fields: Mapping[str, JSONValue | UNSET]
     """The members the spec does not define, by key: each one given is set, or removed when its value is `UNSET`, and any other is kept.
 
-    A key the spec defines, or that the update takes by name, raises `TypeError`.
+    A key the spec defines, or that `replace` takes by name, raises `TypeError`.
     """
 
 
@@ -518,7 +535,7 @@ class ZarrV2ArrayMetadata(Keyed):
     the constructor reads `document` in `context` and raises
     `MetadataValidationError` with every problem, so no model is invalid.
     Two models are equal when their documents mean the same thing in
-    their scopes, as the model key defines. `update` reads new members
+    their scopes, as the model key defines. `replace` reads new members
     in the model's own scope. `with_context` and `refined_in` read the
     document in another scope. A model pickles as its pair.
     """
@@ -575,7 +592,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV2Context:
-        """The scope the document was read in. `update` reads new members in this scope."""
+        """The scope the document was read in. `replace` reads new members in this scope."""
         return self._context
 
     @property
@@ -584,7 +601,7 @@ class ZarrV2ArrayMetadata(Keyed):
         return self._reading
 
     def to_json(self) -> ZarrV2ArrayMetadataJSON:
-        """The merged document as written, refined. The result shares no objects with the model.
+        """The merged document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`.
 
         `attributes` is included when set, even empty. This is not the
         on-disk `.zarray`, which excludes them: `to_key_value` splits the
@@ -594,17 +611,16 @@ class ZarrV2ArrayMetadata(Keyed):
         return cast("ZarrV2ArrayMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
-        """The document as a store holds it: `.zarray` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        """The document as a store holds it, spelled by `writer`, a `JSONWriter` or a mapping of its settings: `.zarray` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        writes = JSONWriter.from_dict(writer)
         zarray = {key: value for key, value in self._document.items() if key != "attributes"}
         out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
+            ZARR_V2_ARRAY_METADATA_STORE_KEY: writes.encode(zarray)
         }
         if "attributes" in self._document:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
-                self._document["attributes"], indent=indent
-            )
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = writes.encode(self._document["attributes"])
         return out
 
     def __repr__(self) -> str:
@@ -736,7 +752,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     # --- changing ---------------------------------------------------------
 
-    def update(self, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
+    def replace(self, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
         """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed.
 
         Raises `MetadataValidationError` when the resulting document has a
@@ -751,6 +767,10 @@ class ZarrV2ArrayMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
@@ -808,42 +828,41 @@ class ZarrV2ArrayMetadata(Keyed):
     def create_default(
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
     ) -> ZarrV2ArrayMetadata:
-        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`.
+        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `replace` takes, including `UNSET` to drop a member.
+
+        A member that depends on another is derived from it when that
+        member is given and it is not:
+
+        - `chunks`, from `shape`: one chunk covering the array, with a
+          length of 1 for a dimension of length 0, as for a v3 regular
+          grid. One chunk is the simplest that fits, not a recommendation:
+          a large array wants smaller chunks.
+        - `fill_value`, from `dtype`: the dtype's default, from its
+          `fill_value_default`, such as `0`, `false` or `""`, and `null`,
+          which means no fill value, for a dtype that has none (such as
+          `|O`) or that nothing in `context` claims.
+
+        A member given with a problem derives nothing, so the members
+        derived from it keep their defaults, and the problem is the only
+        one reported.
 
         Raises `MetadataValidationError` when the resulting document has a
-        problem. Overriding `shape` without `chunks` sets `chunks` equal to
-        `shape`, so one chunk covers the array. Overriding `chunks` without
-        `shape` keeps the scalar default shape, which chunks of another
-        rank do not fit. A dtype given without a fill value gets a fill
-        value of `0` when its family accepts `0`, and `null` otherwise.
-        Every family accepts `null`.
+        problem, with a note naming each member that was not given and
+        its value. So `chunks` given without `shape` must have no
+        dimensions, as the default shape has none.
         """
-        document: dict[str, object] = {
-            "zarr_format": 2,
-            "shape": (),
-            "chunks": (),
-            "dtype": "|u1",
-            "fill_value": 0,
-            "order": "C",
-            "compressor": None,
-            "filters": None,
-            "dimension_separator": ".",
-        }
+        context = scoped(context, CORE_V2_CONTEXT)
         given = member_changes(
             overrides, ZarrV2ArrayMetadataUpdate, _ARRAY_METADATA_STANDARD_KEYS_V2
         )
-        if "shape" in given and "chunks" not in given:
-            lengths, _ = dimension_lengths(given, "shape")
-            if lengths is not None:
-                given["chunks"] = lengths
-        if "dtype" in given and "fill_value" not in given:
-            dtype, _ = resolve(
-                given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2_CONTEXT)
-            )
-            if len(fill_value_problems(dtype, 0)) != 0:
-                given["fill_value"] = None
-        merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}
-        return cls(merged, context=context)
+        return created(
+            cls,
+            context,
+            fixed={"zarr_format": 2},
+            defaults=_DEFAULT_MEMBERS,
+            derived=_DERIVED_MEMBERS,
+            given=given,
+        )
 
     @classmethod
     def from_json(
@@ -880,3 +899,42 @@ class ZarrV2ArrayMetadata(Keyed):
         if reading.metadata is None:
             raise MetadataValidationError(reading.problems)
         return reading.metadata
+
+
+_DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
+    {
+        "shape": (),
+        "chunks": (),
+        "dtype": "|u1",
+        "fill_value": 0,
+        "order": "C",
+        "compressor": None,
+        "filters": None,
+        "dimension_separator": ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR,
+    }
+)
+"""The document of `ZarrV2ArrayMetadata.create_default` given nothing: a scalar `|u1` array, without its `zarr_format`."""
+
+
+def _derived_chunks(document: Mapping[str, object], context: ZarrV2Context) -> object:
+    """One chunk covering an array of the document's `shape`, with a length of 1 for a dimension of length 0. The chunks as they are when the shape has a problem, which the read reports."""
+    lengths, _ = dimension_lengths(document, "shape")
+    if lengths is None:
+        return document["chunks"]
+    return tuple(max(length, 1) for length in lengths)
+
+
+def _derived_fill_value(document: Mapping[str, object], context: ZarrV2Context) -> object:
+    """The default fill value of the document's `dtype` in `context`, and `null` (no fill value) when it has none or nothing in scope claims it. The fill value as it is when the dtype has a problem, which the read reports."""
+    dtype, problems = resolve(document["dtype"], ZarrV2DataTypeDefinition, context)
+    if len(problems) != 0:
+        return document["fill_value"]
+    found = default_fill_value(dtype)
+    return None if found is UNSET else found
+
+
+_DERIVED_MEMBERS: Final[tuple[Derived[ZarrV2Context], ...]] = (
+    Derived("chunks", "shape", _derived_chunks),
+    Derived("fill_value", "dtype", _derived_fill_value),
+)
+"""The members of `ZarrV2ArrayMetadata.create_default` derived from a member given."""

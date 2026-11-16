@@ -27,8 +27,7 @@ from zarr_metadata.testing._draw import (
 )
 from zarr_metadata.testing._strategy import CHARACTERS, EMPTY_CONFIGURATIONS, DataTypeStrategy
 from zarr_metadata.v3._definition import DataTypeDefinition, storage_of
-from zarr_metadata.v3.data_type._float import FloatSpecialFillValue
-from zarr_metadata.v3.data_type._numpy_time import NUMPY_TIME_UNIT
+from zarr_metadata.v3._types.data_type import NUMPY_TIME_UNIT, FloatSpecialFillValue
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE

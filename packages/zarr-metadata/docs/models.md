@@ -103,22 +103,61 @@ Every typed attribute is a view of the read:
   appear as the read refined them.
 
 These views are read-only at every level. A list in the document appears
-as a tuple. An object appears as a read-only mapping. `to_json` returns
-plain containers. Nothing in a model can be changed in place.
+as a tuple. An object appears as a read-only mapping. Nothing in a model
+can be changed in place.
+
+`to_json` returns a copy that the caller may change. Each object in it is
+a new `dict`, and each array is a new tuple, because the package's JSON
+types spell a JSON array as a tuple. `json.dumps` writes the copy, but it
+does not compare equal to what `json.loads` returns for the same
+document, where arrays are lists. To ask whether a model holds a
+document, compare models: `ZarrV3ArrayMetadata.from_json(document) == model`.
+This also treats a default that the document leaves out as equal to the
+default written out.
 
 To change a model, use one of these methods:
 
-- `update` replaces members of the document and reads the result in the
-  model's own context. You do not pass the context again.
+- `replace` returns a new model with members of the document replaced, and
+  reads it in the model's own context. You do not pass the context again.
+  The model itself is unchanged, as models are immutable. On Python 3.13
+  and later, `copy.replace(model, ...)` calls `replace` too.
     - Give a member the spec defines by its name.
     - Give any other member in `extra_fields`. This is a mapping from the
       member's key to its value, or to `UNSET` to remove it.
-    - A name `update` does not take raises `TypeError`, so a misspelled
+    - A name `replace` does not take raises `TypeError`, so a misspelled
       member is never written.
 - `with_context` reads the document in another context.
 - `refined_in` also reads the document in another context. The new context
   must claim what this context left unclaimed and contradict nothing.
   Otherwise it raises `ScopeConflictError`.
+
+## Writing store bytes
+
+`to_key_value` writes a model's document as the JSON bytes a store holds.
+A `JSONWriter` decides how those bytes are spelled: `indent`, `sort_keys`,
+`ensure_ascii` and `trailing_newline`. Its defaults are those of
+`json.dumps`. `to_key_value` takes a `JSONWriter` or a mapping of its
+settings, so you do not need to import the class to change one:
+
+```python test="true" session="models"
+from zarr_metadata.model import JSONWriter, ZarrV3GroupMetadata
+
+group = ZarrV3GroupMetadata.create_default(attributes={"b": 1, "a": 2})
+print(group.to_key_value({"indent": 2, "sort_keys": True})["zarr.json"].decode())
+# {
+#   "attributes": {
+#     "a": 2,
+#     "b": 1
+#   },
+#   "node_type": "group",
+#   "zarr_format": 3
+# }
+assert group.to_key_value({"indent": 2}) == group.to_key_value(JSONWriter(indent=2))
+```
+
+A mapping with a key that is not a setting raises `TypeError`, so a
+misspelled setting is not ignored. `JSONWriter.from_dict` turns a mapping
+into a writer, and `to_dict` turns a writer back into a mapping.
 
 ## Extra fields
 

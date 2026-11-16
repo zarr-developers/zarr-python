@@ -206,7 +206,6 @@ def test_error_an_inner_chunk_length_that_does_not_divide_the_shard(
     ("shard", "found"),
     [
         # Each pipeline is read as the array's pipeline is, at its own location.
-        (_shard([4, 4], codecs=[]), [((0, "configuration", "codecs"), "invalid_value")]),
         (
             _shard([4, 4], codecs=["crc32c", LITTLE]),
             [((0, "configuration", "codecs", 1), "invalid_value")],
@@ -231,6 +230,20 @@ def test_error_a_pipeline_a_shard_holds_that_does_not_fit_what_it_is_handed(
     shard: JSONValue, found: list[tuple[Where, str]]
 ) -> None:
     assert _problems([shard], _chunk({8}, {8})) == found
+
+
+@pytest.mark.parametrize(
+    ("shard", "key"),
+    [(_shard([4, 4], codecs=[]), "codecs"), (_shard([4, 4], index=[]), "index_codecs")],
+    ids=["codecs", "index-codecs"],
+)
+def test_error_a_shard_s_empty_pipeline_is_refused_by_its_type(shard: JSONValue, key: str) -> None:
+    # Each pipeline's type declares it non-empty, so the type check reports
+    # an empty one, before the pipeline's order check would.
+    problems = _read([shard], _chunk({8}, {8}))[1]
+    assert [(p.loc, p.kind, dict(p.ctx)) for p in problems] == [
+        ((0, "configuration", key), "invalid_value", {"min_length": 1})
+    ]
 
 
 def test_error_an_array_document_s_shard_is_read_where_it_sits() -> None:

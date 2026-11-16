@@ -11,8 +11,8 @@ codec receives, how a data type's values are stored, the raw bits name
 
 from __future__ import annotations
 
-import dataclasses
 import re
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import (
@@ -39,6 +39,7 @@ from zarr_metadata._json import (
     refine_user_data,
     with_input,
 )
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
     Loc,
     alias_value,
@@ -70,6 +71,7 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecDeclaration,
     ZarrV3StorageTransformerDeclaration,
 )
+from zarr_metadata.v3._types.codec import BYTES_CODEC_NAME, BytesCodecObject
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -123,6 +125,29 @@ def variable_length(*_: object) -> StorageClass:
 
 def unknown_storage(*_: object) -> None:
     """The storage of a data type that does not declare it: unknown."""
+
+
+NumberClass = Literal["integral", "floating_point", "complex", "non_numeric"]
+"""What kind of numbers a data type's values are: integers, floating-point numbers, complex numbers, or values that are not plain numbers.
+
+A codec that is defined only for some kinds of numbers reads this. For
+example, `cast_value` "is only defined for data types that model real
+numbers: floating-point and integral data types"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L5-L9),
+and its `wrap` mode is "Only permitted when data_type is an integral
+type"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md?plain=1#L84).
+`non_numeric` is every other kind of value: truth values, times, text,
+byte strings, records and lists, and a value that may be missing, such
+as an optional integer, whose values are an integer or nothing. A record
+or a list of numbers, or an optional number, holds numbers but is not one,
+so the codecs that read the number class treat it as they treat text.
+"""
+
+
+def little_endian_bytes_codec(*_: object) -> BytesCodecObject:
+    """The array -> bytes codec of a data type that does not declare one: `bytes` with little `endian`, which encodes values of any fixed size."""
+    return {"name": BYTES_CODEC_NAME, "configuration": {"endian": "little"}}
 
 
 RAW_BYTES_NAME: Final = "r*"
@@ -182,6 +207,21 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     nested declarations as the scope read them. A data type that does not
     declare it leaves its storage unknown.
 
+    `array_bytes_codec_default` gives the array -> bytes codec that encodes
+    the values of an array whose document is built without codecs, as the
+    models' `create_default` builds it, such as `vlen-utf8` for `string`.
+    It receives the same arguments as `storage`. A data type that does not
+    declare it gets `bytes` with little `endian`, which encodes values of
+    any fixed size, so a data type whose values vary in size declares its
+    own.
+
+    `number_class` declares what kind of numbers the values are: integral,
+    floating-point, complex, or not plain numbers. A codec that is defined only
+    for some kinds of numbers reads it, as `cast_value` reads it to accept
+    only data types that model real numbers. A data type that does not
+    declare it leaves its number class unknown, and such a codec accepts
+    it, since nothing is known of its values.
+
     A data type named the way a document writes raw bits of one size (such
     as `r16`) is rejected. That name is read as `r*`, so this definition
     would never be used.
@@ -216,8 +256,20 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
 
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
     """How the values are stored, given the configuration and the nested declarations; None when unknown."""
+    array_bytes_codec_default: Callable[[C, Nested], ZarrV3CodecDeclaration] = (
+        little_endian_bytes_codec
+    )
+    """The array -> bytes codec that encodes the values of an array built without codecs, such as `vlen-utf8` for `string`."""
+    number_class: NumberClass | None = None
+    """What kind of numbers the values are, such as `"integral"` for `int8`; None when unknown."""
 
     def _refusal(self) -> str | None:
+        number_class = cast("object", self.number_class)
+        if number_class is not None and number_class not in get_args(NumberClass):
+            return (
+                f"{self.name!r}: number_class is one of {get_args(NumberClass)!r} or None, "
+                f"got {number_class!r}"
+            )
         if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
             return (
                 f"{self.name!r} is how a document writes raw bits of one size, which read as "
@@ -281,48 +333,18 @@ as for every compressor.
 """
 
 
-_UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
-    "array_array": (),
-    "array_bytes": ("transition",),
-    "bytes_bytes": ("chunk_rules", "transition", "pipelines"),
-}
-"""The functions that are never called for a codec of each kind. A bytes -> bytes codec receives bytes, and only an array -> array codec passes on a chunk."""
-
-
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class CodecDefinition(Definition[C], kind=True, format=3):
+class CodecDefinition(Definition[C], ABC, kind=True, format=3):
     """A codec: what it converts its input to, and whether the size of its output is static.
 
-    A codec that receives an array (array -> array, array -> bytes)
-    declares the spec violations for a given input `Chunk` with
-    `chunk_rules`. It receives the configuration, the nested declarations as the
-    scope read them, and the chunk, and it locates its problems in the
-    configuration. For example, a `bytes` codec without `endian` that
-    receives a multi-byte data type is a problem. An array -> array codec
-    also declares its output with `transition`: given its input chunk, it
-    returns the chunk the next codec receives. For example, `transpose`
-    permutes the axes, and `cast_value` changes the data type. These two
-    functions correspond to the spec: a codec computes its output from the
-    shape and data type of its input, and "If the
-    decoded_representation_type is not supported, this algorithm must
-    fail with an error"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
-    The transition is called for every input chunk, whatever the chunk
-    rules found, so it must return only what is true in either case. For
-    example, a `transpose` whose `order` has the wrong number of axes
-    passes on unknown lengths. A codec that does not declare its output
-    passes the next codec a chunk with nothing known about it.
-
-    A codec that contains its own pipelines declares what each one
-    receives with `pipelines`. Given the codec's input chunk, it returns
-    the chunk that the first codec of each pipeline receives, keyed by the
-    configuration member that holds the pipeline. For example, a shard's
-    inner codecs receive its inner chunks, and its index codecs receive
-    the shard index. Like the transition, it is called whatever the chunk
-    rules found, and must return only what is true in either case. A
-    function that is never called for a codec of its kind is rejected,
-    such as the chunk rules of a bytes -> bytes codec, which receives
-    bytes.
+    A codec is one of three kinds, each its own class:
+    `ArrayArrayCodecDefinition`, `ArrayBytesCodecDefinition` and
+    `BytesBytesCodecDefinition`. The kind fixes where the codec may sit in
+    a pipeline, and what it is asked: a codec that receives an array, an
+    `ArrayCodecDefinition`, is asked about the chunk it receives, and a
+    bytes -> bytes codec, which receives bytes, is asked nothing about
+    them. This class holds what every codec declares, and is not built
+    itself.
     """
 
     label: ClassVar[str] = "codec"
@@ -337,39 +359,22 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     codecs of static size.
     """
 
-    kind: CodecKind
-    """What the codec does to what it is handed: array -> array, array -> bytes or bytes -> bytes.
-
-    It fixes where the codec may sit in a pipeline, and which of `chunk_rules`,
-    `transition` and `pipelines` it may be given: building a definition with
-    one its kind is never asked raises `TypeError`.
-    """
     size: CodecSize
     """Whether the size of what the codec gives out is fixed by the size of what it is handed.
 
     Where a member takes only codecs of static size, a codec of dynamic size
     is a problem.
     """
-    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
-    """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
-    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
-    """The chunk the next codec receives, given the chunk this array -> array codec receives."""
-    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
-    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
+
+    @property
+    @abstractmethod
+    def kind(self) -> CodecKind:
+        """What the codec does to what it is handed: array -> array, array -> bytes or bytes -> bytes. It fixes where the codec may sit in a pipeline."""
 
     def _refusal(self) -> str | None:
-        kind: object = self.kind
-        if kind not in get_args(CodecKind):
-            return f"{self.name!r}: kind is one of {get_args(CodecKind)!r}, got {kind!r}"
         size: object = self.size
         if size not in get_args(CodecSize):
             return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
-        defaults = {
-            attribute.name: attribute.default for attribute in dataclasses.fields(CodecDefinition)
-        }
-        for attribute in _UNASKED[self.kind]:
-            if getattr(self, attribute) is not defaults[attribute]:
-                return f"{self.name!r}: {attribute}, which no codec of kind {kind!r} is asked"
         return None
 
     @classmethod
@@ -387,6 +392,78 @@ class CodecDefinition(Definition[C], kind=True, format=3):
             "may be used here",
             "invalid_value",
         )
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayCodecDefinition(CodecDefinition[C]):
+    """A codec that receives an array: an array -> array or an array -> bytes codec.
+
+    It declares the spec violations for a given input `Chunk` with
+    `chunk_rules`. They receive the configuration, the nested declarations
+    as the scope read them, and the chunk, and they locate their problems
+    in the configuration. For example, a `bytes` codec without `endian`
+    that receives a multi-byte data type is a problem. This corresponds to
+    the spec: a codec computes its output from the shape and data type of
+    its input, and "If the decoded_representation_type is not supported,
+    this algorithm must fail with an error"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
+
+    A codec that contains its own pipelines declares what each one
+    receives with `pipelines`. Given the codec's input chunk, it returns
+    the chunk that the first codec of each pipeline receives, keyed by the
+    configuration member that holds the pipeline. For example, a shard's
+    inner codecs receive its inner chunks, and its index codecs receive
+    the shard index. It is called whatever the chunk rules found, and must
+    return only what is true in either case.
+    """
+
+    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
+    """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
+    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
+    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayArrayCodecDefinition(ArrayCodecDefinition[C]):
+    """An array -> array codec, such as `transpose`.
+
+    It declares its output with `transition`: given its input chunk, it
+    returns the chunk the next codec receives. For example, `transpose`
+    permutes the axes, and `cast_value` changes the data type. The
+    transition is called for every input chunk, whatever the chunk rules
+    found, so it must return only what is true in either case. For
+    example, a `transpose` whose `order` has the wrong number of axes
+    passes on unknown lengths. A codec that does not declare its output
+    passes the next codec a chunk with nothing known about it.
+    """
+
+    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
+    """The chunk the next codec receives, given the chunk this codec receives."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"array_array"`: the codec sits before the array -> bytes codec, and hands an array on."""
+        return "array_array"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class ArrayBytesCodecDefinition(ArrayCodecDefinition[C]):
+    """An array -> bytes codec, such as `bytes`: the one codec of a pipeline that turns the array into bytes."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"array_bytes"`: the codec turns the array into bytes, exactly once in a pipeline."""
+        return "array_bytes"
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class BytesBytesCodecDefinition(CodecDefinition[C]):
+    """A bytes -> bytes codec, such as `gzip`. It receives bytes, which have no shape or data type, so it is asked nothing about them."""
+
+    @property
+    def kind(self) -> CodecKind:
+        """`"bytes_bytes"`: the codec sits after the array -> bytes codec."""
+        return "bytes_bytes"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -687,6 +764,38 @@ def storage_of(data_type: ResolvedDeclaration[DataTypeDefinition[Any]]) -> Stora
     return found
 
 
+def default_array_bytes_codec(
+    data_type: ResolvedDeclaration[DataTypeDefinition[Any]],
+) -> JSONValue | UNSET:
+    """The array -> bytes codec that encodes the values of an array of `data_type` (a data type declaration a scope read) whose document is built without codecs, as the data type's `array_bytes_codec_default` gives it; `UNSET` when the scope did not read the data type.
+
+    The default is the extension author's code. Its result is checked to
+    be JSON, and not against the codec's rules: a document built with it
+    is read, and the read reports a codec that does not fit the data type.
+    If it raises an error, a note is added that says which data type's
+    default raised it.
+    """
+    if not isinstance(data_type, AcceptedDeclaration):
+        return UNSET
+    definition, configuration = data_type.definition, data_type.configuration
+    found = asked(
+        definition,
+        "array_bytes_codec_default",
+        lambda: cast(
+            "object",
+            definition.array_bytes_codec_default(read_only(configuration), data_type.nested),
+        ),
+    )
+    refined, problems = refine_json(found, ())
+    if len(problems) != 0:
+        msg = (
+            f"{definition.name!r}: its array_bytes_codec_default gives JSON, got {found!r}: "
+            f"{problems[0].message}"
+        )
+        raise TypeError(msg)
+    return refined
+
+
 def chunk_grid_lengths(
     chunk_grid: ResolvedDeclaration[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
 ) -> tuple[Lengths, Problems]:
@@ -745,7 +854,11 @@ __all__ = [
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
     "STATIC_SIZE_ALIASES",
+    "ArrayArrayCodecDefinition",
+    "ArrayBytesCodecDefinition",
+    "ArrayCodecDefinition",
     "ArrayExtraFieldDefinition",
+    "BytesBytesCodecDefinition",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
@@ -756,9 +869,12 @@ __all__ = [
     "ExtraFieldDefinition",
     "GroupExtraFieldDefinition",
     "Lengths",
+    "NumberClass",
     "StorageClass",
     "StorageTransformerDefinition",
     "chunk_grid_lengths",
+    "default_array_bytes_codec",
+    "little_endian_bytes_codec",
     "multi_byte",
     "no_pipelines",
     "single_byte",

@@ -57,6 +57,8 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
+    ArrayArrayCodecDefinition,
+    BytesBytesCodecDefinition,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
@@ -100,10 +102,9 @@ def acme_stack_rules(
             )
 
 
-ACME_STACK = CodecDefinition(
+ACME_STACK = BytesBytesCodecDefinition(
     name="acme.stack",
     configuration=AcmeStackConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_stack_rules,
 )
@@ -176,35 +177,32 @@ def acme_paired_rules(
         yield ValidationProblem((), "expected first and second, or neither", "invalid_value")
 
 
-ACME_LEVEL = CodecDefinition(
-    name="acme.level", configuration=AcmeLevelConfiguration, kind="bytes_bytes", size="dynamic"
+ACME_LEVEL = BytesBytesCodecDefinition(
+    name="acme.level", configuration=AcmeLevelConfiguration, size="dynamic"
 )
-ACME_TOTAL = CodecDefinition(
-    name="acme.total", configuration=AcmeTotalConfiguration, kind="bytes_bytes", size="dynamic"
+ACME_TOTAL = BytesBytesCodecDefinition(
+    name="acme.total", configuration=AcmeTotalConfiguration, size="dynamic"
 )
-ACME_TREE = CodecDefinition(
-    name="acme.tree", configuration=AcmeTreeConfiguration, kind="bytes_bytes", size="dynamic"
+ACME_TREE = BytesBytesCodecDefinition(
+    name="acme.tree", configuration=AcmeTreeConfiguration, size="dynamic"
 )
-ACME_FALLBACK = CodecDefinition(
+ACME_FALLBACK = BytesBytesCodecDefinition(
     name="acme.fallback",
     configuration=AcmeFallbackConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
 )
-ACME_ROUTES = CodecDefinition(
-    name="acme.routes", configuration=AcmeRoutesConfiguration, kind="bytes_bytes", size="dynamic"
+ACME_ROUTES = BytesBytesCodecDefinition(
+    name="acme.routes", configuration=AcmeRoutesConfiguration, size="dynamic"
 )
-ACME_BOUNDED = CodecDefinition(
+ACME_BOUNDED = BytesBytesCodecDefinition(
     name="acme.bounded",
     configuration=AcmeBoundedConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_bounded_rules,
 )
-ACME_PAIRED = CodecDefinition(
+ACME_PAIRED = BytesBytesCodecDefinition(
     name="acme.paired",
     configuration=AcmePairedConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_paired_rules,
 )
@@ -373,8 +371,8 @@ class _HoldsV3Codecs(TypedDict, closed=True):
     ("build", "named"),
     [
         (
-            lambda: CodecDefinition(
-                name="acme.mix", configuration=_HoldsAV2DataType, kind="array_array", size="static"
+            lambda: ArrayArrayCodecDefinition(
+                name="acme.mix", configuration=_HoldsAV2DataType, size="static"
             ),
             "ZarrV2DataTypeDeclaration",
         ),
@@ -383,16 +381,15 @@ class _HoldsV3Codecs(TypedDict, closed=True):
             "ZarrV3CodecDeclaration",
         ),
         (
-            lambda: CodecDefinition(
-                name="acme.mix", configuration=_HoldsV2DataTypes, kind="array_array", size="static"
+            lambda: ArrayArrayCodecDefinition(
+                name="acme.mix", configuration=_HoldsV2DataTypes, size="static"
             ),
             "ZarrV2DataTypeDeclaration",
         ),
         (
-            lambda: CodecDefinition(
+            lambda: ArrayArrayCodecDefinition(
                 name="acme.mix",
                 configuration=_HoldsANestedV2DataType,
-                kind="array_array",
                 size="static",
             ),
             "ZarrV2DataTypeDeclaration",
@@ -443,7 +440,8 @@ def test_error_a_declaration_read_by_hand_by_a_definition_filed_under_another_na
 
 def test_error_a_declaration_refused_by_hand_by_a_definition_of_another_kind() -> None:
     with pytest.raises(
-        TypeError, match="read as a DataTypeDefinition is read by one, got CodecDefinition"
+        TypeError,
+        match="read as a DataTypeDefinition is read by one, got BytesBytesCodecDefinition",
     ):
         RefusedDeclaration(
             json="gzip", name="gzip", read_as=DataTypeDefinition, definition=GZIP_CODEC
@@ -1148,10 +1146,9 @@ def test_read_configuration_is_the_check_and_then_the_rules() -> None:
 
 
 def test_a_scope_takes_a_name_over() -> None:
-    strict = CodecDefinition(
+    strict = BytesBytesCodecDefinition(
         name="gzip",
         configuration=GzipCodecConfiguration,
-        kind="bytes_bytes",
         size="dynamic",
         rules=lambda configuration, nested: (
             [ValidationProblem(("level",), "level 0 stores uncompressed", "invalid_value")]
@@ -1335,7 +1332,7 @@ def test_a_declaration_copied_or_pickled_is_read_by_a_definition_equal_to_its_ow
 
 def test_a_definition_is_shown_by_its_kind_and_name() -> None:
     # Kept short, because a reading that holds the definition shows it this way.
-    assert repr(GZIP_CODEC) == "CodecDefinition(name='gzip')"
+    assert repr(GZIP_CODEC) == "BytesBytesCodecDefinition(name='gzip')"
     assert repr(INT8_DATA_TYPE) == "DataTypeDefinition(name='int8')"
 
 
@@ -1366,29 +1363,26 @@ class AcmeCodecDefinition(CodecDefinition[Any]):
 
 def test_error_a_definition_configuration_is_a_typeddict() -> None:
     with pytest.raises(TypeError, match="give the TypedDict"):
-        CodecDefinition(name="acme.bad", configuration=dict, kind="bytes_bytes", size="dynamic")
+        BytesBytesCodecDefinition(name="acme.bad", configuration=dict, size="dynamic")
 
 
 def test_error_a_definition_member_is_a_shape_json_takes() -> None:
     with pytest.raises(TypeError, match="Unreadable: members is not a shape JSON takes"):
-        CodecDefinition(
-            name="acme.bad", configuration=Unreadable, kind="bytes_bytes", size="dynamic"
-        )
+        BytesBytesCodecDefinition(name="acme.bad", configuration=Unreadable, size="dynamic")
 
 
 def test_error_a_configuration_says_what_its_other_keys_are() -> None:
     # An open TypedDict would accept a misspelled key without reporting it.
     with pytest.raises(TypeError, match="Loose says nothing of the keys it does not declare"):
-        CodecDefinition(name="acme.loose", configuration=Loose, kind="bytes_bytes", size="dynamic")
+        BytesBytesCodecDefinition(name="acme.loose", configuration=Loose, size="dynamic")
 
 
 def test_error_a_member_typed_as_plain_declaration_json_is_refused() -> None:
     # It would be checked only as JSON, and its name would never be matched to a definition.
     with pytest.raises(TypeError, match="annotate it with the declaration alias of its kind"):
-        CodecDefinition(
+        BytesBytesCodecDefinition(
             name="acme.plain",
             configuration=AcmePlainConfiguration,
-            kind="bytes_bytes",
             size="dynamic",
         )
 
@@ -1396,10 +1390,9 @@ def test_error_a_member_typed_as_plain_declaration_json_is_refused() -> None:
 def test_error_a_configuration_whose_annotations_do_not_resolve() -> None:
     # The error names the TypedDict that holds the annotation.
     with pytest.raises(TypeError, match="AcmeDecimal: name 'Decimal' is not defined"):
-        CodecDefinition(
+        BytesBytesCodecDefinition(
             name="acme.unresolved",
             configuration=AcmeUnresolvedConfiguration,
-            kind="bytes_bytes",
             size="dynamic",
         )
 
@@ -1417,10 +1410,9 @@ def test_error_a_configuration_with_a_constraint_the_checker_does_not_read() -> 
             r".*; check it in the definition's `rules`"
         ),
     ):
-        CodecDefinition(
+        BytesBytesCodecDefinition(
             name="acme.unchecked",
             configuration=AcmeUncheckedConfiguration,
-            kind="bytes_bytes",
             size="dynamic",
         )
 
@@ -1434,21 +1426,17 @@ def test_error_a_fill_value_with_a_constraint_its_type_cannot_take() -> None:
 
 def test_error_a_definition_name_is_a_string() -> None:
     with pytest.raises(TypeError, match="a definition's name is a string"):
-        CodecDefinition(
+        BytesBytesCodecDefinition(
             name=5,  # pyright: ignore[reportArgumentType]
             configuration=EmptyConfiguration,
-            kind="bytes_bytes",
             size="dynamic",
         )
 
 
-def test_error_a_codec_kind_is_one_of_three() -> None:
-    with pytest.raises(TypeError, match="kind is one of"):
-        CodecDefinition(
-            name="acme.k",
-            configuration=EmptyConfiguration,
-            kind="bytes_to_array",  # pyright: ignore[reportArgumentType]
-            size="dynamic",
+def test_error_a_codec_is_built_as_one_of_its_kinds() -> None:
+    with pytest.raises(TypeError, match="abstract class CodecDefinition"):
+        CodecDefinition(  # pyright: ignore[reportAbstractUsage]
+            name="acme.k", configuration=EmptyConfiguration, size="dynamic"
         )
 
 
@@ -1484,16 +1472,16 @@ def test_error_a_data_type_fill_value_holding_a_declaration() -> None:
         (DataTypeDefinition, "storage"),
         (ChunkGridDefinition, "shape_rules"),
         (ChunkGridDefinition, "chunk_lengths"),
-        (CodecDefinition, "chunk_rules"),
-        (CodecDefinition, "transition"),
-        (CodecDefinition, "pipelines"),
+        (ArrayArrayCodecDefinition, "chunk_rules"),
+        (ArrayArrayCodecDefinition, "transition"),
+        (ArrayArrayCodecDefinition, "pipelines"),
     ],
 )
 def test_error_a_function_member_that_is_not_a_function(
     kind: type[Definition[Any]], member: str
 ) -> None:
     # Each member that the definition's annotations declare as a `Callable`.
-    codec = {"kind": "array_array", "size": "static"} if kind is CodecDefinition else {}
+    codec = {"size": "static"} if issubclass(kind, CodecDefinition) else {}
     with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
         kind(name="acme.t", configuration=EmptyConfiguration, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
@@ -1575,9 +1563,7 @@ def test_error_a_bad_name_is_a_problem_when_the_declaration_is_not_json_too() ->
 def test_error_a_definition_is_named_as_the_spec_names_an_extension(name: str) -> None:
     # No document could use this name, so the definition would never read anything.
     with pytest.raises(TypeError, match="so no document names it"):
-        CodecDefinition(
-            name=name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
-        )
+        BytesBytesCodecDefinition(name=name, configuration=EmptyConfiguration, size="dynamic")
 
 
 def test_error_a_declaration_built_by_hand_is_named_as_the_spec_names_one() -> None:

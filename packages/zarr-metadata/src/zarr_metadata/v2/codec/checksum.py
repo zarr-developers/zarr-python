@@ -2,22 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Final, Literal, NotRequired
+from typing import Final, Literal
 
-from typing_extensions import ReadOnly, TypedDict
-
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
-
-
-class ZarrV2Checksum32Parameters(TypedDict, closed=True):
-    """`numcodecs.CRC32(location=None)` and the other 32-bit checksums. `location` is where the checksum is placed. When it is omitted or null, numcodecs places it at the start for crc32 and adler32, and at the end for crc32c."""
-
-    location: NotRequired[ReadOnly[Literal["start", "end"] | None]]
-    """Where the checksum is placed in the encoded chunk, `"start"` or `"end"`.
-
-    Absent or null means the start for `crc32` and `adler32`, and the end for `crc32c`.
-    """
+from zarr_metadata.v2._types.codec import ZarrV2Checksum32Parameters
 
 
 def _fill_location(

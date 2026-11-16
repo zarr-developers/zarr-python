@@ -33,7 +33,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata.definition import Nested
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, CodecDefinition, ZarrV3Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS_CONTEXT, BytesBytesCodecDefinition, ZarrV3Context
 
 
 class AcmeLz4Configuration(TypedDict, closed=True):
@@ -51,10 +51,9 @@ def acme_lz4_rules(
         )
 
 
-ACME_LZ4 = CodecDefinition(
+ACME_LZ4 = BytesBytesCodecDefinition(
     name="acme.lz4",
     configuration=AcmeLz4Configuration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=acme_lz4_rules,
 )
@@ -83,8 +82,10 @@ names `acme.lz4` is then checked against this definition.
 - a `NewType` or a type alias.
 
 A number may carry bounds from annotated-types: `Gt`, `Ge`, `Lt`, `Le` or
-`Interval`. Any other `Annotated` metadata is refused when the definition
-is built.
+`Interval`, and an integer a step, `MultipleOf`. An array or a string may
+bound its length with `MinLen`, `MaxLen` or `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. Any other
+`Annotated` metadata is refused when the definition is built.
 
 **The rules function**
 
@@ -103,14 +104,27 @@ definitions that read it, so the model can be pickled only if they can.
 Other kinds declare more:
 
 - A data type declares its fill value (`fill_value`, `fill_value_rules`,
-  `fill_value_canonical`). It also declares how its values are stored
-  (`storage`).
+  `fill_value_canonical`), and the fill value an array gets when
+  `create_default` is given none (`fill_value_default`, such as
+  `ConstantFillValue(0)`). It also declares how its values are stored
+  (`storage`), and the array -> bytes codec an array gets when
+  `create_default` is given no codecs (`array_bytes_codec_default`, such
+  as `vlen-utf8` for `string`). A data type whose values vary in size
+  declares its own, since the default, `bytes`, encodes values of a fixed
+  size. It declares what kind of numbers its values are (`number_class`:
+  `"integral"`, `"floating_point"`, `"complex"` or `"non_numeric"`), which
+  the codecs that are defined only for some kinds of numbers read:
+  `cast_value` and `scale_offset` refuse a data type that declares
+  complex or non-numeric values. A data type that does not declare it is
+  accepted by both.
 - A chunk grid declares which shapes it fits (`shape_rules`) and its chunk
   lengths (`chunk_lengths`).
-- A codec declares:
-    - what it checks about the chunk it receives (`chunk_rules`),
-    - what it hands on (`transition`),
-    - any pipelines it contains (`pipelines`).
+- A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,
+  `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`. A codec that
+  receives an array declares what it checks about the chunk it receives
+  (`chunk_rules`) and any pipelines it contains (`pipelines`), and an
+  array -> array codec also declares what it hands on (`transition`). A
+  bytes -> bytes codec receives bytes, so it declares none of these.
 
 The [`zarr_metadata.v3.definition`](api/v3/definition.md) docstring
 describes each of these.

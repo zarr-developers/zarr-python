@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, TypeAlias
 
 from hypothesis import strategies as st
 
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,

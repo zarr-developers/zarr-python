@@ -339,20 +339,35 @@ def test_a_data_type_no_codec_takes_is_not_drawn(document: Mapping[str, Any]) ->
     assert document["data_type"] == "int8"
 
 
+_ARRAY_DOCUMENTS = array_documents()
+"""One strategy for every share, so `examples_of` draws its examples once."""
+
 _DOCUMENT_SHARES: dict[str, tuple[Callable[[Mapping[str, Any]], bool], float, float]] = {
-    "no axes": (lambda d: d["shape"] == (), 0.03, 0.25),
-    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.1, 1),
-    "a zero-length axis": (lambda d: 0 in d["shape"], 0.1, 1),
-    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.1, 1),
-    "the first data type": (lambda d: _name(d["data_type"]) == "bool", 0, 0.12),
+    "no axes": (lambda d: d["shape"] == (), 0.07, 0.31),
+    "more axes than five": (lambda d: len(d["shape"]) > 5, 0.16, 1),
+    "a zero-length axis": (lambda d: 0 in d["shape"], 0.44, 1),
+    "an axis past 32 bits": (lambda d: any(n >= 2**32 for n in d["shape"]), 0.02, 1),
 }
-"""What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets."""
+"""What a share of array documents holds, as a low and a high bound: what a test running only a few hundred examples meets.
+
+Each bound is set as `_shares` says.
+"""
 
 
 @pytest.mark.parametrize("target", _DOCUMENT_SHARES)
 def test_array_documents_share(target: str) -> None:
     counts, low, high = _DOCUMENT_SHARES[target]
-    assert low <= share_of(array_documents(), counts) <= high
+    assert low <= share_of(_ARRAY_DOCUMENTS, counts) <= high
+
+
+def test_array_documents_do_not_favor_the_first_data_type() -> None:
+    """`bool`, first of the data types by name, is drawn no more often than the rest would allow.
+
+    Over 1000 examples: over 300, its share moves too much across seeds to
+    tell a fair draw from one that draws it a fifth of the time.
+    """
+    share = share_of(_ARRAY_DOCUMENTS, lambda d: _name(d["data_type"]) == "bool", examples=1000)
+    assert share <= 0.13
 
 
 def _empty_listings(document: Mapping[str, Any]) -> list[Any]:
