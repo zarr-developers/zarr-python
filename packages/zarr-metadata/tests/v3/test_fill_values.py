@@ -2,7 +2,7 @@
 
 Each data type's definition declares the JSON shape of its fill value and
 the rules for a value of that shape. `fill_value_problems` checks a fill
-value against a data type field that a scope read. The v3 array
+value against a data type declaration that a scope read. The v3 array
 validators check a document's `fill_value` against its `data_type`.
 """
 
@@ -24,10 +24,12 @@ from zarr_metadata import (
 )
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata.definition import (
-    AcceptedField,
+    AcceptedDeclaration,
+    ConstantFillValue,
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -40,8 +42,9 @@ from zarr_metadata.model import (
 from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -86,7 +89,7 @@ ACME_POINT = DataTypeDefinition(
 
 
 def _problems(data_type: JSONValue, value: object) -> list[tuple[tuple[str | int, ...], str]]:
-    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
     return [(problem.loc, problem.kind) for problem in fill_value_problems(resolved, value)]
 
@@ -139,7 +142,7 @@ def _problems(data_type: JSONValue, value: object) -> list[tuple[tuple[str | int
     ],
 )
 def test_every_data_type_takes_its_fill_values(data_type: JSONValue, fill_value: object) -> None:
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert fill_value_problems(resolved, fill_value) == ()
 
 
@@ -235,7 +238,7 @@ def test_a_fill_value_s_range_is_its_type_s(
 ) -> None:
     # `Int8FillValue` is `Annotated[int, Interval(ge=-128, le=127)]`. The
     # problem holds the range and the value that was found.
-    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     problems = fill_value_problems(resolved, fill_value)
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [
         (loc, value_at(fill_value, loc), ctx)
@@ -288,9 +291,7 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
 
 def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
     # The extra key is reported and hidden from the rules, which still check the other keys.
-    context = CORE_AND_EXTENSIONS.update(
-        data_types=[*CORE_AND_EXTENSIONS.data_types.values(), ACME_POINT]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[ACME_POINT]))
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     found = fill_value_problems(resolved, {"x": 99, "extra": 1})
     assert [(problem.loc, problem.kind) for problem in found] == [
@@ -320,7 +321,7 @@ def test_a_fill_value_nested_as_deep_as_a_reader_walks_is_read() -> None:
 def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> None:
     # A reading built by hand, with no reading of the field types.
     configuration = {"fields": ({"name": "a", "data_type": "int8"},)}
-    struct = AcceptedField(
+    struct = AcceptedDeclaration(
         json=STRUCT, name="struct", definition=STRUCT_DATA_TYPE, configuration=configuration
     )
     assert fill_value_problems(struct, {"a": 300}) == ()
@@ -334,10 +335,10 @@ def _alike(left: object, right: object) -> bool:
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
-def _read(data_type: JSONValue) -> AcceptedField[DataTypeDefinition[Any]]:
-    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+def _read(data_type: JSONValue) -> AcceptedDeclaration[DataTypeDefinition[Any]]:
+    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert found == ()
-    assert isinstance(resolved, AcceptedField)
+    assert isinstance(resolved, AcceptedDeclaration)
     return resolved
 
 
@@ -416,7 +417,7 @@ def test_a_fill_value_s_canonical_spelling_is_its_value_s(
 
 
 def test_a_data_type_nothing_in_scope_claims_spells_a_fill_value_as_written() -> None:
-    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     values: list[JSONValue] = [-0.0, True, 1, [1.0], None]
     for value in values:
         assert _alike(canonical_fill_value(unclaimed, value), value)
@@ -453,7 +454,7 @@ def test_error_a_fill_value_with_a_problem_has_no_canonical_spelling() -> None:
     assert canonical_fill_value(_read("float32"), "0x7fc0") is UNSET
     assert canonical_fill_value(_read("int8"), 1.0) is UNSET
     assert canonical_fill_value(_read("int8"), math.nan) is UNSET
-    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)
     assert canonical_fill_value(unclaimed, None) is None
 
 
@@ -461,11 +462,8 @@ def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it()
     def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=refuses),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=refuses)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
@@ -477,11 +475,8 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         return cast("JSONValue", {1, 2})
 
-    context = CORE_AND_EXTENSIONS.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=not_json),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=not_json)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):
@@ -529,3 +524,34 @@ def test_a_complex_fill_value_keeps_what_its_component_rules_found() -> None:
     (found,) = rules({}, {}, (1.0, 0))
     assert (found.loc, found.message, found.kind) == ((1, "x"), "expected >= 1", "invalid_value")
     assert (found.input, dict(found.ctx)) == (0, {"ge": 1})
+
+
+def _not_json_default(configuration: object, nested: object) -> object:
+    return object()
+
+
+def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A data type whose `fill_value_default` gives a value that is not JSON is the extension author's bug, a `TypeError` naming the data type."""
+    definition = DataTypeDefinition(
+        name="acme.odd",
+        configuration=EmptyConfiguration,
+        fill_value_default=cast("Any", _not_json_default),
+    )
+    data_type, _ = resolve("acme.odd", DataTypeDefinition, ZarrV3Context(data_types=[definition]))
+    with pytest.raises(TypeError, match="'acme.odd': its fill_value_default gives JSON or UNSET"):
+        default_fill_value(data_type)
+
+
+def test_error_a_constant_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A `ConstantFillValue` holds JSON, which it checks when built, so a value that is not JSON fails where it is written rather than when the data type is used."""
+    with pytest.raises(TypeError, match="ConstantFillValue holds JSON, got <object object"):
+        ConstantFillValue(cast("Any", object()))
+
+
+def test_constant_fill_values_are_equal_when_written_the_same_way() -> None:
+    """Two `ConstantFillValue`s are equal, and hash equal, when their values are written the same way, so two data types that differ only in their default are not the same definition. `0`, `False` and `0.0` are three defaults."""
+    defaults = [ConstantFillValue(0), ConstantFillValue(False), ConstantFillValue(0.0)]
+    assert len(set(defaults)) == 3
+    assert ConstantFillValue((0.0, 0.0)) == ConstantFillValue((0.0, 0.0))
+    assert hash(ConstantFillValue("")) == hash(ConstantFillValue(""))
+    assert ConstantFillValue(0) != 0

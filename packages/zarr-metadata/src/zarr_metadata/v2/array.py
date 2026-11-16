@@ -4,10 +4,10 @@ from collections.abc import Mapping
 from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, TypeIs
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2._field_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
+from zarr_metadata.v2._declaration_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
 
 ZarrV2ArrayOrder = Literal["C", "F"]
 """Literal type of permitted values for the `order` field of v2 array metadata.
@@ -20,6 +20,12 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 ZARR_V2_ARRAY_ORDER: Final = ("C", "F")
 """Tuple of permitted values for the `order` field of v2 array metadata."""
 
+
+def is_zarr_v2_array_order(value: object) -> TypeIs[ZarrV2ArrayOrder]:
+    """Whether `value` is one of `ZARR_V2_ARRAY_ORDER`, narrowing it to `ZarrV2ArrayOrder`."""
+    return value in ZARR_V2_ARRAY_ORDER
+
+
 ZarrV2ArrayDimensionSeparator = Literal[".", "/"]
 """Literal type of permitted values for the `dimension_separator` field of v2 array metadata.
 
@@ -31,6 +37,18 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 
 ZARR_V2_ARRAY_DIMENSION_SEPARATOR: Final = (".", "/")
 """Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
+
+ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR: Final[ZarrV2ArrayDimensionSeparator] = "."
+"""The `dimension_separator` a v2 array's metadata means when it has none.
+
+"If the value is not set, then the default MUST be assumed to be `"."`"
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L83-L86).
+"""
+
+
+def is_zarr_v2_array_dimension_separator(value: object) -> TypeIs[ZarrV2ArrayDimensionSeparator]:
+    """Whether `value` is one of `ZARR_V2_ARRAY_DIMENSION_SEPARATOR`, narrowing it to `ZarrV2ArrayDimensionSeparator`."""
+    return value in ZARR_V2_ARRAY_DIMENSION_SEPARATOR
 
 
 class ZarrV2ZArrayJSON(TypedDict):
@@ -45,14 +63,39 @@ class ZarrV2ZArrayJSON(TypedDict):
     """
 
     zarr_format: Literal[2]
+    """The Zarr format version, `2`."""
     shape: tuple[Annotated[int, Ge(0)], ...]
+    """The length of each dimension of the array."""
     chunks: tuple[Annotated[int, Ge(0)], ...]
+    """The length of each dimension of a chunk.
+
+    Every chunk of the array has this shape, with one length per dimension of `shape`.
+    """
     dtype: ZarrV2DataTypeMetadata
+    """The data type of the array's elements.
+
+    A NumPy typestr such as `"<f8"`, or a list of `[name, datatype]` or
+    `[name, datatype, shape]` field records for a structured data type.
+    """
     compressor: ZarrV2CodecMetadata | None
+    """The configuration of the codec that compresses each chunk, or `null` for none."""
     fill_value: JSONValue
+    """The value of an element in a chunk that was never written, or `null` for none.
+
+    With `null`, what such a chunk holds is undefined. A non-finite float is
+    `"NaN"`, `"Infinity"` or `"-Infinity"`, and the fill value of a fixed-length
+    byte string or structured data type is a Base64 string
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L181-L194).
+    """
     order: ZarrV2ArrayOrder
+    """The layout of elements within each chunk: `"C"` (row-major) or `"F"` (column-major)."""
     filters: tuple[ZarrV2CodecMetadata, ...] | None
+    """Codecs applied to each chunk before the compressor, in order, or `null` for none."""
     dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
+    """The separator between a chunk's grid coordinates in its key.
+
+    Absent means `"."`, giving keys like `0.0`; `"/"` gives keys like `0/0`.
+    """
 
 
 class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
@@ -75,14 +118,39 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     """
 
     zarr_format: Literal[2]
+    """The Zarr format version, `2`."""
     shape: tuple[Annotated[int, Ge(0)], ...]
+    """The length of each dimension of the array."""
     chunks: tuple[Annotated[int, Ge(0)], ...]
+    """The length of each dimension of a chunk.
+
+    Every chunk of the array has this shape, with one length per dimension of `shape`.
+    """
     dtype: ZarrV2DataTypeMetadata
+    """The data type of the array's elements.
+
+    A NumPy typestr such as `"<f8"`, or a list of `[name, datatype]` or
+    `[name, datatype, shape]` field records for a structured data type.
+    """
     compressor: ZarrV2CodecMetadata | None
+    """The configuration of the codec that compresses each chunk, or `null` for none."""
     fill_value: JSONValue
+    """The value of an element in a chunk that was never written, or `null` for none.
+
+    With `null`, what such a chunk holds is undefined. A non-finite float is
+    `"NaN"`, `"Infinity"` or `"-Infinity"`, and the fill value of a fixed-length
+    byte string or structured data type is a Base64 string
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L181-L194).
+    """
     order: ZarrV2ArrayOrder
+    """The layout of elements within each chunk: `"C"` (row-major) or `"F"` (column-major)."""
     filters: tuple[ZarrV2CodecMetadata, ...] | None
+    """Codecs applied to each chunk before the compressor, in order, or `null` for none."""
     dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
+    """The separator between a chunk's grid coordinates in its key.
+
+    Absent means `"."`, giving keys like `0.0`; `"/"` gives keys like `0/0`.
+    """
     attributes: NotRequired[Mapping[str, JSONValue]]
     """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
 
@@ -98,6 +166,7 @@ ZARR_V2_ARRAY_METADATA_STORE_KEY: Final[ZarrV2ArrayMetadataStoreKey] = ".zarray"
 
 
 __all__ = [
+    "ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
     "ZARR_V2_ARRAY_ORDER",
@@ -106,4 +175,6 @@ __all__ = [
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayOrder",
     "ZarrV2ZArrayJSON",
+    "is_zarr_v2_array_dimension_separator",
+    "is_zarr_v2_array_order",
 ]

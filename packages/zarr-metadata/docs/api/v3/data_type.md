@@ -40,8 +40,16 @@ title: data_type
 
 ::: zarr_metadata.v3.data_type.string
 
+::: zarr_metadata.v3.data_type.fixed_length_utf32
+
 ::: zarr_metadata.v3.data_type.numpy_datetime64
 
 ::: zarr_metadata.v3.data_type.numpy_timedelta64
 
 ::: zarr_metadata.v3.data_type.struct
+
+::: zarr_metadata.v3.data_type.null_terminated_bytes
+
+::: zarr_metadata.v3.data_type.variable_length_bytes
+
+::: zarr_metadata.v3.data_type.zarr_python_raw_bytes

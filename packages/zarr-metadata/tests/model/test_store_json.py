@@ -33,6 +33,8 @@ from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from zarr_metadata.model import JSONWriterLike
+
 
 class _Written(Protocol):
     """The output of a model write: store keys, each with its bytes."""
@@ -45,7 +47,7 @@ class _Stored(Protocol):
 
     def to_json(self) -> Mapping[str, object]: ...
 
-    def to_key_value(self, *, indent: int | str | None = None) -> _Written: ...
+    def to_key_value(self, writer: JSONWriterLike = ...) -> _Written: ...
 
 
 class _Reading(Protocol):
@@ -279,7 +281,7 @@ _REFUSED: dict[str, _Refused] = {
     "zarray": (
         ZarrV2ArrayMetadata.from_key_value,
         _stored(".zarray", {**_V2_ARRAY, "fill_value": math.nan}),
-        ("fill_value",),
+        (".zarray", "fill_value"),
     ),
     # Each `.zmetadata` entry is validated as the document type its key names.
     "zmetadata-entry": (
@@ -288,7 +290,10 @@ _REFUSED: dict[str, _Refused] = {
             ".zmetadata",
             {
                 "zarr_consolidated_format": 1,
-                "metadata": {"a/.zattrs": {"x": math.nan}, "a/.zarray": {"fill_value": math.nan}},
+                "metadata": {
+                    "a/.zattrs": {"x": math.nan},
+                    "a/.zarray": {**_V2_ARRAY, "fill_value": math.nan},
+                },
             },
         ),
         ("metadata", "a/.zarray", "fill_value"),

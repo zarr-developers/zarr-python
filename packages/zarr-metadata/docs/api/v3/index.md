@@ -6,7 +6,7 @@ title: v3
     options:
       members: false
 
-::: zarr_metadata.v3.ZarrV3MetadataFieldJSON
+::: zarr_metadata.v3.ZarrV3DeclarationJSON
 
 ::: zarr_metadata.v3.ZarrV3NamedConfigJSON
 

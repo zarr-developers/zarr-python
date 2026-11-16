@@ -1,4 +1,4 @@
-"""The scope a Zarr v2 document is read in: one slot for each kind of v2 field."""
+"""The scope a Zarr v2 document is read in: one slot for each kind of v2 declaration."""
 
 from __future__ import annotations
 
@@ -35,10 +35,10 @@ if TYPE_CHECKING:
     from zarr_metadata.definition._definition import D, Definition
 
 ZarrV2Kind: TypeAlias = ZarrV2DataTypeDefinition[Any] | ZarrV2CodecDefinition[Any]
-"""A definition of a kind of v2 field."""
+"""A definition of a kind of v2 declaration."""
 
 _K = TypeVar("_K", bound=ZarrV2Kind)
-"""A kind of v2 field, so a type checker refuses a kind of the other format."""
+"""A kind of v2 declaration, so a type checker refuses a kind of the other format."""
 
 _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
     get_origin(member) for member in get_args(ZarrV2Kind)
@@ -46,12 +46,12 @@ _KINDS: Final[frozenset[type[Definition[Any]]]] = frozenset(
 
 
 def is_v2_kind(kind: type[Definition[Any]]) -> TypeIs[type[ZarrV2Kind]]:
-    """Whether `kind` is a kind of v2 field: one of the kinds in `ZarrV2Kind`."""
+    """Whether `kind` is a kind of v2 declaration: one of the kinds in `ZarrV2Kind`."""
     return kind in _KINDS
 
 
 class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
-    """The definitions in each slot of a v2 scope, as `ZarrV2Context` and its `update` take them.
+    """The definitions in each slot of a v2 scope, as `ZarrV2Context` and its `copy` take them.
 
     This is where a v2 scope's slots are declared: each key is a slot,
     and its value the definitions of the kind that slot holds, as an
@@ -73,17 +73,17 @@ class ZarrV2ContextSlots(TypedDict, total=False, closed=True):
 class ZarrV2Context:
     """A scope that reads Zarr v2 documents. Every v2 reader takes one.
 
-    It implements `Context`, and has one slot for each kind of field a v2
+    It implements `Context`, and has one slot for each kind of declaration a v2
     document holds, as `ZarrV2ContextSlots` declares them: `data_types`,
     read from `dtype`, and `codecs`, read from `compressor` and `filters`.
     Each slot is a read-only mapping from name to definition. The
-    constructor and `update` take, for each slot, an iterable of
+    constructor and `copy` take, for each slot, an iterable of
     definitions or such a mapping, so one scope's slot can be given to
     another. A definition of another kind than its slot holds, and a key
     that is not its definition's name, raise `TypeError`, and two
     different definitions under one name in a slot raise
-    `ScopeConflictError`. To replace a definition, or a whole slot, use
-    `update`.
+    `ScopeConflictError`. To add definitions, use `union`. To replace a
+    definition, or a whole slot, use `copy`.
     `ZarrV2Context()` is the scope that claims nothing. Two scopes are
     equal when they file the same definitions in each slot, and equal
     scopes have equal hashes.
@@ -139,26 +139,28 @@ class ZarrV2Context:
         """
         return claimant_in(self._tables, kind, name)
 
-    def update(self, **slots: Unpack[ZarrV2ContextSlots]) -> ZarrV2Context:
-        """This scope, with each slot given here holding only the definitions given for it. The other slots are kept.
+    def copy(self, *, update: ZarrV2ContextSlots | None = None) -> ZarrV2Context:
+        """This scope, with each slot in `update` holding only the definitions given for it, as pydantic's `model_copy(update=...)` replaces each field it is given. The other slots are kept.
 
-        A slot can be given as a mapping from each definition's name to
-        it, so a slot of this scope passes back in changed:
-        `context.update(codecs={**context.codecs, "gzip": MY_GZIP})`
-        replaces the gzip definition and keeps the other codecs, and
-        `context.update(codecs=[*context.codecs.values(), MY_CODEC])` adds
-        one, raising `ScopeConflictError` if the scope already files
-        another definition under its name.
+        A slot given here is replaced whole: `context.copy(update={"codecs": [MY_CODEC]})`
+        is a scope whose only codec is `MY_CODEC`. To add definitions to a
+        scope, use `union`: `context.union(ZarrV2Context(codecs=[MY_CODEC]))`.
+        A slot can be given as a mapping from each definition's name to it,
+        so a slot of this scope passes back in changed:
+        `context.copy(update={"codecs": {**context.codecs, "gzip": MY_GZIP}})`
+        replaces the gzip definition and keeps the other codecs.
         """
-        return self._of(updated(self._tables, self.kinds, slots, 2))
+        return self._of(updated(self._tables, self.kinds, {} if update is None else update, 2))
 
     def union(self, *others: ZarrV2Context) -> ZarrV2Context:
         """The smallest scope that files everything this scope and each of `others` file.
 
-        Raises `ScopeConflictError` when two of them file different
-        definitions under one name in a slot. To replace a definition on
-        purpose, use `update`. Raises `TypeError` for a scope of another
-        format.
+        This is how to add definitions to a scope:
+        `CORE_V2_CONTEXT.union(ZarrV2Context(codecs=[MY_CODEC]))` keeps every
+        definition of `CORE_V2_CONTEXT` and adds `MY_CODEC`. Raises
+        `ScopeConflictError` when two of them file different definitions
+        under one name in a slot. To replace a definition on purpose, use
+        `copy`. Raises `TypeError` for a scope of another format.
         """
         refuse_others(others, ZarrV2Context)
         return self._of(

@@ -33,7 +33,7 @@ uv run --with-editable . examples/lazy_indexing_numpy/lazy_indexing_numpy.py
 ```
 
 Alternatively, run it with plain Python, in which case you must first install
-`zarr-indexing`, `numpy`, and `pytest` yourself:
+`zarr-indexing` and `numpy` yourself:
 
 ```bash
 cd packages/zarr-indexing

@@ -14,7 +14,7 @@ import pytest
 
 from zarr_metadata import JSONValue
 from zarr_metadata.definition import (
-    ResolvedField,
+    ResolvedDeclaration,
     resolve,
 )
 from zarr_metadata.model import (
@@ -25,7 +25,7 @@ from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
 from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
+    CORE_AND_EXTENSIONS_CONTEXT,
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
@@ -41,8 +41,8 @@ LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
 INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
-def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
-    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
+def _dt(name: JSONValue) -> ResolvedDeclaration[DataTypeDefinition[Any]]:
+    return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS_CONTEXT)[0]
 
 
 FLOAT32 = _dt("float32")
@@ -50,7 +50,7 @@ UINT64 = _dt("uint64")
 
 
 def _chunk(
-    *axes: set[int] | None, data_type: ResolvedField[DataTypeDefinition[Any]] = FLOAT32
+    *axes: set[int] | None, data_type: ResolvedDeclaration[DataTypeDefinition[Any]] = FLOAT32
 ) -> Chunk:
     return Chunk(tuple(None if axis is None else frozenset(axis) for axis in axes), data_type)
 
@@ -81,7 +81,7 @@ def _read(
 ) -> tuple[tuple[Stage, ...], tuple[ValidationProblem, ...]]:
     """The stages, and every problem: first each codec's own problems at its location, then the pipeline's."""
     read = [
-        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS, (index,))
+        resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT, (index,))
         for index, codec in enumerate(codecs)
     ]
     stages, found = read_pipeline([resolved for resolved, _ in read], chunk)
@@ -206,20 +206,19 @@ def test_error_an_inner_chunk_length_that_does_not_divide_the_shard(
     ("shard", "found"),
     [
         # Each pipeline is read as the array's pipeline is, at its own location.
-        (_shard([4, 4], codecs=[]), [((0, "configuration", "codecs"), "invalid_value")]),
         (
             _shard([4, 4], codecs=["crc32c", LITTLE]),
             [((0, "configuration", "codecs", 1), "invalid_value")],
         ),
         (
             _shard([4, 4], codecs=["bytes"]),
-            [((0, "configuration", "codecs", 0, "configuration", "endian"), "missing_key")],
+            [((0, "configuration", "codecs", 0, "configuration"), "missing_key")],
         ),
         # The index has data type uint64, whose values take several bytes, and
         # has one more axis than the shard.
         (
             _shard([4, 4], index=["bytes"]),
-            [((0, "configuration", "index_codecs", 0, "configuration", "endian"), "missing_key")],
+            [((0, "configuration", "index_codecs", 0, "configuration"), "missing_key")],
         ),
         (
             _shard([4, 4], index=[_transpose(1, 0), LITTLE]),
@@ -233,6 +232,20 @@ def test_error_a_pipeline_a_shard_holds_that_does_not_fit_what_it_is_handed(
     assert _problems([shard], _chunk({8}, {8})) == found
 
 
+@pytest.mark.parametrize(
+    ("shard", "key"),
+    [(_shard([4, 4], codecs=[]), "codecs"), (_shard([4, 4], index=[]), "index_codecs")],
+    ids=["codecs", "index-codecs"],
+)
+def test_error_a_shard_s_empty_pipeline_is_refused_by_its_type(shard: JSONValue, key: str) -> None:
+    # Each pipeline's type declares it non-empty, so the type check reports
+    # an empty one, before the pipeline's order check would.
+    problems = _read([shard], _chunk({8}, {8}))[1]
+    assert [(p.loc, p.kind, dict(p.ctx)) for p in problems] == [
+        ((0, "configuration", key), "invalid_value", {"min_length": 1})
+    ]
+
+
 def test_error_an_array_document_s_shard_is_read_where_it_sits() -> None:
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(16, 16)).to_json())
     document["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": [8, 6]}}
@@ -240,7 +253,7 @@ def test_error_an_array_document_s_shard_is_read_where_it_sits() -> None:
     assert [(p.loc, p.kind) for p in read_array_metadata_v3(document).problems] == [
         (("codecs", 0, "configuration", "chunk_shape", 1), "invalid_value"),
         (
-            ("codecs", 0, "configuration", "index_codecs", 0, "configuration", "endian"),
+            ("codecs", 0, "configuration", "index_codecs", 0, "configuration"),
             "missing_key",
         ),
     ]

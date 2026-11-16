@@ -53,7 +53,7 @@ def test_a_v2_document_the_scope_reads_has_no_problem(changes: dict[str, Any]) -
     [
         ({"dtype": "float32"}, ("dtype",), "invalid_value"),
         ({"dtype": "<i3"}, ("dtype",), "invalid_value"),
-        ({"dtype": [["x", "<f4"], ["x", "<f4"]]}, ("dtype", "fields", 1, 0), "invalid_value"),
+        ({"dtype": [["x", "<f4"], ["x", "<f4"]]}, ("dtype", 1, 0), "invalid_value"),
         ({"dtype": 3}, ("dtype",), "invalid_type"),
         ({"dtype": "<i4", "fill_value": "NaN"}, ("fill_value",), "invalid_type"),
         ({"dtype": "<u1", "fill_value": 256}, ("fill_value",), "invalid_value"),
@@ -85,16 +85,6 @@ def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
     """A dtype, fill value, compressor or filter that the scope refuses produces one problem in the document, at the wrong field or parameter. Previously, the string content of a dtype and the parameters of a codec were not checked."""
     problems = read_array_metadata_v2({**BASE, **changes}).problems
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
-
-
-def test_create_default_keeps_zero_where_the_family_takes_it() -> None:
-    """When `create_default` is given a dtype and no fill value, it uses `0` if the dtype family allows it and `null` otherwise. A given fill value is kept."""
-    assert ZarrV2ArrayMetadata.create_default(dtype="|b1").fill_value is None
-    assert ZarrV2ArrayMetadata.create_default(dtype="<f8").fill_value == 0
-    assert ZarrV2ArrayMetadata.create_default(dtype="<i4").fill_value == 0
-    assert ZarrV2ArrayMetadata.create_default(dtype="|S3").fill_value is None
-    assert ZarrV2ArrayMetadata.create_default(dtype="<f4", fill_value=1.5).fill_value == 1.5
-    assert ZarrV2ArrayMetadata.create_default().fill_value == 0
 
 
 def test_a_v2_model_refuses_a_dtype_the_scope_refuses() -> None:

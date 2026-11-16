@@ -43,6 +43,11 @@ dependencies = [
     "typing_extensions>=4.16",
 ]
 
+[project.optional-dependencies]
+# `zarr_metadata.testing.strategies`. 6.85: first release with
+# `characters(exclude_categories=...)`.
+testing = ["hypothesis>=6.85"]
+
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"
@@ -57,6 +62,7 @@ test = [
     "jsonschema",
     "hypothesis",
     "pytest-examples>=0.0.18",
+    "griffelib",
 ]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root

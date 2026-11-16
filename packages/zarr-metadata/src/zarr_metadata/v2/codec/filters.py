@@ -9,62 +9,19 @@ array's dtype compares, so `<i1` and `|i1` are one parameter.
 
 from __future__ import annotations
 
-from typing import Annotated, Final, NotRequired
+from typing import Final
 
-from annotated_types import Ge, Interval, Le
-from typing_extensions import ReadOnly, TypedDict
-
-from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata._common import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
+from zarr_metadata.v2._types.codec import (
+    ZarrV2AsTypeParameters,
+    ZarrV2BitRoundParameters,
+    ZarrV2DeltaParameters,
+    ZarrV2FixedScaleOffsetParameters,
+    ZarrV2QuantizeParameters,
+    ZarrV2ShuffleParameters,
+)
 from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
-
-
-class ZarrV2ShuffleParameters(TypedDict, closed=True):
-    """`numcodecs.Shuffle(elementsize=4)`. An element size of 1 or less leaves the bytes as they are. numcodecs passes a larger one to C as a `Py_ssize_t`, so it is at most 2**63 - 1 on a 64-bit platform, and raises `OverflowError` for any other."""
-
-    elementsize: NotRequired[ReadOnly[Annotated[int, Le(2**63 - 1)]]]
-
-
-class ZarrV2DeltaParameters(TypedDict, closed=True):
-    """`numcodecs.Delta(dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
-
-    dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str | None]]
-
-
-class ZarrV2FixedScaleOffsetParameters(TypedDict, closed=True):
-    """`numcodecs.FixedScaleOffset(offset, scale, dtype, astype=None)`. When `astype` is omitted or null, it equals `dtype`."""
-
-    offset: ReadOnly[float | int]
-    scale: ReadOnly[float | int]
-    dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str | None]]
-
-
-class ZarrV2QuantizeParameters(TypedDict, closed=True):
-    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype`, and `astype` when present, name a float. When `astype` is omitted or null, it equals `dtype`.
-
-    `digits` is the number of decimal digits to keep, and may be negative.
-    numcodecs computes `10.0 ** -digits` and a power of two above it, which
-    overflow a float outside -308 to 307.
-    """
-
-    digits: ReadOnly[Annotated[int, Interval(ge=-308, le=307)]]
-    dtype: ReadOnly[str]
-    astype: NotRequired[ReadOnly[str | None]]
-
-
-class ZarrV2BitRoundParameters(TypedDict, closed=True):
-    """`numcodecs.BitRound(keepbits)`."""
-
-    keepbits: ReadOnly[Annotated[int, Ge(0)]]
-
-
-class ZarrV2AsTypeParameters(TypedDict, closed=True):
-    """`numcodecs.AsType(encode_dtype, decode_dtype)`."""
-
-    encode_dtype: ReadOnly[str]
-    decode_dtype: ReadOnly[str]
 
 
 def _shuffle_canonical(configuration: ZarrV2ShuffleParameters) -> ZarrV2ShuffleParameters:

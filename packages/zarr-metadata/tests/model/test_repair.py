@@ -325,12 +325,13 @@ def test_read_repaired_v2_node_reads_what_the_strict_read_refuses(
     files: dict[str, object], model: object, repaired_at: list[tuple[str | int, ...]]
 ) -> None:
     """The strict `read_node_metadata_v2` refuses the `.zarray` that zarr-python 3.0.0 to 3.0.6 wrote for a non-finite float or complex fill value, at each non-finite number. `read_repaired_node_metadata_v2` reads the repaired files, with the same result as a strict read of them, and lists a repair at each place the strict read refused. A valid node reads the same either way."""
-    assert [p.loc for p in read_node_metadata_v2(files).problems] == repaired_at
+    at = [(".zarray", *loc) for loc in repaired_at]
+    assert [p.loc for p in read_node_metadata_v2(files).problems] == at
     repaired = read_repaired_node_metadata_v2(files)
     assert repaired.reading.problems == ()
     assert repaired.reading.metadata == model
     assert [(r.loc, r.kind) for r in repaired.repairs] == [
-        ((".zarray", *loc), "non_finite_fill_value") for loc in repaired_at
+        (loc, "non_finite_fill_value") for loc in at
     ]
 
 
@@ -339,7 +340,9 @@ def test_read_repaired_v2_node_reports_what_no_repair_applies_to() -> None:
     files = {".zarray": {**NAN_ZARRAY, "order": "X"}}
     repaired = read_repaired_node_metadata_v2(files)
     assert [r.kind for r in repaired.repairs] == ["non_finite_fill_value"]
-    assert [(p.loc, p.kind) for p in repaired.reading.problems] == [(("order",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in repaired.reading.problems] == [
+        ((".zarray", "order"), "invalid_value")
+    ]
     assert repaired.reading.metadata is None
 
 

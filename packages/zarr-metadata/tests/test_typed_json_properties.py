@@ -23,13 +23,14 @@ fraction, such as `1.0`, as the integer it equals.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import itertools
 import json
 import sys
 import types
 import typing
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal, NewType, NotRequired, Required, TypeAlias, Union, cast
 
 import pytest
@@ -262,7 +263,7 @@ class Build:
     """A spec built from source text, with each class in its own module and the names it uses imported there."""
 
     mode: Mode
-    source: list[str] = field(default_factory=list)
+    source: list[str] = dataclasses.field(default_factory=list)
     """The source text of what was built, for the notes of a failing example."""
 
     def annotation(self, spec: Spec) -> object:

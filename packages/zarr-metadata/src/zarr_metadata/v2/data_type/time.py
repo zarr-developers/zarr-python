@@ -2,33 +2,21 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge
-from typing_extensions import ReadOnly, TypedDict
+from typing import TYPE_CHECKING, Final
 
 from zarr_metadata._numpy import (
-    NumpyTimeScaleFactor,
-    NumpyTimeTicks,
     numpy_time_fill_value_canonical,
 )
+from zarr_metadata.definition._definition import ConstantFillValue
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type._rules import time_rules
-from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,
+from zarr_metadata.v2._types.data_type import (
+    ZarrV2TimeConfiguration,
+    ZarrV2TimeFillValue,
 )
+from zarr_metadata.v2.data_type._rules import time_rules
 
 if TYPE_CHECKING:
     from zarr_metadata.definition._definition import Nested
-
-
-class ZarrV2TimeConfiguration(TypedDict, closed=True):
-    """The configuration that a time typestr carries. For example, `<M8[10ns]` is `{"byteorder": "<", "itemsize": 8, "unit": "ns", "scale_factor": 10}`."""
-
-    byteorder: ReadOnly[ZarrV2ByteOrder]
-    itemsize: ReadOnly[Annotated[int, Ge(0)]]
-    unit: NotRequired[ReadOnly[str]]
-    scale_factor: NotRequired[ReadOnly[NumpyTimeScaleFactor]]
 
 
 def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguration:
@@ -36,10 +24,6 @@ def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguratio
     if configuration.get("unit") == "μs":
         return {**configuration, "unit": "us"}
     return configuration
-
-
-ZarrV2TimeFillValue = NumpyTimeTicks | Literal["NaT"] | None
-"""A v2 time fill value: a count of ticks, `"NaT"`, or null."""
 
 
 def _fill_value_canonical(
@@ -57,6 +41,7 @@ DATETIME64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=time_rules("M"),
     canonical=_canonical,
     fill_value=ZarrV2TimeFillValue,
+    fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=_fill_value_canonical,
 )
 """`<M8[unit]`: a point in time, as ticks of the unit since the epoch."""
@@ -67,6 +52,7 @@ TIMEDELTA64_DATA_TYPE_V2: Final = ZarrV2DataTypeDefinition(
     rules=time_rules("m"),
     canonical=_canonical,
     fill_value=ZarrV2TimeFillValue,
+    fill_value_default=ConstantFillValue("NaT"),
     fill_value_canonical=_fill_value_canonical,
 )
 """`<m8[unit]`: a duration, as ticks of the unit."""

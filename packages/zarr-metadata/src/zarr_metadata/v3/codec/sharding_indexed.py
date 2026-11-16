@@ -5,84 +5,29 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from collections.abc import Iterator, Mapping
-from typing import Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import (
-    AcceptedField,
+    AcceptedDeclaration,
     Nested,
 )
-from zarr_metadata.v3._common import (
-    ZarrV3CodecField,
-    ZarrV3StaticCodecField,
-)
 from zarr_metadata.v3._definition import (
+    ArrayBytesCodecDefinition,
     Chunk,
-    CodecDefinition,
     Lengths,
 )
-from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE, UINT64_DATA_TYPE_NAME
-
-SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
-"""The `name` field value of the `sharding_indexed` codec."""
-
-ShardingIndexedCodecName = Literal["sharding_indexed"]
-"""Literal type of the `name` field of the `sharding_indexed` codec."""
-
-ShardingIndexLocation = Literal["start", "end"]
-"""Literal type of the position of the shard index within the encoded shard."""
-
-SHARDING_INDEX_LOCATION: Final = ("start", "end")
-"""Tuple of permitted values for the `index_location` field of the `sharding_indexed` codec."""
-
-
-class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
-    """
-    Configuration for the Zarr v3 `sharding_indexed` codec.
-
-    `chunk_shape` is the shape of inner chunks along each dimension;
-    it must evenly divide the shard shape.
-
-    `codecs` is the codec pipeline applied to each inner chunk; exactly
-    one array-to-bytes codec is required.
-
-    `index_codecs` is the codec pipeline applied to the shard index. It may
-    contain only codecs of static size, because a reader locates the index
-    by a size that it knows before reading it. A compressor in this
-    pipeline is therefore rejected.
-      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L147-L155
-
-    `index_location` defaults to `"end"` per the spec.
-      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161
-    """
-
-    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
-    codecs: tuple[ZarrV3CodecField, ...]
-    index_codecs: tuple[ZarrV3StaticCodecField, ...]
-    index_location: NotRequired[ShardingIndexLocation]
-
-
-class ShardingIndexedCodecObject(TypedDict, closed=True):
-    """`sharding_indexed` codec metadata in object form."""
-
-    name: ShardingIndexedCodecName
-    configuration: ShardingIndexedCodecConfiguration
-    must_understand: NotRequired[bool]
-
-
-ShardingIndexedCodecMetadata = ShardingIndexedCodecObject
-"""Permitted JSON shape for `sharding_indexed` codec metadata.
-
-The configuration has multiple required keys (`chunk_shape`, `codecs`,
-`index_codecs`), so only the object form is valid; the short-hand-name
-form is not permitted by the spec for this codec.
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L129-L138 (`chunk_shape`)
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (`codecs` and `index_codecs`, the members the spec marks required)
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
-"""
+from zarr_metadata.v3._types.codec import (
+    SHARDING_INDEX_LOCATION,
+    SHARDING_INDEXED_CODEC_NAME,
+    ShardingIndexedCodecConfiguration,
+    ShardingIndexedCodecMetadata,
+    ShardingIndexedCodecName,
+    ShardingIndexedCodecObject,
+    ShardingIndexLocation,
+)
+from zarr_metadata.v3._types.data_type import UINT64_DATA_TYPE_NAME
+from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 
 
 def _chunk_rules(
@@ -122,7 +67,7 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = AcceptedField(
+_UINT64: Final = AcceptedDeclaration(
     json=UINT64_DATA_TYPE_NAME,
     name=UINT64_DATA_TYPE_NAME,
     definition=UINT64_DATA_TYPE,
@@ -189,18 +134,17 @@ def _canonical(
     return simpler
 
 
-SHARDING_INDEXED_CODEC: Final = CodecDefinition(
+SHARDING_INDEXED_CODEC: Final = ArrayBytesCodecDefinition(
     name=SHARDING_INDEXED_CODEC_NAME,
     configuration=ShardingIndexedCodecConfiguration,
     canonical=_canonical,
-    kind="array_bytes",
     size="dynamic",
     chunk_rules=_chunk_rules,
     pipelines=_pipelines,
 )
 """The `sharding_indexed` codec.
 
-Its two pipelines are nested fields. Each codec in them is read in the
+Its two pipelines are nested declarations. Each codec in them is read in the
 same scope as the shard, and each pipeline is read as a pipeline: the
 inner codecs receive the inner chunks, and the index codecs receive the
 shard index.

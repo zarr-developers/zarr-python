@@ -5,69 +5,23 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from collections.abc import Iterator
-from typing import Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge, Interval
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
-from zarr_metadata.v3._definition import CodecDefinition
-
-BLOSC_CODEC_NAME: Final = "blosc"
-"""The `name` field value of the `blosc` codec."""
-
-BloscCodecName = Literal["blosc"]
-"""Literal type of the `name` field of the `blosc` codec."""
-
-BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-"""Literal type of blosc shuffle mode names."""
-
-BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
-"""Tuple of permitted values for the `shuffle` field of the `blosc` codec."""
-
-BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
-"""Literal type of blosc compressor identifiers."""
-
-BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
-"""Tuple of permitted values for the `cname` field of the `blosc` codec."""
-
-
-class BloscCodecConfiguration(TypedDict, closed=True):
-    """Configuration for the Zarr v3 `blosc` codec."""
-
-    cname: BloscCName
-    clevel: Annotated[int, Interval(ge=0, le=9)]
-    shuffle: BloscShuffle
-    blocksize: Annotated[int, Ge(0)]
-    typesize: NotRequired[int]
-
-
-class BloscCodecObject(TypedDict, closed=True):
-    """`blosc` codec metadata in object form."""
-
-    name: BloscCodecName
-    configuration: BloscCodecConfiguration
-    must_understand: NotRequired[bool]
-
-
-BloscCodecMetadata = BloscCodecObject
-"""Permitted JSON shape for `blosc` codec metadata.
-
-The configuration has multiple required keys (`cname`, `clevel`, `shuffle`,
-`blocksize`), so only the object form is valid; the short-hand-name form
-is not permitted by the spec for this codec.
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/blosc/index.rst#L57-L98 (configuration parameters)
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
-"""
-
-BLOSC_NO_SHUFFLE: Final = "noshuffle"
-"""The `shuffle` value under which `typesize` carries no information.
-
-The spec requires `typesize` "unless `shuffle` is `"noshuffle"`, in which
-case the value is ignored", so this is the one value that changes whether
-another member is required.
-"""
+from zarr_metadata.v3._definition import BytesBytesCodecDefinition
+from zarr_metadata.v3._types.codec import (
+    BLOSC_CNAME,
+    BLOSC_CODEC_NAME,
+    BLOSC_NO_SHUFFLE,
+    BLOSC_SHUFFLE,
+    BloscCName,
+    BloscCodecConfiguration,
+    BloscCodecMetadata,
+    BloscCodecName,
+    BloscCodecObject,
+    BloscShuffle,
+)
 
 
 def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
@@ -108,10 +62,9 @@ def _canonical(configuration: BloscCodecConfiguration) -> BloscCodecConfiguratio
     return simpler
 
 
-BLOSC_CODEC: Final = CodecDefinition(
+BLOSC_CODEC: Final = BytesBytesCodecDefinition(
     name=BLOSC_CODEC_NAME,
     configuration=BloscCodecConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
     rules=_rules,
     canonical=_canonical,

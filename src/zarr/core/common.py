@@ -220,6 +220,27 @@ def parse_name(data: JSON, expected: str | None = None) -> str:
     raise ValueError(f"Expected '{expected}'. Got {data} instead.")
 
 
+@overload
+def expand_short_hand_name(data: str) -> dict[str, JSON]: ...
+
+
+@overload
+def expand_short_hand_name[T](data: T) -> T: ...
+
+
+def expand_short_hand_name(data: object) -> object:
+    """
+    Expand the short-hand name form of a Zarr V3 extension definition: a bare string `name`
+    is equivalent to the object `{"name": name}`. Any other value is returned unchanged.
+
+    Zarr V3.1 permits the short-hand form at every extension point of array metadata. See
+    https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#short-hand-names
+    """
+    if isinstance(data, str):
+        return {"name": data}
+    return data
+
+
 def parse_configuration(data: JSON) -> JSON:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")

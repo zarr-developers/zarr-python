@@ -1,8 +1,8 @@
 """Private input types used only to generate accurate Pydantic JSON schemas.
 
 These repeat the document TypedDicts in a stricter form: extension names
-match the spec's pattern, `must_understand` is `true` at an extension
-point, and `codecs` is not empty. They exist because pydantic builds a
+match the spec's pattern, and `must_understand` is `true` at an extension
+point. They exist because pydantic builds a
 schema from Python types and cannot embed a JSON Schema that has its own
 `$defs`, such as the ones `zarr_metadata.json_schema` writes; the v3
 document schemas are recursive, so they cannot be inlined either.
@@ -16,6 +16,7 @@ import re
 from collections.abc import Mapping  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
+from annotated_types import MinLen
 from pydantic import Field
 from typing_extensions import TypedDict
 
@@ -55,11 +56,9 @@ class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
     must_understand: NotRequired[Literal[True]]
 
 
-ZarrV3MetadataFieldJSON = ExtensionName | ZarrV3NamedConfigJSON
-ZarrV3MandatoryMetadataFieldJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
-ZarrV3CodecPipelineJSON = Annotated[
-    tuple[ZarrV3MandatoryMetadataFieldJSON, ...], Field(min_length=1)
-]
+ZarrV3DeclarationJSON = ExtensionName | ZarrV3NamedConfigJSON
+ZarrV3MandatoryDeclarationJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
+ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MandatoryDeclarationJSON, ...], MinLen(1)]
 ZarrV2FilterPipelineJSON = tuple[ZarrV2CodecMetadata, ...]
 
 
@@ -68,14 +67,14 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: ZarrV3MandatoryMetadataFieldJSON
+    data_type: ZarrV3MandatoryDeclarationJSON
     shape: tuple[NonNegativeInt, ...]
-    chunk_grid: ZarrV3MandatoryMetadataFieldJSON
-    chunk_key_encoding: ZarrV3MandatoryMetadataFieldJSON
+    chunk_grid: ZarrV3MandatoryDeclarationJSON
+    chunk_key_encoding: ZarrV3MandatoryDeclarationJSON
     fill_value: JSONValue
     codecs: ZarrV3CodecPipelineJSON
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[ZarrV3MandatoryMetadataFieldJSON, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3MandatoryDeclarationJSON, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
@@ -146,6 +145,6 @@ __all__ = [
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3ConsolidatedMetadataJSON",
+    "ZarrV3DeclarationJSON",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3MetadataFieldJSON",
 ]

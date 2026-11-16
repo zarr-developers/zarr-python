@@ -1,4 +1,4 @@
-"""The JSON shapes of a v2 dtype and a v2 codec. They are in their own module so that both the array document and the definitions can import them without a cycle; `zarr_metadata.v2.data_type` and `zarr_metadata.v2.codec` export them."""
+"""The JSON shapes of a v2 dtype and a v2 codec, and the alias that annotates a member holding a v2 dtype. They are in their own module so that both the array document and the definitions can import them without a cycle; `zarr_metadata.v2.data_type` and `zarr_metadata.v2.codec` export the shapes, and `zarr_metadata.v2.definition` the alias."""
 
 from typing_extensions import TypeAliasType, TypedDict
 
@@ -40,6 +40,15 @@ class ZarrV2CodecMetadata(TypedDict, extra_items=JSONValue):
     """
 
     id: str
+    """The numcodecs id that names the codec, such as `"blosc"`."""
 
 
-__all__ = ["ZarrV2CodecMetadata", "ZarrV2DataTypeMetadata"]
+ZarrV2DataTypeDeclaration = TypeAliasType("ZarrV2DataTypeDeclaration", ZarrV2DataTypeMetadata)
+"""A declaration of a v2 dtype: the value of a document's `dtype` member, or the type of a struct record. It is read in the same scope as its container."""
+
+
+__all__ = [
+    "ZarrV2CodecMetadata",
+    "ZarrV2DataTypeDeclaration",
+    "ZarrV2DataTypeMetadata",
+]

@@ -947,6 +947,41 @@ def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
     assert_array_equal(expect, actual)
 
 
+_ELLIPSIS_MASK = np.array([True, False, True, False, False, True, False])
+
+
+@pytest.mark.parametrize(
+    ("selection", "expanded"),
+    [
+        ((np.array([1, 2]), Ellipsis), (np.array([1, 2]), slice(None), slice(None))),
+        (([1, 2], Ellipsis), ([1, 2], slice(None), slice(None))),
+        ((_ELLIPSIS_MASK, Ellipsis), (_ELLIPSIS_MASK, slice(None), slice(None))),
+        ((0, np.array([1, 3]), Ellipsis), (0, np.array([1, 3]), slice(None))),
+        (
+            (np.array([1, 2]), Ellipsis, np.array([0, 9])),
+            (np.array([1, 2]), slice(None), np.array([0, 9])),
+        ),
+        (
+            (np.array([1, 2]), slice(None), np.array([0, 9]), Ellipsis),
+            (np.array([1, 2]), slice(None), np.array([0, 9])),
+        ),
+    ],
+)
+def test_orthogonal_selection_ellipsis_after_array(
+    store: StorePath, selection: Any, expanded: Any
+) -> None:
+    """oindex accepts an Ellipsis that comes after an integer or boolean array."""
+    a = np.arange(420, dtype=int).reshape(7, 6, 10)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(3, 2, 4))
+    expected = oindex(a, expanded)
+    assert_array_equal(expected, z.oindex[selection])
+    assert_array_equal(expected, z.get_orthogonal_selection(selection))
+
+    z.oindex[selection] = -1
+    oindex_set(a, expanded, -1)
+    assert_array_equal(a, z[...])
+
+
 @pytest.mark.parametrize("dtype", ["int8", "int64", "uint8", "uint16", "uint32", "uint64"])
 def test_unsorted_index_unsigned_dtype(store: StorePath, dtype: str) -> None:
     a = np.arange(8).reshape(4, 2)

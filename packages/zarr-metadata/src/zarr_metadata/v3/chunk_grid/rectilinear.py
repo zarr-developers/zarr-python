@@ -1,14 +1,11 @@
 """
 Rectilinear chunk grid (zarr-extensions).
 
-See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md
+See https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md
 """
 
 from collections.abc import Iterator
-from typing import Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
@@ -16,47 +13,14 @@ from zarr_metadata.v3._definition import (
     ChunkGridDefinition,
     Lengths,
 )
-
-RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
-"""The `name` field value of the rectilinear chunk grid."""
-
-RectilinearChunkGridName = Literal["rectilinear"]
-"""Literal type of the `name` field of the rectilinear chunk grid."""
-
-_Positive = Annotated[int, Ge(1)]
-
-RectilinearDimSpec = _Positive | tuple[_Positive | tuple[_Positive, _Positive], ...]
-"""JSON shape for one dimension's rectilinear spec.
-
-Either a bare integer (uniform shorthand for a regular dimension within
-a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
-pairs. Every extent, and every run's length and count, is at least 1.
-"""
-
-
-class RectilinearChunkGridConfiguration(TypedDict, closed=True):
-    """Configuration for the rectilinear chunk grid."""
-
-    kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpec, ...]
-
-
-class RectilinearChunkGridObject(TypedDict, closed=True):
-    """Rectilinear chunk grid metadata in object form."""
-
-    name: RectilinearChunkGridName
-    configuration: RectilinearChunkGridConfiguration
-    must_understand: NotRequired[bool]
-
-
-RectilinearChunkGridMetadata = RectilinearChunkGridObject
-"""Permitted JSON shape for rectilinear chunk grid metadata.
-
-`kind` and `chunk_shapes` are required, so only the object form is valid;
-the short-hand-name form is not permitted by the spec for this grid.
-  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L59-L62
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
-"""
+from zarr_metadata.v3._types.chunk_grid import (
+    RECTILINEAR_CHUNK_GRID_NAME,
+    RectilinearChunkGridConfiguration,
+    RectilinearChunkGridMetadata,
+    RectilinearChunkGridName,
+    RectilinearChunkGridObject,
+    RectilinearDimSpec,
+)
 
 
 def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
@@ -115,7 +79,7 @@ def _shape_rules(
 
     "The length of `chunk_shapes` MUST match the number of dimensions of
     the array", and "The sum of the edge lengths MUST equal or exceed `L`"
-    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md?plain=1#L62-L95).
     A bare integer repeats until it covers the dimension, so it always
     passes this check.
     """
@@ -148,7 +112,7 @@ def _chunk_lengths(
     A bare integer is the length of every chunk along its axis. A list
     gives the length of each chunk, and a `[length, count]` pair gives
     `count` chunks of that length
-    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    (https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md?plain=1#L62-L95).
     Every listed length counts, including the length of a chunk past the
     array's edge, which the array grows into when it is resized.
     """

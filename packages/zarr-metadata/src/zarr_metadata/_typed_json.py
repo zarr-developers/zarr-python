@@ -9,9 +9,11 @@ and `tuple[T1, T2]`, a union of those, an object described by a TypedDict,
 `Mapping[str, V]`, a `NewType` (parsed as its supertype), and a type alias
 (parsed as the type it stands for). This short list keeps the module
 small. Any other annotation has no parser. A number type may carry bounds,
-written with annotated-types as pydantic reads them, for example
-`Annotated[int, Interval(ge=0, le=9)]`. A value outside the bounds is a
-problem. `constraints_of` lists the bounds the checker supports.
+an integer type a step, and an array or a string bounds on its length, written
+with annotated-types as pydantic reads them, for example
+`Annotated[int, Interval(ge=0, le=9)]`, `Annotated[int, MultipleOf(4)]` or
+`Annotated[tuple[int, ...], MinLen(1)]`. A value outside the bounds is a
+problem. `constraints_of` lists the constraints the checker supports.
 
 A TypedDict is read as the typing spec defines it. This is not always
 what its runtime attributes say. `typeddict_keys` reads which keys the
@@ -23,7 +25,7 @@ reported as `unknown_key` and left out.
 
 `check` is the full entry point for a caller that has a JSON value and a
 TypedDict. The public module `zarr_metadata.typed_json` exports it.
-This module does not know what a metadata field is. A caller with its own
+This module does not know what a declaration is. A caller with its own
 shapes passes a `leaf`. The parser asks the leaf first for every
 annotation at every depth, and uses the parser the leaf returns without
 changes. Parsers are compiled once per annotation and are pure functions
@@ -86,6 +88,8 @@ from zarr_metadata._json import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sized
+
     from zarr_metadata._json import ProblemKind
 
 
@@ -259,8 +263,21 @@ class TypedDictKeys:
     """
 
     members: Mapping[str, tuple[object, bool]]
+    """Every key it declares, its bases' included, with its value's type and whether it is required.
+
+    The type has its qualifiers and `Annotated` metadata peeled.
+    """
     extra_items: object
+    """What any other key may hold.
+
+    `Never` when the TypedDict is closed, `object` when it is open, and the
+    `extra_items` type otherwise.
+    """
     declared: bool
+    """Whether the TypedDict or a base said what other keys may hold, rather than defaulting.
+
+    It is said with `closed=` or `extra_items=`. A TypedDict that says nothing is open.
+    """
 
     @property
     def required(self) -> frozenset[str]:
@@ -454,10 +471,19 @@ def _named(annotation: object, seen: frozenset[object]) -> tuple[str, str]:
         return choices(values), f"values in [{listed}]"
     if is_union(inner):
         # Name each shape once, since two TypedDicts are both "an object".
-        # A broader shape absorbs a narrower one: "a number" absorbs "an
-        # integer", and "a string" absorbs a `Literal` of strings.
+        # Arrays of two or more fixed lengths are named by their lengths:
+        # a union reports an array against itself only when it has none of
+        # them. A broader shape absorbs a narrower one: "a number" absorbs
+        # "an integer", and "a string" absorbs a `Literal` of strings.
         branches = get_args(inner)
-        named = dict.fromkeys(_named(branch, seen) for branch in branches)
+        lengths = sorted({length for length in map(fixed_length, branches) if length is not None})
+        if len(lengths) > 1:
+            listed = f"{', '.join(map(str, lengths[:-1]))} or {lengths[-1]}"
+            arrays = (f"an array of {listed} elements", f"arrays of {listed} elements")
+            rest = [branch for branch in branches if fixed_length(branch) is None]
+            named = dict.fromkeys([arrays, *(_named(branch, seen) for branch in rest)])
+        else:
+            named = dict.fromkeys(_named(branch, seen) for branch in branches)
         if ("a number", "numbers") in named:
             named.pop(("an integer", "integers"), None)
         if ("a string", "strings") in named:
@@ -541,6 +567,22 @@ def shape_of(annotation: object) -> str | None:
     if isinstance(inner, type) and is_typeddict(inner):
         return "mapping"
     return None
+
+
+def fixed_length(annotation: object) -> int | None:
+    """The length of an array of a fixed length, such as `tuple[str, int]`; None for any other annotation, including `tuple[int, ...]`."""
+    inner = _unaliased(annotation)
+    if get_origin(inner) is not tuple:
+        return None
+    arguments = get_args(inner)
+    if len(arguments) == 2 and arguments[1] is Ellipsis:
+        return None
+    return len(arguments)
+
+
+def _has_length(length: int | None, value: object) -> bool:
+    """Whether `value` has `length` elements, when a branch is an array of a fixed length. Any value passes a branch without one."""
+    return length is None or (is_list_or_tuple(value) and len(value) == length)
 
 
 def has_shape(shape: str | None, value: object) -> bool:
@@ -640,8 +682,8 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     return parse
 
 
-Branch: TypeAlias = tuple[str | None, Parser, frozenset[str] | None]
-"""A branch of a union: its top-level shape (from `shape_of`), its parser, and its keys if it is a TypedDict."""
+Branch: TypeAlias = tuple[str | None, int | None, Parser, frozenset[str] | None]
+"""A branch of a union: its top-level shape (from `shape_of`), its length if it is an array of a fixed length (from `fixed_length`), its parser, and its keys if it is a TypedDict."""
 
 Tag: TypeAlias = tuple[str, Mapping[tuple[type, object], int]]
 """A key that every branch requires as a `Literal`, and the branch that each of its values selects."""
@@ -657,7 +699,8 @@ def any_of(
     """A member whose type is a union of shapes, parsed by the matching branch.
 
     The parser tries only the branches whose top-level shape matches the
-    value. This way a bad element inside an array is reported at its
+    value, and an array of a fixed length only on an array of that length.
+    This way a bad element inside an array is reported at its
     position inside the array, rather than the whole array being reported
     as wrong. A value that matches no branch's shape is reported once,
     with the expected shapes. When every branch is a TypedDict that
@@ -683,8 +726,8 @@ def any_of(
             return _by_tag(branches, tag, value, loc)
         clean: list[tuple[int, int, Parsed]] = []
         failed: list[tuple[int, int, Parsed]] = []
-        for index, (shape, branch, keys) in enumerate(branches):
-            if not has_shape(shape, value):
+        for index, (shape, length, branch, keys) in enumerate(branches):
+            if not has_shape(shape, value) or not _has_length(length, value):
                 continue
             result = branch(value, loc)
             if len(result[1]) != 0:
@@ -716,7 +759,8 @@ def _by_tag(branches: Sequence[Branch], tag: Tag, value: object, loc: Loc) -> Pa
     index = picks.get((type(said), said)) if _hashable(said) else None
     if index is None:
         return value, (outside_of((*loc, key), said, tuple(entry for _, entry in picks)),)
-    return branches[index][1](value, loc)
+    _, _, parse, _ = branches[index]
+    return parse(value, loc)
 
 
 def _keys_of(value: object) -> AbstractSet[str] | None:
@@ -798,47 +842,118 @@ def mapping_of(value: Parser) -> Parser:
 # --- constraints ---------------------------------------------------------
 
 Constraints: TypeAlias = Mapping[str, int | float]
-"""The bounds a type carries, keyed by the names pydantic uses: `{"ge": 0, "le": 9}`."""
+"""The constraints a type carries, keyed by the names pydantic uses: `{"ge": 0, "le": 9}`, `{"min_length": 1}`."""
 
-_BOUNDS: Final[tuple[tuple[type, str], ...]] = (
-    (annotated_types.Gt, "gt"),
-    (annotated_types.Ge, "ge"),
-    (annotated_types.Lt, "lt"),
-    (annotated_types.Le, "le"),
-)
-"""The annotated-types constraints the checker supports, each with its name."""
 
-_FROM_BELOW: Final = frozenset({"gt", "ge"})
-"""The lower bounds."""
+@dataclass(frozen=True, slots=True)
+class _Constraint:
+    """A constraint the checker reads: its annotated-types marker, and how it is checked and written."""
 
-_FROM_ABOVE: Final = frozenset({"lt", "le"})
-"""The upper bounds."""
+    marker: type
+    """The annotated-types class. Its attribute named as the constraint holds the bound."""
+    keywords: Mapping[str | None, str]
+    """For each shape (from `shape_of`) the constraint applies to, JSON Schema's keyword for it there."""
+    holds: Callable[[float, float], bool]
+    """Whether a measured value satisfies the bound."""
+    slot: Literal["below", "above", "step"]
+    """Which of a type's constraints it is: a lower bound, an upper bound, or a step. A type takes one of each."""
+    of: Literal["number", "integer", "length"]
+    """What the bound limits: a number, an integer, or the length of an array or a string."""
+
+
+_CONSTRAINTS: Final[Mapping[str, _Constraint]] = {
+    "gt": _Constraint(
+        annotated_types.Gt,
+        {"int": "exclusiveMinimum", "number": "exclusiveMinimum"},
+        operator.gt,
+        "below",
+        "number",
+    ),
+    "ge": _Constraint(
+        annotated_types.Ge, {"int": "minimum", "number": "minimum"}, operator.ge, "below", "number"
+    ),
+    "lt": _Constraint(
+        annotated_types.Lt,
+        {"int": "exclusiveMaximum", "number": "exclusiveMaximum"},
+        operator.lt,
+        "above",
+        "number",
+    ),
+    "le": _Constraint(
+        annotated_types.Le, {"int": "maximum", "number": "maximum"}, operator.le, "above", "number"
+    ),
+    "multiple_of": _Constraint(
+        annotated_types.MultipleOf,
+        {"int": "multipleOf"},
+        lambda value, step: value % step == 0,
+        "step",
+        "integer",
+    ),
+    "min_length": _Constraint(
+        annotated_types.MinLen,
+        {"tuple": "minItems", "str": "minLength"},
+        operator.ge,
+        "below",
+        "length",
+    ),
+    "max_length": _Constraint(
+        annotated_types.MaxLen,
+        {"tuple": "maxItems", "str": "maxLength"},
+        operator.le,
+        "above",
+        "length",
+    ),
+}
+"""The annotated-types constraints the checker reads, by the name pydantic uses, which is also the attribute of the marker that holds the bound."""
+
+_NAMES: Final = tuple(each.marker.__name__ for each in _CONSTRAINTS.values())
+"""The names of the markers the checker reads, in the order of `_CONSTRAINTS`."""
+
+_MARKERS: Final = f"{', '.join(_NAMES[:-1])} and {_NAMES[-1]}"
+"""The markers the checker reads, as an error message lists them: "Gt, Ge, Lt, Le, MultipleOf, MinLen and MaxLen"."""
+
+_MEASURED: Final[Mapping[str, str]] = {
+    "number": "a bound is on a number",
+    "integer": "a step is on an integer",
+    "length": "a bound is on an array or a string",
+}
+"""For what each constraint limits, what an error message says it applies to."""
+
+_SECOND: Final[Mapping[str, str]] = {
+    "below": "bound from below",
+    "above": "bound from above",
+    "step": "step",
+}
+"""For each slot, what an error message calls a second constraint in it."""
+
+_STRICTER: Final[Mapping[str, Callable[[int | float, int | float], int | float]]] = {
+    "below": max,
+    "above": min,
+    "step": lambda one, other: math.lcm(int(one), int(other)),
+}
+"""For each slot, the constraint a value meets exactly when it meets both of two: the stricter bound, or the least common multiple of two steps."""
 
 _EXCLUSIVE: Final = frozenset({"gt", "lt"})
 """The exclusive bounds: a value may not equal them."""
 
-_HOLDS: Final[Mapping[str, Callable[[float, float], bool]]] = {
-    "gt": operator.gt,
-    "ge": operator.ge,
-    "lt": operator.lt,
-    "le": operator.le,
-}
-"""For each bound name, a test of whether a number satisfies that bound."""
-
 
 def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
-    """The bounds in an `Annotated` type's metadata, by name: at most one lower and one upper bound.
+    """The constraints in an `Annotated` type's metadata, by name: at most one lower bound, one upper bound and one step.
 
-    The supported bounds are annotated-types' `Gt`, `Ge`, `Lt` and `Le`,
-    and an `Interval`, which unpacks to them, as pydantic reads them. A
-    note (a string or a `Doc`) does not constrain the value and is
-    skipped. Anything else raises `TypeError`:
+    The supported constraints are annotated-types' `Gt`, `Ge`, `Lt` and
+    `Le`, which bound a number, `MultipleOf`, which is a step an integer
+    is a multiple of, `MinLen` and `MaxLen`, which bound the length of an
+    array or a string, and an `Interval` or a `Len`, which unpack to them, as pydantic
+    reads them. A note (a string or a `Doc`) does not constrain the value
+    and is skipped. Anything else raises `TypeError`:
 
-    - a constraint the checker does not support, such as `MinLen`,
-      `Predicate`, or pydantic's `Field`. Otherwise the type would declare
-      a rule that the checker does not enforce.
-    - a second bound on the same side. pydantic uses the last one.
-    - a bound that is not a finite number.
+    - a constraint the checker does not support, such as `Predicate` or
+      pydantic's `Field`. Otherwise the type would declare a rule that the
+      checker does not enforce.
+    - a second bound on the same side, or a second step. pydantic uses the
+      last one.
+    - a bound that is not a finite number, a step that is not a positive
+      integer, or a length bound that is not a non-negative integer.
 
     A bound is stored as the number it equals, as an integer when it is
     one. `Ge(True)`, `Ge(1.0)` and `Ge(1)` are the same bound, because
@@ -849,16 +964,20 @@ def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
     for item in _unpacked(metadata):
         if isinstance(item, (str, typing_extensions.Doc)):
             continue
-        name = next((name for kind, name in _BOUNDS if isinstance(item, kind)), None)
+        name = next(
+            (name for name, each in _CONSTRAINTS.items() if isinstance(item, each.marker)), None
+        )
         if name is None:
-            msg = f"{item!r} is not a constraint the checker reads, which are Gt, Ge, Lt and Le"
+            msg = f"{item!r} is not a constraint the checker reads, which are {_MARKERS}"
             raise UnreadConstraintError(msg)
-        side = _FROM_BELOW if name in _FROM_BELOW else _FROM_ABOVE
-        if not side.isdisjoint(said):
-            where = "below" if side is _FROM_BELOW else "above"
-            msg = f"{item!r} is a second bound from {where}; a type takes one from each side"
+        constraint = _CONSTRAINTS[name]
+        if any(
+            _CONSTRAINTS[held].slot == constraint.slot and _CONSTRAINTS[held].of == constraint.of
+            for held in said
+        ):
+            msg = f"{item!r} is a second {_SECOND[constraint.slot]}; a type takes one of each"
             raise TypeError(msg)
-        said[name] = _bound(item, name)
+        said[name] = _read_bound(item, name, constraint.of)
     return said
 
 
@@ -882,51 +1001,129 @@ def _bound(item: object, name: str) -> int | float:
     raise TypeError(msg)
 
 
+def _read_bound(item: object, name: str, of: str) -> int | float:
+    """The bound of `item` named `name`, as a constraint on what `of` names reads it; `TypeError` if it cannot be one."""
+    if of == "number":
+        return _bound(item, name)
+    if of == "integer":
+        return _step(item, name)
+    return _length(item, name)
+
+
+def _step(item: object, name: str) -> int:
+    """The step of `item` named `name`; `TypeError` if it is not a positive integer, as JSON Schema requires of `multipleOf`."""
+    bound = _bound(item, name)
+    if isinstance(bound, int) and bound > 0:
+        return bound
+    msg = f"{item!r}: a step is a positive integer"
+    raise TypeError(msg)
+
+
+def _length(item: object, name: str) -> int:
+    """The length of length bound `item` named `name`; `TypeError` if it is not a non-negative integer."""
+    bound = _bound(item, name)
+    if isinstance(bound, int) and bound >= 0:
+        return bound
+    msg = f"{item!r}: a length bound is a non-negative integer"
+    raise TypeError(msg)
+
+
 def _constrainable(inner: object, said: Constraints) -> None:
-    """Raise `TypeError` for bounds on a type that is not a number: a string, an array, a value of any type."""
-    if len(said) != 0 and shape_of(inner) not in ("int", "number"):
-        msg = f"{', '.join(said)}: a bound is on a number, and {describe(inner)} is not one"
-        raise TypeError(msg)
+    """Raise `TypeError` for a constraint on a type it does not limit: a bound on what is not a number, a step on what is not an integer, or a length bound on what is not an array or a string."""
+    shape = shape_of(inner)
+    for of, applies in _MEASURED.items():
+        names = [name for name in said if _CONSTRAINTS[name].of == of]
+        if any(shape not in _CONSTRAINTS[name].keywords for name in names):
+            msg = f"{', '.join(names)}: {applies}, and {describe(inner)} is not one"
+            raise TypeError(msg)
 
 
-def constrained(parse: Parser, description: str, said: Constraints) -> Parser:
-    """Wrap `parse` to also check the bounds its type carries: one `invalid_value` problem if any bound fails.
+def constrained(
+    parse: Parser, description: str, said: Constraints, unit: str = "element"
+) -> Parser:
+    """Wrap `parse` to also check the constraints its type carries: one `invalid_value` problem if any fails.
 
-    The message states what the type allows, for example "expected an
-    integer in [0, 9], got 12", and the problem's `ctx` holds the bounds.
-    The bounds are checked only when `parse` reports no problem, in the
-    same way that rules run only on a value of their type.
+    A bound limits a number, a step what an integer is a multiple of, and
+    a length bound the number of `unit`s in the value: the elements of an
+    array, or the characters of a string, which are its code points, as
+    JSON Schema counts them. The message states what the type allows, for
+    example "expected an integer in [0, 9], got 12", "expected an integer
+    > 0 that is a multiple of 4, got 6" or "expected an array of integers
+    with at least 1 element, got []", and the problem's `ctx` holds the
+    constraints, as pydantic names them. The constraints are checked only
+    on a value of the type, in the same way that rules are: when `parse`
+    reports no problem, or only keys that a closed TypedDict does not
+    declare. Such a key is left out and the value is still returned, so
+    the value it returns is held to the constraints too.
     """
-    expected = f"expected {description} {_admitted(said)}"
+    expected = f"expected {description} {_admitted(said, unit)}"
     ctx: dict[str, JSONValue] = dict(said)
-    holds = tuple((_HOLDS[name], bound) for name, bound in said.items())
+    checks = tuple(
+        (_CONSTRAINTS[name].holds, bound, _CONSTRAINTS[name].of == "length")
+        for name, bound in said.items()
+    )
 
     def parse_constrained(value: object, loc: Loc) -> Parsed:
         typed, found = parse(value, loc)
-        if len(found) != 0:
+        if any(each.kind != "unknown_key" for each in found):
             return typed, found
-        number = cast("float", typed)
-        for keeps, bound in holds:
-            if not keeps(number, bound):
+        for keeps, bound, length in checks:
+            measured = len(cast("Sized", typed)) if length else cast("float", typed)
+            if not keeps(measured, bound):
                 message = f"{expected}, got {shown(value)}"
-                return typed, (ValidationProblem(loc, message, "invalid_value", ctx=ctx),)
-        return typed, ()
+                return typed, (*found, ValidationProblem(loc, message, "invalid_value", ctx=ctx))
+        return typed, found
 
     return parse_constrained
 
 
-def _admitted(said: Constraints) -> str:
-    """The range the bounds allow, as written after the type in a message: "in [0, 9]", "in (0, 1)", ">= 1"."""
-    low = next(((name, bound) for name, bound in said.items() if name in _FROM_BELOW), None)
-    high = next(((name, bound) for name, bound in said.items() if name in _FROM_ABOVE), None)
+def _admitted(said: Constraints, unit: str) -> str:
+    """What the constraints allow, as written after the type in a message: "in [0, 9]", ">= 1", "> 0 that is a multiple of 4", "with at least 1 element"."""
+    if any(_CONSTRAINTS[name].of == "length" for name in said):
+        return _admitted_lengths(said.get("min_length"), said.get("max_length"), unit)
+    low = next(
+        ((name, bound) for name, bound in said.items() if _CONSTRAINTS[name].slot == "below"), None
+    )
+    high = next(
+        ((name, bound) for name, bound in said.items() if _CONSTRAINTS[name].slot == "above"), None
+    )
+    bounded = _admitted_range(low, high)
+    step = said.get("multiple_of")
+    if step is None:
+        return bounded
+    multiple = f"that is a multiple of {shown(step)}"
+    return multiple if bounded == "" else f"{bounded} {multiple}"
+
+
+def _admitted_range(
+    low: tuple[str, int | float] | None, high: tuple[str, int | float] | None
+) -> str:
+    """The range a lower and an upper bound allow, each named, as written after the type in a message: "in [0, 9]", "in (0, 1)", ">= 1"; empty without either."""
     if low is not None and high is not None:
         opening = "(" if low[0] in _EXCLUSIVE else "["
         closing = ")" if high[0] in _EXCLUSIVE else "]"
         return f"in {opening}{shown(low[1])}, {shown(high[1])}{closing}"
     if low is not None:
         return f"{'>' if low[0] in _EXCLUSIVE else '>='} {shown(low[1])}"
-    name, bound = cast("tuple[str, int | float]", high)
-    return f"{'<' if name in _EXCLUSIVE else '<='} {shown(bound)}"
+    if high is not None:
+        return f"{'<' if high[0] in _EXCLUSIVE else '<='} {shown(high[1])}"
+    return ""
+
+
+def _admitted_lengths(low: float | None, high: float | None, unit: str) -> str:
+    """The lengths that length bounds allow, counted in `unit`s, as written after the type in a message: "with at least 1 element", "with 1 to 3 characters"."""
+    if low is not None and high is not None:
+        if low == high:
+            return f"with {_counted(low, unit)}"
+        return f"with {shown(low)} to {_counted(high, unit)}"
+    if low is not None:
+        return f"with at least {_counted(low, unit)}"
+    return f"with at most {_counted(cast('float', high), unit)}"
+
+
+def _counted(count: float, unit: str) -> str:
+    """A number of `unit`s, as a message writes it: "1 element", "3 characters"."""
+    return f"{shown(count)} {unit}{'' if count == 1 else 's'}"
 
 
 # --- the compiler --------------------------------------------------------
@@ -953,7 +1150,7 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
             if isinstance(typeddict, type) and is_typeddict(typeddict)
             else None
         )
-        branches.append((shape_of(branch), member, keys))
+        branches.append((shape_of(branch), fixed_length(branch), member, keys))
     literals = frozenset(
         index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
@@ -1097,7 +1294,8 @@ def _compile(annotation: object, leaf: Leaf, building: _Building) -> Parser | No
     if len(said) == 0:
         return parse
     _constrainable(inner, said)
-    return constrained(parse, describe(inner), said)
+    unit = "character" if shape_of(inner) == "str" else "element"
+    return constrained(parse, describe(inner), said, unit)
 
 
 def _compile_type(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
@@ -1274,7 +1472,7 @@ def _typeddicts_in(annotation: object, seen: frozenset[object]) -> tuple[type, .
 
 
 def _metadata_problem(inner: object, metadata: tuple[object, ...]) -> TypeError | None:
-    """The error the checker raises for `metadata` on a member of type `inner`: a constraint it does not read, or a bound on a type that is not a number; None when it reads the metadata, as it does a note."""
+    """The error the checker raises for `metadata` on a member of type `inner`: a constraint it does not read, or a constraint on a type it does not limit; None when it reads the metadata, as it does a note."""
     try:
         _constrainable(inner, constraints_of(metadata))
     except TypeError as error:
@@ -1342,22 +1540,6 @@ other shapes, written with `of`, or be written once in `$defs` with
 DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
 """The dialect of every schema: JSON Schema draft 2020-12, the same dialect pydantic and zod use."""
 
-_KEYWORDS: Final[Mapping[str, str]] = {
-    "gt": "exclusiveMinimum",
-    "ge": "minimum",
-    "lt": "exclusiveMaximum",
-    "le": "maximum",
-}
-"""JSON Schema's keyword for each bound."""
-
-_STRICTER: Final[Mapping[str, Callable[[float, float], float]]] = {
-    "exclusiveMinimum": max,
-    "minimum": max,
-    "exclusiveMaximum": min,
-    "maximum": min,
-}
-"""For each keyword, the function that picks the stricter of two bounds."""
-
 
 def no_schema_leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
     """The schema leaf for a caller with no shapes of its own."""
@@ -1384,15 +1566,17 @@ class Schemas:
         self._uses: dict[str, int] = {}
 
     def of(self, annotation: object) -> JSONSchema:
-        """The schema of `annotation` as the checker reads it: its type, with the bounds and notes from `Annotated`.
+        """The schema of `annotation` as the checker reads it: its type, with the constraints and notes from `Annotated`.
 
-        Each bound becomes the matching JSON Schema keyword (`Ge(0)` becomes
-        `minimum`), and a `Doc` becomes the `description`. The schema keeps
-        both the type's bounds and the bounds of its `NewType`, because the
-        checker applies both. When both set the same keyword, the stricter
-        bound is kept. An annotation the checker supports is written. Any
-        other raises `TypeError`, which cannot happen if the caller already
-        checked the annotation with `parser`.
+        Each constraint becomes the matching JSON Schema keyword (`Ge(0)`
+        becomes `minimum`, `MinLen(1)` becomes `minItems` on an array and
+        `minLength` on a string), and a `Doc`
+        becomes the `description`. The schema keeps both the type's bounds
+        and the bounds of its `NewType`, or of the fixed length of its
+        tuple, because the checker applies both. When both set the same
+        keyword, the stricter bound is kept. An annotation the checker
+        supports is written. Any other raises `TypeError`, which cannot
+        happen if the caller already checked the annotation with `parser`.
         """
         inner, metadata = strip_annotation(annotation)
         schema = self._type(inner)
@@ -1405,10 +1589,15 @@ class Schemas:
         ]
         if len(notes) != 0:
             schema = {**schema, "description": "\n\n".join(notes)}
-        for name, bound in constraints_of(metadata).items():
-            keyword = _KEYWORDS[name]
+        said = constraints_of(metadata)
+        _constrainable(inner, said)
+        shape = shape_of(inner)
+        for name, bound in said.items():
+            constraint = _CONSTRAINTS[name]
+            keyword = constraint.keywords[shape]
             held = cast("int | float | None", schema.get(keyword))
-            schema = {**schema, keyword: bound if held is None else _STRICTER[keyword](held, bound)}
+            kept = bound if held is None else _STRICTER[constraint.slot](held, bound)
+            schema = {**schema, keyword: kept}
         return schema
 
     def object_of(self, typeddict: type) -> JSONSchema:
@@ -1551,8 +1740,9 @@ def json_schema(shape: type) -> JSONSchema:
 
     - A TypedDict becomes an object with its keys, its required keys, and
       what any other key may hold (nothing, for a closed TypedDict).
-    - A bound becomes the matching JSON Schema keyword: `Ge(0)` becomes
-      `minimum`.
+    - A constraint becomes the matching JSON Schema keyword: `Ge(0)`
+      becomes `minimum`, and `MinLen(1)` becomes `minItems` on an array
+      and `minLength` on a string.
     - A `Doc` becomes the `description`. Only a `Doc` produces a
       description; docstrings are for Python readers and are not used.
       This matches zod, which writes only what `.describe()` sets.

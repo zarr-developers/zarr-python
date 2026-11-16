@@ -5,10 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
 from collections.abc import Iterator
-from typing import Annotated, Final, Literal, NotRequired
-
-from annotated_types import Ge
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import Nested
@@ -16,46 +13,13 @@ from zarr_metadata.v3._definition import (
     ChunkGridDefinition,
     Lengths,
 )
-
-REGULAR_CHUNK_GRID_NAME: Final = "regular"
-"""The `name` field value of the regular chunk grid."""
-
-RegularChunkGridName = Literal["regular"]
-"""Literal type of the `name` field of the regular chunk grid."""
-
-
-class RegularChunkGridConfiguration(TypedDict, closed=True):
-    """Configuration for the regular chunk grid.
-
-    Every chunk length is at least 1, even along a dimension of length 0:
-    "Chunk sizes must be greater than zero"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
-    The core spec's "The chunk shape elements are non-zero when the
-    corresponding dimensions of the arrays have non-zero length"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L284-L285)
-    says less about an empty dimension, and it does not allow anything
-    that the grid spec forbids.
-    """
-
-    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
-
-
-class RegularChunkGridObject(TypedDict, closed=True):
-    """Regular chunk grid metadata in object form."""
-
-    name: RegularChunkGridName
-    configuration: RegularChunkGridConfiguration
-    must_understand: NotRequired[bool]
-
-
-RegularChunkGridMetadata = RegularChunkGridObject
-"""Permitted JSON shape for regular chunk grid metadata.
-
-`chunk_shape` is required and has no default, so only the object form is
-valid; the short-hand-name form is not permitted by the spec for this grid.
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L528-L537 ("must be an object with the names name and configuration")
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
-"""
+from zarr_metadata.v3._types.chunk_grid import (
+    REGULAR_CHUNK_GRID_NAME,
+    RegularChunkGridConfiguration,
+    RegularChunkGridMetadata,
+    RegularChunkGridName,
+    RegularChunkGridObject,
+)
 
 
 def _shape_rules(

@@ -15,8 +15,8 @@ model as an opaque value:
 - `InstanceOf` makes pydantic's core schema an is-instance check (no field
   introspection),
 - validation goes through `from_json` (the single source of truth for what
-  a well-formed document is, including normalization: bare-string metadata
-  fields, arrays-to-tuples),
+  a well-formed document is, including normalization: bare-string
+  declarations, arrays-to-tuples),
 - serialization goes through `to_json` (the canonical document form).
 
 `MetadataValidationError` subclasses `ValueError`, so pydantic converts a
@@ -93,7 +93,7 @@ VALID_DOC = {
 
 def test_raw_document_is_validated_into_a_model() -> None:
     """A raw metadata document on a pydantic field is parsed by from_json,
-    with the library's normalization applied (tuples, canonical field form)."""
+    with the library's normalization applied (tuples, canonical declaration form)."""
     manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     assert isinstance(manifest.metadata, ZarrV3ArrayMetadata)
     assert manifest.metadata.shape == (10,)
@@ -159,7 +159,7 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
     path needs its divergences documented again."""
     from zarr_metadata.model import UNSET
     from zarr_metadata.typed_json import JSONValue
-    from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3 import ZarrV3DeclarationJSON, ZarrV3ExtensionField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 
     def build_and_use() -> None:
@@ -169,7 +169,7 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
             _types_namespace={
                 "JSONValue": JSONValue,
                 "ZarrV3ExtensionField": ZarrV3ExtensionField,
-                "ZarrV3MetadataFieldJSON": ZarrV3MetadataFieldJSON,
+                "ZarrV3DeclarationJSON": ZarrV3DeclarationJSON,
                 "ZarrV3ArrayMetadataJSON": ZarrV3ArrayMetadataJSON,
                 "UNSET": UNSET,
             },

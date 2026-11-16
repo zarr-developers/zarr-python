@@ -33,10 +33,9 @@ def _native_dtypes(kind: str) -> tuple[np.dtype[np.generic], ...]:
 
 
 def _v2_names(kind: str) -> tuple[DTypeSpec_V2, ...]:
-    # NumPy's spelling, except that a generic scale is written explicitly.
+    # NumPy's spelling, except that the generic unit, which NumPy omits, is
+    # written explicitly: the v2 spec requires a bracketed unit.
     def suffix(unit: str, scale: int) -> str:
-        if unit == "generic" and scale == 1:
-            return ""
         return f"[{unit}]" if scale == 1 else f"[{scale}{unit}]"
 
     return tuple(
@@ -81,6 +80,23 @@ class TestDateTime64(_TestTimeBase):
         np.dtype("timedelta64[ns]"),
     )
     valid_json_v2 = _v2_names("M8")
+    # The legacy unitless spelling reads as the generic unit and writes back
+    # bracketed, as the v2 spec requires (#4580); NumPy's microsecond alias
+    # reads as NumPy's own spelling.
+    json_alias_v2_params = (
+        (
+            {"name": "<M8", "object_codec_id": None},
+            {"name": "<M8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": ">M8", "object_codec_id": None},
+            {"name": ">M8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": "<M8[μs]", "object_codec_id": None},
+            {"name": "<M8[us]", "object_codec_id": None},
+        ),
+    )
     valid_json_v3 = _v3_configurations("numpy.datetime64")
     invalid_json_v2 = (
         {"name": "datetime64", "object_codec_id": None},
@@ -125,6 +141,21 @@ class TestTimeDelta64(_TestTimeBase):
     )
 
     valid_json_v2 = _v2_names("m8")
+    # See TestDateTime64.json_alias_v2_params.
+    json_alias_v2_params = (
+        (
+            {"name": "<m8", "object_codec_id": None},
+            {"name": "<m8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": ">m8", "object_codec_id": None},
+            {"name": ">m8[generic]", "object_codec_id": None},
+        ),
+        (
+            {"name": "<m8[μs]", "object_codec_id": None},
+            {"name": "<m8[us]", "object_codec_id": None},
+        ),
+    )
     valid_json_v3 = _v3_configurations("numpy.timedelta64")
     invalid_json_v2 = (
         {"name": "timedelta64", "object_codec_id": None},

@@ -1,8 +1,8 @@
 """How a format's scope files its definitions.
 
-No global registry files definitions. Reading a field means
+No global registry files definitions. Reading a declaration means
 deciding which definition its name refers to. That decision depends on
-the *scope* the field is read in, not on the definitions themselves. A
+the *scope* the declaration is read in, not on the definitions themselves. A
 scope is a value built from definitions. `Context` is the protocol a
 reader needs from one. `ZarrV3Context` and `ZarrV2Context`, in each
 format's `definition` module, are the scopes of each format. They are

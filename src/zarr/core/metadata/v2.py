@@ -134,7 +134,7 @@ class ArrayV2Metadata(Metadata):
             "ArrayV2Metadata.chunk_grid is deprecated. "
             "Use ChunkGrid.from_metadata(metadata) instead.",
             DeprecationWarning,
-            stacklevel=2,
+            stacklevel=3,  # skip the `cached_property.__get__` frame
         )
         return ChunkGrid.from_sizes(self.shape, tuple(self.chunks))
 
