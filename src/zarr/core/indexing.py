@@ -828,8 +828,9 @@ class IntArrayDimIndexer:
             dim_out_sel = np.arange(nitems - 1, -1, -1)
             dim_sel_chunk_sorted = dim_sel_chunk[::-1]
         else:
-            # sort indices to group by chunk
-            dim_out_sel = np.argsort(dim_sel_chunk)
+            # sort indices to group by chunk; a stable sort keeps repeated indices in
+            # the order given, so the last value assigned to an item is the one stored
+            dim_out_sel = np.argsort(dim_sel_chunk, kind="stable")
             dim_sel = np.take(dim_sel, dim_out_sel)
             dim_sel_chunk_sorted = dim_sel_chunk[dim_out_sel]
 
@@ -1343,8 +1344,9 @@ class CoordinateIndexer(Indexer):
 
         # group points by chunk
         if np.any(np.diff(chunks_raveled_indices) < 0):
-            # optimisation, only sort if needed
-            sel_sort = np.argsort(chunks_raveled_indices)
+            # optimisation, only sort if needed; a stable sort keeps repeated points in
+            # the order given, so the last value assigned to a point is the one stored
+            sel_sort = np.argsort(chunks_raveled_indices, kind="stable")
             selection_broadcast = tuple(dim_sel[sel_sort] for dim_sel in selection_broadcast)
             chunks_raveled_indices = chunks_raveled_indices[sel_sort]
         else:

@@ -507,17 +507,42 @@ def test_setitem_zarr_array_as_value() -> None:
     assert_array_equal(dst2[2:7], np.arange(2, 7))
 
 
-@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
-def test_setitem_repeated_index():
-    """oindex assignment with repeated indices writes the last value for each duplicated index position."""
-    array = zarr.array(data=np.zeros((4,)), chunks=(1,))
-    indexer = np.array([-1, -1, 0, 0])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([3, 0, 0, 1]))
-
-    indexer = np.array([-1, 0, 0, -1])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([2, 0, 0, 3]))
+@pytest.mark.parametrize("method", ["oindex", "vindex"])
+@pytest.mark.parametrize("layout", ["unit_chunks", "partial_chunks", "one_chunk", "sharded"])
+@pytest.mark.parametrize(
+    ("shape", "selection"),
+    [
+        ((24,), ([-1, -1, 0, 0],)),
+        ((24,), ([-1, 0, 0, -1],)),
+        # long enough that an unstable sort by chunk reorders the repeats
+        ((24,), ([1] + [0] * 23,)),
+        ((6, 6), ([0, 5, 0, -1, 2] * 4, [1, 1, 4, 4, 2] * 4)),
+    ],
+    ids=["adjacent", "interleaved", "many_repeats", "two_dimensions"],
+)
+def test_setitem_repeated_index(
+    method: str, layout: str, shape: tuple[int, ...], selection: tuple[list[int], ...]
+) -> None:
+    """Assignment with repeated indices stores the last value given for each repeated position, as NumPy does."""
+    chunks = {
+        "unit_chunks": (1,) * len(shape),
+        "partial_chunks": (4,) * len(shape),
+        "one_chunk": shape,
+        "sharded": (2,) * len(shape),
+    }[layout]
+    shards = (6,) * len(shape) if layout == "sharded" else None
+    array = zarr.create_array(store={}, shape=shape, chunks=chunks, shards=shards, dtype="i8")
+    expected = np.zeros(shape, dtype="i8")
+    if method == "oindex":
+        np_selection = np.ix_(*selection)
+        value = np.arange(1, 1 + expected[np_selection].size).reshape(expected[np_selection].shape)
+        expected[np_selection] = value
+        array.oindex[selection] = value
+    else:
+        value = np.arange(1, 1 + len(selection[0]))
+        expected[selection] = value
+        array.vindex[selection] = value
+    assert_array_equal(array[:], expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]
