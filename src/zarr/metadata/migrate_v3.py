@@ -209,12 +209,18 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
         bytes_bytes_codec = _convert_compressor(metadata_v2.compressor, metadata_v2.dtype)
         codecs.append(bytes_bytes_codec)
 
+    # Zarr v2 allows a null fill value, Zarr v3 does not. Use the default that is
+    # already used when reading chunks of the v2 array that were never written.
+    fill_value: object = metadata_v2.fill_value
+    if fill_value is None:
+        fill_value = metadata_v2.dtype.default_scalar()
+
     return ArrayV3Metadata(
         shape=metadata_v2.shape,
         data_type=metadata_v2.dtype,
         chunk_grid=RegularChunkGridMetadata(chunk_shape=metadata_v2.chunks),
         chunk_key_encoding=chunk_key_encoding,
-        fill_value=metadata_v2.fill_value,
+        fill_value=fill_value,
         codecs=codecs,
         attributes=metadata_v2.attributes,
         dimension_names=None,

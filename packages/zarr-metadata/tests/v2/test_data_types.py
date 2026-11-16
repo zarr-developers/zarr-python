@@ -14,6 +14,7 @@ from zarr_metadata.definition import (
     UnclaimedDeclaration,
     canonical_fill_value,
     canonical_of,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -209,6 +210,33 @@ def test_every_family_takes_its_fill_values(
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
+
+
+@pytest.mark.parametrize(
+    ("dtype", "default"),
+    [
+        ("|b1", False),
+        ("<i2", 0),
+        (">u8", 0),
+        ("<f4", 0.0),
+        ("<c16", (0.0, 0.0)),
+        ("|S3", ""),
+        ("<U3", ""),
+        ("|V3", "AAAA"),
+        ("<M8[ns]", "NaT"),
+        ("<m8[10s]", "NaT"),
+        ([["x", "<f4"], ["y", "|b1"]], "AAAAAAA="),
+        ([["x", "<i2", [2]]], "AAAAAA=="),
+        ("|O", UNSET),
+    ],
+)
+def test_every_family_has_a_default_fill_value_it_takes(dtype: object, default: object) -> None:
+    """Each family's default fill value is the value zarr-python uses for it, and one the family takes: zero, `false`, the empty string, null bytes of the item's size, or `NaT`, which zarr-python writes as the ticks value of not-a-time. `|O` has none, since its values may be of any type: zarr-python writes `""` for one its filter makes strings, which the dtype alone does not say."""
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
+    found = default_fill_value(resolved)
+    assert (found, type(found)) == (default, type(default))
+    if found is not UNSET:
+        assert fill_value_problems(resolved, found) == ()
 
 
 @pytest.mark.parametrize(

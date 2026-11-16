@@ -4,19 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
-from typing_extensions import ReadOnly, TypedDict
-
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,
-)
-
-
-class ZarrV2ObjectConfiguration(TypedDict, closed=True):
-    """The configuration that `|O` carries: a byte order, which the type ignores."""
-
-    byteorder: ReadOnly[ZarrV2ByteOrder]
-    """The byte order that the typestr writes. The canonical form writes `|`, as NumPy does."""
+from zarr_metadata.v2._types.data_type import ZarrV2ObjectConfiguration
 
 
 def _canonical(configuration: ZarrV2ObjectConfiguration) -> ZarrV2ObjectConfiguration:

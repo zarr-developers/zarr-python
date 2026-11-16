@@ -245,7 +245,7 @@ def node_metadata_from_key_value_v2(
 
 
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
-    """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
+    """The members `ZarrV2GroupMetadata.replace` takes: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
     """The `attributes` member: user attributes, which a store holds in `.zattrs`.
@@ -264,7 +264,7 @@ class ZarrV2GroupMetadata(Keyed):
     `to_json` and `to_key_value` write `attributes` and `.zattrs` only when
     a `.zattrs` exists, even an empty one. A group has no declarations
     for a scope to read, so the scope is held only for consistency with
-    the other models: `update` reads new attributes in it, and no other
+    the other models: `replace` reads new attributes in it, and no other
     scope conflicts with the reading. A model is only built by reading:
     the constructor raises `MetadataValidationError` with every problem.
     Two groups are equal when their attributes are written the same way,
@@ -318,7 +318,7 @@ class ZarrV2GroupMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV2Context:
-        """The scope the document was read in. `update` reads new attributes in this scope."""
+        """The scope the document was read in. `replace` reads new attributes in this scope."""
         return self._context
 
     @property
@@ -365,7 +365,7 @@ class ZarrV2GroupMetadata(Keyed):
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
-    def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+    def replace(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
         """Return this model with `attributes` replacing the document's attributes, read in this model's own scope. `UNSET` removes them. Raises `MetadataValidationError` when the resulting document has a problem."""
         changes = member_changes(members, ZarrV2GroupMetadataUpdate, frozenset())
         document: dict[str, object] = {**self._document, **changes}
@@ -373,6 +373,10 @@ class ZarrV2GroupMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""

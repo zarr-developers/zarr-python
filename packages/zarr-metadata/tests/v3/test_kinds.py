@@ -20,6 +20,7 @@ from zarr_metadata.json_schema import declaration_json_schema_v3
 from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context, ZarrV2DataTypeDefinition
 from zarr_metadata.v3.definition import (
     CORE_CONTEXT,
+    BytesBytesCodecDefinition,
     CodecDefinition,
     DataTypeDefinition,
     ZarrV3Context,
@@ -27,7 +28,7 @@ from zarr_metadata.v3.definition import (
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class MyCodec(CodecDefinition[Any]):
+class MyCodec(BytesBytesCodecDefinition[Any]):
     """A codec definition with an extra attribute of its own. It is still a codec."""
 
     note: str = ""
@@ -40,7 +41,7 @@ class NoKind(Definition[Any]):
 
 def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
     """A definition built as a subclass of `CodecDefinition` is filed, read and named as a codec: the kind is the nearest class in the MRO declared with `kind=True`, not the class of the definition itself."""
-    mine = MyCodec(name="mine", configuration=EmptyConfiguration, kind="bytes_bytes", size="static")
+    mine = MyCodec(name="mine", configuration=EmptyConfiguration, size="static")
     assert kind_of(mine) is CodecDefinition
     context = ZarrV3Context(codecs=[mine])
     assert context.claimant(CodecDefinition, "mine") is mine

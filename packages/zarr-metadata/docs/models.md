@@ -117,12 +117,14 @@ default written out.
 
 To change a model, use one of these methods:
 
-- `update` replaces members of the document and reads the result in the
-  model's own context. You do not pass the context again.
+- `replace` returns a new model with members of the document replaced, and
+  reads it in the model's own context. You do not pass the context again.
+  The model itself is unchanged, as models are immutable. On Python 3.13
+  and later, `copy.replace(model, ...)` calls `replace` too.
     - Give a member the spec defines by its name.
     - Give any other member in `extra_fields`. This is a mapping from the
       member's key to its value, or to `UNSET` to remove it.
-    - A name `update` does not take raises `TypeError`, so a misspelled
+    - A name `replace` does not take raises `TypeError`, so a misspelled
       member is never written.
 - `with_context` reads the document in another context.
 - `refined_in` also reads the document in another context. The new context
