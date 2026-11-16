@@ -4,9 +4,12 @@ JSON types that the shared reading code needs.
 `JSONValue` is the type of any JSON value. `ZarrV3NamedConfigJSON` is the
 `{name, configuration, must_understand}` envelope of a v3 declaration. It is v3's,
 but it lives here because the shared declaration reader in
-`zarr_metadata.definition` uses the envelope as its default. Public homes:
-`zarr_metadata.typed_json` for `JSONValue`, `zarr_metadata.v3` for the
-envelope.
+`zarr_metadata.definition` uses the envelope as its default.
+`EmptyConfiguration` is the configuration of an extension of either
+format that has nothing to configure, so the types of both formats'
+extensions import it. Public homes: `zarr_metadata.typed_json` for
+`JSONValue`, `zarr_metadata.v3` for the envelope, and
+`zarr_metadata.definition` for `EmptyConfiguration`.
 """
 
 from collections.abc import Mapping
@@ -83,3 +86,7 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     grid or chunk key encoding
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581).
     """
+
+
+class EmptyConfiguration(TypedDict, closed=True):
+    """The configuration of a definition with nothing to configure. Its declaration is written with its name only."""

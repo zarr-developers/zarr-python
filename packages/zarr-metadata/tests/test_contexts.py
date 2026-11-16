@@ -54,7 +54,7 @@ def test_the_scope_of_each_format_behaves_alike(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `update` replacing a slot, `union`, equality and hashing by what each slot files, a short repr, and pickling and copying. A declaration is read in either one with `resolve`."""
+    """Both scope classes implement `Context` in the same way: the format they read, `claimant`, `definitions_of`, a view per slot, `copy` replacing a slot, `union`, equality and hashing by what each slot files, a short repr, and pickling and copying. A declaration is read in either one with `resolve`."""
     built = cls(codecs=[gzip])
     assert built.zarr_format == zarr_format
     assert built.claimant(kind, "gzip") is gzip
@@ -64,7 +64,7 @@ def test_the_scope_of_each_format_behaves_alike(
     assert hash(built) == hash(cls(codecs=[gzip]))
     assert built != cls()
     assert repr(built) == f"{cls.__name__}(<1 definitions>)"
-    replaced = built.update(codecs=[_other(gzip)])
+    replaced = built.copy(update={"codecs": [_other(gzip)]})
     assert replaced.claimant(kind, "gzip") is not gzip
     assert built.union(cls()) == built
     assert built.union() == built
@@ -76,26 +76,42 @@ def test_the_scope_of_each_format_behaves_alike(
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
-def test_update_replaces_each_slot_it_is_given_and_keeps_the_rest(
+def test_copy_replaces_each_slot_it_is_given_and_keeps_the_rest(
     cls: Any,  # noqa: ANN401 - either scope class
     core: Any,  # noqa: ANN401 - either core scope
     kind: Any,  # noqa: ANN401 - either codec kind
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """`update` returns the scope with each slot it is given replaced whole, and every other slot kept. A slot is given as definitions, or as a mapping from each definition's name to it, so a slot of a scope passes back in as it is, or changed by name. The scope it is called on is unchanged."""
-    only = core.update(codecs=[gzip])
+    """`copy(update=...)`, like pydantic's `model_copy`, returns the scope with each slot it is given replaced whole, and every other slot kept. A slot is given as definitions, or as a mapping from each definition's name to it, so a slot of a scope passes back in as it is, or changed by name. The scope it is called on is unchanged."""
+    only = core.copy(update={"codecs": [gzip]})
     assert dict(only.codecs) == {"gzip": gzip}
     assert only.data_types == core.data_types
-    assert core.update() == core
-    assert core.update(codecs=core.codecs) == core
+    assert core.copy() == core
+    assert core.copy(update={}) == core
+    assert core.copy(update={"codecs": core.codecs}) == core
     assert cls(codecs={"gzip": gzip}) == cls(codecs=[gzip])
     other = _other(gzip)
-    replaced = core.update(codecs={**core.codecs, "gzip": other})
+    replaced = core.copy(update={"codecs": {**core.codecs, "gzip": other}})
     assert replaced.codecs["gzip"] is other
     assert {**replaced.codecs, "gzip": gzip} == dict(core.codecs)
-    assert dict(cls().update(codecs=[*cls().codecs.values(), gzip]).codecs) == {"gzip": gzip}
     assert core.codecs["gzip"] is gzip
+
+
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_union_adds_definitions_and_keeps_every_one_the_scope_has(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """Adding definitions to a scope is a `union` with a scope of them: every definition the scope has is kept, in every slot. A definition the scope already files under its name is no conflict."""
+    added = dataclasses.replace(gzip, name="acme.gzip")
+    extended = core.union(cls(codecs=[added, gzip]))
+    assert dict(extended.codecs) == {**core.codecs, "acme.gzip": added}
+    assert extended.data_types == core.data_types
+    assert dict(cls().union(cls(codecs=[gzip])).codecs) == {"gzip": gzip}
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
@@ -106,13 +122,13 @@ def test_error_a_slot_given_as_a_mapping_files_each_definition_under_its_name(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """A slot given as a mapping keys each definition by its own name, the name the scope files it under. Another key raises `TypeError` naming both, in the constructor and in `update`, rather than filing the definition under a name it does not read, or ignoring a misspelled key."""
+    """A slot given as a mapping keys each definition by its own name, the name the scope files it under. Another key raises `TypeError` naming both, in the constructor and in `copy`, rather than filing the definition under a name it does not read, or ignoring a misspelled key."""
     with pytest.raises(
         TypeError, match="codecs files each definition under its name, got 'gzip' under 'zstd'"
     ):
         cls(codecs={"zstd": gzip})
     with pytest.raises(TypeError, match="got 'gzip' under 'gzipp'"):
-        core.update(codecs={**core.codecs, "gzipp": _other(gzip)})
+        core.copy(update={"codecs": {**core.codecs, "gzipp": _other(gzip)}})
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
@@ -123,11 +139,11 @@ def test_error_a_scope_has_only_the_slots_it_declares(
     gzip: Any,  # noqa: ANN401 - either gzip definition
     zarr_format: int,
 ) -> None:
-    """A slot the scope does not declare raises `TypeError` naming it, in the constructor and in `update`, as a type checker reports it."""
+    """A slot the scope does not declare raises `TypeError` naming it, in the constructor and in `copy`, as a type checker reports it."""
     with pytest.raises(TypeError, match=f"a v{zarr_format} scope has no slot 'codec'"):
         cls(codec=[gzip])
     with pytest.raises(TypeError, match=f"a v{zarr_format} scope has no slot 'codec'"):
-        core.update(codec=[gzip])
+        core.copy(update={"codec": [gzip]})
 
 
 @pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)

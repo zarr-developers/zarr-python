@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+import zarr
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.storage import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.core.common import ZarrFormat
 
 
 @pytest.mark.parametrize("separator", ["/", "."])
@@ -63,3 +70,32 @@ def test_default_encoding_rejects_key_using_the_other_separator() -> None:
 
     with pytest.raises(ValueError, match="Invalid chunk key"):
         encoding.decode_chunk_key("c.0.1")
+
+
+@pytest.mark.parametrize(
+    ("name", "zarr_format", "chunk_keys"),
+    [
+        ("default", 3, ["c/0/0", "c/0/1"]),
+        ("v2", 3, ["0.0", "0.1"]),
+        ("v2", 2, ["0.0", "0.1"]),
+    ],
+)
+async def test_create_array_short_hand_chunk_key_encoding(
+    name: str, zarr_format: ZarrFormat, chunk_keys: list[str]
+) -> None:
+    """A bare chunk key encoding name given at array creation selects that encoding with
+    its default separator, as it does when read from Zarr V3.1 short-hand metadata."""
+    store = MemoryStore()
+    array = zarr.create_array(
+        store,
+        shape=(1, 2),
+        chunks=(1, 1),
+        dtype="uint8",
+        fill_value=0,
+        chunk_key_encoding=name,
+        zarr_format=zarr_format,
+    )
+    array[:] = 1
+    metadata_keys = {"zarr.json", ".zarray", ".zattrs"}
+    keys = sorted([key async for key in store.list() if key not in metadata_keys])
+    assert keys == chunk_keys

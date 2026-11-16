@@ -33,6 +33,8 @@ from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from zarr_metadata.model import JSONWriterLike
+
 
 class _Written(Protocol):
     """The output of a model write: store keys, each with its bytes."""
@@ -45,7 +47,7 @@ class _Stored(Protocol):
 
     def to_json(self) -> Mapping[str, object]: ...
 
-    def to_key_value(self, *, indent: int | str | None = None) -> _Written: ...
+    def to_key_value(self, writer: JSONWriterLike = ...) -> _Written: ...
 
 
 class _Reading(Protocol):

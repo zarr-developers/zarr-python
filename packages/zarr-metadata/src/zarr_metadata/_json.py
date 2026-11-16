@@ -20,7 +20,14 @@ from typing import Final, Literal, TypeAlias, TypeGuard, TypeVar, cast, get_args
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
+ProblemKind = Literal[
+    "missing_key",
+    "invalid_type",
+    "invalid_value",
+    "invalid_json",
+    "unknown_key",
+    "unclaimed_declaration",
+]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -35,6 +42,10 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
   open since 2023), and many readers reject such a key. It has its own
   kind so that a caller who tolerates it can distinguish it from a wrong
   value, and so that it never hides other problems in the same object.
+- `unclaimed_declaration`: a declaration that nothing in scope claims, which
+  a reader must understand to open the node. Only
+  `read_openable_node_metadata_v3` reports it: the other readers accept an
+  unclaimed declaration, since that is what keeps the format open.
 """
 
 
@@ -116,9 +127,11 @@ class ValidationProblem:
     document, `input` shows the change. `ctx` holds what was expected,
     when that is more than a type:
 
-    - `gt`, `ge`, `lt` and `le`: the bounds from the value's type or from
-      a rule, with the names pydantic uses. For example `{"ge": 0, "le": 9}`
-      for a gzip `level`, whose type is `Annotated[int, Interval(ge=0, le=9)]`.
+    - `gt`, `ge`, `lt`, `le`, `multiple_of`, `min_length` and
+      `max_length`: the constraints from the value's type or from a rule,
+      with the names pydantic uses. For example `{"ge": 0, "le": 9}` for a
+      gzip `level`, whose type is `Annotated[int, Interval(ge=0, le=9)]`,
+      or `{"min_length": 1}` for an array document's `codecs`.
     - `expected`: the values of a closed set, like zod's `values`, in the
       order the message lists them. For example the values of a `Literal`,
       of `node_type`, or of `zarr_format`.

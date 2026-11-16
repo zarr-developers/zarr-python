@@ -460,3 +460,31 @@ def test_writes_bypass_the_reader_so_a_caching_reader_serves_stale_values() -> N
     view.write([7, 8, 9])
     np.testing.assert_array_equal(source, [0, 7, 8, 9, 4, 5])
     np.testing.assert_array_equal(view.result(), [1, 2, 3])
+
+
+@pytest.mark.parametrize(
+    "flat",
+    [
+        [],
+        [3],
+        [0, 2, 5, 7],
+        [0, 0, 2, 5, 5, 5, 7],
+        [5, 0, 5, 2, 0, 7],
+        [7, 5, 5, 2, 0],
+    ],
+    ids=["empty", "single", "sorted", "sorted_repeats", "unsorted_repeats", "reversed"],
+)
+def test_last_occurrences_matches_sequential_assignment(flat: list[int]) -> None:
+    from zarr_indexing.writer import _last_occurrences
+
+    indices = np.asarray(flat, dtype=np.intp)
+    values = np.arange(1, indices.size + 1)
+    expected = np.zeros(8, dtype=values.dtype)
+    for index, value in zip(indices, values, strict=True):
+        expected[index] = value
+    keep = _last_occurrences(indices)
+    kept = indices[keep]
+    assert np.unique(kept).size == kept.size
+    actual = np.zeros(8, dtype=values.dtype)
+    actual[kept] = values[keep]
+    np.testing.assert_array_equal(actual, expected)

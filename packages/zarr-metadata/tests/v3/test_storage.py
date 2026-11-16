@@ -3,7 +3,9 @@
 Each data type's definition declares its storage. `storage_of` returns
 the storage of a data type declaration that a scope read. The `bytes` codec
 asks for the storage of the data type it receives, and a struct asks for
-the storage of each of its fields.
+the storage of each of its fields. A definition also declares the
+array -> bytes codec that encodes its values in a document built without
+codecs, which `default_array_bytes_codec` returns.
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
     StorageClass,
+    ZarrV3Context,
+    default_array_bytes_codec,
     storage_of,
 )
 
@@ -85,9 +89,7 @@ def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> Non
     resolved, _ = resolve(
         "acme.quiet",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS_CONTEXT.update(
-            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), quiet]
-        ),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[quiet])),
     )
     assert storage_of(resolved) is None
 
@@ -101,9 +103,7 @@ def test_error_a_storage_that_gives_something_else() -> None:
     resolved, _ = resolve(
         "acme.lying",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS_CONTEXT.update(
-            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), lying]
-        ),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[lying])),
     )
     with pytest.raises(TypeError, match="'acme.lying': its storage gives one of"):
         storage_of(resolved)
@@ -119,10 +119,24 @@ def test_error_a_storage_that_raises_says_whose_it_is() -> None:
     resolved, _ = resolve(
         "acme.raising",
         DataTypeDefinition,
-        CORE_AND_EXTENSIONS_CONTEXT.update(
-            data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), raising]
-        ),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[raising])),
     )
     with pytest.raises(KeyError) as raised:
         storage_of(resolved)
     assert raised.value.__notes__ == ["raised by the storage of 'acme.raising'"]
+
+
+def test_error_an_array_bytes_codec_default_that_is_not_json_is_a_type_error() -> None:
+    """A data type whose `array_bytes_codec_default` gives a value that is not JSON is the extension author's bug, a `TypeError` naming the data type."""
+    odd = DataTypeDefinition(
+        name="acme.odd",
+        configuration=EmptyConfiguration,
+        array_bytes_codec_default=lambda configuration, nested: object(),  # pyright: ignore[reportArgumentType]
+    )
+    resolved, _ = resolve(
+        "acme.odd",
+        DataTypeDefinition,
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[odd])),
+    )
+    with pytest.raises(TypeError, match="'acme.odd': its array_bytes_codec_default gives JSON"):
+        default_array_bytes_codec(resolved)

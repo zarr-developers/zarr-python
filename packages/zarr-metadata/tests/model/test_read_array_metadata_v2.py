@@ -125,7 +125,8 @@ def test_the_v2_readers_read_in_the_scope_given() -> None:
     doc = {**BASE, "compressor": {"id": "zlib", "level": 1}}
     assert read_array_metadata_v2(doc).problems == ()
     found = read_array_metadata_v2(
-        doc, context=CORE_V2_CONTEXT.update(codecs={**CORE_V2_CONTEXT.codecs, "zlib": bare})
+        doc,
+        context=CORE_V2_CONTEXT.copy(update={"codecs": {**CORE_V2_CONTEXT.codecs, "zlib": bare}}),
     ).problems
     assert [p.loc for p in found] == [("compressor", "level")]
 

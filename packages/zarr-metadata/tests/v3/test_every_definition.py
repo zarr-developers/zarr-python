@@ -12,6 +12,7 @@ import pickle
 from typing import Any
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata import ValidationProblem
 from zarr_metadata._json import value_at
@@ -26,7 +27,7 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.definition._definition import canonicalize
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
@@ -385,13 +386,19 @@ def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
     )
 
 
+class AnyRawSize(TypedDict, closed=True):
+    """A raw-bits configuration of any size, which the package's own type does not allow."""
+
+    bits: int
+
+
 def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     # This definition accepts any size. Filed under `r*` in place of the
     # package's own, it reads every raw-bits name. Filed back, the package's
     # definition reads them again.
-    mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types={**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}
+    mine = DataTypeDefinition(name="r*", configuration=AnyRawSize)
+    context = CORE_AND_EXTENSIONS_CONTEXT.copy(
+        update={"data_types": {**CORE_AND_EXTENSIONS_CONTEXT.data_types, "r*": mine}}
     )
     resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
@@ -401,7 +408,7 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     again, _ = resolve(
         "r12",
         DataTypeDefinition,
-        context.update(data_types={**context.data_types, "r*": RAW_BYTES_DATA_TYPE}),
+        context.copy(update={"data_types": {**context.data_types, "r*": RAW_BYTES_DATA_TYPE}}),
     )
     assert isinstance(again, RefusedDeclaration)
     assert again.definition is RAW_BYTES_DATA_TYPE
@@ -529,9 +536,7 @@ def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None
         canonicalize(
             {"name": "acme.lying", "configuration": {"level": 1}},
             CodecDefinition,
-            CORE_AND_EXTENSIONS_CONTEXT.update(
-                codecs=[*CORE_AND_EXTENSIONS_CONTEXT.codecs.values(), lying]
-            ),
+            CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[lying])),
         )
 
 
@@ -902,12 +907,21 @@ def test_error_struct_field_type_is_judged_where_it_sits() -> None:
     ]
 
 
-@pytest.mark.parametrize("name", ["r12", "r0"])
-def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str) -> None:
+@pytest.mark.parametrize(
+    ("name", "message"),
+    [
+        ("r12", 'bits in "r12": expected an integer > 0 that is a multiple of 8, got 12'),
+        ("r0", 'bits in "r0": expected an integer > 0 that is a multiple of 8, got 0'),
+    ],
+)
+def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str, message: str) -> None:
     # Raw bits of a size the spec does not allow are reported, not left
     # unchecked. The document wrote a name, so the problem is located at
-    # the declaration.
-    assert _problems("data_type:r*", name) == [((), "invalid_value")]
+    # the declaration, and its message names the size the name spells.
+    _, problems = resolve(name, DataTypeDefinition, ZARR_PYTHON_CONTEXT)
+    assert [(found.loc, found.kind, found.message) for found in problems] == [
+        ((), "invalid_value", message)
+    ]
 
 
 def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:

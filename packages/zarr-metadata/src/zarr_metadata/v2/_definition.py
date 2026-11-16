@@ -31,7 +31,7 @@ from zarr_metadata.definition._definition import (
     Definition,
     WithFillValue,
 )
-from zarr_metadata.v2._declaration_json import ZarrV2DataTypeMetadata
+from zarr_metadata.v2._declaration_json import ZarrV2DataTypeDeclaration
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -40,8 +40,6 @@ if TYPE_CHECKING:
     from zarr_metadata._json import Problems
     from zarr_metadata._typed_json import Loc
 
-ZarrV2DataTypeDeclaration = TypeAliasType("ZarrV2DataTypeDeclaration", ZarrV2DataTypeMetadata)
-"""A declaration of a v2 dtype: the value of a document's `dtype` member, or the type of a struct record. It is read in the same scope as its container."""
 
 STRUCT_NAME: Final = "struct"
 """The name that a records array reads as. No typestr has this spelling."""
@@ -328,7 +326,6 @@ __all__ = [
     "STRUCT_NAME",
     "TYPESTR_PATTERN",
     "ZarrV2CodecDefinition",
-    "ZarrV2DataTypeDeclaration",
     "ZarrV2DataTypeDefinition",
     "item_bytes",
     "parse_typestr",

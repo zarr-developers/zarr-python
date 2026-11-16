@@ -24,6 +24,7 @@ from zarr_metadata.v3._definition import (
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     ChunkGridDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -63,8 +64,9 @@ def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str |
         (_rectilinear([4, 4, 4]), (10,), ({4},)),
         (_rectilinear([4, 4, 2, 7]), (10,), ({4, 2, 7},)),
         (_rectilinear([[4, 2], 2]), (10,), ({4, 2},)),
-        # A dimension of length 0 and no chunks.
-        (_rectilinear([]), (0,), (set(),)),
+        # A dimension of length 0: a bare integer gives it no chunks, and a
+        # list still lists at least one.
+        (_rectilinear(4, [3]), (0, 0), ({4}, {3})),
         (_rectilinear(2, [3, 3]), (7, 6), ({2}, {3})),
         # A grid that nothing in scope claims, or one that is not read, is
         # not checked, and its lengths are unknown along each axis.
@@ -94,18 +96,25 @@ def test_error_a_rectilinear_grid_of_another_rank(grid: JSONValue, shape: tuple[
     assert _problems(grid, shape) == [(("configuration", "chunk_shapes"), "invalid_value")]
 
 
-@pytest.mark.parametrize("spec", [[4, 4], [[4, 2]], []])
+@pytest.mark.parametrize("spec", [[4, 4], [[4, 2]]])
 def test_error_rectilinear_chunks_that_do_not_cover_their_dimension(spec: JSONValue) -> None:
     assert _problems(_rectilinear(2, spec), (4, 10)) == [
         (("configuration", "chunk_shapes", 1), "invalid_value")
     ]
 
 
+def test_error_rectilinear_empty_edge_list() -> None:
+    # The spec requires a non-empty list even along a dimension of length 0,
+    # which writes a bare integer to have no chunks; no shape is needed to tell.
+    _, found = resolve(_rectilinear(2, []), ChunkGridDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert [(problem.loc, problem.kind) for problem in found] == [
+        (("configuration", "chunk_shapes", 1), "invalid_value")
+    ]
+
+
 def test_a_grid_that_says_nothing_of_the_shape_fits_every_one_its_lengths_unknown() -> None:
     lenient = ChunkGridDefinition(name="acme.grid", configuration=EmptyConfiguration)
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), lenient]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(chunk_grids=[lenient]))
     resolved, _ = resolve("acme.grid", ChunkGridDefinition, context)
     assert chunk_grid_lengths(resolved, (3, 4)) == ((None, None), ())
 
@@ -117,9 +126,7 @@ def test_error_a_grid_whose_chunk_lengths_have_another_number_of_axes() -> None:
         configuration=EmptyConfiguration,
         chunk_lengths=lambda c, n, s: (frozenset({1}),),
     )
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), flat]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(chunk_grids=[flat]))
     resolved, _ = resolve("acme.grid", ChunkGridDefinition, context)
     with pytest.raises(ValueError, match="'acme.grid': its chunk_lengths gave 1 axes"):
         chunk_grid_lengths(resolved, (3, 4))
@@ -162,9 +169,7 @@ def test_error_a_grid_whose_chunk_lengths_give_something_else_or_raise(
     resolved, _ = resolve(
         "acme.grid",
         ChunkGridDefinition,
-        CORE_AND_EXTENSIONS_CONTEXT.update(
-            chunk_grids=[*CORE_AND_EXTENSIONS_CONTEXT.chunk_grids.values(), odd]
-        ),
+        CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(chunk_grids=[odd])),
     )
     with pytest.raises((TypeError, KeyError), match=match) as raised:
         chunk_grid_lengths(resolved, (3, 4), ("chunk_grid",))

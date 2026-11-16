@@ -25,9 +25,11 @@ from zarr_metadata import (
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata.definition import (
     AcceptedDeclaration,
+    ConstantFillValue,
     EmptyConfiguration,
     Nested,
     canonical_fill_value,
+    default_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -42,6 +44,7 @@ from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     DataTypeDefinition,
+    ZarrV3Context,
 )
 
 if TYPE_CHECKING:
@@ -288,9 +291,7 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
 
 def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
     # The extra key is reported and hidden from the rules, which still check the other keys.
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[*CORE_AND_EXTENSIONS_CONTEXT.data_types.values(), ACME_POINT]
-    )
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(data_types=[ACME_POINT]))
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     found = fill_value_problems(resolved, {"x": 99, "extra": 1})
     assert [(problem.loc, problem.kind) for problem in found] == [
@@ -461,11 +462,8 @@ def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it()
     def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         raise ValueError("no")
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=refuses),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=refuses)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
@@ -477,11 +475,8 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         return cast("JSONValue", {1, 2})
 
-    context = CORE_AND_EXTENSIONS_CONTEXT.update(
-        data_types=[
-            *CORE_AND_EXTENSIONS_CONTEXT.data_types.values(),
-            dataclasses.replace(ACME_POINT, fill_value_canonical=not_json),
-        ]
+    context = CORE_AND_EXTENSIONS_CONTEXT.union(
+        ZarrV3Context(data_types=[dataclasses.replace(ACME_POINT, fill_value_canonical=not_json)])
     )
     resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):
@@ -529,3 +524,34 @@ def test_a_complex_fill_value_keeps_what_its_component_rules_found() -> None:
     (found,) = rules({}, {}, (1.0, 0))
     assert (found.loc, found.message, found.kind) == ((1, "x"), "expected >= 1", "invalid_value")
     assert (found.input, dict(found.ctx)) == (0, {"ge": 1})
+
+
+def _not_json_default(configuration: object, nested: object) -> object:
+    return object()
+
+
+def test_error_a_default_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A data type whose `fill_value_default` gives a value that is not JSON is the extension author's bug, a `TypeError` naming the data type."""
+    definition = DataTypeDefinition(
+        name="acme.odd",
+        configuration=EmptyConfiguration,
+        fill_value_default=cast("Any", _not_json_default),
+    )
+    data_type, _ = resolve("acme.odd", DataTypeDefinition, ZarrV3Context(data_types=[definition]))
+    with pytest.raises(TypeError, match="'acme.odd': its fill_value_default gives JSON or UNSET"):
+        default_fill_value(data_type)
+
+
+def test_error_a_constant_fill_value_that_is_not_json_is_a_type_error() -> None:
+    """A `ConstantFillValue` holds JSON, which it checks when built, so a value that is not JSON fails where it is written rather than when the data type is used."""
+    with pytest.raises(TypeError, match="ConstantFillValue holds JSON, got <object object"):
+        ConstantFillValue(cast("Any", object()))
+
+
+def test_constant_fill_values_are_equal_when_written_the_same_way() -> None:
+    """Two `ConstantFillValue`s are equal, and hash equal, when their values are written the same way, so two data types that differ only in their default are not the same definition. `0`, `False` and `0.0` are three defaults."""
+    defaults = [ConstantFillValue(0), ConstantFillValue(False), ConstantFillValue(0.0)]
+    assert len(set(defaults)) == 3
+    assert ConstantFillValue((0.0, 0.0)) == ConstantFillValue((0.0, 0.0))
+    assert hash(ConstantFillValue("")) == hash(ConstantFillValue(""))
+    assert ConstantFillValue(0) != 0

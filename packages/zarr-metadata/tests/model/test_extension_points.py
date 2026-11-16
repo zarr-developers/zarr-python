@@ -27,7 +27,7 @@ from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     CORE_CONTEXT,
-    CodecDefinition,
+    BytesBytesCodecDefinition,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +48,9 @@ class LenientGzipConfiguration(TypedDict, closed=True):
     level: int
 
 
-LENIENT_GZIP = CodecDefinition(
+LENIENT_GZIP = BytesBytesCodecDefinition(
     name="gzip",
     configuration=LenientGzipConfiguration,
-    kind="bytes_bytes",
     size="dynamic",
 )
 """A reader's own gzip definition, which accepts any level. A scope can be extended, and an extension can replace a definition."""
@@ -75,7 +74,7 @@ BAD_GZIP_ARRAY = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"le
         (_document(codecs=[BYTES, {"name": "zstd", "configuration": {"level": 99}}]), CORE_CONTEXT),
         (
             _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}]),
-            CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP}),
+            CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP}}),
         ),
         (
             dict(ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json()),
@@ -176,7 +175,7 @@ def test_error_an_array_in_consolidated_metadata() -> None:
 def test_an_array_in_consolidated_metadata_reads_in_the_scope_it_is_read_in() -> None:
     """An array listed in consolidated metadata is read in the scope the member is read in: a lenient `gzip` accepts the level the core `gzip` refuses, and the model round-trips in that scope."""
     member = {"kind": "inline", "must_understand": False, "metadata": {"a": BAD_GZIP_ARRAY}}
-    lenient = CORE_CONTEXT.update(codecs={**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP})
+    lenient = CORE_CONTEXT.copy(update={"codecs": {**CORE_CONTEXT.codecs, "gzip": LENIENT_GZIP}})
     reading = read_consolidated_metadata_v3(member, context=lenient)
     assert reading.problems == ()
     assert reading.metadata is not None

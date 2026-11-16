@@ -20,6 +20,7 @@ from zarr_metadata.json_schema import declaration_json_schema_v3
 from zarr_metadata.v2.definition import CORE_V2_CONTEXT, ZarrV2Context, ZarrV2DataTypeDefinition
 from zarr_metadata.v3.definition import (
     CORE_CONTEXT,
+    BytesBytesCodecDefinition,
     CodecDefinition,
     DataTypeDefinition,
     ZarrV3Context,
@@ -27,7 +28,7 @@ from zarr_metadata.v3.definition import (
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class MyCodec(CodecDefinition[Any]):
+class MyCodec(BytesBytesCodecDefinition[Any]):
     """A codec definition with an extra attribute of its own. It is still a codec."""
 
     note: str = ""
@@ -40,7 +41,7 @@ class NoKind(Definition[Any]):
 
 def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
     """A definition built as a subclass of `CodecDefinition` is filed, read and named as a codec: the kind is the nearest class in the MRO declared with `kind=True`, not the class of the definition itself."""
-    mine = MyCodec(name="mine", configuration=EmptyConfiguration, kind="bytes_bytes", size="static")
+    mine = MyCodec(name="mine", configuration=EmptyConfiguration, size="static")
     assert kind_of(mine) is CodecDefinition
     context = ZarrV3Context(codecs=[mine])
     assert context.claimant(CodecDefinition, "mine") is mine
@@ -100,13 +101,13 @@ def test_a_scope_has_the_format_of_its_class() -> None:
 
 
 def test_error_a_scope_files_one_format() -> None:
-    """Definitions of two formats cannot share a scope: a slot refuses a definition of the other format's kind, in the constructor and in `update`, and `union` refuses scopes of two formats. Each raises `TypeError`."""
+    """Definitions of two formats cannot share a scope: a slot refuses a definition of the other format's kind, in the constructor and in `copy(update=...)`, and `union` refuses scopes of two formats. Each raises `TypeError`."""
     from zarr_metadata.v2.data_type.scalar import UINT_DATA_TYPE_V2
 
     with pytest.raises(TypeError, match="v2 data type"):
         ZarrV3Context(data_types=[UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="v2 data type"):
-        CORE_CONTEXT.update(data_types=[*CORE_CONTEXT.data_types.values(), UINT_DATA_TYPE_V2])  # pyright: ignore[reportArgumentType]
+        CORE_CONTEXT.copy(update={"data_types": [UINT_DATA_TYPE_V2]})  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match="format"):
         CORE_CONTEXT.union(CORE_V2_CONTEXT)  # pyright: ignore[reportArgumentType]
 
