@@ -44,11 +44,11 @@ from zarr_metadata.model._array_v2 import (
     read_array_node_v2,
     read_array_v2,
 )
+from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
     check_literal,
-    dump_store_json,
     load_store_json,
     located_conflicts,
     member_changes,
@@ -245,7 +245,7 @@ def node_metadata_from_key_value_v2(
 
 
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
-    """The members `ZarrV2GroupMetadata.update` replaces: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
+    """The members `ZarrV2GroupMetadata.replace` takes: `attributes` in the form a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
     attributes: Mapping[str, JSONValue] | UNSET
     """The `attributes` member: user attributes, which a store holds in `.zattrs`.
@@ -264,7 +264,7 @@ class ZarrV2GroupMetadata(Keyed):
     `to_json` and `to_key_value` write `attributes` and `.zattrs` only when
     a `.zattrs` exists, even an empty one. A group has no declarations
     for a scope to read, so the scope is held only for consistency with
-    the other models: `update` reads new attributes in it, and no other
+    the other models: `replace` reads new attributes in it, and no other
     scope conflicts with the reading. A model is only built by reading:
     the constructor raises `MetadataValidationError` with every problem.
     Two groups are equal when their attributes are written the same way,
@@ -318,7 +318,7 @@ class ZarrV2GroupMetadata(Keyed):
 
     @property
     def context(self) -> ZarrV2Context:
-        """The scope the document was read in. `update` reads new attributes in this scope."""
+        """The scope the document was read in. `replace` reads new attributes in this scope."""
         return self._context
 
     @property
@@ -332,7 +332,7 @@ class ZarrV2GroupMetadata(Keyed):
         return self._shown
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:
-        """The merged document as written, refined. The result shares no objects with the model.
+        """The merged document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`.
 
         `attributes` is included when set, even if empty. This is not the
         on-disk `.zgroup`, which excludes them: `to_key_value` splits the
@@ -342,17 +342,16 @@ class ZarrV2GroupMetadata(Keyed):
         return cast("ZarrV2GroupMetadataJSON", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
-        """The document as a store holds it: `.zgroup` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        """The document as a store holds it, spelled by `writer`, a `JSONWriter` or a mapping of its settings: `.zgroup` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        writes = JSONWriter.from_dict(writer)
         zgroup = {key: value for key, value in self._document.items() if key != "attributes"}
         out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
+            ZARR_V2_GROUP_METADATA_STORE_KEY: writes.encode(zgroup)
         }
         if "attributes" in self._document:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
-                self._document["attributes"], indent=indent
-            )
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = writes.encode(self._document["attributes"])
         return out
 
     def __repr__(self) -> str:
@@ -366,7 +365,7 @@ class ZarrV2GroupMetadata(Keyed):
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
 
-    def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+    def replace(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
         """Return this model with `attributes` replacing the document's attributes, read in this model's own scope. `UNSET` removes them. Raises `MetadataValidationError` when the resulting document has a problem."""
         changes = member_changes(members, ZarrV2GroupMetadataUpdate, frozenset())
         document: dict[str, object] = {**self._document, **changes}
@@ -374,6 +373,10 @@ class ZarrV2GroupMetadata(Keyed):
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
+
+    def __replace__(self, /, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+        """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
+        return self.replace(**members)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
@@ -546,16 +549,15 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return MappingProxyType(self._metadata)
 
     def to_json(self) -> dict[str, JSONValue]:
-        """The `.zmetadata` document as written, refined. The result shares no objects with the model."""
+        """The `.zmetadata` document as written, refined. The result shares no objects with the model. Each JSON array is a tuple, as the package's JSON types spell an array, and each object a new `dict`: `json.dumps` writes the result, but it does not compare equal to what `json.loads` returns. To compare a model with a document, compare models: `from_json(document) == model`."""
         return cast("dict[str, JSONValue]", copied(self._document))
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, writer: JSONWriterLike = DEFAULT_JSON_WRITER
     ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `.zmetadata`, indented by `indent`."""
-        return {
-            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)
-        }
+        """The document as a store holds it: JSON bytes at `.zmetadata`, spelled by `writer`, a `JSONWriter` or a mapping of its settings."""
+        writes = JSONWriter.from_dict(writer)
+        return {ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: writes.encode(self._document)}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"

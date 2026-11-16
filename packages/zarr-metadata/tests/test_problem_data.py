@@ -315,7 +315,8 @@ def test_a_problem_with_what_a_name_carries_is_the_declaration_s() -> None:
     # `r24` carries `{"bits": 24}`, which this scope's raw-bits definition
     # refuses. The problem is located at the declaration, because the name is what
     # the document wrote there. The bound on `bits` is not a bound on the
-    # name, so the problem's `ctx` is empty.
+    # name, so the problem's `ctx` is empty, and its message names the
+    # member and the name it was read from.
     context = CORE_AND_EXTENSIONS_CONTEXT.copy(
         update={
             "data_types": {
@@ -326,7 +327,7 @@ def test_a_problem_with_what_a_name_carries_is_the_declaration_s() -> None:
     )
     _, problems = resolve("r24", DataTypeDefinition, context, ("data_type",))
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [(("data_type",), "r24", {})]
-    assert problems[0].message == "expected an integer <= 16, got 24"
+    assert problems[0].message == 'bits in "r24": expected an integer <= 16, got 24'
 
 
 class Ordered(TypedDict, closed=True):

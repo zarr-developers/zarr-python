@@ -32,7 +32,7 @@ RUN git clone -q --depth 1 --branch 1.1.2 https://github.com/google/crc32c /tmp/
 
 RUN python3 -m venv --system-site-packages /venv
 ENV PATH=/venv/bin:$PATH
-RUN pip install -q --no-binary google-crc32c google-crc32c msgspec pytest-accept
+RUN pip install -q --no-binary google-crc32c google-crc32c msgspec
 # Debian sid's python3-dateutil 3.0.0 declares a dependency on the `tzdata` distribution,
 # which no Debian package installs, so `pip check` fails on the image as built. tzdata is
 # pure Python; install it from PyPI.

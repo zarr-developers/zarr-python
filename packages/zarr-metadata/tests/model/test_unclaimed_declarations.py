@@ -7,6 +7,7 @@ from typing import Any, NotRequired
 import pytest
 from typing_extensions import TypedDict
 
+from zarr_metadata import UNSET
 from zarr_metadata.definition import UnclaimedDeclaration
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -15,6 +16,8 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
     ZarrV3NodeMetadata,
+    read_node_metadata_v3,
+    read_openable_node_metadata_v3,
 )
 from zarr_metadata.v3 import CORE_CONTEXT
 from zarr_metadata.v3.definition import (
@@ -190,3 +193,78 @@ def test_node_type_tells_a_type_checker_which_model_a_node_is() -> None:
     for node in nodes:
         if node.zarr_format == 3 and node.node_type == "group":
             assert node.consolidated() is None
+
+
+@pytest.mark.parametrize(
+    ("document", "context", "unclaimed", "problems"),
+    [
+        (ARRAY, CORE_CONTEXT, set(), set()),
+        ({**ARRAY, "codecs": ("bytes", ZSTD)}, CORE_CONTEXT, {("codecs", 1)}, set()),
+        (
+            {**ARRAY, "codecs": (SHARD,)},
+            CORE_CONTEXT,
+            {("codecs", 0, "configuration", "codecs", 1)},
+            set(),
+        ),
+        ({**ARRAY, "acme": 1}, CORE_CONTEXT, {("acme",)}, set()),
+        ({**ARRAY, "acme": {"must_understand": False}}, CORE_CONTEXT, set(), set()),
+        ({**GROUP, "acme": {"name": "acme"}}, CORE_CONTEXT, {("acme",)}, set()),
+        ({**GROUP, "acme": {"must_understand": False}}, CORE_CONTEXT, set(), set()),
+        (
+            {**ARRAY, "acme.mirror": {"codec": {"name": "acme.zip"}}},
+            MIRRORING,
+            {("acme.mirror", "codec")},
+            set(),
+        ),
+        (
+            {**ARRAY, "acme.mirror": {"codec": {"name": "acme.zip"}, "must_understand": False}},
+            MIRRORING,
+            set(),
+            set(),
+        ),
+        (
+            {**ARRAY, "fill_value": "x", "codecs": ("bytes", ZSTD)},
+            CORE_CONTEXT,
+            {("codecs", 1)},
+            {("fill_value",)},
+        ),
+        ({**GROUP, "node_type": "acme"}, CORE_CONTEXT, set(), {("node_type",)}),
+        ("not a node", CORE_CONTEXT, set(), {()}),
+    ],
+    ids=[
+        "all-claimed",
+        "a-codec",
+        "a-codec-inside-a-shard",
+        "an-extra-member",
+        "a-waived-extra-member",
+        "a-group-member",
+        "a-waived-group-member",
+        "a-codec-inside-a-claimed-member",
+        "a-codec-inside-a-claimed-member-that-waives",
+        "with-other-problems",
+        "an-unknown-node-type",
+        "not-an-object",
+    ],
+)
+def test_read_openable_node_metadata_v3_reports_what_a_reader_must_understand(
+    document: object,
+    context: Any,  # noqa: ANN401 - a v3 scope
+    unclaimed: set[tuple[str | int, ...]],
+    problems: set[tuple[str | int, ...]],
+) -> None:
+    """`read_openable_node_metadata_v3` keeps every problem `read_node_metadata_v3` finds and adds one of kind `unclaimed_declaration` at the location of each declaration `unclaimed_declarations` lists, with what the document writes there as its input, whether or not the document has other problems. It gives a model exactly when there are no problems, and the model is the one `read_node_metadata_v3` gives."""
+    plain = read_node_metadata_v3(document, context=context)
+    reading = read_openable_node_metadata_v3(document, context=context)
+    assert reading.problems[: len(plain.problems)] == plain.problems
+    assert {problem.loc for problem in plain.problems} == problems
+    added = reading.problems[len(plain.problems) :]
+    assert {problem.loc for problem in added} == unclaimed
+    assert all(problem.kind == "unclaimed_declaration" for problem in added)
+    assert all(problem.input is not UNSET for problem in added)
+    if plain.metadata is not None:
+        assert set(plain.metadata.unclaimed_declarations) == unclaimed
+    if len(reading.problems) == 0:
+        assert reading.metadata == plain.metadata
+        assert reading.metadata is not None
+    else:
+        assert reading.metadata is None

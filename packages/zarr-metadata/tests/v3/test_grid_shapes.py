@@ -64,8 +64,9 @@ def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str |
         (_rectilinear([4, 4, 4]), (10,), ({4},)),
         (_rectilinear([4, 4, 2, 7]), (10,), ({4, 2, 7},)),
         (_rectilinear([[4, 2], 2]), (10,), ({4, 2},)),
-        # A dimension of length 0 and no chunks.
-        (_rectilinear([]), (0,), (set(),)),
+        # A dimension of length 0: a bare integer gives it no chunks, and a
+        # list still lists at least one.
+        (_rectilinear(4, [3]), (0, 0), ({4}, {3})),
         (_rectilinear(2, [3, 3]), (7, 6), ({2}, {3})),
         # A grid that nothing in scope claims, or one that is not read, is
         # not checked, and its lengths are unknown along each axis.
@@ -95,9 +96,18 @@ def test_error_a_rectilinear_grid_of_another_rank(grid: JSONValue, shape: tuple[
     assert _problems(grid, shape) == [(("configuration", "chunk_shapes"), "invalid_value")]
 
 
-@pytest.mark.parametrize("spec", [[4, 4], [[4, 2]], []])
+@pytest.mark.parametrize("spec", [[4, 4], [[4, 2]]])
 def test_error_rectilinear_chunks_that_do_not_cover_their_dimension(spec: JSONValue) -> None:
     assert _problems(_rectilinear(2, spec), (4, 10)) == [
+        (("configuration", "chunk_shapes", 1), "invalid_value")
+    ]
+
+
+def test_error_rectilinear_empty_edge_list() -> None:
+    # The spec requires a non-empty list even along a dimension of length 0,
+    # which writes a bare integer to have no chunks; no shape is needed to tell.
+    _, found = resolve(_rectilinear(2, []), ChunkGridDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    assert [(problem.loc, problem.kind) for problem in found] == [
         (("configuration", "chunk_shapes", 1), "invalid_value")
     ]
 

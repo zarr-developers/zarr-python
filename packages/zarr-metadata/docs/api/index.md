@@ -9,7 +9,7 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.json_schema`](json_schema.md) — JSON Schema output for
   any `TypedDict`, one v3 declaration, or a whole v3 `zarr.json`
 - [`zarr_metadata.model`](model.md) — document models (each one a
-  document and the scope it was read in), the readers that return
+  document and the context it was read in), the readers that return
   problems instead of raising them, and the `UNSET` sentinel
 - [`zarr_metadata.problems`](problems.md) — `ValidationProblem`,
   `ProblemKind`, `Problems` and `MetadataValidationError`, which every
@@ -21,7 +21,7 @@ The package is organized to mirror the structure of the Zarr specifications:
   typing spec defines them, with every problem located
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
   (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`), and
-  `zarr_metadata.v2.definition`: the v2 kinds of metadata, the scope
+  `zarr_metadata.v2.definition`: the v2 kinds of metadata, the context
   `CORE_V2_CONTEXT`, and the readers of one `dtype` or codec. Each dtype family's
   definition is in `zarr_metadata.v2.data_type`, and each codec's in
   `zarr_metadata.v2.codec`
@@ -32,10 +32,11 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.definition`](definition.md) — what both formats share
   for reading a declaration: `Definition`, `resolve`, the three results of a
   reading (`AcceptedDeclaration`, `UnclaimedDeclaration`, `RefusedDeclaration`), and the
-  scope type `Context`. Its module docstring is the guide
+  context type `Context`. Its module docstring is the guide
 - [`zarr_metadata.v3.definition`](v3/definition.md) — the five v3 kinds
   of metadata (`CodecDefinition`, `DataTypeDefinition`, ...), the codec
-  pipeline types, and the v3 scopes `CORE_CONTEXT` and `CORE_AND_EXTENSIONS_CONTEXT`
+  pipeline types, and the v3 contexts `CORE_CONTEXT`,
+  `CORE_AND_EXTENSIONS_CONTEXT` and `ZARR_PYTHON_CONTEXT`
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so

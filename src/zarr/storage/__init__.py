@@ -42,7 +42,7 @@ class VerboseModule(ModuleType):
                 "zarr.config to configure array.v2_default_compressor "
                 "e.g. config.set({'codecs.zstd':'numcodecs.Zstd', 'array.v2_default_compressor.numeric': 'zstd'})",
                 ZarrDeprecationWarning,
-                stacklevel=1,
+                stacklevel=2,
             )
         else:
             super().__setattr__(attr, value)

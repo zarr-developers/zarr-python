@@ -484,13 +484,15 @@ def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormali
 
     elif n_ellipsis == 1:
         # locate the ellipsis, count how many items to left and right
-        n_items_l = selection.index(Ellipsis)  # items to left of ellipsis
+        # compare by identity: `==` against a numpy array in the selection is
+        # elementwise and can't be used as a bool
+        n_items_l = next(i for i, item in enumerate(selection) if item is Ellipsis)
         n_items_r = len(selection) - (n_items_l + 1)  # items to right of ellipsis
         n_items = len(selection) - 1  # all non-ellipsis items
 
         if n_items >= len(shape):
             # ellipsis does nothing, just remove it
-            selection = tuple(i for i in selection if i != Ellipsis)
+            selection = tuple(i for i in selection if i is not Ellipsis)
 
         else:
             # replace ellipsis with as many slices are needed for number of dims

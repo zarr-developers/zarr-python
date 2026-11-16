@@ -1,8 +1,8 @@
 """Private input types used only to generate accurate Pydantic JSON schemas.
 
 These repeat the document TypedDicts in a stricter form: extension names
-match the spec's pattern, `must_understand` is `true` at an extension
-point, and `codecs` is not empty. They exist because pydantic builds a
+match the spec's pattern, and `must_understand` is `true` at an extension
+point. They exist because pydantic builds a
 schema from Python types and cannot embed a JSON Schema that has its own
 `$defs`, such as the ones `zarr_metadata.json_schema` writes; the v3
 document schemas are recursive, so they cannot be inlined either.
@@ -16,6 +16,7 @@ import re
 from collections.abc import Mapping  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
+from annotated_types import MinLen
 from pydantic import Field
 from typing_extensions import TypedDict
 
@@ -57,7 +58,7 @@ class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
 
 ZarrV3DeclarationJSON = ExtensionName | ZarrV3NamedConfigJSON
 ZarrV3MandatoryDeclarationJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
-ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MandatoryDeclarationJSON, ...], Field(min_length=1)]
+ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MandatoryDeclarationJSON, ...], MinLen(1)]
 ZarrV2FilterPipelineJSON = tuple[ZarrV2CodecMetadata, ...]
 
 

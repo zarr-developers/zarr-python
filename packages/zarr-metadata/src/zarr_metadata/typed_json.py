@@ -6,14 +6,16 @@ TypedDict, such as `ZarrV3ArrayMetadataJSON` or `GzipCodecConfiguration`.
 value against the TypedDict and returns a value of the TypedDict (or
 None) and every problem, each located in the value:
 
-    import json
+```python
+import json
 
-    from zarr_metadata import ZarrV3ArrayMetadataJSON
-    from zarr_metadata.typed_json import check
+from zarr_metadata import ZarrV3ArrayMetadataJSON
+from zarr_metadata.typed_json import check
 
-    document, problems = check(json.loads(raw), ZarrV3ArrayMetadataJSON)
-    for problem in problems:
-        print(problem.loc, problem.kind, problem.message)
+document, problems = check(json.loads(raw), ZarrV3ArrayMetadataJSON)
+for problem in problems:
+    print(problem.loc, problem.kind, problem.message)
+```
 
 `check` reads a TypedDict as the typing spec defines it, regardless of
 how its module writes annotations:
@@ -39,8 +41,14 @@ how its module writes annotations:
 - A number type may carry bounds, written with annotated-types as
   pydantic reads them: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at any
   depth. For example, `tuple[Annotated[int, Ge(1)], ...]` bounds each
-  element. A value outside the bounds is an `invalid_value` problem. Its
-  message states what the type allows, and its `ctx` holds the bounds.
+  element. An integer type may also carry a step, `MultipleOf`:
+  `Annotated[int, Gt(0), MultipleOf(4)]` is a positive multiple of 4. An
+  array or a string type may bound its length the same way, with
+  `MinLen`, `MaxLen` and `Len`: `Annotated[tuple[int, ...], MinLen(1)]`
+  is a non-empty array. A string's length counts its code points, as
+  JSON Schema counts them. A value outside the bounds is an `invalid_value`
+  problem. Its message states what the type allows, and its `ctx` holds
+  the bounds, as pydantic names them (`ge`, `min_length`).
   `Annotated` may also carry a note (a string or a `Doc`). Any other
   metadata raises `TypeError`, because `check` would not enforce a
   constraint it does not support.

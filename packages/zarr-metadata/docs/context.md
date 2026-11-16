@@ -4,7 +4,7 @@ Resolving metadata documents requires a context, a `Context`, that defines which
 
 ## Why do we need a context
 
-The Zarr V3 spec defines the JSON structure of `zarr.json` for arrays and groups exactly, by defining the fields that must be present and the JSON types they must have. But the __interpretation__ of those fields as actual data types, codecs, chunk grids, etc is not strictly defined by the spec. Relating a JSON value like `"bytes"` to the `bytes` codec requires a mapping from names to codec types.
+The Zarr V3 spec defines the JSON structure of `zarr.json` for arrays and groups exactly. It defines the members that must be present and the JSON types they must have. But the __interpretation__ of those members as actual data types, codecs, chunk grids, etc is not strictly defined by the spec. Relating a JSON value like `"bytes"` to the `bytes` codec requires a mapping from names to codec types.
 
 `zarr-metadata` makes this explicit by validating JSON documents with a __context object__. That context object contains definitions of codecs, data types, etc, which can be matched to the declarations in the JSON document.
 
@@ -47,7 +47,7 @@ document: ZarrV3ArrayMetadataJSON = {
 }
 ```
 
-In the above code snippet we define a `zarr.json` document with three codec declarations (we will just call them codecs for brevity): one named `bytes`, another named `gzip`, and a third named `unknown`. The `bytes` codec here is correctly configured according to the `bytes` codec spec. The `gzip` declaration here violates the `gzip` codec spec because the `level` configuration field is too high. And the `unknown` codec is unknown, it has no specification and cannot be resolved.
+In the above code snippet we define a `zarr.json` document with three codec declarations. (We will just call them codecs for brevity.) They are named `bytes`, `gzip` and `unknown`. The `bytes` codec here is correctly configured according to the `bytes` codec spec. The `gzip` declaration here violates the `gzip` codec spec because the `level` configuration member is too high. And the `unknown` codec is unknown, it has no specification and cannot be resolved.
 
 These three codecs represent three different scenarios that this library handles, two with distinct failure modes. We demonstrate how this works in the next code snippet.
 
@@ -101,7 +101,7 @@ These are the three scenarios:
 
 - `bytes` is parsed to an `AcceptedDeclaration`. A definition in the context claims the name `bytes`, and the configuration passes its checks.
 - The malformed `gzip` is parsed to a `RefusedDeclaration`. A definition claims the name `gzip`, but the configuration fails one of its checks: a `level` of 99 is outside the range gzip allows. The read reports the problem, with its location in the document, and builds no model, so `reading.metadata` is `None`. Building the model directly raises the same problem as a `MetadataValidationError`.
-- The `unknown` codec is parsed to an `UnclaimedDeclaration`. Nothing in the context claims the name, so it is kept as written and not checked. This is not a problem: the spec lets a document name codecs a reader does not know.
+- The `unknown` codec is parsed to an `UnclaimedDeclaration`. Nothing in the context claims the name, so it is kept as written and not checked. This is not a problem: the spec [lets a document name codecs](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/core/index.html#extension-codecs) defined outside it, which a reader may not know.
 
 So one JSON document can be valid in one context and invalid in another. This is why a model is a document _and_ the context it was read in: the context defines the interpretation of the document. A model keeps its context, and moving it to another context reads the document again. Our `small` model was valid in its original context, but it is not valid in the new one:
 

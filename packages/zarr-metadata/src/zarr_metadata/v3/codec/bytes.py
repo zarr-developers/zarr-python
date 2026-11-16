@@ -5,82 +5,24 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
-
-from typing_extensions import TypedDict
+from typing import Final
 
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
+    ArrayBytesCodecDefinition,
     Chunk,
-    CodecDefinition,
     storage_of,
 )
-
-BYTES_CODEC_NAME: Final = "bytes"
-"""The `name` field value of the `bytes` codec."""
-
-BytesCodecName = Literal["bytes"]
-"""Literal type of the `name` field of the `bytes` codec."""
-
-Endianness = Literal["little", "big"]
-"""Literal type of byte order of multi-byte numeric data."""
-
-ENDIANNESS: Final = ("little", "big")
-"""Tuple of permitted values for the `endian` field of the `bytes` codec."""
-
-
-class BytesCodecConfiguration(TypedDict, closed=True):
-    """
-    Configuration for the Zarr v3 `bytes` codec.
-
-    The `endian` field is required for multi-byte data types.
-    """
-
-    endian: NotRequired[Endianness]
-    """The byte order in which each value is written.
-
-    Required when the values of the data type the codec is handed take more
-    than one byte; a single-byte type such as `uint8` or `bool` does not
-    depend on it.
-    """
-
-
-class BytesCodecObject(TypedDict, closed=True):
-    """`bytes` codec metadata in object form.
-
-    `configuration` is itself optional — when no configuration fields are
-    set, the entire `configuration` key may be omitted. This matches the
-    bare-string short-hand form (`BytesCodecName`) at the canonical data
-    level; both encodings describe a `bytes` codec with default settings.
-    """
-
-    name: BytesCodecName
-    """The codec's name, `"bytes"`."""
-    configuration: NotRequired[BytesCodecConfiguration]
-    """The codec's parameters.
-
-    May be absent when no parameter is set.
-    """
-    must_understand: NotRequired[bool]
-    """Whether a reader that does not recognize this codec must refuse the document.
-
-    Absent means `true`. The spec permits `false` for a codec
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1581),
-    though `resolve` reports a `false` as a problem at every extension point.
-    """
-
-
-BytesCodecMetadata = BytesCodecObject | BytesCodecName
-"""Permitted JSON shapes for `bytes` codec metadata.
-
-The configuration has no required keys (`endian` is conditionally required
-at runtime based on data type), so the spec's short-hand-name form is
-permitted in addition to the object form, and the object form may itself
-omit `configuration` entirely.
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/bytes/index.rst#L64-L69 ("endian: Required for data types for which endianness is applicable")
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
-"""
+from zarr_metadata.v3._types.codec import (
+    BYTES_CODEC_NAME,
+    ENDIANNESS,
+    BytesCodecConfiguration,
+    BytesCodecMetadata,
+    BytesCodecName,
+    BytesCodecObject,
+    Endianness,
+)
 
 
 def _chunk_rules(
@@ -122,10 +64,9 @@ def _chunk_rules(
         )
 
 
-BYTES_CODEC: Final = CodecDefinition(
+BYTES_CODEC: Final = ArrayBytesCodecDefinition(
     name=BYTES_CODEC_NAME,
     configuration=BytesCodecConfiguration,
-    kind="array_bytes",
     size="static",
     chunk_rules=_chunk_rules,
 )

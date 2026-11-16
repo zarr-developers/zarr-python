@@ -28,6 +28,9 @@ from zarr_metadata.v3._pipeline import (
 )
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
+    ArrayArrayCodecDefinition,
+    ArrayBytesCodecDefinition,
+    BytesBytesCodecDefinition,
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
@@ -51,17 +54,16 @@ def _tiled(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> C
     return Chunk(doubled, chunk.data_type)
 
 
-ACME_TILE = CodecDefinition(
+ACME_TILE = ArrayArrayCodecDefinition(
     name="acme.tile",
     configuration=EmptyConfiguration,
-    kind="array_array",
     size="static",
     transition=_tiled,
 )
 """An array -> array codec that declares its output chunk."""
 
-ACME_SHUFFLE = CodecDefinition(
-    name="acme.shuffle", configuration=EmptyConfiguration, kind="array_array", size="static"
+ACME_SHUFFLE = ArrayArrayCodecDefinition(
+    name="acme.shuffle", configuration=EmptyConfiguration, size="static"
 )
 """An array -> array codec that does not declare its output chunk."""
 
@@ -187,20 +189,6 @@ def _lengths(*axes: set[int]) -> tuple[frozenset[int], ...]:
             [CHUNK, Chunk(), Chunk(None, _of("float32").data_type)],
         ),
         ([_scale(offset=1), "acme.vlen"], Chunk(), [Chunk(), Chunk()]),
-        # Where the specs disagree or say nothing, a data type is not checked.
-        # The numpy time types say they accept any codec of 64-bit integers,
-        # and scale_offset does not say whether it accepts complex numbers.
-        (
-            [_cast("int64"), LITTLE],
-            _of({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}}),
-            [
-                _of(
-                    {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}}
-                ),
-                _of("int64"),
-            ],
-        ),
-        ([_scale(offset=[1, 0]), LITTLE], _of("complex64"), [_of("complex64"), _of("complex64")]),
     ],
 )
 def test_every_pipeline_hands_each_codec_the_chunk_the_one_before_hands_on(
@@ -323,8 +311,21 @@ def test_error_a_scalar_the_cast_maps_from_that_is_not_of_the_data_type_it_is_ha
 
 
 @pytest.mark.parametrize("codec", [_cast("float32"), _scale()])
-@pytest.mark.parametrize("data_type", ["bool", "string", _struct("int8")])
-def test_error_an_arithmetic_codec_handed_values_that_are_no_numbers(
+@pytest.mark.parametrize(
+    "data_type",
+    [
+        "bool",
+        "string",
+        _struct("int8"),
+        # Each codec's spec lists the integer and floating-point types among
+        # the data types of its repository that it supports, which leaves out
+        # the complex types and the numpy time types.
+        "complex64",
+        {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
+        {"name": "numpy.timedelta64", "configuration": {"unit": "s", "scale_factor": 1}},
+    ],
+)
+def test_error_an_arithmetic_codec_handed_a_data_type_its_spec_does_not_list(
     codec: JSONValue, data_type: JSONValue
 ) -> None:
     # The codec comes before an array -> bytes codec that nothing in scope
@@ -339,10 +340,6 @@ def test_error_a_codec_handed_on_what_another_could_not_take_is_judged_too() -> 
         ((0,), "invalid_value"),
         ((1,), "invalid_value"),
     ]
-
-
-def test_error_a_cast_handed_complex_numbers() -> None:
-    assert _problems([_cast("float32"), "acme.vlen"], _of("complex64")) == [((0,), "invalid_value")]
 
 
 @pytest.mark.parametrize(
@@ -360,10 +357,9 @@ def test_error_a_scale_or_offset_that_is_not_a_value_of_the_data_type_it_is_hand
 
 
 def test_error_a_transition_that_gives_something_else() -> None:
-    lying = CodecDefinition(
+    lying = ArrayArrayCodecDefinition(
         name="acme.lying",
         configuration=EmptyConfiguration,
-        kind="array_array",
         size="static",
         transition=lambda configuration, nested, chunk: "a chunk",  # pyright: ignore[reportArgumentType]
     )
@@ -376,10 +372,9 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
     def transition(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
         raise KeyError("axis")
 
-    raising = CodecDefinition(
+    raising = ArrayArrayCodecDefinition(
         name="acme.raising",
         configuration=EmptyConfiguration,
-        kind="array_array",
         size="static",
         transition=transition,
     )
@@ -409,10 +404,9 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
     def transition(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
         return Chunk(lengths, data_type)  # pyright: ignore[reportArgumentType]
 
-    odd = CodecDefinition(
+    odd = ArrayArrayCodecDefinition(
         name="acme.odd",
         configuration=EmptyConfiguration,
-        kind="array_array",
         size="static",
         transition=transition,
     )
@@ -427,24 +421,20 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
 @pytest.mark.parametrize(
     ("kind", "attribute"),
     [
-        ("bytes_bytes", "chunk_rules"),
-        ("bytes_bytes", "transition"),
-        ("bytes_bytes", "pipelines"),
-        ("array_bytes", "transition"),
+        (BytesBytesCodecDefinition, "chunk_rules"),
+        (BytesBytesCodecDefinition, "transition"),
+        (BytesBytesCodecDefinition, "pipelines"),
+        (ArrayBytesCodecDefinition, "transition"),
     ],
 )
-def test_error_a_codec_hook_nothing_would_ask(kind: str, attribute: str) -> None:
+def test_error_a_codec_hook_nothing_would_ask(
+    kind: type[CodecDefinition[Any]], attribute: str
+) -> None:
     # A bytes -> bytes codec receives bytes, and only an array -> array
-    # codec outputs a chunk, so these hooks would never be called.
+    # codec outputs a chunk, so their kinds have no such hooks.
     hook = {attribute: lambda configuration, nested, chunk: ()}
-    with pytest.raises(TypeError, match=f"'acme.x': {attribute}, "):
-        CodecDefinition(
-            name="acme.x",
-            configuration=EmptyConfiguration,
-            kind=kind,  # pyright: ignore[reportArgumentType]
-            size="static",
-            **hook,  # pyright: ignore[reportArgumentType]
-        )
+    with pytest.raises(TypeError, match=f"unexpected keyword argument '{attribute}'"):
+        kind(name="acme.x", configuration=EmptyConfiguration, size="static", **hook)  # pyright: ignore[reportArgumentType]
 
 
 def test_an_array_document_s_codecs_are_each_judged_against_the_chunk_they_are_handed() -> None:
@@ -489,10 +479,9 @@ def _holder(
     pipelines: object, types: JSONValue = ("uint8",)
 ) -> ResolvedDeclaration[CodecDefinition[Any]]:
     """A codec that holds a pipeline of codecs and a list of data types, `types`, and whose `pipelines` hook is `pipelines`."""
-    holder = CodecDefinition(
+    holder = ArrayBytesCodecDefinition(
         name="acme.holder",
         configuration=AcmeHolderConfiguration,
-        kind="array_bytes",
         size="dynamic",
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )

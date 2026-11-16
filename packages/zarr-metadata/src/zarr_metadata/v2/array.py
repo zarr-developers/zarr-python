@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, TypeIs
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v2._declaration_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
@@ -20,6 +20,12 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 ZARR_V2_ARRAY_ORDER: Final = ("C", "F")
 """Tuple of permitted values for the `order` field of v2 array metadata."""
 
+
+def is_zarr_v2_array_order(value: object) -> TypeIs[ZarrV2ArrayOrder]:
+    """Whether `value` is one of `ZARR_V2_ARRAY_ORDER`, narrowing it to `ZarrV2ArrayOrder`."""
+    return value in ZARR_V2_ARRAY_ORDER
+
+
 ZarrV2ArrayDimensionSeparator = Literal[".", "/"]
 """Literal type of permitted values for the `dimension_separator` field of v2 array metadata.
 
@@ -31,6 +37,18 @@ See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
 
 ZARR_V2_ARRAY_DIMENSION_SEPARATOR: Final = (".", "/")
 """Tuple of permitted values for the `dimension_separator` field of v2 array metadata."""
+
+ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR: Final[ZarrV2ArrayDimensionSeparator] = "."
+"""The `dimension_separator` a v2 array's metadata means when it has none.
+
+"If the value is not set, then the default MUST be assumed to be `"."`"
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L83-L86).
+"""
+
+
+def is_zarr_v2_array_dimension_separator(value: object) -> TypeIs[ZarrV2ArrayDimensionSeparator]:
+    """Whether `value` is one of `ZARR_V2_ARRAY_DIMENSION_SEPARATOR`, narrowing it to `ZarrV2ArrayDimensionSeparator`."""
+    return value in ZARR_V2_ARRAY_DIMENSION_SEPARATOR
 
 
 class ZarrV2ZArrayJSON(TypedDict):
@@ -148,6 +166,7 @@ ZARR_V2_ARRAY_METADATA_STORE_KEY: Final[ZarrV2ArrayMetadataStoreKey] = ".zarray"
 
 
 __all__ = [
+    "ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
     "ZARR_V2_ARRAY_ORDER",
@@ -156,4 +175,6 @@ __all__ = [
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayOrder",
     "ZarrV2ZArrayJSON",
+    "is_zarr_v2_array_dimension_separator",
+    "is_zarr_v2_array_order",
 ]
