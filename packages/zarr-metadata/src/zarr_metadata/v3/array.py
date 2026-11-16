@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Annotated, Final, Literal, NotRequired
 
-from annotated_types import Ge
+from annotated_types import Ge, MinLen
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
@@ -47,7 +47,7 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
 
     Which JSON values it may take depends on `data_type`.
     """
-    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    codecs: Annotated[tuple[ZarrV3CodecDeclaration, ...], MinLen(1)]
     """The codecs that encode each chunk, in encoding order.
 
     Zero or more array -> array codecs, then exactly one array -> bytes codec,

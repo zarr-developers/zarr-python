@@ -27,7 +27,7 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata._typed_json import typeddict_keys
+from zarr_metadata._typed_json import strip_annotation, typeddict_keys
 from zarr_metadata.definition._context import disagreements, scoped
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
@@ -132,10 +132,10 @@ _EXTENSION_POINTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tup
 _EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tuple(
     (key, kind)
     for key, (annotation, _) in _MEMBERS_V3.items()
-    if get_origin(annotation) is tuple
-    and (kind := declaration_kind(get_args(annotation)[0])) is not None
+    if get_origin(listed := strip_annotation(annotation)[0]) is tuple
+    and (kind := declaration_kind(get_args(listed)[0])) is not None
 )
-"""The lists of extension points of a v3 array document, and the kind each entry is read as: each member that the TypedDict annotates as a tuple of a declaration alias."""
+"""The lists of extension points of a v3 array document, and the kind each entry is read as: each member that the TypedDict annotates as a tuple of a declaration alias, whatever constraints the tuple carries."""
 
 
 def no_extra_fields() -> Mapping[str, ResolvedDeclaration[Any]]:

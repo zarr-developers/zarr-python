@@ -1717,6 +1717,10 @@ def _read_carried(
     declared = {key: value for key, value in carried.items() if key in members}
     undeclared = [key for key in carried if key not in members]
     configuration, judged = definition.read_configuration(declared)
+    # The type check describes a configuration member, which the document
+    # never wrote, so its messages name the member and the name it was read
+    # from. A rule of such a definition writes its messages for the name.
+    _, typed = definition._check_configuration(declared)
     # A problem with the configuration encoded in the name belongs to the
     # declaration. It is located at the declaration, where the name is, and the
     # `input` and `ctx` that described a configuration member do not apply
@@ -1725,7 +1729,14 @@ def _read_carried(
     problems = (
         *beside,
         *(
-            dataclasses.replace(found, loc=loc, input=UNSET, ctx={}, kind="invalid_value")
+            dataclasses.replace(
+                found,
+                loc=loc,
+                input=UNSET,
+                ctx={},
+                kind="invalid_value",
+                message=_read_from(name, found) if found in typed else found.message,
+            )
             for found in judged
         ),
     )
@@ -1739,6 +1750,14 @@ def _read_carried(
     return AcceptedDeclaration(
         json=data, name=name, definition=definition, configuration=configuration
     ), problems
+
+
+def _read_from(name: str, found: ValidationProblem) -> str:
+    """The message of `found`, a problem the type check found in the configuration that `name` encodes, naming the member it is about and the name: `bits in "r12": expected ...`."""
+    if len(found.loc) == 0:
+        return f"{shown(name)}: {found.message}"
+    member = ".".join(str(part) for part in found.loc)
+    return f"{member} in {shown(name)}: {found.message}"
 
 
 def _sized(declaration: _NestedDeclaration, inner: ResolvedDeclaration[Any]) -> Problems:
