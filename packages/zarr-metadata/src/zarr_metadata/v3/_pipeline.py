@@ -44,15 +44,19 @@ from zarr_metadata._json import (
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
+    RefusedDeclaration,
     ResolvedDeclaration,
+    UnclaimedDeclaration,
     asked,
     declaration_locations,
     in_document,
     item_at,
+    own_key,
     read_only,
     respelled,
     ruled,
 )
+from zarr_metadata.definition._scope import claim_key, read_as_claimed, refines
 from zarr_metadata.v3._definition import (
     ArrayArrayCodecDefinition,
     ArrayCodecDefinition,
@@ -372,19 +376,86 @@ def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
     inside a nested declaration is the document's, and is not held
     against the result.
     """
-    codec = stage.codec
+    return _for_stage(stage.codec, stage)
+
+
+def _for_stage(
+    codec: ResolvedDeclaration[CodecDefinition[Any]], stage: Stage
+) -> ResolvedDeclaration[CodecDefinition[Any]]:
+    """`codec`, a reading of the codec at the place of `stage` in its pipeline, in the simplest spelling for the chunks that `stage` and the stages it contains receive.
+
+    `codec` is the codec of `stage` itself, or the same codec as another
+    scope read it. Each codec it holds is simplified for the chunk that
+    the stage at its location receives.
+    """
     if not isinstance(codec, AcceptedDeclaration):
         return codec
     inner: dict[Loc, ResolvedDeclaration[Any]] = {}
-    for member, stages in stage.inner.items():
-        for index, each in enumerate(stages):
-            simpler = codec_for_chunk(each)
-            if simpler is not each.codec:
-                inner[(member, index)] = simpler
+    for loc, each in _inner_stages(stage).items():
+        held_there = codec.nested.get(loc)
+        if held_there is None:
+            continue
+        simpler = _for_stage(held_there, each)
+        if simpler is not held_there:
+            inner[loc] = simpler
     configuration = _for_chunk(codec, stage.incoming)
     if configuration is None and len(inner) == 0:
         return codec
     return respelled(codec, codec.configuration if configuration is None else configuration, inner)
+
+
+def _inner_stages(stage: Stage) -> dict[Loc, Stage]:
+    """Each stage of the pipelines the codec of `stage` contains, by the location of its codec in the configuration."""
+    return {
+        (member, index): each
+        for member, stages in stage.inner.items()
+        for index, each in enumerate(stages)
+    }
+
+
+def codec_refines(stage: Stage, other: ResolvedDeclaration[CodecDefinition[Any]]) -> bool:
+    """Whether the codec of `stage` refines `other`, another reading of the codec at that place in the pipeline.
+
+    This is the order that `refines` defines for declarations, with each
+    codec compared as `codec_for_chunk` compares it: in its simplest
+    spelling for the chunk it receives. The chunk is the one `stage`
+    knows. A scope that read less may know less of the chunk: when it
+    claims no data type, or no codec that comes before, a `bytes` codec
+    keeps an `endian` that `stage` knows to mean nothing. So `other` is
+    simplified for the chunks of `stage` before the two are compared, and
+    a document read in a richer scope refines the same document read in
+    a poorer one.
+    """
+    mine = stage.codec
+    if not isinstance(mine, AcceptedDeclaration) or isinstance(other, RefusedDeclaration):
+        # Nothing is simplified for a codec the scope did not read.
+        return refines(mine, other)
+    if isinstance(other, UnclaimedDeclaration):
+        # A gain, when what `other` reads as with the claims of `mine` is `mine`.
+        if claim_key(mine) != claim_key(other):
+            return False
+        return _for_stage(read_as_claimed(other, mine), stage) == codec_for_chunk(stage)
+    if mine.definition != other.definition or set(mine.nested) != set(other.nested):
+        return False
+    if own_key(_own_for_chunk(mine, stage.incoming)) != own_key(
+        _own_for_chunk(other, stage.incoming)
+    ):
+        return False
+    inner = _inner_stages(stage)
+    return all(
+        codec_refines(inner[loc], other.nested[loc])
+        if loc in inner
+        else refines(mine.nested[loc], other.nested[loc])
+        for loc in mine.nested
+    )
+
+
+def _own_for_chunk(
+    codec: AcceptedDeclaration[CodecDefinition[Any]], chunk: Chunk | None
+) -> AcceptedDeclaration[CodecDefinition[Any]]:
+    """`codec` with its own configuration as its `chunk_canonical` simplifies it for `chunk`, and each nested declaration as it is."""
+    configuration = _for_chunk(codec, chunk)
+    return codec if configuration is None else respelled(codec, configuration, {})
 
 
 def _for_chunk(
@@ -496,4 +567,4 @@ def _text_at(configuration: JSONValue, loc: Loc) -> str | None:
     return None if item is UNSET else json_text(item)
 
 
-__all__ = ["Stage", "codec_for_chunk", "read_pipeline"]
+__all__ = ["Stage", "codec_for_chunk", "codec_refines", "read_pipeline"]

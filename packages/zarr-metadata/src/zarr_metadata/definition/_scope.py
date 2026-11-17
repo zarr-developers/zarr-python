@@ -171,8 +171,15 @@ def refines(declaration: ResolvedDeclaration[Any], other: ResolvedDeclaration[An
 
 def _gained(declaration: AcceptedDeclaration[Any], other: UnclaimedDeclaration) -> bool:
     """Whether reading `other` in the scope formed by `declaration`'s own claims produces `declaration`. This is the test for a gain."""
+    return read_as_claimed(other, declaration) == declaration
+
+
+def read_as_claimed(
+    other: UnclaimedDeclaration, declaration: AcceptedDeclaration[D]
+) -> ResolvedDeclaration[D]:
+    """`other`, a declaration nothing claimed, read in the scope formed by `declaration`'s own claims: its definition and the definitions of the declarations nested in it. A gain is judged by what this returns."""
     again, _ = resolve(other.json, declaration.read_as, _Claimed.of(declaration))
-    return again == declaration
+    return cast("ResolvedDeclaration[D]", again)
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,5 +247,6 @@ __all__ = [
     "claims_of",
     "disagreements_of",
     "kind_name",
+    "read_as_claimed",
     "refines",
 ]

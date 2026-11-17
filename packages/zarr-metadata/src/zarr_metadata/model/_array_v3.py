@@ -78,7 +78,7 @@ from zarr_metadata.v3._definition import (
     chunk_grid_lengths,
     default_array_bytes_codec,
 )
-from zarr_metadata.v3._pipeline import Stage, codec_for_chunk, read_pipeline
+from zarr_metadata.v3._pipeline import Stage, codec_for_chunk, codec_refines, read_pipeline
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
@@ -767,7 +767,7 @@ class ZarrV3ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
+        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). A codec is compared as `codec_refines` compares it, for the chunk it receives in this model, so a document read in a richer scope refines the same document read in a poorer one, whatever the richer scope learns of the chunks. Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
         if type(other) is not type(self):
             return False
         if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(
@@ -780,11 +780,17 @@ class ZarrV3ArrayMetadata(Keyed):
             (self.data_type, other.data_type),
             (self.chunk_grid, other.chunk_grid),
             (self.chunk_key_encoding, other.chunk_key_encoding),
-            *zip(codecs_for_chunks(self._reading), codecs_for_chunks(other._reading), strict=True),
             *zip(self.storage_transformers, other.storage_transformers, strict=True),
             *((self.extra_fields[key], other.extra_fields[key]) for key in self.extra_fields),
         )
         if not all(refines_declaration(mine, theirs) for mine, theirs in pairs):
+            return False
+        # Each codec is compared for the chunk it receives in this model,
+        # which knows at least as much of it as `other` does.
+        if not all(
+            codec_refines(mine, theirs.codec)
+            for mine, theirs in zip(self._reading.pipeline, other._reading.pipeline, strict=True)
+        ):
             return False
         if len(fill_value_problems(self.data_type, other._members.fill_value)) != 0:
             return False

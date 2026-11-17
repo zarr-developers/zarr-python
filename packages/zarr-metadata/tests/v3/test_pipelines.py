@@ -23,11 +23,13 @@ from zarr_metadata.definition import (
     canonical_of,
     resolve,
 )
+from zarr_metadata.definition._definition import held
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     read_array_metadata_v3,
 )
 from zarr_metadata.v3._pipeline import (
+    codec_refines,
     read_pipeline,
 )
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC, BytesCodecConfiguration
@@ -721,6 +723,58 @@ def test_a_chunk_canonical_that_simplifies_its_own_members_is_taken_at_its_word(
     assert isinstance(found, AcceptedDeclaration)
     assert json_text(cast("JSONValue", found.configuration)) == json_text({"codecs": codecs})
     assert list(found.nested) == [("codecs", 0), ("codecs", 1)]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "mine", "theirs", "without", "refines"),
+    [
+        # The same scope: the order is equality, for the chunk each codec receives.
+        ("uint8", [LITTLE, GZIP], [BIG, GZIP], (), [True, True]),
+        ("uint16", [LITTLE, GZIP], [BIG, GZIP], (), [False, True]),
+        ("uint8", [_shard(BARE)], [_shard(LITTLE)], (), [True]),
+        # A gain: what the poorer scope left unclaimed reads as the codec, for the chunk it receives.
+        ("uint8", [LITTLE], [LITTLE], ("bytes",), [True]),
+        ("uint8", [LITTLE], [BIG], ("bytes",), [True]),
+        ("uint16", [LITTLE], [BIG], ("bytes",), [False]),
+        ("uint8", [BARE, GZIP], [LITTLE, GZIP], ("bytes", "gzip"), [True, True]),
+        # A gain of a codec that holds codecs, and a gain of a codec inside one.
+        ("uint8", [_shard(BARE)], [_shard(LITTLE)], ("sharding_indexed",), [True]),
+        ("uint8", [_shard(LITTLE)], [_shard(BIG)], ("bytes",), [True]),
+        ("uint16", [_shard(LITTLE)], [_shard(BIG)], ("bytes",), [False]),
+        # The poorer scope knew less of the chunk: it did not read the cast before.
+        (
+            "uint16",
+            [_cast("uint8"), BARE],
+            [_cast("uint8"), LITTLE],
+            ("cast_value",),
+            [True, True],
+        ),
+        # Another codec under the same name is not a gain.
+        ("uint8", [LITTLE, GZIP], [LITTLE, {"name": "zstd"}], ("zstd",), [True, False]),
+    ],
+)
+def test_a_codec_refines_another_reading_of_it_for_the_chunk_it_receives(
+    data_type: JSONValue,
+    mine: list[JSONValue],
+    theirs: list[JSONValue],
+    without: tuple[str, ...],
+    refines: list[bool],
+) -> None:
+    """`codec_refines` is the order `refines` defines for declarations, with each codec in its simplest spelling for the chunk its stage receives. `theirs` is read in a scope without the codecs named in `without`, which may leave it knowing less of the chunk."""
+    kept = {name: codec for name, codec in CONTEXT.codecs.items() if name not in without}
+    poorer = CONTEXT.copy(update={"codecs": kept})
+    stages, problems = _read(mine, _of(data_type))
+    assert problems == ()
+    others = [resolve(codec, CodecDefinition, poorer)[0] for codec in theirs]
+    found = [codec_refines(stage, other) for stage, other in zip(stages, others, strict=True)]
+    assert found == refines
+    # With nothing left out, each codec refines the other exactly when the two are equal.
+    if without == ():
+        back, _ = _read(theirs, _of(data_type))
+        assert [
+            codec_refines(stage, held(other.codec))
+            for stage, other in zip(back, stages, strict=True)
+        ] == refines
 
 
 def _bytes_with(chunk_canonical: object) -> ResolvedDeclaration[CodecDefinition[Any]]:
