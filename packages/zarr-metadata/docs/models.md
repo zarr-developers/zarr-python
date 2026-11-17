@@ -315,7 +315,9 @@ The canonical document is written from the same parts that `==` compares:
   `dimension_separator` of `"."`.
 - Everything else is kept as written. This includes the attributes, and
   the configuration of a declaration that nothing in the context claims,
-  because only its own definition could simplify it.
+  because only its own definition could simplify it. Such a declaration
+  is still written in the shortest form every reader accepts, without an
+  empty `configuration` or a `must_understand` of `true`.
 
 A v2 codec is written with each numcodecs default it leaves out, as its
 definition's `canonical` writes it. So a canonical v2 document can be

@@ -753,9 +753,12 @@ class ZarrV3ArrayMetadata(Keyed):
         data type. `attributes` and `storage_transformers` are left out
         when empty, because a document without them means the same.
         Everything else is kept as written: `shape`, `dimension_names`,
-        the attributes, and whatever nothing in scope claims, which only
-        its own definition could simplify. A document that is already in
-        this spelling is returned as it is, in a new model.
+        the attributes, and the configuration of a declaration nothing in
+        scope claims, which only its own definition could simplify. Such
+        a declaration is still written in the shortest form every reader
+        accepts, without an empty `configuration` or a `must_understand`
+        of `true`. A document that is already in this spelling is
+        returned as it is, in a new model.
         """
         document = canonical_array_document_v3(self._reading, self._members)
         return type(self)(document, context=self._context)
