@@ -9,7 +9,7 @@ type, pass through.
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NotRequired, cast
 
 import pytest
 from typing_extensions import TypedDict
@@ -73,7 +73,39 @@ ACME_SHUFFLE = ArrayArrayCodecDefinition(
 )
 """An array -> array codec that does not declare its output chunk."""
 
-CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_TILE, ACME_SHUFFLE]))
+
+class AcmePackConfiguration(TypedDict, closed=True):
+    mode: NotRequired[str]
+
+
+def _lower_mode(configuration: AcmePackConfiguration) -> AcmePackConfiguration:
+    """`mode` in lower case, since `acme.pack` reads it whatever its case."""
+    if "mode" not in configuration:
+        return configuration
+    return {"mode": configuration["mode"].lower()}
+
+
+def _mode_for_chunk(
+    configuration: AcmePackConfiguration, nested: Nested, chunk: Chunk
+) -> AcmePackConfiguration:
+    """Without a `mode` of `"auto"`, which is what `acme.pack` does without a `mode` for a data type the scope read."""
+    if isinstance(chunk.data_type, AcceptedDeclaration) and configuration.get("mode") == "auto":
+        return {}
+    return configuration
+
+
+ACME_PACK = ArrayBytesCodecDefinition(
+    name="acme.pack",
+    configuration=AcmePackConfiguration,
+    size="static",
+    canonical=_lower_mode,
+    chunk_canonical=_mode_for_chunk,
+)
+"""An array -> bytes codec with both a `canonical` and a `chunk_canonical`: the second simplifies what the first writes."""
+
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(codecs=[ACME_TILE, ACME_SHUFFLE, ACME_PACK])
+)
 
 UINT8 = resolve("uint8", DataTypeDefinition, CONTEXT)[0]
 
@@ -573,6 +605,10 @@ def _shard(*codecs: JSONValue, index_codecs: tuple[JSONValue, ...] = (LITTLE, CR
     }
 
 
+def _pack(mode: str) -> JSONValue:
+    return {"name": "acme.pack", "configuration": {"mode": mode}}
+
+
 def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
     """Each codec of a pipeline that receives `chunk`, in its simplest spelling for the chunk it receives."""
     stages, problems = _read(codecs, chunk)
@@ -607,6 +643,11 @@ def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
         ("acme.t", [LITTLE], [LITTLE]),
         ("uint8", ["acme.shuffle", LITTLE], [{"name": "acme.shuffle"}, LITTLE]),
         ("uint8", ["acme.unclaimed", LITTLE], [{"name": "acme.unclaimed"}, LITTLE]),
+        # A codec is simplified for its chunk in the spelling its `canonical` gives it.
+        ("uint8", [_pack("auto")], [{"name": "acme.pack"}]),
+        ("uint8", [_pack("AUTO")], [{"name": "acme.pack"}]),
+        ("uint8", [_pack("FAST")], [_pack("fast")]),
+        ("acme.t", [_pack("AUTO")], [_pack("auto")]),
     ],
 )
 def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
@@ -652,6 +693,20 @@ def test_error_a_chunk_canonical_the_chunk_rules_do_not_allow() -> None:
     # A value of `uint16` takes two bytes, so the chunk rules require `endian`.
     stage = _stage(_bytes_with(lambda configuration, nested, chunk: {}), _of("uint16"))
     with pytest.raises(ValueError, match="'acme.bytes': its chunk_canonical gave {}, which"):
+        codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_with_something_left_to_simplify() -> None:
+    # Asked about `little` it gives `big`, and asked about `big` it gives `little`.
+    def chunk_canonical(
+        configuration: BytesCodecConfiguration, nested: Nested, chunk: Chunk
+    ) -> BytesCodecConfiguration:
+        return {"endian": "big" if configuration.get("endian") == "little" else "little"}
+
+    stage = _stage(_bytes_with(chunk_canonical), CHUNK)
+    with pytest.raises(
+        ValueError, match="'acme.bytes': its chunk_canonical gave .* not the simplest"
+    ):
         codec_for_chunk(stage)
 
 

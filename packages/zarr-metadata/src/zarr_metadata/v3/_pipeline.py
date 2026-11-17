@@ -58,6 +58,7 @@ from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
     CodecKind,
+    unchanged_for_chunk,
 )
 
 if TYPE_CHECKING:
@@ -349,6 +350,9 @@ def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
     codec of each pipeline it contains, for the chunk that codec
     receives, and then its own configuration, as its definition's
     `chunk_canonical` simplifies it for the chunk in `stage`.
+    `chunk_canonical` receives the configuration as the definition's
+    `canonical` spells it, so two spellings that `canonical` reduces to
+    one are simplified for the chunk in the same way.
 
     A codec the scope did not read is returned as it is. A codec's own
     configuration is kept as it is when the codec receives bytes, and
@@ -360,9 +364,10 @@ def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
 
     `chunk_canonical` is the extension author's code, so its result is
     checked: the definition must allow it, the chunk rules must find no
-    problem with it, and each nested declaration must be where it was. A
-    result that fails a check raises `ValueError`, which indicates a bug
-    in the definition, not in the codec.
+    problem with it, each nested declaration must be where it was, and
+    `chunk_canonical` must have nothing left to simplify in it. A result
+    that fails a check raises `ValueError`, which indicates a bug in the
+    definition, not in the codec.
     """
     codec = stage.codec
     if not isinstance(codec, AcceptedDeclaration):
@@ -382,25 +387,26 @@ def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
 def _for_chunk(
     codec: AcceptedDeclaration[CodecDefinition[Any]], chunk: Chunk | None
 ) -> Mapping[str, JSONValue] | None:
-    """The configuration of `codec` as its definition's `chunk_canonical` simplifies it for `chunk`, checked; None when nothing is simplified."""
+    """The configuration of `codec` as its definition's `chunk_canonical` simplifies it for `chunk`, checked; None when nothing is simplified.
+
+    `chunk_canonical` receives the configuration as the definition's
+    `canonical` spells it. So every spelling that `canonical` reduces to
+    one is simplified for the chunk in the same way, and `chunk_canonical`
+    does not have to know each of them. None is returned when
+    `chunk_canonical` changes nothing in that spelling, and the codec
+    then stays as written, for `canonical` to simplify as it simplifies
+    any configuration.
+    """
     definition = codec.definition
     if chunk is None or not isinstance(definition, ArrayCodecDefinition):
+        return None
+    if definition.chunk_canonical is unchanged_for_chunk:
         return None
     configuration, nested = codec.configuration, codec.nested
     if len(_chunk_problems(definition, configuration, nested, chunk, ())) != 0:
         return None
-    given: object = asked(
-        definition,
-        "chunk_canonical",
-        lambda: cast("object", definition.chunk_canonical(read_only(configuration), nested, chunk)),
-    )
-    if given is configuration:
-        return None
-    if not is_object(given):
-        msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
-        raise TypeError(msg)
-    simplified = cast("dict[str, JSONValue]", copied(cast("JSONValue", dict(given))))
-    if json_text(simplified) == json_text(cast("JSONValue", configuration)):
+    simplified = _asked_for_chunk(definition, configuration, nested, chunk)
+    if simplified is None:
         return None
     _, refused = definition.read_configuration(simplified)
     found = (
@@ -420,6 +426,47 @@ def _for_chunk(
             f"{list(found)!r}"
         )
         raise ValueError(msg)
+    # The simplest spelling has nothing left to simplify. Otherwise a
+    # document written from it would read as another codec.
+    further = _asked_for_chunk(definition, simplified, nested, chunk)
+    if further is not None:
+        msg = (
+            f"{definition.name!r}: its chunk_canonical gave {simplified!r}, which is not the "
+            f"simplest spelling: asked again, it gave {further!r}"
+        )
+        raise ValueError(msg)
+    return simplified
+
+
+def _asked_for_chunk(
+    definition: ArrayCodecDefinition[Any],
+    configuration: Mapping[str, JSONValue],
+    nested: Nested,
+    chunk: Chunk,
+) -> dict[str, JSONValue] | None:
+    """What `definition`'s `chunk_canonical` gives for `configuration` as its `canonical` spells it; None when it changes nothing in that spelling."""
+    spelled = read_only(
+        asked(
+            definition,
+            "canonical",
+            lambda: dict(
+                cast("Mapping[str, JSONValue]", definition.canonical(read_only(configuration)))
+            ),
+        )
+    )
+    given: object = asked(
+        definition,
+        "chunk_canonical",
+        lambda: cast("object", definition.chunk_canonical(spelled, nested, chunk)),
+    )
+    if given is spelled:
+        return None
+    if not is_object(given):
+        msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
+        raise TypeError(msg)
+    simplified = cast("dict[str, JSONValue]", copied(cast("JSONValue", dict(given))))
+    if json_text(simplified) == json_text(cast("JSONValue", dict(spelled))):
+        return None
     return simplified
 
 
