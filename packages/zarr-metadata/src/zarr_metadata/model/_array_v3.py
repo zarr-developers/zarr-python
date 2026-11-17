@@ -78,7 +78,7 @@ from zarr_metadata.v3._definition import (
     chunk_grid_lengths,
     default_array_bytes_codec,
 )
-from zarr_metadata.v3._pipeline import Stage, read_pipeline
+from zarr_metadata.v3._pipeline import Stage, codec_for_chunk, read_pipeline
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
@@ -780,7 +780,7 @@ class ZarrV3ArrayMetadata(Keyed):
             (self.data_type, other.data_type),
             (self.chunk_grid, other.chunk_grid),
             (self.chunk_key_encoding, other.chunk_key_encoding),
-            *zip(self.codecs, other.codecs, strict=True),
+            *zip(codecs_for_chunks(self._reading), codecs_for_chunks(other._reading), strict=True),
             *zip(self.storage_transformers, other.storage_transformers, strict=True),
             *((self.extra_fields[key], other.extra_fields[key]) for key in self.extra_fields),
         )
@@ -926,8 +926,10 @@ def array_key_of(
 
     The key holds each declaration's `declaration_key`, and the fill value as JSON
     text: in its canonical spelling when a definition in scope read the
-    data type, and as written otherwise. Every other member is included
-    as it is, with JSON members as text.
+    data type, and as written otherwise. A codec is compared as
+    `codec_for_chunk` returns it for the chunk it receives, so two
+    spellings that mean the same for that chunk are one codec. Every
+    other member is included as it is, with JSON members as text.
     """
     data_type = held(reading.data_type)
     fill_value = (
@@ -940,13 +942,20 @@ def array_key_of(
         json_text(fill_value),
         declaration_key(data_type),
         declaration_key(held(reading.chunk_grid)),
-        tuple(declaration_key(held(stage.codec)) for stage in reading.pipeline),
+        tuple(declaration_key(codec) for codec in codecs_for_chunks(reading)),
         declaration_key(held(reading.chunk_key_encoding)),
         members.dimension_names,
         json_text(members.attributes),
         tuple(declaration_key(held(entry)) for entry in reading.storage_transformers),
         extra_fields_key(reading.extra_fields),
     )
+
+
+def codecs_for_chunks(
+    reading: ZarrV3ArrayMetadataReading,
+) -> tuple[AcceptedDeclaration[CodecDefinition[Any]] | UnclaimedDeclaration, ...]:
+    """The codecs of `reading`, a read that found no problems, in pipeline order: each as `codec_for_chunk` returns it for the chunk it receives."""
+    return tuple(held(codec_for_chunk(stage)) for stage in reading.pipeline)
 
 
 def extra_fields_key(extra_fields: Mapping[str, ResolvedDeclaration[Any]]) -> tuple[object, ...]:

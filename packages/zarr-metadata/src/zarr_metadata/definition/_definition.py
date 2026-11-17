@@ -1259,6 +1259,52 @@ def written_json(declaration: AcceptedDeclaration[Any] | UnclaimedDeclaration) -
     return kind._envelope_json(declaration.name, declaration.configuration)
 
 
+def respelled(
+    declaration: AcceptedDeclaration[D],
+    configuration: Mapping[str, JSONValue],
+    nested: Nested,
+) -> AcceptedDeclaration[D]:
+    """`declaration` with `configuration` as its configuration, and each declaration in `nested` in place of the nested declaration at its location.
+
+    This builds the declaration that another spelling of `declaration`
+    reads as, without reading it again. The caller answers for the
+    spelling: `configuration` must be one that the definition allows and
+    that means the same thing, and it must keep each nested declaration
+    where it is. `nested` holds only the nested declarations to replace,
+    each one accepted or unclaimed, and each is written into the
+    configuration as its `to_json` writes it. A location in `nested` that
+    does not lead into `configuration` raises `TypeError`. The result is
+    written as `to_json` writes it, since no document wrote it.
+    """
+    spelled: JSONValue = dict(configuration)
+    for loc, inner in nested.items():
+        spelled = _replaced(spelled, loc, written_json(held(inner)))
+    kind = declaration.read_as
+    name = declaration.name
+    carried = kind._filed_under(name)[1] is not None
+    return AcceptedDeclaration(
+        json=kind._envelope_json(name, {} if carried else cast("Mapping[str, JSONValue]", spelled)),
+        name=name,
+        definition=declaration.definition,
+        configuration=cast("Mapping[str, JSONValue]", spelled),
+        nested={**declaration.nested, **nested},
+    )
+
+
+def item_at(value: JSONValue, path: Loc) -> JSONValue | UNSET:
+    """The item of `value` at `path`; `UNSET` when `path` does not lead into `value`."""
+    for step in path:
+        if isinstance(step, str):
+            if not isinstance(value, Mapping) or step not in value:
+                return UNSET
+            value = value[step]
+        else:
+            if not isinstance(value, tuple) or not 0 <= step < len(value):
+                return UNSET
+            value = value[step]
+    return value
+
+
 Nested: TypeAlias = Mapping[Loc, ResolvedDeclaration[Any]]
 """The declarations in a configuration, each as the scope read it, keyed by location in the configuration."""
 
@@ -1902,6 +1948,7 @@ __all__ = [
     "held",
     "in_document",
     "is_declaration",
+    "item_at",
     "kind_of",
     "named_configuration",
     "no_rules",
@@ -1909,6 +1956,7 @@ __all__ = [
     "read_only",
     "resolve",
     "resolve_refined",
+    "respelled",
     "ruled",
     "spelled_canonically",
     "unchanged",

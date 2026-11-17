@@ -1473,6 +1473,7 @@ def test_error_a_data_type_fill_value_holding_a_declaration() -> None:
         (ChunkGridDefinition, "shape_rules"),
         (ChunkGridDefinition, "chunk_lengths"),
         (ArrayArrayCodecDefinition, "chunk_rules"),
+        (ArrayArrayCodecDefinition, "chunk_canonical"),
         (ArrayArrayCodecDefinition, "transition"),
         (ArrayArrayCodecDefinition, "pipelines"),
     ],
