@@ -418,10 +418,15 @@ RECIPES: dict[str, Recipe] = {
     ),
     "getsize": Recipe("async", ("a/b",)),
     "getsize_prefix": Recipe("async", ("a/",)),
-    "get_sync": Recipe("sync", ("a/b",), {"prototype": buffer_prototype, "byte_range": None}),
+    "get_sync": Recipe(
+        "sync", ("a/b",), {"prototype": buffer_prototype, "byte_range": RangeByteRequest(1, 3)}
+    ),
     "set_sync": Recipe("sync", ("a/b", VALUE)),
     "delete_sync": Recipe("sync", ("a/b",)),
 }
+
+# Every argument with a default is given a different value above, so a wrapper that drops an
+# argument (and lets the wrapped store's default apply) is caught.
 
 # Members of `Store` that are not a call a wrapper passes through.
 NOT_FORWARDED: dict[str, str] = {
@@ -463,6 +468,18 @@ def _arguments(name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict
     return {k: v for k, v in bound.arguments.items() if k != "self"}
 
 
+async def _call(store: Store, name: str) -> Any:
+    """Call `name` on `store` as its recipe says."""
+    recipe = RECIPES[name]
+    if recipe.kind == "property":
+        return getattr(store, name)
+    if recipe.kind == "aiter":
+        return [item async for item in getattr(store, name)(*recipe.args, **recipe.kwargs)]
+    if recipe.kind == "async":
+        return await getattr(store, name)(*recipe.args, **recipe.kwargs)
+    return getattr(store, name)(*recipe.args, **recipe.kwargs)
+
+
 async def _forwarded(wrapper_name: str, name: str) -> tuple[bool, list[Call]]:
     """Whether the wrapper passes one call of `name` straight to the store it
     wraps, and the calls the wrapped store saw."""
@@ -470,14 +487,7 @@ async def _forwarded(wrapper_name: str, name: str) -> tuple[bool, list[Call]]:
     wrapper = WRAPPERS[wrapper_name](inner)
     recipe = RECIPES[name]
     try:
-        if recipe.kind == "property":
-            result = getattr(wrapper, name)
-        elif recipe.kind == "aiter":
-            result = [item async for item in getattr(wrapper, name)(*recipe.args, **recipe.kwargs)]
-        elif recipe.kind == "async":
-            result = await getattr(wrapper, name)(*recipe.args, **recipe.kwargs)
-        else:
-            result = getattr(wrapper, name)(*recipe.args, **recipe.kwargs)
+        result = await _call(wrapper, name)
     except NotImplementedError:
         return False, inner.calls
     expected = inner.results.get(name)
@@ -498,6 +508,23 @@ def test_every_store_member_is_checked() -> None:
     assert set(RECIPES) <= set(vars(RecordingStore))
 
 
+@pytest.mark.parametrize(
+    "name", sorted(name for name, r in RECIPES.items() if r.kind != "property")
+)
+def test_recipes_override_every_default(name: str) -> None:
+    """A recipe gives each argument that has a default some other value, so
+    forwarding that drops the argument changes what the wrapped store sees."""
+    recipe = RECIPES[name]
+    signature = inspect.signature(getattr(RecordingStore, name))
+    given = signature.bind(None, *recipe.args, **recipe.kwargs).arguments
+    defaults = {
+        parameter.name: parameter.default
+        for parameter in signature.parameters.values()
+        if parameter.default is not inspect.Parameter.empty
+    }
+    assert {key for key, default in defaults.items() if given.get(key, default) == default} == set()
+
+
 @pytest.mark.parametrize("name", sorted(RECIPES))
 @pytest.mark.parametrize("wrapper_name", sorted(WRAPPERS))
 async def test_wrappers_forward_every_store_method(wrapper_name: str, name: str) -> None:
@@ -506,3 +533,21 @@ async def test_wrappers_forward_every_store_method(wrapper_name: str, name: str)
     forwarded, calls = await _forwarded(wrapper_name, name)
     expected = (wrapper_name, name) not in REROUTED
     assert forwarded is expected, f"{wrapper_name}.{name}: the wrapped store saw {calls}"
+
+
+NOT_LOGGED: dict[str, str] = {
+    "with_read_only": "returns a new LoggingStore, which logs its own calls",
+    "__enter__": "returns a new LoggingStore, which logs its own calls",
+    "__exit__": "doesn't read or write the wrapped store",
+    "close": "doesn't read or write the wrapped store",
+    "_check_writable": "doesn't read or write the wrapped store",
+}
+
+
+@pytest.mark.parametrize("name", sorted(RECIPES))
+async def test_logging_store_logs_every_store_method(name: str) -> None:
+    """`LoggingStore` logs each `Store` method it forwards, unless
+    `NOT_LOGGED` says why it doesn't."""
+    store = LoggingStore(RecordingStore(), log_level="WARNING")
+    await _call(store, name)
+    assert (name in store.counter) is (name not in NOT_LOGGED), dict(store.counter)

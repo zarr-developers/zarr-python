@@ -30,7 +30,9 @@ sentinel directory inside the test's own temporary directory.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
+import sys
 import tempfile
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -67,14 +69,12 @@ from zarr.storage import (
     LoggingStore,
     ManagedMemoryStore,
     MemoryStore,
+    ObjectStore,
     ZipStore,
 )
 from zarr.testing.store import LatencyStore
 
-fsspec = pytest.importorskip("fsspec")
-obstore = pytest.importorskip("obstore")
-
-from zarr.storage import ObjectStore
+WINDOWS = sys.platform == "win32"
 
 PROTOTYPE = default_buffer_prototype()
 
@@ -99,6 +99,8 @@ def _no_cleanup() -> None:
 
 
 def _remove_fsspec_memory_root(root: str) -> None:
+    import fsspec
+
     fs = fsspec.filesystem("memory")
     if fs.exists(root):
         fs.rm(root, recursive=True)
@@ -133,11 +135,15 @@ def _make_fsspec_memory(tmp: Path) -> tuple[Store, Cleanup]:
 
 
 def _make_obstore_local(tmp: Path) -> tuple[Store, Cleanup]:
+    import obstore.store
+
     (tmp / "obstore").mkdir()
     return ObjectStore(obstore.store.LocalStore(str(tmp / "obstore"))), _no_cleanup
 
 
 def _make_obstore_memory(tmp: Path) -> tuple[Store, Cleanup]:
+    import obstore.store
+
     return ObjectStore(obstore.store.MemoryStore()), _no_cleanup
 
 
@@ -162,7 +168,35 @@ STORE_FACTORIES: dict[str, Callable[[Path], tuple[Store, Cleanup]]] = {
     "latency-local": _make_latency_local,
 }
 
-WRITABLE_STORES = tuple(name for name in STORE_FACTORIES if name != "zip")
+
+def _fsspec_unavailable() -> str | None:
+    if importlib.util.find_spec("fsspec") is None:
+        return "fsspec is not installed"
+    import fsspec
+    from packaging.version import parse as parse_version
+
+    if parse_version(fsspec.__version__) < parse_version("2024.12.0"):
+        # Wrapping the sync `file` and `memory` filesystems needs `AsyncFileSystemWrapper`.
+        return "fsspec < 2024.12.0 has no AsyncFileSystemWrapper"
+    return None
+
+
+def _obstore_unavailable() -> str | None:
+    return "obstore is not installed" if importlib.util.find_spec("obstore") is None else None
+
+
+UNAVAILABLE: dict[str, str] = {
+    name: reason
+    for names, reason in (
+        (("fsspec-local", "fsspec-memory"), _fsspec_unavailable()),
+        (("obstore-local", "obstore-memory"), _obstore_unavailable()),
+    )
+    if reason is not None
+    for name in names
+}
+"""Stores this environment can't build, and why."""
+
+WRITABLE_STORES = tuple(name for name in STORE_FACTORIES if name not in {"zip", *UNAVAILABLE})
 """Stores that support every operation, including deletes and overwrites."""
 
 APPEND_ONLY_STORES = ("zip",)
@@ -170,6 +204,8 @@ APPEND_ONLY_STORES = ("zip",)
 
 
 def _build(name: str, tmp: Path) -> StoreUnderTest:
+    if name in UNAVAILABLE:
+        pytest.skip(UNAVAILABLE[name])
     store, cleanup = STORE_FACTORIES[name](tmp)
     target = StoreUnderTest(name, store, cleanup)
     try:
@@ -483,6 +519,20 @@ def _below_a_key(stores: frozenset[str], error: str, operation: str) -> KnownDiv
     )
 
 
+def _raises_for_a_directory(observed: Outcome, state: State, args: tuple[Any, ...]) -> bool:
+    name = args[0]
+    return observed == ("raised", "GenericError") and _is_a_directory(state, name)
+
+
+def _posix_only(stores: frozenset[str]) -> frozenset[str]:
+    """Stores whose divergence comes from POSIX filesystem errors, which Windows doesn't raise."""
+    return frozenset() if WINDOWS else stores
+
+
+def _windows_only(stores: frozenset[str]) -> frozenset[str]:
+    return stores if WINDOWS else frozenset()
+
+
 FSSPEC = frozenset({"fsspec-local", "fsspec-memory"})
 FILESYSTEMS = frozenset({"local", "latency-local", "fsspec-local", "obstore-local"})
 
@@ -528,6 +578,18 @@ KNOWN_DIVERGENCES: tuple[KnownDivergence, ...] = (
         witness=(("set", ("d/e/k", b"v")), ("delete", ("d/e/k",)), ("list_dir", ("d",))),
     ),
     KnownDivergence(
+        stores=_windows_only(frozenset({"obstore-local"})),
+        summary="exists() on a directory raises GenericError (Windows)",
+        accepts=_raises_for_a_directory,
+        witness=(("set", ("d/k", b"v")), ("exists", ("d",))),
+    ),
+    KnownDivergence(
+        stores=_windows_only(frozenset({"obstore-local"})),
+        summary="getsize() on a directory raises GenericError (Windows)",
+        accepts=_raises_for_a_directory,
+        witness=(("set", ("d/k", b"v")), ("getsize", ("d",))),
+    ),
+    KnownDivergence(
         stores=FSSPEC,
         summary="exists() is true for a directory",
         accepts=_exists_for_a_directory,
@@ -555,7 +617,7 @@ KNOWN_DIVERGENCES: tuple[KnownDivergence, ...] = (
 """Divergences the state machine meets and accepts. Each witness ends with the divergent operation."""
 
 KNOWN_DIVERGENCES += tuple(
-    _below_a_key(frozenset({"obstore-local"}), "GenericError", operation)
+    _below_a_key(_posix_only(frozenset({"obstore-local"})), "GenericError", operation)
     for operation in (
         "exists",
         "get",
@@ -569,10 +631,14 @@ KNOWN_DIVERGENCES += tuple(
     )
 ) + (
     _below_a_key(
-        frozenset({"local", "latency-local", "fsspec-local"}), "NotADirectoryError", "getsize"
+        _posix_only(frozenset({"local", "latency-local", "fsspec-local"})),
+        "NotADirectoryError",
+        "getsize",
     ),
-    _below_a_key(frozenset({"local", "latency-local"}), "NotADirectoryError", "delete"),
-    _below_a_key(frozenset({"fsspec-local"}), "NotADirectoryError", "list_dir"),
+    _below_a_key(
+        _posix_only(frozenset({"local", "latency-local"})), "NotADirectoryError", "delete"
+    ),
+    _below_a_key(_posix_only(frozenset({"fsspec-local"})), "NotADirectoryError", "list_dir"),
 )
 
 UNMODELED_DIVERGENCES: tuple[Divergence, ...] = (
@@ -836,12 +902,16 @@ def test_append_only_stores_agree() -> None:
     run_state_machine_as_test(AppendOnlyStoresMachine)
 
 
-def _explained(store: str, operation: str, observed: Outcome, state: State, args: Any) -> bool:
-    """Whether a divergence at this step is a ledger entry for this store."""
+def _explained(store: str, steps: tuple[Step, ...], observed: Outcome, state: State) -> bool:
+    """Whether the outcome of the last of `steps` is a ledger entry for this store.
+
+    An unmodeled divergence explains it only when `steps` end with that divergence's whole witness.
+    """
+    operation, args = steps[-1]
     if _accepted(store, operation, observed, state, args):
         return True
     return any(
-        store in divergence.stores and divergence.witness[-1][0] == operation
+        store in divergence.stores and steps[-len(divergence.witness) :] == divergence.witness
         for divergence in UNMODELED_DIVERGENCES
     )
 
@@ -869,9 +939,9 @@ def test_divergence_ledger_is_exact(
     state = State()
     target = _build(store_name, tmp_path)
     try:
-        for step, step_args in setup:
+        for index, (step, step_args) in enumerate(setup):
             observed = _run(step, target.store, step_args)
-            if not _explained(store_name, step, observed, state, step_args):
+            if not _explained(store_name, divergence.witness[: index + 1], observed, state):
                 pytest.fail(f"setup step {step}{step_args!r} breaks the contract: {observed!r}")
             state.record(step, step_args)
         observed = _run(operation, target.store, args)
@@ -883,7 +953,7 @@ def test_divergence_ledger_is_exact(
         if isinstance(divergence, KnownDivergence):
             assert divergence.accepts(observed, state, args), observed
     else:
-        assert not diverges or _explained(store_name, operation, observed, state, args), (
+        assert not diverges or _explained(store_name, divergence.witness, observed, state), (
             f"{store_name} breaks the contract here too ({observed!r}); add it to this entry"
         )
 

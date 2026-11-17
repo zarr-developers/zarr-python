@@ -12,7 +12,7 @@ from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterable, Sequence
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -120,6 +120,11 @@ class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
     def supports_listing(self) -> bool:
         with self.log():
             return self._store.supports_listing
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        with self.log():
+            return self._store.supports_consolidated_metadata
 
     @property
     def read_only(self) -> bool:
@@ -255,3 +260,57 @@ class LoggingStore[T_Store: Store](WrapperStore[T_Store]):
     async def getsize_prefix(self, prefix: str) -> int:
         with self.log(prefix):
             return await self._store.getsize_prefix(prefix)
+
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        values = list(values)
+        with self.log(",".join(key for key, _ in values)):
+            await self._store._set_many(values)
+
+    async def _get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
+        requests = list(requests)
+        with self.log(",".join(key for key, _, _ in requests)):
+            async for item in self._store._get_many(requests):
+                yield item
+
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int | None = None,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        # docstring inherited
+        with self.log(key):
+            async for group in super().get_ranges(
+                key,
+                byte_ranges,
+                prototype=prototype,
+                max_concurrency=max_concurrency,
+                max_gap_bytes=max_gap_bytes,
+                max_coalesced_bytes=max_coalesced_bytes,
+            ):
+                yield group
+
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        # docstring inherited
+        with self.log(key):
+            return super().get_ranges_sync(
+                key,
+                byte_ranges,
+                prototype=prototype,
+                max_gap_bytes=max_gap_bytes,
+                max_coalesced_bytes=max_coalesced_bytes,
+            )
