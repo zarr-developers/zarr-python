@@ -35,10 +35,10 @@ from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import (
     ValidationProblem,
-    copied,
     is_object,
     is_tuple,
     json_text,
+    refine_user_data,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
@@ -46,6 +46,7 @@ from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
     ResolvedDeclaration,
     asked,
+    declaration_locations,
     in_document,
     item_at,
     read_only,
@@ -364,10 +365,12 @@ def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
 
     `chunk_canonical` is the extension author's code, so its result is
     checked: the definition must allow it, the chunk rules must find no
-    problem with it, each nested declaration must be where it was, and
-    `chunk_canonical` must have nothing left to simplify in it. A result
-    that fails a check raises `ValueError`, which indicates a bug in the
-    definition, not in the codec.
+    problem with it, it must hold the nested declarations the codec
+    holds, each as it was, and `chunk_canonical` must have nothing left
+    to simplify in it. A result that fails a check raises `ValueError`,
+    which indicates a bug in the definition, not in the codec. A problem
+    inside a nested declaration is the document's, and is not held
+    against the result.
     """
     codec = stage.codec
     if not isinstance(codec, AcceptedDeclaration):
@@ -409,8 +412,11 @@ def _for_chunk(
     if simplified is None:
         return None
     _, refused = definition.read_configuration(simplified)
+    held_at = frozenset(declaration_locations(definition, simplified))
     found = (
-        *refused,
+        # A problem inside a nested declaration is the document's: the
+        # declaration is checked to be as it was written.
+        *(problem for problem in refused if not _inside(problem.loc, nested)),
         *_chunk_problems(definition, simplified, nested, chunk, ()),
         *(
             ValidationProblem(
@@ -418,6 +424,12 @@ def _for_chunk(
             )
             for loc in nested
             if _text_at(simplified, loc) != _text_at(cast("JSONValue", configuration), loc)
+        ),
+        *(
+            ValidationProblem(
+                loc, "expected no declaration that the codec did not hold", "invalid_value"
+            )
+            for loc in sorted(held_at.difference(nested), key=repr)
         ),
     )
     if len(found) != 0:
@@ -438,13 +450,18 @@ def _for_chunk(
     return simplified
 
 
+def _inside(loc: Loc, nested: Nested) -> bool:
+    """Whether `loc` is at or under the location of a declaration in `nested`."""
+    return any(loc[: len(held_at)] == held_at for held_at in nested)
+
+
 def _asked_for_chunk(
     definition: ArrayCodecDefinition[Any],
     configuration: Mapping[str, JSONValue],
     nested: Nested,
     chunk: Chunk,
 ) -> dict[str, JSONValue] | None:
-    """What `definition`'s `chunk_canonical` gives for `configuration` as its `canonical` spells it; None when it changes nothing in that spelling."""
+    """What `definition`'s `chunk_canonical` gives for `configuration` as its `canonical` spells it, as JSON with arrays as tuples; None when it changes nothing in that spelling."""
     spelled = read_only(
         asked(
             definition,
@@ -461,10 +478,13 @@ def _asked_for_chunk(
     )
     if given is spelled:
         return None
-    if not is_object(given):
+    # The result is the extension author's value, so it is read as any JSON
+    # is: an array may be a list, and what is not JSON is refused here,
+    # naming the definition. `read_configuration` checks the rest.
+    simplified, not_json = refine_user_data(dict(given)) if is_object(given) else (None, ())
+    if not isinstance(simplified, dict) or len(not_json) != 0:
         msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
         raise TypeError(msg)
-    simplified = cast("dict[str, JSONValue]", copied(cast("JSONValue", dict(given))))
     if json_text(simplified) == json_text(cast("JSONValue", dict(spelled))):
         return None
     return simplified

@@ -21,7 +21,7 @@ from zarr_metadata import (
     JSONValue,
     ValidationProblem,
 )
-from zarr_metadata._json import refine_json
+from zarr_metadata._json import json_text, refine_json
 from zarr_metadata.definition import (
     AcceptedDeclaration,
     Context,
@@ -34,7 +34,7 @@ from zarr_metadata.definition import (
     configuration_of,
     resolve,
 )
-from zarr_metadata.definition._definition import resolve_refined
+from zarr_metadata.definition._definition import item_at, resolve_refined, respelled
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,
@@ -1824,3 +1824,105 @@ def test_error_resolve_refuses_a_kind_of_the_other_format_whatever_the_declarati
     """`resolve` with a kind of one format and a scope of the other raises one `TypeError`, before it reads the declaration. So the message is the same for a declaration with a name that a scope could look up and for a value with no name."""
     with pytest.raises(TypeError, match=f"^{re.escape(message)}$"):
         resolve(declaration, kind, context)
+
+
+def _accepted(declaration: JSONValue, kind: type[Definition[Any]]) -> AcceptedDeclaration[Any]:
+    read, problems = resolve(declaration, kind, CORE_AND_EXTENSIONS_CONTEXT)
+    assert isinstance(read, AcceptedDeclaration)
+    assert problems == ()
+    return read
+
+
+def _sharding(**members: JSONValue) -> JSONValue:
+    return {"name": "sharding_indexed", "configuration": {"chunk_shape": [2], **members}}
+
+
+@pytest.mark.parametrize(
+    ("declaration", "kind", "configuration", "nested", "written"),
+    [
+        # A member of its own left out, and a nested declaration replaced.
+        (
+            _sharding(codecs=[LE], index_codecs=[LE, CRC32C], index_location="end"),
+            CodecDefinition,
+            {"chunk_shape": [2], "codecs": [LE], "index_codecs": [LE, CRC32C]},
+            {("codecs", 0): {"name": "bytes"}},
+            _sharding(codecs=[{"name": "bytes"}], index_codecs=[LE, CRC32C]),
+        ),
+        # Nothing nested to replace.
+        (
+            {"name": "gzip", "configuration": {"level": 1}},
+            CodecDefinition,
+            {"level": 5},
+            {},
+            {"name": "gzip", "configuration": {"level": 5}},
+        ),
+        # A name that carries its configuration is written alone.
+        ("r16", DataTypeDefinition, {"bits": 16}, {}, "r16"),
+    ],
+    ids=["shard", "gzip", "name-carries-configuration"],
+)
+def test_respelled_is_the_declaration_that_the_other_spelling_reads_as(
+    declaration: JSONValue,
+    kind: type[Definition[Any]],
+    configuration: JSONValue,
+    nested: Mapping[tuple[str | int, ...], JSONValue],
+    written: JSONValue,
+) -> None:
+    """`respelled` returns what a read of the other spelling returns: the same JSON, name, configuration, nested declarations and key. The declaration it was given is left as it was."""
+    read = _accepted(declaration, kind)
+    before = json_text(read.to_json())
+    refined = cast("Mapping[str, JSONValue]", refine_json(configuration)[0])
+    replacements = {loc: _accepted(inner, CodecDefinition) for loc, inner in nested.items()}
+    result = respelled(read, refined, replacements)
+    again = _accepted(written, kind)
+    assert json_text(result.json) == json_text(again.json)
+    assert json_text(result.to_json()) == json_text(again.to_json())
+    assert result.name == again.name
+    assert json_text(cast("JSONValue", result.configuration)) == json_text(
+        cast("JSONValue", again.configuration)
+    )
+    assert dict(result.nested) == dict(again.nested)
+    assert result == again
+    assert hash(result) == hash(again)
+    assert json_text(read.to_json()) == before
+
+
+@pytest.mark.parametrize(
+    ("configuration", "loc"),
+    [
+        ({"chunk_shape": [2], "codecs": [LE], "index_codecs": [LE, CRC32C]}, ("codecs", 5)),
+        ({"chunk_shape": [2], "codecs": [LE], "index_codecs": [LE, CRC32C]}, ("codecs", -1)),
+        ({"chunk_shape": [2], "codecs": [LE], "index_codecs": [LE, CRC32C]}, ("nope", 0)),
+        ({"chunk_shape": [2], "codecs": [LE], "index_codecs": [LE, CRC32C]}, ()),
+        # A location of a nested declaration that the new configuration does not have.
+        ({"chunk_shape": [2], "codecs": [], "index_codecs": [LE, CRC32C]}, ("codecs", 0)),
+    ],
+    ids=["past-the-end", "negative", "no-such-member", "the-configuration", "left-out"],
+)
+def test_error_respelled_at_a_location_that_holds_no_nested_declaration(
+    configuration: JSONValue, loc: tuple[str | int, ...]
+) -> None:
+    read = _accepted(_sharding(codecs=[LE], index_codecs=[LE, CRC32C]), CodecDefinition)
+    refined = cast("Mapping[str, JSONValue]", refine_json(configuration)[0])
+    with pytest.raises(TypeError, match="is not the location of a nested declaration"):
+        respelled(read, refined, {loc: _accepted({"name": "bytes"}, CodecDefinition)})
+
+
+@pytest.mark.parametrize(
+    ("path", "item"),
+    [
+        ((), {"a": ({"b": 1}, 2)}),
+        (("a",), ({"b": 1}, 2)),
+        (("a", 0, "b"), 1),
+        (("a", 1), 2),
+        (("a", 2), UNSET),
+        (("a", -1), UNSET),
+        (("b",), UNSET),
+        (("a", "b"), UNSET),
+        ((0,), UNSET),
+        (("a", 1, "b"), UNSET),
+    ],
+)
+def test_item_at_follows_a_location_into_json(path: tuple[str | int, ...], item: object) -> None:
+    """`item_at` returns the item at a location, and `UNSET` when the location does not lead into the value: a key an object lacks, an index outside an array, or a step into a scalar."""
+    assert item_at({"a": ({"b": 1}, 2)}, path) == item

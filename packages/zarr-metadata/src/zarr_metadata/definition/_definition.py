@@ -1291,11 +1291,15 @@ def respelled(
     where it is. `nested` holds only the nested declarations to replace,
     each one accepted or unclaimed, and each is written into the
     configuration as its `to_json` writes it. A location in `nested` that
-    does not lead into `configuration` raises `TypeError`. The result is
+    is not the location of a nested declaration of `declaration`, or that
+    does not lead into `configuration`, raises `TypeError`. The result is
     written as `to_json` writes it, since no document wrote it.
     """
     spelled: JSONValue = dict(configuration)
     for loc, inner in nested.items():
+        if loc not in declaration.nested or item_at(spelled, loc) is UNSET:
+            msg = f"{loc!r} is not the location of a nested declaration in {configuration!r}"
+            raise TypeError(msg)
         spelled = _replaced(spelled, loc, written_json(held(inner)))
     kind = declaration.read_as
     name = declaration.name
@@ -1307,6 +1311,11 @@ def respelled(
         configuration=cast("Mapping[str, JSONValue]", spelled),
         nested={**declaration.nested, **nested},
     )
+
+
+def declaration_locations(definition: Definition[Any], configuration: JSONValue) -> tuple[Loc, ...]:
+    """The location of each declaration that `configuration` holds, where `definition`'s TypedDict types a member with a declaration alias, in order. `configuration` is JSON with arrays as tuples."""
+    return tuple(found.loc for found in _typed(definition.configuration, configuration, ())[2])
 
 
 def item_at(value: JSONValue, path: Loc) -> JSONValue | UNSET:
@@ -1957,6 +1966,7 @@ __all__ = [
     "configuration_of",
     "declaration_key",
     "declaration_kind",
+    "declaration_locations",
     "declarations_of",
     "document_json",
     "filed_under",

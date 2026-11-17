@@ -663,11 +663,64 @@ def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
 
 
 def test_a_codec_with_a_problem_for_its_chunk_is_not_simplified() -> None:
-    """A codec the chunk rules find a problem with is returned as it is, as is a codec the scope refused."""
+    """A codec the chunk rules find a problem with keeps its own configuration, and its `chunk_canonical` is not asked. A codec the scope refused is returned as it is."""
     # `bytes` does not encode values that vary in size, and `gzip` requires a level.
     stages, problems = _read([LITTLE, {"name": "gzip", "configuration": {}}], _of("string"))
     assert [problem.loc for problem in problems] == [(1, "configuration", "level"), (0,)]
     assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+    # A `chunk_canonical` that would drop the `endian` whatever the chunk is not asked either.
+    eager = _bytes_with(lambda configuration, nested, chunk: {})
+    stages, problems = read_pipeline([eager], _of("string"))
+    assert [problem.loc for problem in problems] == [(0,)]
+    assert codec_for_chunk(stages[0]) is eager
+
+
+class AcmeLeveledConfiguration(TypedDict, closed=True):
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    level: NotRequired[int]
+
+
+def _leveled(chunk_canonical: object, *codecs: JSONValue) -> Stage:
+    """The stage, for `CHUNK`, of a codec `acme.leveled` that holds `codecs` and a `level` of 3, and whose `chunk_canonical` is `chunk_canonical`. It declares no pipelines, so the codecs it holds are left as they are."""
+    leveled = ArrayBytesCodecDefinition(
+        name="acme.leveled",
+        configuration=AcmeLeveledConfiguration,
+        size="dynamic",
+        chunk_canonical=chunk_canonical,  # pyright: ignore[reportArgumentType]
+    )
+    declaration = {"name": "acme.leveled", "configuration": {"codecs": list(codecs), "level": 3}}
+    codec = resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[leveled])))[0]
+    return read_pipeline([codec], CHUNK)[0][0]
+
+
+REFUSED_GZIP: JSONValue = {"name": "gzip", "configuration": {"level": 99}, "must_understand": False}
+"""A codec with problems of its own: no such level, and a codec may not waive `must_understand`. A configuration that holds it keeps it as written."""
+
+
+@pytest.mark.parametrize(
+    ("codecs", "chunk_canonical"),
+    [
+        # An array of the result may be a list.
+        (
+            [LITTLE, GZIP],
+            lambda configuration, nested, chunk: {"codecs": list(configuration["codecs"])},
+        ),
+        # A problem inside a nested declaration is the document's, not the result's.
+        (
+            [LITTLE, REFUSED_GZIP],
+            lambda configuration, nested, chunk: {"codecs": configuration["codecs"]},
+        ),
+    ],
+    ids=["an-array-as-a-list", "a-nested-declaration-with-a-problem"],
+)
+def test_a_chunk_canonical_that_simplifies_its_own_members_is_taken_at_its_word(
+    codecs: list[JSONValue], chunk_canonical: object
+) -> None:
+    """A result that drops the codec's own `level` and keeps each nested declaration as it was written passes every check, however it spells its arrays and whatever problems the nested declarations have."""
+    found = codec_for_chunk(_leveled(chunk_canonical, *codecs))
+    assert isinstance(found, AcceptedDeclaration)
+    assert json_text(cast("JSONValue", found.configuration)) == json_text({"codecs": codecs})
+    assert list(found.nested) == [("codecs", 0), ("codecs", 1)]
 
 
 def _bytes_with(chunk_canonical: object) -> ResolvedDeclaration[CodecDefinition[Any]]:
@@ -710,10 +763,27 @@ def test_error_a_chunk_canonical_with_something_left_to_simplify() -> None:
         codec_for_chunk(stage)
 
 
-def test_error_a_chunk_canonical_that_gives_something_else() -> None:
-    stage = _stage(_bytes_with(lambda configuration, nested, chunk: "little"), CHUNK)
+@pytest.mark.parametrize(
+    "given", ["little", {"endian": {"little"}}, {1: "little"}], ids=["a-string", "a-set", "a-key"]
+)
+def test_error_a_chunk_canonical_that_gives_something_else(given: object) -> None:
+    """A result that is not an object of JSON is refused by name, before anything reads it."""
+    stage = _stage(_bytes_with(lambda configuration, nested, chunk: given), CHUNK)
     with pytest.raises(TypeError, match="'acme.bytes': its chunk_canonical gives a configuration"):
         codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_that_adds_a_nested_declaration() -> None:
+    # The codec it adds is one no scope read, so the result would hold a
+    # declaration that its `nested` does not.
+    def chunk_canonical(
+        configuration: AcmeLeveledConfiguration, nested: Nested, chunk: Chunk
+    ) -> AcmeLeveledConfiguration:
+        added = cast("ZarrV3CodecDeclaration", {"name": "crc32c"})
+        return {"codecs": (*configuration["codecs"], added)}
+
+    with pytest.raises(ValueError, match="expected no declaration that the codec did not hold"):
+        codec_for_chunk(_leveled(chunk_canonical, LITTLE, GZIP))
 
 
 def test_error_a_chunk_canonical_that_raises_says_whose_it_is() -> None:
