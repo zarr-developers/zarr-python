@@ -135,6 +135,33 @@ class WrapperStore[T_Store: Store](Store):
         async for group in self._store.get_ranges(key, byte_ranges, prototype=prototype, **kwargs):
             yield group
 
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        """Forward `get_ranges_sync` to the wrapped store.
+
+        As with `get_ranges`, `None` for a coalescing kwarg means "don't
+        override the wrapped store's default".
+        """
+        kwargs: dict[str, int] = {}
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
+        return self._store.get_ranges_sync(key, byte_ranges, prototype=prototype, **kwargs)
+
+    async def getsize(self, key: str) -> int:
+        return await self._store.getsize(key)
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        return await self._store.getsize_prefix(prefix)
+
     async def exists(self, key: str) -> bool:
         return await self._store.exists(key)
 
@@ -154,6 +181,10 @@ class WrapperStore[T_Store: Store](Store):
     @property
     def supports_deletes(self) -> bool:
         return self._store.supports_deletes
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return self._store.supports_consolidated_metadata
 
     @property
     def _supports_sync_io(self) -> bool:

@@ -534,7 +534,7 @@ KNOWN_DIVERGENCES: tuple[KnownDivergence, ...] = (
         witness=(("set", ("d/k", b"v")), ("exists", ("d",))),
     ),
     KnownDivergence(
-        stores=frozenset({"local"} | FSSPEC),
+        stores=frozenset({"local", "latency-local"} | FSSPEC),
         summary="getsize() returns a number for a directory instead of raising",
         accepts=_size_for_a_directory,
         witness=(("set", ("d/k", b"v")), ("getsize", ("d",))),
@@ -568,7 +568,9 @@ KNOWN_DIVERGENCES += tuple(
         "delete_dir",
     )
 ) + (
-    _below_a_key(frozenset({"local", "fsspec-local"}), "NotADirectoryError", "getsize"),
+    _below_a_key(
+        frozenset({"local", "latency-local", "fsspec-local"}), "NotADirectoryError", "getsize"
+    ),
     _below_a_key(frozenset({"local", "latency-local"}), "NotADirectoryError", "delete"),
     _below_a_key(frozenset({"fsspec-local"}), "NotADirectoryError", "list_dir"),
 )
