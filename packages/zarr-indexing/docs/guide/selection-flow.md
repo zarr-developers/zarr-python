@@ -194,8 +194,10 @@ that the supplied buffer can be copied directly into codec order.
 Touching every chunk alone does not prove full coverage of each chunk.
 
 Planning does not fetch bytes, decode buffers, choose concurrency, or define
-write-conflict handling. Consumers must preserve request ordering where their
-write API requires it, and account for memory retained by emitted operations.
+write-conflict handling. The order of points within one chunk's projection is
+unspecified; each point stays paired with its request position, so a consumer
+whose write API depends on request order sorts by those positions. Consumers
+also account for memory retained by emitted operations.
 
 ## 6. Applying the flow to sharding
 

@@ -29,13 +29,33 @@ class BasicSource:
         self.data[key] = value
 
 
+def _assert_each_cell_holds_a_written_value(
+    actual: Any, initial: Any, identifiers: Any, values: Any
+) -> None:
+    """Cells the selection misses are unchanged; each addressed cell holds one value written to it.
+
+    Which of a repeated cell's values lands is unspecified, so any of them passes.
+    """
+    candidates: dict[int, set[Any]] = {}
+    for identifier, value in zip(
+        np.asarray(identifiers).flat, np.asarray(values).flat, strict=True
+    ):
+        candidates.setdefault(int(identifier), set()).add(value.item())
+    flat_actual = np.asarray(actual).reshape(-1)
+    flat_initial = np.asarray(initial).reshape(-1)
+    for cell, (got, before) in enumerate(
+        zip(flat_actual.tolist(), flat_initial.tolist(), strict=True)
+    ):
+        assert got in candidates.get(cell, {before}), (cell, got, candidates.get(cell, {before}))
+
+
 @pytest.mark.parametrize(
     "case",
     ["reverse", "scalar", "newaxis", "empty", "outer", "composed", "correlated", "transpose"],
 )
 def test_write_coordinates(case: str) -> None:
     data = np.arange(24).reshape(4, 6)
-    expected = data.copy()
+    initial = data.copy()
     # Select flat source identifiers independently of the transform evaluator.
     identifiers = np.arange(data.size).reshape(data.shape)
     transform = IndexTransform.from_shape(data.shape)
@@ -74,11 +94,9 @@ def test_write_coordinates(case: str) -> None:
         )
         identifiers = identifiers.T
     values = np.arange(identifiers.size).reshape(identifiers.shape) + 100
-    for index, value in zip(np.asarray(identifiers).flat, values.flat, strict=True):
-        expected.flat[index] = value
     source = BasicSource(data)
     assert write_into(source, transform, values) is None
-    np.testing.assert_array_equal(data, expected)
+    _assert_each_cell_holds_a_written_value(data, initial, identifiers, values)
     if case in ("reverse", "scalar", "newaxis", "transpose"):
         assert len(source.calls) == 1
     elif case == "empty":
@@ -132,7 +150,8 @@ def test_write_constant_repeated_destination() -> None:
     source = BasicSource(np.zeros(3))
     transform = IndexTransform(IndexDomain.from_shape((2, 3)), (ConstantMap(1),))
     write_into(source, transform, [[1], [9]])
-    np.testing.assert_array_equal(source.data, [0, 9, 0])
+    assert source.data[[0, 2]].tolist() == [0, 0]
+    assert source.data[1] in (1, 9)
     assert len(source.calls) == 6
 
 
@@ -201,7 +220,6 @@ def test_lazy_write_and_assignment(backend: str, case: str) -> None:
         source[:] = initial
     array = LazyArray(source)
     identifiers = initial.copy()
-    expected = initial.copy()
     if case == "basic":
         view = array[::-1, ::2][1:, 1:]
         identifiers = identifiers[::-1, ::2][1:, 1:]
@@ -222,16 +240,17 @@ def test_lazy_write_and_assignment(backend: str, case: str) -> None:
         np.testing.assert_array_equal(source[:], initial[::-1])
         return
     values = np.arange(identifiers.size).reshape(identifiers.shape) + 100
-    for identifier, value in zip(identifiers.flat, values.flat, strict=True):
-        expected.flat[identifier] = value
     assert view.write(values) is None
-    np.testing.assert_array_equal(source[:], expected)
+    _assert_each_cell_holds_a_written_value(source[:], initial, identifiers, values)
     # All selector assignment entry points write through to the original source.
+    written = np.array(source[:])
     array.oindex[[0, 3], [1, 4]] = 77
-    expected[np.ix_([0, 3], [1, 4])] = 77
+    written[np.ix_([0, 3], [1, 4])] = 77
+    np.testing.assert_array_equal(source[:], written)
     array.vindex[[0, 0, 2], [2, 2, 4]] = [10, 11, 12]
-    expected[[0, 0, 2], [2, 2, 4]] = [10, 11, 12]
-    np.testing.assert_array_equal(source[:], expected)
+    _assert_each_cell_holds_a_written_value(
+        source[:], written, initial[[0, 0, 2], [2, 2, 4]], [10, 11, 12]
+    )
 
 
 @pytest.mark.parametrize("backend", ["numpy", "zarr"])
@@ -260,11 +279,8 @@ def test_random_selection_chain_scatter(backend: str) -> None:
                 view = view[::step, ::-1]
                 identifiers = identifiers[::step, ::-1]
         values = rng.integers(100, 200, size=identifiers.shape)
-        expected = initial.copy()
-        for identifier, value in zip(identifiers.flat, values.flat, strict=True):
-            expected.flat[identifier] = value
         view.write(values)
-        np.testing.assert_array_equal(source[:], expected)
+        _assert_each_cell_holds_a_written_value(source[:], initial, identifiers, values)
 
 
 class _ChunkTouches:
@@ -318,11 +334,15 @@ def test_fancy_writes_touch_each_write_chunk_once(sharded: bool, case: str) -> N
         touched = {(r // 4, c // 4) for r, c in zip(rows, cols, strict=True)}
     else:
         view.oindex[[5, 5, 6], 2:5] = np.array([[1] * 3, [2] * 3, [3] * 3])
-        expected[5, 2:5] = 2
         expected[6, 2:5] = 3
         touched = {(1, 0), (1, 1)}
     gets, sets = touches.gets, touches.sets
-    np.testing.assert_array_equal(source[:], expected)
+    actual = source[:]
+    if case == "duplicates":
+        # Row 5 is written twice; either row of values may land, but one whole value per cell.
+        assert set(actual[5, 2:5].tolist()) <= {1, 2}
+        expected[5, 2:5] = actual[5, 2:5]
+    np.testing.assert_array_equal(actual, expected)
     assert sets == len(touched), (sets, len(touched))
     # At most the hull read plus zarr's own partial-chunk read per cell.
     assert gets <= 2 * len(touched), (gets, len(touched))
@@ -462,29 +482,85 @@ def test_writes_bypass_the_reader_so_a_caching_reader_serves_stale_values() -> N
     np.testing.assert_array_equal(view.result(), [1, 2, 3])
 
 
-@pytest.mark.parametrize(
-    "flat",
-    [
-        [],
-        [3],
-        [0, 2, 5, 7],
-        [0, 0, 2, 5, 5, 5, 7],
-        [5, 0, 5, 2, 0, 7],
-        [7, 5, 5, 2, 0],
-    ],
-    ids=["empty", "single", "sorted", "sorted_repeats", "unsorted_repeats", "reversed"],
-)
-def test_last_occurrences_matches_sequential_assignment(flat: list[int]) -> None:
-    from zarr_indexing.writer import _last_occurrences
+class GridSource:
+    """A readable, non-NumPy source with a write grid, so writes scatter cell by cell."""
 
-    indices = np.asarray(flat, dtype=np.intp)
-    values = np.arange(1, indices.size + 1)
-    expected = np.zeros(8, dtype=values.dtype)
-    for index, value in zip(indices, values, strict=True):
-        expected[index] = value
-    keep = _last_occurrences(indices)
-    kept = indices[keep]
-    assert np.unique(kept).size == kept.size
-    actual = np.zeros(8, dtype=values.dtype)
-    actual[kept] = values[keep]
-    np.testing.assert_array_equal(actual, expected)
+    def __init__(self, data: np.ndarray[Any, Any], chunks: tuple[tuple[int, ...], ...]) -> None:
+        self.data = data
+        self.shape = data.shape
+        self.dtype = data.dtype
+        self.chunks = chunks
+        self.reads = 0
+
+    def __getitem__(self, key: tuple[slice, ...]) -> np.ndarray[Any, Any]:
+        assert all(isinstance(item, slice) for item in key)
+        self.reads += 1
+        return self.data[key]
+
+    def __setitem__(self, key: tuple[slice, ...], value: Any) -> None:
+        assert all(isinstance(item, slice) for item in key)
+        self.data[key] = value
+
+
+def _reverse_within_groups(
+    keys: np.ndarray[Any, np.dtype[np.intp]],
+) -> np.ndarray[Any, np.dtype[np.intp]]:
+    """Group equal keys, listing each group's entries in reverse request order."""
+    return np.asarray(np.lexsort((-np.arange(keys.size), keys)), dtype=np.intp)
+
+
+def _repeated_selection(case: str, view: Any, identifiers: Any) -> tuple[Any, Any]:
+    """A selection that addresses some cells twice and lists each grid cell's points unsorted."""
+    # On the 4-by-4 grid below, rows 3, 1, 3, 0, 2, 1 land in the first chunk
+    # row and 6, 5 in the second; the columns split 7, 5, 6 against 2, 2, 0.
+    rows = [3, 1, 3, 0, 6, 2, 1, 5]
+    cols = [7, 2, 5, 2, 0, 6]
+    if case == "orthogonal":
+        return view.oindex[rows, cols], identifiers[np.ix_(rows, cols)]
+    if case == "vectorized":
+        points = ([3, 1, 3, 6, 5, 1, 0, 6], [2, 0, 2, 7, 4, 0, 3, 5])
+        return view.vindex[points], identifiers[points]
+    # Mixed: a vectorized pair over an orthogonal gather of the rows.
+    gathered = view.oindex[rows, :]
+    points = ([0, 2, 4, 1, 6, 0, 7, 3], [6, 6, 1, 0, 0, 6, 5, 1])
+    return gathered.vindex[points], identifiers[rows, :][points]
+
+
+@pytest.mark.parametrize("grouping", ["default", "reversed"])
+# The per-cell path copies blocks into plain arrays, so only NumPy sources carry masks.
+@pytest.mark.parametrize("backend", ["planned", "numpy", "numpy-masked"])
+@pytest.mark.parametrize("case", ["orthogonal", "vectorized", "mixed"])
+def test_repeated_writes_land_one_whole_value_per_cell(
+    monkeypatch: pytest.MonkeyPatch, case: str, backend: str, grouping: str
+) -> None:
+    """Repeated targets get one of their values whatever order the planner lists a cell's points in.
+
+    Targets addressed once get exactly their value, so a writer that pairs a
+    point with another point's value fails whichever order grouping produces.
+    """
+    from zarr_indexing import chunk_resolution
+    from zarr_indexing.lazy_array import LazyArray
+
+    if grouping == "reversed":
+        monkeypatch.setattr(chunk_resolution, "_group_by_key", _reverse_within_groups)
+    initial = np.arange(64, dtype=np.int64).reshape(8, 8)
+    masked = backend == "numpy-masked"
+    data: Any = initial.copy()
+    if masked:
+        data = np.ma.array(data, mask=np.zeros(data.shape, dtype=bool))
+    source: Any = GridSource(data, ((4, 4), (4, 4))) if backend == "planned" else data
+    view, identifiers = _repeated_selection(case, LazyArray(source), np.arange(64).reshape(8, 8))
+    values = np.arange(identifiers.size).reshape(identifiers.shape) * 7 + 100
+    if masked:
+        # Mask values by parity so a cell whose data and mask came from two
+        # different writes is caught: written value v is masked iff v is odd.
+        values = np.ma.array(values, mask=values % 2 == 1)
+    view.write(values)
+    if backend == "planned":
+        assert source.reads > 0
+    _assert_each_cell_holds_a_written_value(np.ma.getdata(data), initial, identifiers, values)
+    if masked:
+        np.testing.assert_array_equal(
+            np.ma.getmaskarray(data),
+            np.isin(np.arange(64), identifiers).reshape(8, 8) & (np.ma.getdata(data) % 2 == 1),
+        )

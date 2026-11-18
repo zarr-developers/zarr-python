@@ -40,8 +40,9 @@ rows, columns = plan_chunks(gather, grids).partition().sets
 assert isinstance(rows, IndexedSet)
 assert rows.chunk.tolist() == [0, 1]  # rows 1 and 1 land in chunk 0, row 4 in chunk 1
 assert rows.pointer.tolist() == [0, 2, 3]  # chunk 0 owns entries 0:2, chunk 1 owns 2:3
-assert rows.index.tolist() == [1, 1, 4]  # grouped by chunk, request order within a chunk
-assert rows.positions.tolist() == [1, 2, 0]  # the request positions those entries fill
+assert rows.index.tolist() == [1, 1, 4]  # grouped by chunk, any order within one
+assert sorted(rows.positions[rows.run(0)].tolist()) == [1, 2]  # request positions chunk 0 fills
+assert rows.positions[rows.run(1)].tolist() == [0]
 assert rows.local.tolist() == [1, 1, 1]  # chunk-local: 1 - 0, 1 - 0, 4 - 3
 
 points = IndexTransform.from_shape((6, 8)).vindex[np.array([0, 5, 5]), np.array([7, 0, 1])]
@@ -49,8 +50,9 @@ joint = plan_chunks(points, grids).partition().joint_sets[0]
 assert joint is not None
 assert joint.chunk.tolist() == [[0, 1], [1, 0]]  # touched chunks, lexicographic
 assert joint.pointer.tolist() == [0, 1, 3]  # point 0 alone; points 1 and 2 share a chunk
-assert joint.positions.tolist() == [0, 1, 2]
-assert joint.local.tolist() == [[0, 3], [2, 0], [2, 1]]
+# Each point keeps its position and chunk-local coordinates paired.
+pairs = sorted(zip(joint.positions.tolist(), joint.local.tolist(), strict=True))
+assert pairs == [(0, [0, 3]), (1, [2, 0]), (2, [2, 1])]
 # --8<-- [end:indexed-and-joint]
 
 
