@@ -1115,9 +1115,10 @@ class LazyArray:
         """Synchronously write broadcastable values through this view.
 
         The source must support integer/slice assignment. Values are copied
-        before mutation, including when they alias the source. Writes follow
-        C-order view coordinates; the last occurrence wins for repeated source
-        coordinates.
+        before mutation, including when they alias the source. A source
+        coordinate the view addresses more than once receives one of the values
+        written to it, whole, but which one is unspecified; deduplicate the
+        selection first to control it.
 
         Affine selections use one basic assignment. Other selections are
         scattered against the source's **write grid**, discovered from

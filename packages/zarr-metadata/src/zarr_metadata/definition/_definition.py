@@ -1234,8 +1234,26 @@ def own_key(declaration: AcceptedDeclaration[Any]) -> tuple[object, ...]:
 
 
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
-    """The key of each nested declaration, paired with its location."""
-    return tuple((loc, declaration_key(inner)) for loc, inner in nested.items())
+    """The key of each nested declaration, paired with its location, in the order of the locations.
+
+    `nested` holds the declarations in the order the configuration writes
+    them, and the order of the members of a JSON object means nothing.
+    So the key is sorted by location, and a shard that writes
+    `index_codecs` before `codecs` has the same key as one that writes
+    them the other way round. The items of an array keep their order,
+    since their locations are their indices.
+    """
+    return tuple(
+        sorted(
+            ((loc, declaration_key(inner)) for loc, inner in nested.items()),
+            key=lambda item: _location_order(item[0]),
+        )
+    )
+
+
+def _location_order(loc: Loc) -> tuple[tuple[bool, str | int], ...]:
+    """A sort key for a location: a key of an object and an index of an array are never compared with each other."""
+    return tuple((isinstance(step, str), step) for step in loc)
 
 
 def document_json(declaration: ResolvedDeclaration[Any]) -> JSONValue | UNSET:
@@ -1257,6 +1275,52 @@ def written_json(declaration: AcceptedDeclaration[Any] | UnclaimedDeclaration) -
     if kind._filed_under(declaration.name)[1] is not None:
         return kind._envelope_json(declaration.name, {})
     return kind._envelope_json(declaration.name, declaration.configuration)
+
+
+def respelled(
+    declaration: AcceptedDeclaration[D],
+    configuration: Mapping[str, JSONValue],
+    nested: Nested,
+) -> AcceptedDeclaration[D]:
+    """`declaration` with `configuration` as its configuration, and each declaration in `nested` in place of the nested declaration at its location.
+
+    This builds the declaration that another spelling of `declaration`
+    reads as, without reading it again. The caller answers for the
+    spelling: `configuration` must be one that the definition allows and
+    that means the same thing, and it must keep each nested declaration
+    where it is. `nested` holds only the nested declarations to replace,
+    each one accepted or unclaimed, and each is written into the
+    configuration as its `to_json` writes it. A location in `nested` that
+    does not lead into `configuration` raises `TypeError`. The result is
+    written as `to_json` writes it, since no document wrote it.
+    """
+    spelled: JSONValue = dict(configuration)
+    for loc, inner in nested.items():
+        spelled = _replaced(spelled, loc, written_json(held(inner)))
+    kind = declaration.read_as
+    name = declaration.name
+    carried = kind._filed_under(name)[1] is not None
+    return AcceptedDeclaration(
+        json=kind._envelope_json(name, {} if carried else cast("Mapping[str, JSONValue]", spelled)),
+        name=name,
+        definition=declaration.definition,
+        configuration=cast("Mapping[str, JSONValue]", spelled),
+        nested={**declaration.nested, **nested},
+    )
+
+
+def item_at(value: JSONValue, path: Loc) -> JSONValue | UNSET:
+    """The item of `value` at `path`; `UNSET` when `path` does not lead into `value`."""
+    for step in path:
+        if isinstance(step, str):
+            if not isinstance(value, Mapping) or step not in value:
+                return UNSET
+            value = value[step]
+        else:
+            if not isinstance(value, tuple) or not 0 <= step < len(value):
+                return UNSET
+            value = value[step]
+    return value
 
 
 Nested: TypeAlias = Mapping[Loc, ResolvedDeclaration[Any]]
@@ -1902,6 +1966,7 @@ __all__ = [
     "held",
     "in_document",
     "is_declaration",
+    "item_at",
     "kind_of",
     "named_configuration",
     "no_rules",
@@ -1909,6 +1974,7 @@ __all__ = [
     "read_only",
     "resolve",
     "resolve_refined",
+    "respelled",
     "ruled",
     "spelled_canonically",
     "unchanged",
