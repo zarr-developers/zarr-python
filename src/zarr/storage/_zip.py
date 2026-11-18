@@ -187,6 +187,18 @@ class ZipStore(Store):
         self._was_opened = False
         self._close_failed = False
 
+    def with_read_only(self, read_only: bool = False) -> ZipStore:
+        # docstring inherited
+        store = type(self)(
+            path=self.path,
+            mode='r',
+            read_only=read_only,
+            compression=self.compression,
+            allowZip64=self.allowZip64,
+        )
+        store._sync_open()
+        return store
+
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
