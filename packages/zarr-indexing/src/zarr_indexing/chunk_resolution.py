@@ -683,6 +683,11 @@ def _indexed_set(out_dim: int, m: ArrayMap, dg: DimensionGridLike) -> IndexedSet
     )
 
 
+# Below this many keys per radix pass, one stable comparison sort is cheaper
+# than the passes' fixed overhead (about 1 us each).
+_RADIX_SORT_MIN_ITEMS_PER_PASS = 128
+
+
 def _group_by_key(
     keys: np.ndarray[Any, np.dtype[np.intp]],
 ) -> np.ndarray[Any, np.dtype[np.intp]] | None:
@@ -690,25 +695,27 @@ def _group_by_key(
 
     NumPy's stable sort is a linear-time radix sort for integers of at most 16
     bits, so keys shifted to start at zero are sorted one 16-bit digit at a
-    time: one pass when their range fits 16 bits, two least-significant-first
-    passes when it fits 32 bits, and the default sort beyond that. The order of
-    entries within a group is unspecified; the radix passes happen to keep
-    input order, and callers must not rely on it.
+    time, least significant first: one pass per 16 bits of their range, at
+    most four. Small inputs take one stable comparison sort instead. Both
+    branches happen to keep input order within a group, but that order is
+    unspecified and callers must not rely on it.
     """
     if bool((keys[1:] >= keys[:-1]).all()):
         return None
     low = int(keys.min())
     span = int(keys.max()) - low + 1
-    if span <= 2**16:
-        order = np.argsort((keys - low).astype(np.uint16), kind="stable")
-    elif span <= 2**32:
-        shifted = keys - low
-        # Least-significant digit first; the stable second pass keeps the
-        # first pass's order among keys that share a high digit.
-        order = np.argsort((shifted & 0xFFFF).astype(np.uint16), kind="stable")
-        order = order[np.argsort((shifted[order] >> 16).astype(np.uint16), kind="stable")]
-    else:
-        order = np.argsort(keys)
+    # ceil(bits / 16) passes; the range of int64 keys needs at most 64 bits.
+    n_passes = min(4, max(1, -((span - 1).bit_length() // -16)))
+    if keys.size < _RADIX_SORT_MIN_ITEMS_PER_PASS * n_passes:
+        return np.asarray(np.argsort(keys, kind="stable"), dtype=np.intp)
+    # A range above 2**63 wraps in int64, but the difference is exact modulo
+    # 2**64, so reading it as uint64 recovers the shifted keys.
+    shifted = (keys - low).view(np.uint64)
+    # `astype(np.uint16)` keeps the low 16 bits.
+    order = np.argsort(shifted.astype(np.uint16), kind="stable")
+    for shift in range(16, 16 * n_passes, 16):
+        digit = (shifted[order] >> np.uint64(shift)).astype(np.uint16)
+        order = order[np.argsort(digit, kind="stable")]
     return np.asarray(order, dtype=np.intp)
 
 

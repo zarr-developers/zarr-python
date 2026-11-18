@@ -1105,22 +1105,33 @@ def test_singleton_coverage(stride: int, count: int) -> None:
 # Offsets off the 16-bit digit boundaries, and one straddling zero, so a
 # missing shift to zero truncates keys out of order.
 @pytest.mark.parametrize("offset", [0, -3, 2**40 + 12345, -(2**40) - 777])
-@pytest.mark.parametrize("span", [1, 2, 2**8, 2**16, 2**16 + 1, 2**20, 2**32, 2**32 + 1, 2**40])
-def test_group_by_key_orders_keys_ascending(span: int, offset: int) -> None:
-    """Every key range, one radix pass, two, or the fallback, yields a grouping permutation.
+@pytest.mark.parametrize(
+    "span",
+    [1, 2, 2**8, 2**16, 2**16 + 1, 2**32, 2**32 + 1, 2**48, 2**48 + 1, 2**62, 2**64],
+)
+@pytest.mark.parametrize("size", [100, 2000])
+def test_group_by_key_orders_keys_ascending(size: int, span: int, offset: int) -> None:
+    """Every key range, from one radix pass to four or the small-input sort, groups the keys.
 
     Keys cover their whole range, so a pass that drops a digit or the shift to
-    zero misorders them.
+    zero misorders them. The order within a group is not checked: it is
+    unspecified.
     """
     from zarr_indexing.chunk_resolution import _group_by_key
 
-    rng = np.random.default_rng(span)
-    keys = rng.integers(0, span, 2000, dtype=np.intp)
-    keys[:2] = (span - 1, 0)
-    keys += offset
+    if span == 2**64:
+        # The whole int64 range, whose span wraps when shifted to zero.
+        info = np.iinfo(np.int64)
+        low, high = int(info.min), int(info.max)
+    else:
+        low = max(int(np.iinfo(np.int64).min), offset)
+        high = min(int(np.iinfo(np.int64).max), low + span - 1)
+    rng = np.random.default_rng([size, span.bit_length(), abs(offset)])
+    keys = rng.integers(low, high, size, dtype=np.int64, endpoint=True).astype(np.intp)
+    keys[:2] = (high, low)
     assert _group_by_key(np.sort(keys)) is None
     order = _group_by_key(keys)
-    if span == 1:
+    if low == high:
         assert order is None
         return
     assert order is not None
