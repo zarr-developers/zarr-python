@@ -20,7 +20,7 @@ from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
-from zarr.core.common import ceildiv_int
+from zarr.core.common import ceildiv_int, product
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateIndexer,
@@ -32,6 +32,7 @@ from zarr.core.indexing import (
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
+    last_assignments,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -555,6 +556,60 @@ def test_stable_argsort_chunk_indices(nchunks: int) -> None:
     ).astype(np.intp)
     expected = np.argsort(chunk_indices, kind="stable")
     assert_array_equal(stable_argsort_chunk_indices(chunk_indices, nchunks), expected)
+
+
+_rng = np.random.default_rng(0)
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        (np.array([1, 2, 1, 0, 2]), slice(None)),
+        (slice(1, 3), np.array([2, 2, 0])),
+        (slice(None), _rng.integers(0, 40, 100)),
+        (np.array([1, 2, 2]), np.array([3, 3, 3])),
+        (np.array([2, 1, 2]), np.array([3, 0, 3])),
+        (_rng.integers(0, 30, 1000), _rng.integers(0, 40, 1000)),
+        (np.array([1, 2, 1]), 2),
+        np.ix_(np.array([2, 0, 2]), np.array([1, 1, 3])),
+        (np.array([0, 1, 2]), slice(None)),
+        (slice(None), _rng.permutation(40)),
+        tuple(np.unravel_index(_rng.permutation(1200), (30, 40))),
+        np.ix_(np.array([2, 0]), np.array([1, 3])),
+        (slice(None), slice(1, 3)),
+    ],
+    ids=[
+        "array_then_slice",
+        "slice_then_array",
+        "long_unsorted_array",
+        "sorted_coordinates",
+        "unsorted_coordinates",
+        "many_coordinates",
+        "array_and_integer",
+        "mesh",
+        "no_repeats_orthogonal",
+        "no_repeats_long_unsorted_array",
+        "no_repeats_many_coordinates",
+        "no_repeats_mesh",
+        "no_arrays",
+    ],
+)
+def test_last_assignments(selection: tuple[Any, ...]) -> None:
+    """Writing through the resolved selection matches assigning each value in C order."""
+    shape = (30, 40)
+    targets = np.arange(product(shape)).reshape(shape)[selection]
+    values = np.arange(targets.size).reshape(targets.shape)
+    expected = np.full(product(shape), -1)
+    for target, value in zip(targets.ravel().tolist(), values.ravel().tolist(), strict=True):
+        expected[target] = value
+    result = last_assignments(selection, shape)
+    if np.unique(targets).size == targets.size:
+        assert result is None
+        return
+    assert result is not None
+    actual = np.full(shape, -1)
+    actual[result.selection] = result.pick(values)
+    assert_array_equal(actual.ravel(), expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]

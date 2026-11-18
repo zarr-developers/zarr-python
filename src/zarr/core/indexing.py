@@ -767,14 +767,192 @@ def stable_argsort_chunk_indices(
 ) -> npt.NDArray[np.intp]:
     """Return the indices that stably sort `chunk_indices`, each in `range(nchunks)`.
 
-    A stable sort keeps items that share a chunk in the order given, so repeated
-    indices are assigned in order and the last value given is the one stored. NumPy
-    sorts integers of at most 16 bits with a stable radix sort, which is several times
-    faster than its default sort, so the indices are narrowed when `nchunks` allows it.
+    A stable sort keeps items that share a chunk in the order given, so each chunk's
+    selection lists repeated indices in the order the user gave them, which is what
+    `last_assignments` relies on. NumPy sorts integers of at most 16 bits with a stable
+    radix sort, which is several times faster than its default sort, so the indices are
+    narrowed when `nchunks` allows it.
     """
     if nchunks <= 2**16:
         chunk_indices = chunk_indices.astype(np.uint16)
     return np.argsort(chunk_indices, kind="stable")
+
+
+class LastAssignments(NamedTuple):
+    """A selection that writes each element once, and how to pick the values it takes.
+
+    `selection` names, once each, the elements an original selection wrote. Their
+    values are the original values broadcast to `selected_shape`, raveled when
+    `flatten` is set, then indexed along each axis by the matching entry of `keep`,
+    where `None` keeps the whole axis.
+    """
+
+    selection: tuple[Any, ...]
+    selected_shape: tuple[int, ...]
+    flatten: bool
+    keep: tuple[npt.NDArray[np.intp] | None, ...]
+
+    def pick(self, values: Any) -> Any:
+        """Pick, from the values given for the original selection, those to write."""
+        picked = np.broadcast_to(values, self.selected_shape)
+        if self.flatten:
+            picked = picked.reshape(-1)
+        for axis, keep in enumerate(self.keep):
+            if keep is not None:
+                picked = picked[(slice(None),) * axis + (keep,)]
+        return picked
+
+
+def _last_occurrences(flat: npt.NDArray[Any], size: int) -> npt.NDArray[np.intp] | None:
+    """Positions to keep so that repeated indices, each in `range(size)`, take their last value.
+
+    Returns `None` when no index repeats, so callers can use the selection as is.
+    """
+    if flat.size < 2:
+        return None
+    if (flat[1:] >= flat[:-1]).all():
+        # Non-decreasing input, the usual case: repeats are adjacent.
+        steps = flat[1:] != flat[:-1]
+        if steps.all():
+            return None
+        return np.flatnonzero(np.append(steps, True))
+    positions = np.arange(flat.size, dtype=np.intp)
+    if size <= 16 * flat.size:
+        # Few possible indices for the number given: record the last position of each
+        # in linear time. A maximum does not depend on the order `ufunc.at` applies
+        # repeated indices in.
+        last = np.full(size, -1, dtype=np.intp)
+        np.maximum.at(last, flat, positions)
+        keep = np.flatnonzero(last[flat] == positions)
+    else:
+        _, first_in_reversed = np.unique(flat[::-1], return_index=True)
+        keep = positions[-1] - first_in_reversed
+    if keep.size == flat.size:
+        return None
+    return keep
+
+
+def _is_integer_array(selector: object) -> TypeGuard[npt.NDArray[np.integer[Any]]]:
+    return isinstance(selector, np.ndarray) and selector.dtype.kind in "iu"
+
+
+def _orthogonal_last_assignments(
+    selection: tuple[Any, ...], shape: tuple[int, ...], mesh: bool
+) -> LastAssignments | None:
+    """`last_assignments` for an orthogonal selection, one axis at a time.
+
+    The selection is either one 1-D array among slices or, when `mesh` is set, an
+    `np.ix_` mesh. An element repeats only where some axis repeats an index, and the
+    last value for it in C order is the one at the last occurrence on each axis.
+    """
+    new_selection = list(selection)
+    keep: list[npt.NDArray[np.intp] | None] = []
+    selected_shape: list[int] = []
+    for axis, (selector, length) in enumerate(zip(selection, shape, strict=True)):
+        if isinstance(selector, slice):
+            selected_shape.append(len(range(*selector.indices(length))))
+            keep.append(None)
+            continue
+        selected_shape.append(selector.size)
+        kept = (
+            _last_occurrences(selector.reshape(-1), length) if _is_integer_array(selector) else None
+        )
+        keep.append(kept)
+        if kept is not None:
+            new_selection[axis] = np.take(selector, kept, axis=axis if mesh else 0)
+    if all(kept is None for kept in keep):
+        return None
+    return LastAssignments(
+        selection=tuple(new_selection),
+        selected_shape=tuple(selected_shape),
+        flatten=False,
+        keep=tuple(keep),
+    )
+
+
+def _selected_flat_indices(
+    selection: tuple[Any, ...], shape: tuple[int, ...]
+) -> npt.NDArray[np.intp]:
+    """The flat index of each element `selection` names, in the layout of NumPy's result."""
+    coords = []
+    for axis, length in enumerate(shape):
+        axis_shape = tuple(length if d == axis else 1 for d in range(len(shape)))
+        # A broadcast view of each axis' coordinates, indexed by the selection, gives the
+        # coordinates the selection names without allocating an array of `shape`.
+        grid = np.broadcast_to(np.arange(length, dtype=np.intp).reshape(axis_shape), shape)
+        coords.append(grid[selection])
+    return np.asarray(np.ravel_multi_index(tuple(coords), shape), dtype=np.intp)
+
+
+def _selection_form(
+    selection: tuple[Any, ...], ndim: int
+) -> Literal["array", "mesh", "coordinates", "other"] | None:
+    """Classify a selection by the forms zarr's indexers give chunk selections.
+
+    `"array"` is one 1-D integer array among slices, `"mesh"` an `np.ix_` mesh of
+    integer arrays and `"coordinates"` one 1-D integer array per axis, all the same
+    length. `None` means the selection has no integer array, so cannot repeat an
+    element.
+    """
+    arrays = [selector for selector in selection if isinstance(selector, np.ndarray)]
+    if not any(_is_integer_array(array) for array in arrays):
+        return None
+    if len(selection) != ndim:
+        return "other"
+    if len(arrays) == 1:
+        if arrays[0].ndim == 1 and all(isinstance(s, slice | np.ndarray) for s in selection):
+            return "array"
+        return "other"
+    if len(arrays) < ndim or not all(_is_integer_array(array) for array in arrays):
+        return "other"
+    if all(
+        array.ndim == ndim and all(array.shape[d] == 1 for d in range(ndim) if d != axis)
+        for axis, array in enumerate(arrays)
+    ):
+        return "mesh"
+    if all(array.ndim == 1 and array.size == arrays[0].size for array in arrays):
+        return "coordinates"
+    return "other"
+
+
+def last_assignments(selection: SelectorTuple, shape: tuple[int, ...]) -> LastAssignments | None:
+    """Resolve the elements of an array of `shape` that `selection` assigns more than once.
+
+    Assigning through a selection that repeats an element gives that element several
+    values. NumPy leaves the order of those assignments undocumented and CuPy leaves it
+    undefined, so the last value given in the selection's C order is chosen here,
+    explicitly. The choice depends only on the selection, not on the order chunks are
+    written in. Returns `None` when no element repeats.
+    """
+    selectors: tuple[Any, ...] = selection if isinstance(selection, tuple) else (selection,)
+    form = _selection_form(selectors, len(shape))
+    if form is None:
+        return None
+    if form == "array":
+        return _orthogonal_last_assignments(selectors, shape, mesh=False)
+    if form == "mesh":
+        return _orthogonal_last_assignments(selectors, shape, mesh=True)
+    if form == "coordinates":
+        flat = np.asarray(np.ravel_multi_index(selectors, shape), dtype=np.intp)
+        kept = _last_occurrences(flat, product(shape))
+        if kept is None:
+            return None
+        return LastAssignments(
+            selection=tuple(array[kept] for array in selectors),
+            selected_shape=(flat.size,),
+            flatten=False,
+            keep=(kept,),
+        )
+    flat = _selected_flat_indices(selectors, shape)
+    kept = _last_occurrences(flat.reshape(-1), product(shape))
+    if kept is None:
+        return None
+    return LastAssignments(
+        selection=tuple(np.unravel_index(flat.reshape(-1)[kept], shape)),
+        selected_shape=flat.shape,
+        flatten=True,
+        keep=(kept,),
+    )
 
 
 @dataclass(frozen=True)
