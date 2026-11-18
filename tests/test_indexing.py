@@ -27,14 +27,12 @@ from zarr.core.indexing import (
     CoordinateSelection,
     IntArrayDimIndexer,
     MaskIndexer,
-    OrthogonalIndexer,
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
     argsort_chunk_indices,
-    last_writes,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -510,6 +508,13 @@ def test_setitem_zarr_array_as_value() -> None:
     assert_array_equal(dst2[2:7], np.arange(2, 7))
 
 
+def _reversed_within_chunk_argsort(
+    chunk_indices: npt.NDArray[np.intp], nchunks: int
+) -> npt.NDArray[np.intp]:
+    """Group `chunk_indices` by chunk, reversing the order of items within each chunk."""
+    return np.lexsort((-np.arange(chunk_indices.size), chunk_indices))
+
+
 @pytest.mark.parametrize("method", ["oindex", "vindex"])
 @pytest.mark.parametrize("layout", ["unit_chunks", "partial_chunks", "one_chunk", "sharded"])
 @pytest.mark.parametrize(
@@ -517,16 +522,25 @@ def test_setitem_zarr_array_as_value() -> None:
     [
         ((24,), ([-1, -1, 0, 0],)),
         ((24,), ([-1, 0, 0, -1],)),
-        # long enough that an unstable sort by chunk reorders the repeats
         ((24,), ([1] + [0] * 23,)),
         ((6, 6), ([0, 5, 0, -1, 2] * 4, [1, 1, 4, 4, 2] * 4)),
     ],
     ids=["adjacent", "interleaved", "many_repeats", "two_dimensions"],
 )
+@pytest.mark.parametrize("within_chunk_order", ["default", "reversed"])
 def test_setitem_repeated_index(
-    method: str, layout: str, shape: tuple[int, ...], selection: tuple[list[int], ...]
+    method: str,
+    layout: str,
+    shape: tuple[int, ...],
+    selection: tuple[list[int], ...],
+    within_chunk_order: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Assignment with repeated indices stores the last value given for each repeated position, as NumPy does."""
+    """Assignment with repeated indices sets each repeated element to one of its values, whole, and leaves the rest as NumPy would."""
+    if within_chunk_order == "reversed":
+        monkeypatch.setattr(
+            zarr.core.indexing, "argsort_chunk_indices", _reversed_within_chunk_argsort
+        )
     chunks = {
         "unit_chunks": (1,) * len(shape),
         "partial_chunks": (4,) * len(shape),
@@ -535,22 +549,26 @@ def test_setitem_repeated_index(
     }[layout]
     shards = (6,) * len(shape) if layout == "sharded" else None
     array = zarr.create_array(store={}, shape=shape, chunks=chunks, shards=shards, dtype="i8")
-    expected = np.zeros(shape, dtype="i8")
+    flat_ids = np.arange(product(shape)).reshape(shape)
     if method == "oindex":
-        np_selection = np.ix_(*selection)
-        value = np.arange(1, 1 + expected[np_selection].size).reshape(expected[np_selection].shape)
-        expected[np_selection] = value
+        targets = flat_ids[np.ix_(*selection)]
+        value = np.arange(1, 1 + targets.size).reshape(targets.shape)
         array.oindex[selection] = value
     else:
-        value = np.arange(1, 1 + len(selection[0]))
-        expected[selection] = value
+        targets = flat_ids[selection]
+        value = np.arange(1, 1 + targets.size)
         array.vindex[selection] = value
-    assert_array_equal(array[:], expected)
+    written = array[:].reshape(-1)
+    targets = targets.reshape(-1)
+    value = value.reshape(-1)
+    assert (np.delete(written, targets) == 0).all()
+    for target in np.unique(targets):
+        assert written[target] in value[targets == target]
 
 
-@pytest.mark.parametrize("nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**40])
+@pytest.mark.parametrize("nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**20, 2**32, 2**32 + 1, 2**40])
 def test_argsort_chunk_indices(nchunks: int) -> None:
-    """The sort groups chunk indices whether or not they are narrowed."""
+    """The sort groups items by chunk, and up to `2**32` chunks matches NumPy's stable sort."""
     rng = np.random.default_rng(0)
     chunk_indices = np.concatenate(
         [[0, nchunks - 1, nchunks - 1, 0], rng.integers(0, nchunks, 1000)]
@@ -558,87 +576,8 @@ def test_argsort_chunk_indices(nchunks: int) -> None:
     order = argsort_chunk_indices(chunk_indices, nchunks)
     assert_array_equal(np.sort(order), np.arange(chunk_indices.size))
     assert_array_equal(chunk_indices[order], np.sort(chunk_indices))
-
-
-_rng = np.random.default_rng(0)
-
-
-def _reversed_within_chunk_argsort(
-    chunk_indices: npt.NDArray[np.intp], nchunks: int
-) -> npt.NDArray[np.intp]:
-    """Group by chunk, listing each chunk's items in the reverse of the order given."""
-    return np.lexsort((-np.arange(chunk_indices.size), chunk_indices))
-
-
-@pytest.mark.parametrize("within_chunk_order", ["given", "reversed"])
-@pytest.mark.parametrize(
-    ("method", "selection"),
-    [
-        ("oindex", ([5, 1, 5, 20, 1, 29, 5], slice(None))),
-        ("oindex", (slice(2, 30), [8, 8, 0, 39, 8, 3])),
-        ("oindex", ([1, 1, 2, 9, 9], slice(None))),
-        ("oindex", (_rng.integers(0, 30, 200), slice(None))),
-        ("oindex", ([5, 1, 5, 20], [8, 8, 0, 39, 8])),
-        ("oindex", (3, [8, 8, 0, 39, 8])),
-        ("oindex", ([20, 3, 9], [0, 39])),
-        ("vindex", ([5, 1, 5, 20, 5], [8, 8, 8, 0, 8])),
-        ("vindex", ([5, 1, 5], [8, 0, 8])),
-        ("vindex", ([0, 0, 1], [0, 0, 2])),
-        ("vindex", (_rng.integers(0, 30, 2000), _rng.integers(0, 40, 2000))),
-        ("vindex", ([20, 3, 9], [0, 39, 0])),
-    ],
-    ids=[
-        "oindex_array_unordered",
-        "oindex_array_after_slice",
-        "oindex_array_increasing",
-        "oindex_array_many",
-        "oindex_mesh",
-        "oindex_mesh_with_integer",
-        "oindex_no_repeats",
-        "vindex_unordered",
-        "vindex_sparse",
-        "vindex_increasing",
-        "vindex_many",
-        "vindex_no_repeats",
-    ],
-)
-def test_last_writes(
-    method: str,
-    selection: tuple[Any, ...],
-    within_chunk_order: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Each projection writes every element once, and the result is assigning the values in C order.
-
-    The result must not depend on how the indexer orders the items within a chunk.
-    """
-    if within_chunk_order == "reversed":
-        monkeypatch.setattr(
-            zarr.core.indexing, "argsort_chunk_indices", _reversed_within_chunk_argsort
-        )
-    shape, chunks = (30, 40), (7, 9)
-    selection = tuple(np.asarray(s) if isinstance(s, list) else s for s in selection)
-    indexer: OrthogonalIndexer | CoordinateIndexer
-    if method == "oindex":
-        indexer = OrthogonalIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
-    else:
-        indexer = CoordinateIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
-    flat_ids = np.arange(product(shape)).reshape(shape)
-    targets = oindex(flat_ids, selection) if method == "oindex" else flat_ids[selection]
-    values = np.arange(targets.size).reshape(indexer.shape)
-    expected = np.full(product(shape), -1)
-    for target, value in zip(targets.ravel().tolist(), values.ravel().tolist(), strict=True):
-        expected[target] = value
-    actual = np.full(product(shape), -1)
-    for projection in last_writes(indexer):
-        region = tuple(
-            slice(c * size, (c + 1) * size)
-            for c, size in zip(projection.chunk_coords, chunks, strict=True)
-        )
-        written = flat_ids[region][projection.chunk_selection].ravel()
-        assert np.unique(written).size == written.size
-        actual[written] = values[projection.out_selection].ravel()
-    assert_array_equal(actual, expected)
+    if nchunks <= 2**32:
+        assert_array_equal(order, np.argsort(chunk_indices, kind="stable"))
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]

@@ -767,145 +767,19 @@ def argsort_chunk_indices(
 ) -> npt.NDArray[np.intp]:
     """Return the indices that sort `chunk_indices`, each in `range(nchunks)`.
 
-    The order of items that share a chunk is unspecified: writes resolve repeated
-    indices by their position in the selection (see `last_writes`), not by their order
-    within a chunk. NumPy sorts integers of at most 16 bits with a radix sort, which is
-    several times faster than its default sort, so the indices are narrowed when
-    `nchunks` allows it.
+    NumPy sorts integers of at most 16 bits with a radix sort, several times faster than
+    its default sort, so up to `2**32` chunks the indices are sorted 16 bits at a time,
+    low half first. Each pass is stable, so items that share a chunk keep their order.
+    That order is an implementation detail: the value stored for a repeated index is
+    unspecified.
     """
     if nchunks <= 2**16:
         return np.argsort(chunk_indices.astype(np.uint16), kind="stable")
+    if nchunks <= 2**32:
+        low = np.argsort((chunk_indices & 0xFFFF).astype(np.uint16), kind="stable")
+        high = (chunk_indices[low] >> 16).astype(np.uint16)
+        return low[np.argsort(high, kind="stable")]
     return np.argsort(chunk_indices)
-
-
-def _last_by_rank(
-    targets: npt.NDArray[Any], ranks: npt.NDArray[Any] | None
-) -> npt.NDArray[np.intp] | None:
-    """Positions of the entries to keep so that each target keeps its highest-ranked entry.
-
-    `targets` holds non-negative integers that may repeat. `ranks` holds distinct
-    integers, one per entry; `None` means each entry's rank is its position. Returns
-    `None` when no target repeats.
-    """
-    n = targets.size
-    if n < 2:
-        return None
-    if ranks is None and (targets[1:] >= targets[:-1]).all():
-        # Non-decreasing targets ranked by position: repeats are adjacent, and the last
-        # of each run ranks highest.
-        steps = targets[1:] != targets[:-1]
-        if steps.all():
-            return None
-        return np.flatnonzero(np.append(steps, True))
-    if (targets[1:] > targets[:-1]).all():
-        return None
-    if ranks is None:
-        ranks = np.arange(n, dtype=np.intp)
-    size = int(targets.max()) + 1
-    if size <= 16 * n:
-        # Few possible targets for the number given: record the highest rank of each in
-        # linear time. A maximum does not depend on the order `ufunc.at` applies
-        # repeated targets in.
-        highest = np.full(size, np.iinfo(np.intp).min, dtype=np.intp)
-        np.maximum.at(highest, targets, ranks)
-        keep = np.flatnonzero(highest[targets] == ranks)
-    else:
-        order = np.lexsort((ranks, targets))
-        ordered = targets[order]
-        keep = order[np.append(ordered[1:] != ordered[:-1], True)]
-    if keep.size == n:
-        return None
-    return keep
-
-
-def _as_positions(out_sel: slice | npt.NDArray[Any]) -> npt.NDArray[np.intp]:
-    """The output positions a 1-D output selection names, as an array.
-
-    Indexers give output slices an explicit start and stop, and no step.
-    """
-    if isinstance(out_sel, slice):
-        return np.arange(out_sel.start, out_sel.stop, dtype=np.intp)
-    return out_sel.reshape(-1)
-
-
-def _orthogonal_last_writes(
-    projection: ChunkProjection, drop_axes: tuple[int, ...]
-) -> ChunkProjection:
-    """`last_writes` for one projection of an `OrthogonalIndexer`.
-
-    An element repeats only where some axis repeats an index, and its last value in C
-    order is the one at the highest output position on each axis, so each axis is
-    resolved on its own.
-    """
-    chunk_selection = cast("tuple[Any, ...]", projection.chunk_selection)
-    out_selection = cast("tuple[Any, ...]", projection.out_selection)
-    n_arrays = sum(isinstance(sel, np.ndarray) for sel in chunk_selection)
-    # The indexer meshes the selections with `ix_` exactly when this holds.
-    mesh = n_arrays > 1 or bool(drop_axes)
-    out_axes = [axis for axis in range(len(chunk_selection)) if axis not in drop_axes]
-    chunk_sels = list(chunk_selection)
-    out_sels = list(out_selection)
-    changed = False
-    for out_axis, axis in enumerate(out_axes):
-        chunk_sel = chunk_sels[axis]
-        if not (isinstance(chunk_sel, np.ndarray) and chunk_sel.dtype.kind in "iu"):
-            continue
-        out_sel = out_sels[out_axis]
-        ranks = None if isinstance(out_sel, slice) else out_sel.reshape(-1)
-        keep = _last_by_rank(chunk_sel.reshape(-1), ranks)
-        if keep is None:
-            continue
-        changed = True
-        chunk_sels[axis] = chunk_sel.reshape(-1)[keep]
-        out_sels[out_axis] = _as_positions(out_sel)[keep]
-    if not changed:
-        return projection
-    if mesh:
-        chunk_selection = np.ix_(*(sel.reshape(-1) for sel in chunk_sels))
-        out_selection = np.ix_(*(_as_positions(sel) for sel in out_sels))
-    else:
-        chunk_selection = tuple(chunk_sels)
-        out_selection = tuple(out_sels)
-    return projection._replace(chunk_selection=chunk_selection, out_selection=out_selection)
-
-
-def _coordinate_last_writes(projection: ChunkProjection) -> ChunkProjection:
-    """`last_writes` for one projection of a `CoordinateIndexer`."""
-    chunk_selection = cast("tuple[npt.NDArray[np.intp], ...]", projection.chunk_selection)
-    out_selection = cast("slice | npt.NDArray[np.intp]", projection.out_selection)
-    if chunk_selection[0].size < 2:
-        return projection
-    extent = tuple(int(sel.max()) + 1 for sel in chunk_selection)
-    targets = np.ravel_multi_index(chunk_selection, extent)
-    ranks = None if isinstance(out_selection, slice) else out_selection
-    keep = _last_by_rank(targets, ranks)
-    if keep is None:
-        return projection
-    return projection._replace(
-        chunk_selection=tuple(sel[keep] for sel in chunk_selection),
-        out_selection=_as_positions(out_selection)[keep],
-    )
-
-
-def last_writes(indexer: Indexer) -> Iterator[ChunkProjection]:
-    """The projections of `indexer`, each writing every element it touches once.
-
-    A selection that repeats an element gives it several values. The value kept is the
-    last one in the C order of the selection, the result of assigning the values in
-    turn. It is chosen from each item's position in the selection, so it does not
-    depend on how items are ordered within a chunk, on the order chunks are written
-    in, or on how an array library orders repeated assignments, which NumPy leaves
-    undocumented and CuPy undefined.
-    """
-    if isinstance(indexer, CoordinateIndexer):
-        for projection in indexer:
-            yield _coordinate_last_writes(projection)
-    elif isinstance(indexer, OrthogonalIndexer):
-        for projection in indexer:
-            yield _orthogonal_last_writes(projection, indexer.drop_axes)
-    else:
-        # Basic and block selections name each element once.
-        yield from indexer
 
 
 @dataclass(frozen=True)

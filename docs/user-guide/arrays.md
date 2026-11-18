@@ -549,6 +549,13 @@ z[:] = data
 print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 ```
 
+### Repeated indices
+
+If an index array used for writing names an element more than once, the element is
+set to one of the values given for it, and which one is unspecified, as in NumPy.
+This applies to coordinate and orthogonal writes, through `vindex`, `oindex`
+or the square bracket operator. Remove repeated indices if the result matters.
+
 ### Block indexing
 
 Zarr also supports block indexing, which allows selections of whole chunks based on their
