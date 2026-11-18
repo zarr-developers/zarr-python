@@ -28,8 +28,10 @@ def write_into(
     The source must expose ``shape``, a NumPy-compatible ``dtype``, and basic
     integer/slice assignment. Values are snapshotted and converted before the
     first mutation, so source aliases and conversion failures are safe. Extra
-    leading singleton value axes are accepted, as in NumPy assignment. Repeated
-    source coordinates receive the last value in C order of the view.
+    leading singleton value axes are accepted, as in NumPy assignment. A source
+    coordinate the view addresses more than once receives one of the values
+    written to it, whole, but which one is unspecified; deduplicate the
+    selection first to control it.
 
     Independent affine maps use one basic assignment. Other selections are
     scattered in bulk: a NumPy source receives one fancy assignment, and a
@@ -167,33 +169,11 @@ def _domain_cells(shape: tuple[int, ...]) -> np.ndarray[Any, np.dtype[np.intp]]:
     return np.indices(shape, dtype=np.intp).reshape(len(shape), -1).T
 
 
-def _last_occurrences(
-    flat: np.ndarray[Any, Any],
-) -> slice | np.ndarray[Any, np.dtype[np.intp]]:
-    """Positions to keep so that repeated flat indices take their last value.
-
-    A full slice means every position is kept, so callers index without a copy.
-    """
-    if flat.size < 2:
-        return slice(None)
-    if (flat[1:] >= flat[:-1]).all():
-        # Non-decreasing input, the usual C-order case: repeats are adjacent,
-        # so no sort is needed.
-        steps = flat[1:] != flat[:-1]
-        if steps.all():
-            return slice(None)
-        return np.flatnonzero(np.append(steps, True))
-    _, first_in_reversed = np.unique(flat[::-1], return_index=True)
-    return np.asarray(len(flat) - 1 - first_in_reversed, dtype=np.intp)
-
-
 def _scatter_numpy(source: np.ndarray[Any, Any], transform: IndexTransform, broadcast: Any) -> None:
     """One fancy assignment: NumPy sources need no read-modify-write."""
     positions = _domain_cells(transform.domain.shape)
     coords = transform.apply_many(positions + np.asarray(transform.domain.inclusive_min))
-    flat = np.asarray(np.ravel_multi_index(tuple(coords.T), source.shape), dtype=np.intp)
-    keep = _last_occurrences(flat)
-    source[tuple(coords[keep].T)] = broadcast[tuple(positions[keep].T)]
+    source[tuple(coords.T)] = broadcast[tuple(positions.T)]
 
 
 def _scatter_planned(
@@ -219,8 +199,7 @@ def _scatter_planned(
         flat = np.asarray(
             np.ravel_multi_index(tuple((local - hull_min).T), hull_shape), dtype=np.intp
         )
-        keep = _last_occurrences(flat)
-        np.put(block, flat[keep], np.asarray(broadcast[tuple(positions[keep].T)]))
+        np.put(block, flat, np.asarray(broadcast[tuple(positions.T)]))
         source[box] = block
 
 
