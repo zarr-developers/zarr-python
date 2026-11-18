@@ -375,10 +375,11 @@ class IndexedSet:
     """One output dimension read through an orthogonal `ArrayMap`, one row per chunk.
 
     The map's coordinates are grouped by chunk in CSR form: row ``i`` owns
-    ``index[pointer[i]:pointer[i + 1]]`` (the index-array values, in request
-    order) and ``positions[pointer[i]:pointer[i + 1]]`` (their positions along
-    the request axis, ascending). `local` gives the same values as chunk-local
-    storage coordinates. Columns are read-only NumPy arrays.
+    ``index[pointer[i]:pointer[i + 1]]`` (the index-array values) and
+    ``positions[pointer[i]:pointer[i + 1]]`` (their positions along the request
+    axis), paired entry by entry. The order of entries within a row is
+    unspecified. `local` gives the same values as chunk-local storage
+    coordinates. Columns are read-only NumPy arrays.
 
     Examples
     --------
@@ -390,8 +391,8 @@ class IndexedSet:
     >>> (axis,) = plan_chunks(transform, grids).partition().sets
     >>> axis.chunk.tolist(), axis.pointer.tolist()
     ([0, 2], [0, 2, 4])
-    >>> axis.local.tolist(), axis.positions.tolist()
-    ([1, 2, 1, 0], [1, 2, 0, 3])
+    >>> sorted(zip(axis.positions.tolist(), axis.local.tolist()))
+    [(0, 1), (1, 1), (2, 2), (3, 0)]
     """
 
     output_dimension: int
@@ -422,7 +423,7 @@ class IndexedSet:
     """Index-array values grouped by chunk."""
 
     positions: np.ndarray[Any, np.dtype[np.intp]]
-    """Positions along the request axis, grouped by chunk, ascending within a row."""
+    """Positions along the request axis, grouped by chunk like `index`."""
 
     def __post_init__(self) -> None:
         _own_columns(self, "chunk", "chunk_start", "chunk_extent", "pointer", "index", "positions")
@@ -465,8 +466,8 @@ class JointSet:
     `output_dimensions`, and CSR range ``pointer[i]:pointer[i + 1]`` its
     points: `index` holds their index-array values per output dimension,
     `positions` their flat positions in this component's input block, and
-    `block_coordinates` those positions unravelled over the block. Columns are
-    read-only NumPy arrays.
+    `block_coordinates` those positions unravelled over the block. The order of
+    points within a row is unspecified. Columns are read-only NumPy arrays.
 
     Examples
     --------
@@ -478,8 +479,10 @@ class JointSet:
     ...     np.array([0, 6, 6, 1]), np.array([8, 0, 1, 8])
     ... ]
     >>> (joint,) = plan_chunks(transform, grids).partition().joint_sets
-    >>> joint.chunk.tolist(), joint.pointer.tolist(), joint.positions.tolist()
-    ([[0, 2], [2, 0]], [0, 2, 4], [0, 3, 1, 2])
+    >>> joint.chunk.tolist(), joint.pointer.tolist()
+    ([[0, 2], [2, 0]], [0, 2, 4])
+    >>> [sorted(joint.positions[joint.run(row)].tolist()) for row in range(len(joint))]
+    [[0, 3], [1, 2]]
     """
 
     output_dimensions: tuple[int, ...]
@@ -513,7 +516,7 @@ class JointSet:
     """Index-array values per point and output dimension, shape ``(points, k)``."""
 
     positions: np.ndarray[Any, np.dtype[np.intp]]
-    """Flat block position of each point, ascending within a row."""
+    """Flat block position of each point, grouped by row like `index`."""
 
     _block_coordinates: np.ndarray[Any, np.dtype[np.intp]] | None = field(
         default=None, init=False, repr=False, compare=False
@@ -654,13 +657,12 @@ def _indexed_set(out_dim: int, m: ArrayMap, dg: DimensionGridLike) -> IndexedSet
     dg.index_to_chunk(int(storage.min()))
     dg.index_to_chunk(int(storage.max()))
     chunk_ids = dg.indices_to_chunks(storage)
-    # Already-sorted coordinates (the common case) need no sort.
-    if bool((chunk_ids[1:] >= chunk_ids[:-1]).all()):
+    positions = _group_by_key(chunk_ids)
+    if positions is None:
         positions = np.arange(n, dtype=np.intp)
         sorted_ids = chunk_ids
         index = flat
     else:
-        positions = np.argsort(chunk_ids, kind="stable")
         sorted_ids = chunk_ids[positions]
         index = flat[positions]
     boundaries = np.flatnonzero(sorted_ids[1:] != sorted_ids[:-1]) + 1
@@ -679,6 +681,42 @@ def _indexed_set(out_dim: int, m: ArrayMap, dg: DimensionGridLike) -> IndexedSet
         index=np.asarray(index, dtype=np.intp),
         positions=np.asarray(positions, dtype=np.intp),
     )
+
+
+# Below this many keys per radix pass, one stable comparison sort is cheaper
+# than the passes' fixed overhead (about 1 us each).
+_RADIX_SORT_MIN_ITEMS_PER_PASS = 128
+
+
+def _group_by_key(
+    keys: np.ndarray[Any, np.dtype[np.intp]],
+) -> np.ndarray[Any, np.dtype[np.intp]] | None:
+    """An order that groups equal keys in ascending key order, or None if `keys` already do.
+
+    NumPy's stable sort is a linear-time radix sort for integers of at most 16
+    bits, so keys shifted to start at zero are sorted one 16-bit digit at a
+    time, least significant first: one pass per 16 bits of their range, at
+    most four. Small inputs take one stable comparison sort instead. Both
+    branches happen to keep input order within a group, but that order is
+    unspecified and callers must not rely on it.
+    """
+    if bool((keys[1:] >= keys[:-1]).all()):
+        return None
+    low = int(keys.min())
+    span = int(keys.max()) - low + 1
+    # ceil(bits / 16) passes; the range of int64 keys needs at most 64 bits.
+    n_passes = min(4, max(1, -((span - 1).bit_length() // -16)))
+    if keys.size < _RADIX_SORT_MIN_ITEMS_PER_PASS * n_passes:
+        return np.asarray(np.argsort(keys, kind="stable"), dtype=np.intp)
+    # A range above 2**63 wraps in int64, but the difference is exact modulo
+    # 2**64, so reading it as uint64 recovers the shifted keys.
+    shifted = (keys - low).view(np.uint64)
+    # `astype(np.uint16)` keeps the low 16 bits.
+    order = np.argsort(shifted.astype(np.uint16), kind="stable")
+    for shift in range(16, 16 * n_passes, 16):
+        digit = (shifted[order] >> np.uint64(shift)).astype(np.uint16)
+        order = order[np.argsort(digit, kind="stable")]
+    return np.asarray(order, dtype=np.intp)
 
 
 def _chunk_keys(
@@ -724,7 +762,8 @@ def _joint_set(
     chunk_ids = [dim_grids[d].indices_to_chunks(block.flat_storage[d]) for d in dims]
     n_points = int(chunk_ids[0].size)
     keys = _chunk_keys(chunk_ids)
-    positions = np.argsort(keys, kind="stable")
+    grouped = _group_by_key(keys)
+    positions = np.arange(n_points, dtype=np.intp) if grouped is None else grouped
     sorted_keys = keys[positions]
     boundaries = np.flatnonzero(sorted_keys[1:] != sorted_keys[:-1]) + 1
     pointer = np.concatenate([[0], boundaries, [n_points]]).astype(np.intp)

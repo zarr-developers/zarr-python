@@ -313,6 +313,43 @@ def test_migrate_compressor(
     assert np.all(zarr_array[:] == 1)
 
 
+@pytest.mark.parametrize(
+    ("dtype", "expected_shuffle"),
+    [("uint8", "bitshuffle"), ("<u2", "shuffle")],
+    ids=["single_byte", "multi_byte"],
+)
+def test_migrate_blosc_autoshuffle(
+    local_store: LocalStore, dtype: str, expected_shuffle: Literal["bitshuffle", "shuffle"]
+) -> None:
+    """Blosc AUTOSHUFFLE becomes the shuffle that numcodecs uses for the item size"""
+    zarr_array = zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype=dtype,
+        compressors=numcodecs.Blosc(cname="zstd", clevel=3, shuffle=numcodecs.Blosc.AUTOSHUFFLE),
+        zarr_format=2,
+        fill_value=0,
+    )
+    zarr_array[:] = 1
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+    assert metadata.codecs[-1] == BloscCodec(
+        typesize=np.dtype(dtype).itemsize,
+        cname="zstd",
+        clevel=3,
+        shuffle=expected_shuffle,
+        blocksize=0,
+    )
+    assert np.all(zarr_array[:] == 1)
+
+
 def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
     """Test migration of a numcodecs compressor without a zarr.codecs equivalent."""
 

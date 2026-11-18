@@ -274,16 +274,8 @@ def _member_object(schema: Mapping[str, JSONValue], key: str) -> Mapping[str, JS
 
 
 def _array(context: ZarrV3Context, schemas: Schemas) -> JSONSchema:
-    """An array document: its TypedDict, at least one codec, and a constraint on its fill value for each data type in scope, which applies when the document names that data type.
-
-    The TypedDict cannot declare a minimum length, so the schema adds it:
-    a pipeline needs its array -> bytes codec, and the reader rejects an
-    empty `codecs`.
-    """
+    """An array document: its TypedDict, and a constraint on its fill value for each data type in scope, which applies when the document names that data type."""
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
-    properties = _member_object(schema, "properties")
-    codecs = _member_object(properties, "codecs")
-    schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     schema = _with_extra_fields(schema, context.array_extra_fields, schemas)
     held: list[JSONValue] = []
     for definition in context.data_types.values():

@@ -11,6 +11,7 @@ from typing import Final
 
 from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
 from zarr_metadata.v3._types.chunk_key_encoding import (
+    DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
     DEFAULT_CHUNK_KEY_ENCODING_NAME,
     DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR,
     DefaultChunkKeyEncodingConfiguration,
@@ -30,7 +31,7 @@ def _canonical(
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/default/index.rst#L27-L29),
     so the two spellings describe the same encoding.
     """
-    if configuration.get("separator") != "/":
+    if configuration.get("separator") != DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR:
         return configuration
     return {}
 
@@ -45,6 +46,7 @@ DEFAULT_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
 
 __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING",
+    "DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "DefaultChunkKeyEncodingConfiguration",

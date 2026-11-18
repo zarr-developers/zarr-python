@@ -8,15 +8,19 @@ type, pass through.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import dataclasses
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from typing_extensions import TypedDict
 
+from zarr_metadata._json import json_text
 from zarr_metadata.definition import (
+    AcceptedDeclaration,
     EmptyConfiguration,
     Nested,
     ResolvedDeclaration,
+    canonical_of,
     resolve,
 )
 from zarr_metadata.model import (
@@ -26,6 +30,7 @@ from zarr_metadata.model import (
 from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
+from zarr_metadata.v3.codec.bytes import BYTES_CODEC, BytesCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     ArrayArrayCodecDefinition,
@@ -37,6 +42,7 @@ from zarr_metadata.v3.definition import (
     ZarrV3CodecDeclaration,
     ZarrV3Context,
     ZarrV3DataTypeDeclaration,
+    codec_for_chunk,
 )
 
 if TYPE_CHECKING:
@@ -422,6 +428,7 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
     ("kind", "attribute"),
     [
         (BytesBytesCodecDefinition, "chunk_rules"),
+        (BytesBytesCodecDefinition, "chunk_canonical"),
         (BytesBytesCodecDefinition, "transition"),
         (BytesBytesCodecDefinition, "pipelines"),
         (ArrayBytesCodecDefinition, "transition"),
@@ -545,3 +552,153 @@ def test_error_a_stage_s_inner_pipelines_are_read_only() -> None:
         stage.inner["codecs"] = ()  # pyright: ignore[reportIndexIssue]
     for again in (pickle.loads(pickle.dumps(stages)), copy.deepcopy(stages)):
         assert again == stages
+
+
+BIG: JSONValue = {"name": "bytes", "configuration": {"endian": "big"}}
+
+BARE: JSONValue = {"name": "bytes"}
+
+CRC32C: JSONValue = {"name": "crc32c"}
+
+
+def _shard(*codecs: JSONValue, index_codecs: tuple[JSONValue, ...] = (LITTLE, CRC32C)) -> JSONValue:
+    """A shard of inner chunks of 2 by 1 that encodes them with `codecs`, and its index with `index_codecs`."""
+    return {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2, 1],
+            "codecs": list(codecs),
+            "index_codecs": list(index_codecs),
+        },
+    }
+
+
+def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
+    """Each codec of a pipeline that receives `chunk`, in its simplest spelling for the chunk it receives."""
+    stages, problems = _read(codecs, chunk)
+    assert problems == ()
+    return [canonical_of(codec_for_chunk(stage), ()) for stage in stages]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "codecs", "simplest"),
+    [
+        # Each value takes one byte, so `endian` means nothing.
+        ("uint8", [LITTLE], [BARE]),
+        ("int8", [BIG], [BARE]),
+        ("bool", [LITTLE], [BARE]),
+        ("r8", [LITTLE], [BARE]),
+        ("uint8", [BARE], [BARE]),
+        ("uint8", [_transpose(1, 0), LITTLE, GZIP], [_transpose(1, 0), BARE, GZIP]),
+        # Each value takes several bytes, so `endian` says how they are ordered.
+        ("uint16", [LITTLE], [LITTLE]),
+        ("float32", [BIG], [BIG]),
+        ("r16", [LITTLE], [LITTLE]),
+        # The codec is simplified for the chunk it receives, not for the array's data type.
+        ("uint8", [_cast("float32"), LITTLE], [_cast("float32"), LITTLE]),
+        ("uint16", [_cast("uint8"), BIG], [_cast("uint8"), BARE]),
+        # A shard's inner codecs receive the shard's data type, and its index codecs `uint64`.
+        ("uint8", [_shard(LITTLE)], [_shard(BARE)]),
+        ("uint16", [_shard(LITTLE)], [_shard(LITTLE)]),
+        ("uint8", [_shard(_shard(BIG))], [_shard(_shard(BARE))]),
+        ("uint8", [_cast("uint16"), _shard(LITTLE)], [_cast("uint16"), _shard(LITTLE)]),
+        ("uint16", [_shard(_cast("uint8"), LITTLE)], [_shard(_cast("uint8"), BARE)]),
+        # Nothing is known of the values, so nothing is simplified.
+        ("acme.t", [LITTLE], [LITTLE]),
+        ("uint8", ["acme.shuffle", LITTLE], [{"name": "acme.shuffle"}, LITTLE]),
+        ("uint8", ["acme.unclaimed", LITTLE], [{"name": "acme.unclaimed"}, LITTLE]),
+    ],
+)
+def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
+    data_type: JSONValue, codecs: list[JSONValue], simplest: list[JSONValue]
+) -> None:
+    """`codec_for_chunk` returns each codec as its `chunk_canonical` simplifies it for the chunk it receives, and each codec of a pipeline it contains for the chunk that one receives. A codec with nothing to simplify is returned as it is."""
+    found = _simplest(codecs, _of(data_type))
+    assert json_text(found) == json_text(simplest)
+    # The simplest spelling reads without a problem, and has nothing left to simplify.
+    assert json_text(_simplest(found, _of(data_type))) == json_text(simplest)
+    stages, _ = _read(simplest, _of(data_type))
+    assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+
+
+def test_a_codec_with_a_problem_for_its_chunk_is_not_simplified() -> None:
+    """A codec the chunk rules find a problem with is returned as it is, as is a codec the scope refused."""
+    # `bytes` does not encode values that vary in size, and `gzip` requires a level.
+    stages, problems = _read([LITTLE, {"name": "gzip", "configuration": {}}], _of("string"))
+    assert [problem.loc for problem in problems] == [(1, "configuration", "level"), (0,)]
+    assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+
+
+def _bytes_with(chunk_canonical: object) -> ResolvedDeclaration[CodecDefinition[Any]]:
+    """A `bytes` codec with `endian`, read by a definition whose `chunk_canonical` is `chunk_canonical`."""
+    lying = dataclasses.replace(BYTES_CODEC, name="acme.bytes", chunk_canonical=chunk_canonical)
+    declaration = {"name": "acme.bytes", "configuration": {"endian": "little"}}
+    return resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[lying])))[0]
+
+
+def _stage(codec: ResolvedDeclaration[CodecDefinition[Any]], chunk: Chunk) -> Stage:
+    stages, problems = read_pipeline([codec], chunk)
+    assert problems == ()
+    return stages[0]
+
+
+def test_error_a_chunk_canonical_the_definition_does_not_allow() -> None:
+    stage = _stage(_bytes_with(lambda configuration, nested, chunk: {"endian": "middle"}), CHUNK)
+    with pytest.raises(ValueError, match="'acme.bytes': its chunk_canonical gave"):
+        codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_the_chunk_rules_do_not_allow() -> None:
+    # A value of `uint16` takes two bytes, so the chunk rules require `endian`.
+    stage = _stage(_bytes_with(lambda configuration, nested, chunk: {}), _of("uint16"))
+    with pytest.raises(ValueError, match="'acme.bytes': its chunk_canonical gave {}, which"):
+        codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_that_gives_something_else() -> None:
+    stage = _stage(_bytes_with(lambda configuration, nested, chunk: "little"), CHUNK)
+    with pytest.raises(TypeError, match="'acme.bytes': its chunk_canonical gives a configuration"):
+        codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_that_raises_says_whose_it_is() -> None:
+    def chunk_canonical(
+        configuration: BytesCodecConfiguration, nested: Nested, chunk: Chunk
+    ) -> BytesCodecConfiguration:
+        raise KeyError("endian")
+
+    with pytest.raises(KeyError) as raised:
+        codec_for_chunk(_stage(_bytes_with(chunk_canonical), CHUNK))
+    assert raised.value.__notes__ == ["raised by the chunk_canonical of 'acme.bytes'"]
+
+
+def test_error_a_chunk_canonical_that_writes_to_the_configuration() -> None:
+    def chunk_canonical(
+        configuration: BytesCodecConfiguration, nested: Nested, chunk: Chunk
+    ) -> BytesCodecConfiguration:
+        del configuration["endian"]
+        return configuration
+
+    with pytest.raises(TypeError, match="does not support item deletion"):
+        codec_for_chunk(_stage(_bytes_with(chunk_canonical), CHUNK))
+
+
+def test_error_a_chunk_canonical_that_changes_a_nested_declaration() -> None:
+    # Each codec of a pipeline the codec contains is simplified for the
+    # chunk it receives, so the codec's own `chunk_canonical` leaves it alone.
+    def chunk_canonical(
+        configuration: AcmeHolderConfiguration, nested: Nested, chunk: Chunk
+    ) -> AcmeHolderConfiguration:
+        return {"codecs": (cast("ZarrV3CodecDeclaration", BARE),), "types": configuration["types"]}
+
+    holder = ArrayBytesCodecDefinition(
+        name="acme.holder",
+        configuration=AcmeHolderConfiguration,
+        size="dynamic",
+        chunk_canonical=chunk_canonical,
+    )
+    declaration = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": ["uint8"]}}
+    codec = resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[holder])))[0]
+    assert isinstance(codec, AcceptedDeclaration)
+    with pytest.raises(ValueError, match="expected the nested declaration to stay as it is"):
+        codec_for_chunk(_stage(codec, CHUNK))

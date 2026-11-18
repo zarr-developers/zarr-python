@@ -1182,6 +1182,7 @@ def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
 LE: Final = {"name": "bytes", "configuration": {"endian": "little"}}
 SHARD: Final = {"chunk_shape": [2], "codecs": [LE], "index_location": "end"}
 NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 0}
+CRC32C: Final = {"name": "crc32c"}
 
 
 @pytest.mark.parametrize(
@@ -1221,6 +1222,29 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
             False,
         ),
         ("int8", "uint8", DataTypeDefinition, False),
+        # The order of the members of an object means nothing, in a
+        # configuration that holds declarations or one that holds none.
+        (
+            {"name": "sharding_indexed", "configuration": {**SHARD, "index_codecs": [LE]}},
+            {
+                "configuration": {"index_codecs": [LE], **dict(reversed(SHARD.items()))},
+                "name": "sharding_indexed",
+            },
+            CodecDefinition,
+            True,
+        ),
+        (
+            {"name": "sharding_indexed", "configuration": {**SHARD, "index_codecs": [LE, CRC32C]}},
+            {"name": "sharding_indexed", "configuration": {**SHARD, "index_codecs": [CRC32C, LE]}},
+            CodecDefinition,
+            False,
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 1, "checksum": True}},
+            {"configuration": {"checksum": True, "level": 1}, "name": "zstd"},
+            CodecDefinition,
+            True,
+        ),
         # The spec's equivalences, which each definition's `canonical`
         # normalizes: a member at its default, a run-length encoding, and
         # leading zeros in a size.
@@ -1296,6 +1320,9 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
         "another-configuration",
         "unclaimed-another-configuration",
         "another-name",
+        "members-holding-declarations-in-another-order",
+        "declarations-in-another-order",
+        "members-in-another-order",
         "blosc-typesize-noshuffle",
         "default-separator",
         "default-other-separator",
@@ -1473,6 +1500,7 @@ def test_error_a_data_type_fill_value_holding_a_declaration() -> None:
         (ChunkGridDefinition, "shape_rules"),
         (ChunkGridDefinition, "chunk_lengths"),
         (ArrayArrayCodecDefinition, "chunk_rules"),
+        (ArrayArrayCodecDefinition, "chunk_canonical"),
         (ArrayArrayCodecDefinition, "transition"),
         (ArrayArrayCodecDefinition, "pipelines"),
     ],

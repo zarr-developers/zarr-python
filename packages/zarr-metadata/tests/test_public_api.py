@@ -180,6 +180,8 @@ EXPECTED = [
     "ZarrV2ArrayOrder",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZarrV2ArrayDimensionSeparator",
+    "ZARR_V3_NODE_TYPE",
+    "ZarrV3NodeType",
     "ENDIANNESS",
     "Endianness",
     "BYTES_CODEC_NAME",
@@ -227,6 +229,10 @@ EXPECTED = [
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingSeparator",
     "NUMPY_TIME_UNIT",
+    # Spec defaults: the value an absent member means.
+    "ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR",
+    "DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
+    "V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "NumpyTimeUnit",
 ]
 
@@ -448,6 +454,7 @@ def test_promoted_pairs_drift() -> None:
         (zm.ZARR_V2_ARRAY_DIMENSION_SEPARATOR, zm.ZarrV2ArrayDimensionSeparator),
         (zm.DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR, zm.DefaultChunkKeyEncodingSeparator),
         (zm.V2_CHUNK_KEY_ENCODING_SEPARATOR, zm.V2ChunkKeyEncodingSeparator),
+        (zm.ZARR_V3_NODE_TYPE, zm.ZarrV3NodeType),
     ]
     for const, lit in pairs:
         assert set(const) == set(get_args(lit))

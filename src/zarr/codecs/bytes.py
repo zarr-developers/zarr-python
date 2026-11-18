@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 import warnings
 from dataclasses import dataclass, replace
@@ -153,14 +154,16 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         The chunk is stored in C order, so each row along its first axis is a
         contiguous run of bytes. The rows from the first to the last one the
         selection touches are fetched with a single range request, and the
-        selection is applied to them. A selection that touches every row reads
-        the whole chunk, as before.
+        selection is applied to them. When the selection touches a single row,
+        the same is done within that row along the next axis, and so on, so
+        that `arr[t, y0:y1, x0:x1]` fetches rows `y0` to `y1` of frame `t`. A
+        selection that touches every row reads the whole chunk, as before.
         """
-        window = _row_window(selection, chunk_spec.shape)
+        window = _block_window(selection, chunk_spec.shape)
         chunk_bytes = await byte_getter.get(
-            prototype=chunk_spec.prototype, byte_range=_row_byte_range(window, chunk_spec)
+            prototype=chunk_spec.prototype, byte_range=_block_byte_range(window, chunk_spec)
         )
-        return self._decode_rows(chunk_bytes, selection, window, chunk_spec)
+        return self._decode_block(chunk_bytes, selection, window, chunk_spec)
 
     def _decode_partial_sync(
         self,
@@ -169,28 +172,29 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
         """Sync equivalent of `_decode_partial_single`."""
-        window = _row_window(selection, chunk_spec.shape)
+        window = _block_window(selection, chunk_spec.shape)
         chunk_bytes = byte_getter.get_sync(
-            prototype=chunk_spec.prototype, byte_range=_row_byte_range(window, chunk_spec)
+            prototype=chunk_spec.prototype, byte_range=_block_byte_range(window, chunk_spec)
         )
-        return self._decode_rows(chunk_bytes, selection, window, chunk_spec)
+        return self._decode_block(chunk_bytes, selection, window, chunk_spec)
 
-    def _decode_rows(
+    def _decode_block(
         self,
         chunk_bytes: Buffer | None,
         selection: SelectorTuple,
-        window: tuple[int, int, SelectorTuple] | None,
+        window: tuple[int, tuple[int, ...], SelectorTuple] | None,
         chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
-        """Decode the bytes fetched for a row window and apply the selection to them."""
+        """Decode the bytes fetched for a block window and apply the selection to them."""
         if chunk_bytes is None:
             return None
         if window is None:
             return self._decode_sync(chunk_bytes, chunk_spec)[selection]
-        first, stop, rows_selection = window
-        row_bytes = _row_bytes(chunk_spec)
-        start, end = first * row_bytes, stop * row_bytes
-        chunk_size = chunk_spec.shape[0] * row_bytes
+        offset, block_shape, block_selection = window
+        itemsize = _itemsize(chunk_spec)
+        start = offset * itemsize
+        end = start + math.prod(block_shape) * itemsize
+        chunk_size = math.prod(chunk_spec.shape) * itemsize
         # A store may not honor the byte range it was given. The length of what
         # it sent tells which bytes those are.
         if len(chunk_bytes) == end - start:
@@ -206,8 +210,8 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
                 f"Requested bytes {start} to {end} of a {chunk_size} byte chunk, "
                 f"but the store returned {len(chunk_bytes)} bytes."
             )
-        rows_spec = replace(chunk_spec, shape=(stop - first, *chunk_spec.shape[1:]))
-        return self._decode_sync(chunk_bytes, rows_spec)[rows_selection]
+        block_spec = replace(chunk_spec, shape=block_shape)
+        return self._decode_sync(chunk_bytes, block_spec)[block_selection]
 
     def _encode_sync(
         self,
@@ -239,58 +243,84 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         return input_byte_length
 
 
-def _row_window(
+def _block_window(
     selection: SelectorTuple, shape: tuple[int, ...]
-) -> tuple[int, int, SelectorTuple] | None:
-    """The rows along axis 0 that a selection touches, and the selection relative to them.
+) -> tuple[int, tuple[int, ...], SelectorTuple] | None:
+    """The contiguous block of a C-order chunk that a selection touches.
 
-    Returns the first row, one past the last row, and the selection shifted so
-    that it indexes an array holding only those rows. Returns None when the
-    selection touches every row or the rows cannot be determined, in which case
-    the whole chunk is read.
+    Along the first axis the block spans the first to the last row the
+    selection touches. If that is a single row, the block is narrowed in the
+    same way along the next axis, and so on. The axes after that are whole.
+
+    Returns the offset of the block from the start of the chunk in items, the
+    shape of the block, and the selection shifted so that it indexes the block.
+    The block has as many axes as the chunk; the axes it was narrowed to a
+    single index along have length 1. Returns None when the block is the whole
+    chunk or cannot be determined, in which case the whole chunk is read.
     """
-    if len(shape) == 0 or not isinstance(selection, tuple) or len(selection) == 0:
+    if not isinstance(selection, tuple):
         return None
-    first_axis = selection[0]
+    offset = 0
+    block_shape = list(shape)
+    shifted = list(selection)
+    for axis, (selector, size) in enumerate(zip(selection, shape, strict=False)):
+        window = _axis_window(selector, size)
+        if window is None:
+            break
+        first, stop, shifted[axis] = window
+        offset += first * math.prod(shape[axis + 1 :])
+        block_shape[axis] = stop - first
+        if stop - first > 1:
+            break
+    if tuple(block_shape) == shape:
+        return None
+    return offset, tuple(block_shape), tuple(shifted)
+
+
+def _axis_window(selector: Selector, size: int) -> tuple[int, int, Selector] | None:
+    """The indices along one axis that a selector touches, and the selector relative to them.
+
+    Returns the first index, one past the last index, and the selector shifted
+    so that it indexes an axis holding only those indices. Returns None when
+    the indices cannot be determined.
+    """
     shifted: Selector
-    if isinstance(first_axis, slice):
-        rows = range(*first_axis.indices(shape[0]))
-        if len(rows) == 0 or rows.step < 0:
+    if isinstance(selector, slice):
+        indices = range(*selector.indices(size))
+        if len(indices) == 0 or indices.step < 0:
             return None
-        first, stop = rows[0], rows[-1] + 1
-        shifted = slice(0, stop - first, rows.step)
-    elif isinstance(first_axis, int | np.integer):
-        first = int(first_axis) % shape[0]
+        first, stop = indices[0], indices[-1] + 1
+        shifted = slice(0, stop - first, indices.step)
+    elif isinstance(selector, int | np.integer):
+        first = int(selector) % size
         stop = first + 1
         shifted = 0
-    elif isinstance(first_axis, np.ndarray):
-        if first_axis.dtype == bool:
-            indices = np.nonzero(first_axis)[0]
+    elif isinstance(selector, np.ndarray):
+        if selector.dtype == bool:
+            positions = np.nonzero(selector)[0]
         else:
-            indices = first_axis % shape[0]
-        if indices.size == 0:
+            positions = selector % size
+        if positions.size == 0:
             return None
-        first, stop = int(indices.min()), int(indices.max()) + 1
-        shifted = first_axis[first:stop] if first_axis.dtype == bool else indices - first
+        first, stop = int(positions.min()), int(positions.max()) + 1
+        shifted = selector[first:stop] if selector.dtype == bool else positions - first
     else:
         return None
-    if (first, stop) == (0, shape[0]):
-        return None
-    return first, stop, (shifted, *selection[1:])
+    return first, stop, shifted
 
 
-def _row_bytes(chunk_spec: ArraySpec) -> int:
-    """The number of bytes in one row along axis 0 of a chunk."""
-    row_items = int(np.prod(chunk_spec.shape[1:]))
-    return chunk_spec.dtype.to_native_dtype().itemsize * row_items
+def _itemsize(chunk_spec: ArraySpec) -> int:
+    """The number of bytes in one item of a chunk."""
+    return chunk_spec.dtype.to_native_dtype().itemsize
 
 
-def _row_byte_range(
-    window: tuple[int, int, SelectorTuple] | None, chunk_spec: ArraySpec
+def _block_byte_range(
+    window: tuple[int, tuple[int, ...], SelectorTuple] | None, chunk_spec: ArraySpec
 ) -> RangeByteRequest | None:
-    """The byte range holding a row window, or None to read the whole chunk."""
+    """The byte range holding a block window, or None to read the whole chunk."""
     if window is None:
         return None
-    first, stop, _ = window
-    row_bytes = _row_bytes(chunk_spec)
-    return RangeByteRequest(first * row_bytes, stop * row_bytes)
+    offset, block_shape, _ = window
+    itemsize = _itemsize(chunk_spec)
+    start = offset * itemsize
+    return RangeByteRequest(start, start + math.prod(block_shape) * itemsize)

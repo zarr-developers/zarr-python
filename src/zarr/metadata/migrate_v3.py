@@ -242,11 +242,16 @@ def _convert_compressor(
 ) -> BytesBytesCodec:
     match compressor.codec_id:
         case "blosc":
+            typesize = dtype.to_native_dtype().itemsize
+            shuffle = compressor.shuffle
+            if shuffle == numcodecs.Blosc.AUTOSHUFFLE:
+                # numcodecs bit-shuffles 1-byte items and byte-shuffles larger ones
+                shuffle = numcodecs.Blosc.BITSHUFFLE if typesize == 1 else numcodecs.Blosc.SHUFFLE
             return BloscCodec(
-                typesize=dtype.to_native_dtype().itemsize,
+                typesize=typesize,
                 cname=compressor.cname,
                 clevel=compressor.clevel,
-                shuffle=BloscShuffle.from_int(compressor.shuffle),
+                shuffle=BloscShuffle.from_int(shuffle),
                 blocksize=compressor.blocksize,
             )
 

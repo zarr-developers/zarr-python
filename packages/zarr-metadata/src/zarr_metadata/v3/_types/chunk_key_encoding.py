@@ -30,6 +30,13 @@ Defaults to `"/"` if absent.
 DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the default chunk key encoding."""
 
+DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR: Final[DefaultChunkKeyEncodingSeparator] = "/"
+"""The `separator` the default chunk key encoding means when its configuration has none.
+
+"If not specified, `separator` defaults to `/`"
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/default/index.rst#L27-L29).
+"""
+
 
 class DefaultChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the default chunk key encoding.
@@ -88,6 +95,13 @@ Defaults to `"."` if absent.
 V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
 
+V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR: Final[V2ChunkKeyEncodingSeparator] = "."
+"""The `separator` the v2 chunk key encoding means when its configuration has none.
+
+"If not specified, `separator` defaults to `.`"
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29).
+"""
+
 
 class V2ChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the v2 chunk key encoding.
@@ -130,8 +144,10 @@ so the short-hand-name form is permitted in addition to the object form.
 
 
 __all__ = [
+    "DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
+    "V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "DefaultChunkKeyEncodingConfiguration",
