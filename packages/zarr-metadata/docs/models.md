@@ -228,7 +228,9 @@ These are each declaration, and the fill value read against its data type.
   So in a `uint8` array, a `bytes` codec is the same codec with either
   `endian`, or with none. The codec is compared for the chunk it
   receives: after a `cast_value` to `float32`, the two `endian` values
-  are two codecs.
+  are two codecs. `codec_for_chunk` returns a codec in the spelling that
+  is compared, which `canonical_of` cannot give, since it reads the
+  codec alone.
 
 A v2 document's
 [dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding),

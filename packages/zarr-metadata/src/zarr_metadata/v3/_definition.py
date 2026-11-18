@@ -434,8 +434,11 @@ class ArrayCodecDefinition(CodecDefinition[C]):
     It simplifies only the codec's own members, and it must keep each
     nested declaration as it is, because each codec of a pipeline the
     codec contains is simplified for the chunk it receives in turn. What
-    does not depend on the chunk is left to `canonical`, which simplifies
-    the result as it simplifies any configuration. A chunk rule checks
+    does not depend on the chunk is left to `canonical`: `chunk_canonical`
+    receives the configuration as `canonical` spells it, and `canonical`
+    simplifies the result as it simplifies any configuration. The result
+    must be the simplest spelling, so `chunk_canonical` must change
+    nothing when it is asked about its own result. A chunk rule checks
     only the parts of a chunk that are known, and `chunk_canonical`
     simplifies only by them: a chunk with nothing known about it,
     `Chunk()`, leaves every configuration as it is. `codec_for_chunk`
@@ -445,7 +448,7 @@ class ArrayCodecDefinition(CodecDefinition[C]):
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
     """The spec violations for this codec with a given input chunk, located in the configuration. A problem at `()` is about the codec as a whole, such as an input it cannot encode, and is reported at the codec."""
     chunk_canonical: Callable[[C, Nested, Chunk], C] = unchanged_for_chunk
-    """A configuration the chunk rules allow for a given input chunk, in the simplest spelling that means the same for that chunk."""
+    """A configuration the chunk rules allow for a given input chunk, as `canonical` spells it, in the simplest spelling that means the same for that chunk."""
     pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
     """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
 
