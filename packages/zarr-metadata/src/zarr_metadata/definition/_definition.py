@@ -1228,11 +1228,6 @@ def declaration_key(declaration: ResolvedDeclaration[Any]) -> tuple[object, ...]
     )
 
 
-def own_key(declaration: AcceptedDeclaration[Any]) -> tuple[object, ...]:
-    """The part of `declaration_key` for an accepted declaration that excludes nested declarations: the definition and the canonical spelling of its own members."""
-    return declaration_key(declaration)[:3]
-
-
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
     """The key of each nested declaration, paired with its location, in the order of the locations.
 
@@ -1916,12 +1911,16 @@ def _canonical_declaration(resolved: AcceptedDeclaration[Any]) -> JSONValue | No
     # result of `canonical` (the view itself when nothing is simplified) is
     # converted to a dict.
     view = read_only(cast("Mapping[str, JSONValue]", configuration))
-    simplified = asked(
-        definition,
-        "canonical",
-        lambda: dict(cast("Mapping[str, JSONValue]", definition.canonical(view))),
-    )
-    _, refused = definition.read_configuration(simplified)
+
+    def spelled() -> tuple[bool, dict[str, JSONValue]]:
+        given = cast("Mapping[str, JSONValue]", definition.canonical(view))
+        return given is view, dict(given)
+
+    kept, simplified = asked(definition, "canonical", spelled)
+    # A `canonical` that returns what it received simplified nothing, so
+    # there is nothing of its own to check: the configuration was read, and
+    # each nested declaration was checked in its own simplest spelling.
+    refused = () if kept else definition.read_configuration(simplified)[1]
     if len(refused) != 0:
         msg = (
             f"{definition.name!r}: its canonical gave {simplified!r}, which does not hold: "
@@ -1980,7 +1979,6 @@ __all__ = [
     "kind_of",
     "named_configuration",
     "no_rules",
-    "own_key",
     "read_only",
     "resolve",
     "resolve_refined",

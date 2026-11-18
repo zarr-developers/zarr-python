@@ -18,7 +18,6 @@ from zarr_metadata._json import (
     frozen,
     is_array,
     is_object,
-    json_text,
     nested_past_the_levels,
     not_an_object,
     refine_json,
@@ -34,7 +33,6 @@ from zarr_metadata.definition._definition import (
     Definition,
     ResolvedDeclaration,
     UnclaimedDeclaration,
-    declaration_key,
     declaration_kind,
     declarations_of,
     default_fill_value,
@@ -45,9 +43,8 @@ from zarr_metadata.definition._definition import (
     spelled_canonically,
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
-from zarr_metadata.definition._scope import refines as refines_declaration
 from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
-from zarr_metadata.model._keyed import Keyed
+from zarr_metadata.model._keyed import Keyed, normal_key
 from zarr_metadata.model._shared import (
     Derived,
     StoreKey,
@@ -91,6 +88,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._typed_json import Loc
+    from zarr_metadata.definition._scope import Claims
     from zarr_metadata.v3._definition import CodecDefinition, ExtraFieldDefinition
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataStoreKey
 
@@ -607,21 +605,13 @@ class ZarrV3ArrayMetadata(Keyed):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for a v3 array model: what its document means, as computed by `array_key_of`."""
-        return array_key_of(self._reading, self._members)
+    def _canonical_document(self) -> Mapping[str, JSONValue]:
+        """The document in its simplest equivalent spelling, as `canonical_array_document_v3` writes it."""
+        return canonical_array_document_v3(self._reading, self._members)
 
-    def _plain_key(
-        self, data_type: AcceptedDeclaration[DataTypeDefinition[Any]] | UnclaimedDeclaration
-    ) -> tuple[object, ...]:
-        """The members that hold no declaration, which `refines` compares. The fill value is in the spelling of `data_type`, the data type of the more informed side."""
-        members = self._members
-        return (
-            members.shape,
-            json_text(spelled_canonically(data_type, members.fill_value)),
-            members.dimension_names,
-            json_text(members.attributes),
-        )
+    def _claims(self) -> Claims:
+        """The claims the scope made for each name the document uses."""
+        return claims_of(self._reading.declarations())
 
     def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, ZarrV3Context]]:
         # Pickle the pair and read it again on load, so a model's reading
@@ -760,8 +750,7 @@ class ZarrV3ArrayMetadata(Keyed):
         of `true`. A document that is already in this spelling is
         returned as it is, in a new model.
         """
-        document = canonical_array_document_v3(self._reading, self._members)
-        return type(self)(document, context=self._context)
+        return type(self)(self._normal_form, context=self._context)
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
@@ -796,28 +785,8 @@ class ZarrV3ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart, in the order `refines` defines for declarations (including the declarations nested in each declaration). Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
-        if type(other) is not type(self):
-            return False
-        if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(
-            other.storage_transformers
-        ):
-            return False
-        if self.extra_fields.keys() != other.extra_fields.keys():
-            return False
-        pairs = (
-            (self.data_type, other.data_type),
-            (self.chunk_grid, other.chunk_grid),
-            (self.chunk_key_encoding, other.chunk_key_encoding),
-            *zip(codecs_for_chunks(self._reading), codecs_for_chunks(other._reading), strict=True),
-            *zip(self.storage_transformers, other.storage_transformers, strict=True),
-            *((self.extra_fields[key], other.extra_fields[key]) for key in self.extra_fields),
-        )
-        if not all(refines_declaration(mine, theirs) for mine, theirs in pairs):
-            return False
-        if len(fill_value_problems(self.data_type, other._members.fill_value)) != 0:
-            return False
-        return self._plain_key(self.data_type) == other._plain_key(self.data_type)
+        """Whether this model holds everything `other` holds: its scope read every name that `other`'s scope read, with the same definition, and `other`'s document, read in this model's scope, is this model. So each codec is compared for the chunk it receives in this model, and the fill value in the spelling of this model's data type, whatever `other`'s scope knew of either. If `other`'s document has a problem in this scope, as when this model's data type rejects its fill value, this is not a refinement. False when `other` is not a v3 array."""
+        return self._refines(other, lambda: other.with_context(self._context))
 
     # --- constructors -----------------------------------------------------
 
@@ -951,32 +920,9 @@ _DERIVED_MEMBERS: Final[tuple[Derived[ZarrV3Context], ...]] = (
 def array_key_of(
     reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
 ) -> tuple[object, ...]:
-    """A key for what a v3 array document means, from its `reading` and refined `members`. `==` and `hash` compare this key for the model, and two listings of one node are compared by it.
-
-    The key holds each declaration's `declaration_key`, and the fill value as JSON
-    text: in its canonical spelling when a definition in scope read the
-    data type, and as written otherwise. A codec is compared as
-    `codec_for_chunk` returns it for the chunk it receives, so two
-    spellings that mean the same for that chunk are one codec. Every
-    other member is included as it is, with JSON members as text.
-    """
-    data_type = held(reading.data_type)
-    fill_value = (
-        spelled_canonically(data_type, members.fill_value)
-        if isinstance(data_type, AcceptedDeclaration)
-        else members.fill_value
-    )
-    return (
-        members.shape,
-        json_text(fill_value),
-        declaration_key(data_type),
-        declaration_key(held(reading.chunk_grid)),
-        tuple(declaration_key(codec) for codec in codecs_for_chunks(reading)),
-        declaration_key(held(reading.chunk_key_encoding)),
-        members.dimension_names,
-        json_text(members.attributes),
-        tuple(declaration_key(held(entry)) for entry in reading.storage_transformers),
-        extra_fields_key(reading.extra_fields),
+    """A key for what a v3 array document means, from its `reading` and refined `members`: the key of the model, as `normal_key` computes it from the claims the reading made and from `canonical_array_document_v3`. Two listings of one node are compared by it."""
+    return normal_key(
+        claims_of(reading.declarations()), canonical_array_document_v3(reading, members)
     )
 
 
@@ -985,9 +931,10 @@ def canonical_array_document_v3(
 ) -> dict[str, JSONValue]:
     """A v3 array document in its simplest equivalent spelling, from its `reading` and refined `members`, as `ZarrV3ArrayMetadata.canonicalize` reads it.
 
-    It is written from the parts that `array_key_of` compares, so two
-    documents with one key are written the same way, apart from the order
-    of the members of an object.
+    This is the one place that decides what a v3 array document means.
+    The model's key is this document as JSON text, so two documents with
+    one key are written the same way, apart from the order of the members
+    of an object.
     """
     data_type = held(reading.data_type)
     spelled: dict[str, JSONValue] = {
@@ -1009,14 +956,6 @@ def codecs_for_chunks(
 ) -> tuple[AcceptedDeclaration[CodecDefinition[Any]] | UnclaimedDeclaration, ...]:
     """The codecs of `reading`, a read that found no problems, in pipeline order: each as `codec_for_chunk` returns it for the chunk it receives."""
     return tuple(held(codec_for_chunk(stage)) for stage in reading.pipeline)
-
-
-def extra_fields_key(extra_fields: Mapping[str, ResolvedDeclaration[Any]]) -> tuple[object, ...]:
-    """A key for what a document's extra fields mean: each key with its declaration's `declaration_key`, sorted by key."""
-    return tuple(
-        (key, declaration_key(extra))
-        for key, extra in sorted(extra_fields.items(), key=lambda item: item[0])
-    )
 
 
 def read_array_metadata_v3(
