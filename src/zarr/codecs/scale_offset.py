@@ -383,6 +383,7 @@ class ScaleOffset(ArrayArrayCodec):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         native = dtype.to_native_dtype()
         if not np.issubdtype(native, np.integer) and not np.issubdtype(native, np.floating):

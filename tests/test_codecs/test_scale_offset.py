@@ -488,3 +488,65 @@ def test_compute_encoded_size() -> None:
     # The chunk_spec argument is unused; pass any sentinel
     assert codec.compute_encoded_size(input_byte_length=100, _chunk_spec=None) == 100  # type: ignore[arg-type]
     assert codec.compute_encoded_size(input_byte_length=0, _chunk_spec=None) == 0  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Fill-value tolerance in resolve_metadata (issue #4511)
+# ---------------------------------------------------------------------------
+
+
+def test_creation_with_encodable_fill_value() -> None:
+    """A scale/offset pair mapping only a subrange of the dtype makes the dtype's
+    default scalar (0) unencodable, but array creation succeeds when the array's
+    fill value lies inside that subrange: the fill value is the one probed
+    against the codec chain, and it round-trips
+    (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(4,),
+        dtype="uint16",
+        fill_value=100,
+        chunks=(4,),
+        filters=[ScaleOffset(offset=100, scale=1)],
+        compressors=None,
+    )
+    # Full-chunk writes contain no fill positions, so they encode cleanly.
+    # Encoded values must stay within uint16 after decode adds the offset back.
+    data = np.array([100, 150, 200, 65435], dtype="uint16")
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+def test_creation_with_unencodable_fill_value_raises() -> None:
+    """An array whose fill value cannot be round-tripped through the codec chain
+    must fail creation: the array has to be readable before any chunks have been
+    written, and an unwritten chunk returns the fill value
+    (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    with pytest.raises(ValueError, match="outside the range"):
+        zarr.create_array(
+            store=MemoryStore(),
+            shape=(4,),
+            dtype="uint16",
+            # The default fill value (0) lies outside [100, 65535].
+            chunks=(4,),
+            filters=[ScaleOffset(offset=100, scale=1)],
+            compressors=None,
+        )
+
+
+def test_unencodable_fill_value_does_not_mask_invalid_config() -> None:
+    """Tolerating an unencodable fill value must not weaken validation: a codec
+    configuration that is structurally incompatible with the dtype still raises
+    at array creation time.
+    """
+    with pytest.raises(ValueError, match="only supports integer and floating-point"):
+        zarr.create_array(
+            store=MemoryStore(),
+            shape=(4,),
+            dtype="str",
+            chunks=(4,),
+            filters=[ScaleOffset(offset=100, scale=1)],
+            compressors=None,
+        )

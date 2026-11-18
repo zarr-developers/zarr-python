@@ -52,6 +52,7 @@ class TransposeCodec(ArrayArrayCodec):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         if len(self.order) != len(shape):
             raise ValueError(

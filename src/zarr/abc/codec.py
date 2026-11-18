@@ -168,6 +168,7 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
@@ -180,6 +181,12 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
             The array data type
         chunk_grid : ChunkGridMetadata
             The array chunk grid metadata
+        fill_value : TBaseScalar, optional
+            The array fill value. Codecs that probe the codec chain with a fill
+            value (e.g. ``ShardingCodec``) use this instead of the data type's
+            default scalar, so that the value an unwritten chunk would return is
+            the one validated. If ``None``, such codecs fall back to the data
+            type's default scalar.
         """
 
     async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
@@ -383,6 +390,7 @@ class CodecPipeline:
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
@@ -395,6 +403,12 @@ class CodecPipeline:
             The array data type
         chunk_grid : ChunkGridMetadata
             The array chunk grid metadata
+        fill_value : TBaseScalar, optional
+            The array fill value. Codecs that probe the codec chain with a fill
+            value (e.g. ``ShardingCodec``) use this instead of the data type's
+            default scalar, so that the value an unwritten chunk would return is
+            the one validated. If ``None``, such codecs fall back to the data
+            type's default scalar.
         """
         ...
 
