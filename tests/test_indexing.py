@@ -566,18 +566,19 @@ def test_setitem_repeated_index(
         assert written[target] in value[targets == target]
 
 
-@pytest.mark.parametrize("nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**20, 2**32, 2**32 + 1, 2**40])
-def test_argsort_chunk_indices(nchunks: int) -> None:
-    """The sort groups items by chunk, and up to `2**32` chunks matches NumPy's stable sort."""
+@pytest.mark.parametrize("n_items", [100, 2000])
+@pytest.mark.parametrize(
+    "nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**32, 2**32 + 1, 2**48, 2**48 + 1, 2**62, 2**70]
+)
+def test_argsort_chunk_indices(nchunks: int, n_items: int) -> None:
+    """The sort matches NumPy's stable sort for any number of chunks, and for few or many items."""
     rng = np.random.default_rng(0)
+    highest = min(nchunks, 2**63) - 1
     chunk_indices = np.concatenate(
-        [[0, nchunks - 1, nchunks - 1, 0], rng.integers(0, nchunks, 1000)]
+        [[0, highest, highest, 0], rng.integers(0, highest + 1, n_items - 4)]
     ).astype(np.intp)
-    order = argsort_chunk_indices(chunk_indices, nchunks)
-    assert_array_equal(np.sort(order), np.arange(chunk_indices.size))
-    assert_array_equal(chunk_indices[order], np.sort(chunk_indices))
-    if nchunks <= 2**32:
-        assert_array_equal(order, np.argsort(chunk_indices, kind="stable"))
+    expected = np.argsort(chunk_indices, kind="stable")
+    assert_array_equal(argsort_chunk_indices(chunk_indices, nchunks), expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]

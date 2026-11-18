@@ -762,24 +762,31 @@ def sorted_run_ends(
     return a[run_starts].astype(np.intp, copy=False), run_ends
 
 
+# Below this many items per 16-bit pass, NumPy's stable sort of the full-width indices is
+# faster than radix-sorting them.
+_RADIX_SORT_MIN_ITEMS_PER_PASS = 128
+
+
 def argsort_chunk_indices(
     chunk_indices: npt.NDArray[np.intp], nchunks: int
 ) -> npt.NDArray[np.intp]:
     """Return the indices that sort `chunk_indices`, each in `range(nchunks)`.
 
     NumPy sorts integers of at most 16 bits with a radix sort, several times faster than
-    its default sort, so up to `2**32` chunks the indices are sorted 16 bits at a time,
-    low half first. Each pass is stable, so items that share a chunk keep their order.
-    That order is an implementation detail: the value stored for a repeated index is
-    unspecified.
+    its default sort, so the indices are sorted 16 bits at a time, lowest bits first.
+    For a few indices the plain stable sort is faster and is used instead. Either way
+    the sort is stable, so items that share a chunk keep their order. That order is an
+    implementation detail: the value stored for a repeated index is unspecified.
     """
-    if nchunks <= 2**16:
-        return np.argsort(chunk_indices.astype(np.uint16), kind="stable")
-    if nchunks <= 2**32:
-        low = np.argsort((chunk_indices & 0xFFFF).astype(np.uint16), kind="stable")
-        high = (chunk_indices[low] >> 16).astype(np.uint16)
-        return low[np.argsort(high, kind="stable")]
-    return np.argsort(chunk_indices)
+    # ceil(bits / 16) passes; chunk indices are at most 64 bits wide
+    n_passes = min(4, max(1, -((nchunks - 1).bit_length() // -16)))
+    if chunk_indices.size < _RADIX_SORT_MIN_ITEMS_PER_PASS * n_passes:
+        return np.argsort(chunk_indices, kind="stable")
+    order = np.argsort(chunk_indices.astype(np.uint16), kind="stable")
+    for shift in range(16, 16 * n_passes, 16):
+        digit = (chunk_indices[order] >> shift).astype(np.uint16)
+        order = order[np.argsort(digit, kind="stable")]
+    return order
 
 
 @dataclass(frozen=True)
