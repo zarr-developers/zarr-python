@@ -762,6 +762,33 @@ def sorted_run_ends(
     return a[run_starts].astype(np.intp, copy=False), run_ends
 
 
+# Below this many items per 16-bit pass, NumPy's stable sort of the full-width indices is
+# faster than radix-sorting them.
+_RADIX_SORT_MIN_ITEMS_PER_PASS = 128
+
+
+def argsort_chunk_indices(
+    chunk_indices: npt.NDArray[np.intp], nchunks: int
+) -> npt.NDArray[np.intp]:
+    """Return the indices that sort `chunk_indices`, each in `range(nchunks)`.
+
+    NumPy sorts integers of at most 16 bits with a radix sort, several times faster than
+    its default sort, so the indices are sorted 16 bits at a time, lowest bits first.
+    For a few indices the plain stable sort is faster and is used instead. Either way
+    the sort is stable, so items that share a chunk keep their order. That order is an
+    implementation detail: the value stored for a repeated index is unspecified.
+    """
+    # ceil(bits / 16) passes; chunk indices are at most 64 bits wide
+    n_passes = min(4, max(1, -((nchunks - 1).bit_length() // -16)))
+    if chunk_indices.size < _RADIX_SORT_MIN_ITEMS_PER_PASS * n_passes:
+        return np.argsort(chunk_indices, kind="stable")
+    order = np.argsort(chunk_indices.astype(np.uint16), kind="stable")
+    for shift in range(16, 16 * n_passes, 16):
+        digit = (chunk_indices[order] >> shift).astype(np.uint16)
+        order = order[np.argsort(digit, kind="stable")]
+    return order
+
+
 @dataclass(frozen=True)
 class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
@@ -831,7 +858,7 @@ class IntArrayDimIndexer:
             dim_sel_chunk_sorted = dim_sel_chunk[::-1]
         else:
             # sort indices to group by chunk
-            dim_out_sel = np.argsort(dim_sel_chunk)
+            dim_out_sel = argsort_chunk_indices(dim_sel_chunk, nchunks)
             dim_sel = np.take(dim_sel, dim_out_sel)
             dim_sel_chunk_sorted = dim_sel_chunk[dim_out_sel]
 
@@ -1346,7 +1373,7 @@ class CoordinateIndexer(Indexer):
         # group points by chunk
         if np.any(np.diff(chunks_raveled_indices) < 0):
             # optimisation, only sort if needed
-            sel_sort = np.argsort(chunks_raveled_indices)
+            sel_sort = argsort_chunk_indices(chunks_raveled_indices, product(cdata_shape))
             selection_broadcast = tuple(dim_sel[sel_sort] for dim_sel in selection_broadcast)
             chunks_raveled_indices = chunks_raveled_indices[sel_sort]
         else:

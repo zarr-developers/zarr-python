@@ -3313,6 +3313,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
+        If `selection` names an element more than once, the element is set to one of the
+        values given for it, and which one is unspecified, as in NumPy. Remove repeated
+        indices if the result matters.
+
         Related
         -------
         [get_basic_selection][zarr.Array.get_basic_selection],
@@ -3667,6 +3671,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Slices are not supported. Coordinate arrays must be provided for all dimensions
         of the array.
+
+        If `selection` names an element more than once, the element is set to one of the
+        values given for it, and which one is unspecified, as in NumPy. Remove repeated
+        indices if the result matters.
 
         Related
         -------

@@ -20,7 +20,7 @@ from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
-from zarr.core.common import ceildiv_int
+from zarr.core.common import ceildiv_int, product
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateIndexer,
@@ -32,6 +32,7 @@ from zarr.core.indexing import (
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
+    argsort_chunk_indices,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -507,17 +508,77 @@ def test_setitem_zarr_array_as_value() -> None:
     assert_array_equal(dst2[2:7], np.arange(2, 7))
 
 
-@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
-def test_setitem_repeated_index():
-    """oindex assignment with repeated indices writes the last value for each duplicated index position."""
-    array = zarr.array(data=np.zeros((4,)), chunks=(1,))
-    indexer = np.array([-1, -1, 0, 0])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([3, 0, 0, 1]))
+def _reversed_within_chunk_argsort(
+    chunk_indices: npt.NDArray[np.intp], nchunks: int
+) -> npt.NDArray[np.intp]:
+    """Group `chunk_indices` by chunk, reversing the order of items within each chunk."""
+    return np.lexsort((-np.arange(chunk_indices.size), chunk_indices))
 
-    indexer = np.array([-1, 0, 0, -1])
-    array.oindex[(indexer,)] = [0, 1, 2, 3]
-    np.testing.assert_array_equal(array[:], np.array([2, 0, 0, 3]))
+
+@pytest.mark.parametrize("method", ["oindex", "vindex"])
+@pytest.mark.parametrize("layout", ["unit_chunks", "partial_chunks", "one_chunk", "sharded"])
+@pytest.mark.parametrize(
+    ("shape", "selection"),
+    [
+        ((24,), ([-1, -1, 0, 0],)),
+        ((24,), ([-1, 0, 0, -1],)),
+        ((24,), ([1] + [0] * 23,)),
+        ((6, 6), ([0, 5, 0, -1, 2] * 4, [1, 1, 4, 4, 2] * 4)),
+    ],
+    ids=["adjacent", "interleaved", "many_repeats", "two_dimensions"],
+)
+@pytest.mark.parametrize("within_chunk_order", ["default", "reversed"])
+def test_setitem_repeated_index(
+    method: str,
+    layout: str,
+    shape: tuple[int, ...],
+    selection: tuple[list[int], ...],
+    within_chunk_order: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assignment with repeated indices sets each repeated element to one of its values, whole, and leaves the rest as NumPy would."""
+    if within_chunk_order == "reversed":
+        monkeypatch.setattr(
+            zarr.core.indexing, "argsort_chunk_indices", _reversed_within_chunk_argsort
+        )
+    chunks = {
+        "unit_chunks": (1,) * len(shape),
+        "partial_chunks": (4,) * len(shape),
+        "one_chunk": shape,
+        "sharded": (2,) * len(shape),
+    }[layout]
+    shards = (6,) * len(shape) if layout == "sharded" else None
+    array = zarr.create_array(store={}, shape=shape, chunks=chunks, shards=shards, dtype="i8")
+    flat_ids = np.arange(product(shape)).reshape(shape)
+    if method == "oindex":
+        targets = flat_ids[np.ix_(*selection)]
+        value = np.arange(1, 1 + targets.size).reshape(targets.shape)
+        array.oindex[selection] = value
+    else:
+        targets = flat_ids[selection]
+        value = np.arange(1, 1 + targets.size)
+        array.vindex[selection] = value
+    written = array[:].reshape(-1)
+    targets = targets.reshape(-1)
+    value = value.reshape(-1)
+    assert (np.delete(written, targets) == 0).all()
+    for target in np.unique(targets):
+        assert written[target] in value[targets == target]
+
+
+@pytest.mark.parametrize("n_items", [100, 2000])
+@pytest.mark.parametrize(
+    "nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**32, 2**32 + 1, 2**48, 2**48 + 1, 2**62, 2**70]
+)
+def test_argsort_chunk_indices(nchunks: int, n_items: int) -> None:
+    """The sort matches NumPy's stable sort for any number of chunks, and for few or many items."""
+    rng = np.random.default_rng(0)
+    highest = min(nchunks, 2**63) - 1
+    chunk_indices = np.concatenate(
+        [[0, highest, highest, 0], rng.integers(0, highest + 1, n_items - 4)]
+    ).astype(np.intp)
+    expected = np.argsort(chunk_indices, kind="stable")
+    assert_array_equal(argsort_chunk_indices(chunk_indices, nchunks), expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]
