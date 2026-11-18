@@ -845,7 +845,7 @@ def _shard_of(*codecs: object) -> dict[str, object]:
 def test_two_models_are_one_array_when_each_codec_means_the_same_for_its_chunk(
     data_type: str, left: object, right: object, same: bool
 ) -> None:
-    """A codec is compared for the chunk it receives, as `codec_for_chunk` returns it: the `endian` of a `bytes` codec tells two arrays apart only where a value takes several bytes. `refines` agrees with `==`, and `to_json` writes each codec as given."""
+    """A codec is compared for the chunk it receives, as `codec_for_chunk` writes it: the `endian` of a `bytes` codec tells two arrays apart only where a value takes several bytes. `refines` agrees with `==`, and `to_json` writes each codec as given."""
     document = ZarrV3ArrayMetadata.create_default(shape=(2,), data_type=data_type).to_json()
     models = [
         ZarrV3ArrayMetadata.from_json({**document, "codecs": codecs}) for codecs in (left, right)

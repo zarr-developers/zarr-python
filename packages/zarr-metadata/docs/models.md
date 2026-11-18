@@ -228,9 +228,9 @@ These are each declaration, and the fill value read against its data type.
   So in a `uint8` array, a `bytes` codec is the same codec with either
   `endian`, or with none. The codec is compared for the chunk it
   receives: after a `cast_value` to `float32`, the two `endian` values
-  are two codecs. `codec_for_chunk` returns a codec in the spelling that
-  is compared, which `canonical_of` cannot give, since it reads the
-  codec alone.
+  are two codecs. `codec_for_chunk` writes a codec in the spelling that
+  is compared, as JSON, which `canonical_of` cannot give, since it reads
+  the codec alone.
 
 A v2 document's
 [dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding),
@@ -308,7 +308,7 @@ The canonical document is written from the same parts that `==` compares:
 
 - Each declaration is written as `canonical_of` writes it.
 - Each v3 codec is written for the chunk it receives, as `codec_for_chunk`
-  returns it. Above, each `uint8` value takes one byte, so the `endian`
+  writes it. Above, each `uint8` value takes one byte, so the `endian`
   says nothing.
 - The fill value is written as `canonical_fill_value` writes it for the
   data type.

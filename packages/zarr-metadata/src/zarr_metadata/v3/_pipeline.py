@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import (
     ValidationProblem,
+    copied,
     is_object,
     is_tuple,
     json_text,
@@ -44,13 +45,15 @@ from zarr_metadata._json import (
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
+    Further,
     ResolvedDeclaration,
     asked,
+    canonical_declaration,
+    canonical_of,
     declaration_locations,
     in_document,
     item_at,
     read_only,
-    respelled,
     ruled,
 )
 from zarr_metadata.v3._definition import (
@@ -339,91 +342,114 @@ def _handed_on(
     return given
 
 
-def codec_for_chunk(stage: Stage) -> ResolvedDeclaration[CodecDefinition[Any]]:
-    """The codec of `stage`, in the simplest spelling that means the same for the chunk it receives.
+def codec_for_chunk(stage: Stage) -> JSONValue | None:
+    """The codec of `stage` in its simplest equivalent spelling for the chunk it receives, as plain JSON; None when it has none.
 
     A codec's own `canonical` reduces the spellings that mean the same
     thing wherever the codec is used. Some spellings mean the same thing
     only for some chunks. For example, a `bytes` codec with and without
     `endian` is one codec for values that take one byte, and two for
     values that take several. So a codec is compared, and written in its
-    simplest spelling, as the codec this function returns: first each
-    codec of each pipeline it contains, for the chunk that codec
-    receives, and then its own configuration, as its definition's
-    `chunk_canonical` simplifies it for the chunk in `stage`.
-    `chunk_canonical` receives the configuration as the definition's
-    `canonical` spells it, so two spellings that `canonical` reduces to
-    one are simplified for the chunk in the same way.
+    simplest spelling, as this function writes it: first each codec of
+    each pipeline it contains, for the chunk that codec receives, then
+    its own members as its definition's `canonical` spells them, and
+    then as its definition's `chunk_canonical` simplifies them for the
+    chunk in `stage`. This is the walk that `canonical_of` makes for any
+    declaration, with the chunks taking part in it.
 
-    A codec the scope did not read is returned as it is. A codec's own
-    configuration is kept as it is when the codec receives bytes, and
-    when its chunk rules find a problem with it, because a codec with a
-    problem has no simpler spelling. When nothing is simplified, the
-    result is the codec itself. Otherwise it is a new declaration, read
-    by the same definition. `canonical_of` writes it in its simplest
-    spelling, and `==` compares it.
+    `stage` comes from a read that found no problems, as a model's
+    pipeline does. A codec the scope left unclaimed is written as it
+    was, in the shortest form every reader accepts. A codec the scope
+    refused has no simplest spelling, and neither has a codec that holds
+    one. A codec's own members are not simplified for the chunk when the
+    codec receives bytes, or when its chunk rules find a problem with
+    it.
 
     `chunk_canonical` is the extension author's code, so its result is
     checked: the definition must allow it, the chunk rules must find no
     problem with it, it must hold the nested declarations the codec
-    holds, each as it was, and `chunk_canonical` must have nothing left
-    to simplify in it. A result that fails a check raises `ValueError`,
-    which indicates a bug in the definition, not in the codec. A problem
-    inside a nested declaration is the document's, and is not held
-    against the result.
+    holds, each as it was given, and `chunk_canonical` must have nothing
+    left to simplify in it. A result that fails a check raises
+    `ValueError`, which indicates a bug in the definition, not in the
+    codec.
     """
+    spelled = _spelled_for_chunk(stage)
+    return None if spelled is None else copied(spelled)
+
+
+def _spelled_for_chunk(stage: Stage) -> JSONValue | None:
+    """What `codec_for_chunk` returns, sharing what it can with the declaration."""
     codec = stage.codec
     if not isinstance(codec, AcceptedDeclaration):
-        return codec
-    inner: dict[Loc, ResolvedDeclaration[Any]] = {}
-    for member, stages in stage.inner.items():
-        for index, each in enumerate(stages):
-            simpler = codec_for_chunk(each)
-            if simpler is not each.codec:
-                inner[(member, index)] = simpler
-    configuration = _for_chunk(codec, stage.incoming)
-    if configuration is None and len(inner) == 0:
-        return codec
-    return respelled(codec, codec.configuration if configuration is None else configuration, inner)
+        return canonical_of(codec, ())
+    inner: dict[Loc, JSONValue | None] = {
+        (member, index): _spelled_for_chunk(each)
+        for member, stages in stage.inner.items()
+        for index, each in enumerate(stages)
+    }
+    return canonical_declaration(codec, inner, _further(codec, stage.incoming))
 
 
-def _for_chunk(
+def _further(
     codec: AcceptedDeclaration[CodecDefinition[Any]], chunk: Chunk | None
-) -> Mapping[str, JSONValue] | None:
-    """The configuration of `codec` as its definition's `chunk_canonical` simplifies it for `chunk`, checked; None when nothing is simplified.
-
-    `chunk_canonical` receives the configuration as the definition's
-    `canonical` spells it. So every spelling that `canonical` reduces to
-    one is simplified for the chunk in the same way, and `chunk_canonical`
-    does not have to know each of them. None is returned when
-    `chunk_canonical` changes nothing in that spelling, and the codec
-    then stays as written, for `canonical` to simplify as it simplifies
-    any configuration.
-    """
+) -> Further | None:
+    """How the own members of `codec` are simplified for `chunk`, after its `canonical`; None when they are not: the codec receives bytes, its `chunk_canonical` is the default, or its chunk rules find a problem with it, because a codec with a problem has no simpler spelling."""
     definition = codec.definition
     if chunk is None or not isinstance(definition, ArrayCodecDefinition):
         return None
     if definition.chunk_canonical is unchanged_for_chunk:
         return None
-    configuration, nested = codec.configuration, codec.nested
-    if len(_chunk_problems(definition, configuration, nested, chunk, ())) != 0:
+    nested = codec.nested
+    if len(_chunk_problems(definition, codec.configuration, nested, chunk, ())) != 0:
         return None
-    simplified = _asked_for_chunk(definition, configuration, nested, chunk)
-    if simplified is None:
+    return Further(
+        "chunk_canonical",
+        lambda configuration: _asked_for_chunk(definition, configuration, nested, chunk),
+    )
+
+
+def _asked_for_chunk(
+    definition: ArrayCodecDefinition[Any],
+    configuration: Mapping[str, JSONValue],
+    nested: Nested,
+    chunk: Chunk,
+) -> dict[str, JSONValue] | None:
+    """What `definition`'s `chunk_canonical` gives for `configuration`, checked, as JSON with arrays as tuples; None when it changes nothing.
+
+    `configuration` is the read-only configuration in its simplest
+    spelling so far: the codec's own members as `canonical` spells them,
+    and each nested declaration in its simplest spelling. So every
+    spelling that `canonical` reduces to one is simplified for the chunk
+    in the same way, and `chunk_canonical` does not have to know each of
+    them.
+    """
+    given: object = asked(
+        definition,
+        "chunk_canonical",
+        lambda: cast("object", definition.chunk_canonical(configuration, nested, chunk)),
+    )
+    if given is configuration:
+        return None
+    # The result is the extension author's value, so it is read as any JSON
+    # is: an array may be a list, and what is not JSON is refused here,
+    # naming the definition.
+    simplified, not_json = refine_user_data(dict(given)) if is_object(given) else (None, ())
+    if not isinstance(simplified, dict) or len(not_json) != 0:
+        msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
+        raise TypeError(msg)
+    if json_text(simplified) == json_text(cast("JSONValue", dict(configuration))):
         return None
     _, refused = definition.read_configuration(simplified)
     held_at = frozenset(declaration_locations(definition, simplified))
     found = (
-        # A problem inside a nested declaration is the document's: the
-        # declaration is checked to be as it was written.
-        *(problem for problem in refused if not _inside(problem.loc, nested)),
+        *refused,
         *_chunk_problems(definition, simplified, nested, chunk, ()),
         *(
             ValidationProblem(
                 loc, "expected the nested declaration to stay as it is", "invalid_value"
             )
             for loc in nested
-            if _text_at(simplified, loc) != _text_at(cast("JSONValue", configuration), loc)
+            if _text_at(simplified, loc) != _text_at(cast("JSONValue", dict(configuration)), loc)
         ),
         *(
             ValidationProblem(
@@ -438,55 +464,6 @@ def _for_chunk(
             f"{list(found)!r}"
         )
         raise ValueError(msg)
-    # The simplest spelling has nothing left to simplify. Otherwise a
-    # document written from it would read as another codec.
-    further = _asked_for_chunk(definition, simplified, nested, chunk)
-    if further is not None:
-        msg = (
-            f"{definition.name!r}: its chunk_canonical gave {simplified!r}, which is not the "
-            f"simplest spelling: asked again, it gave {further!r}"
-        )
-        raise ValueError(msg)
-    return simplified
-
-
-def _inside(loc: Loc, nested: Nested) -> bool:
-    """Whether `loc` is at or under the location of a declaration in `nested`."""
-    return any(loc[: len(held_at)] == held_at for held_at in nested)
-
-
-def _asked_for_chunk(
-    definition: ArrayCodecDefinition[Any],
-    configuration: Mapping[str, JSONValue],
-    nested: Nested,
-    chunk: Chunk,
-) -> dict[str, JSONValue] | None:
-    """What `definition`'s `chunk_canonical` gives for `configuration` as its `canonical` spells it, as JSON with arrays as tuples; None when it changes nothing in that spelling."""
-    spelled = read_only(
-        asked(
-            definition,
-            "canonical",
-            lambda: dict(
-                cast("Mapping[str, JSONValue]", definition.canonical(read_only(configuration)))
-            ),
-        )
-    )
-    given: object = asked(
-        definition,
-        "chunk_canonical",
-        lambda: cast("object", definition.chunk_canonical(spelled, nested, chunk)),
-    )
-    if given is spelled:
-        return None
-    # The result is the extension author's value, so it is read as any JSON
-    # is: an array may be a list, and what is not JSON is refused here,
-    # naming the definition. `read_configuration` checks the rest.
-    simplified, not_json = refine_user_data(dict(given)) if is_object(given) else (None, ())
-    if not isinstance(simplified, dict) or len(not_json) != 0:
-        msg = f"{definition.name!r}: its chunk_canonical gives a configuration, got {given!r}"
-        raise TypeError(msg)
-    if json_text(simplified) == json_text(cast("JSONValue", dict(spelled))):
-        return None
     return simplified
 
 

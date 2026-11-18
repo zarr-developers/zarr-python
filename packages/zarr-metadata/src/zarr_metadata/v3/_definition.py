@@ -432,17 +432,18 @@ class ArrayCodecDefinition(CodecDefinition[C]):
     simplest configuration that means the same for that chunk. It is
     called only for a codec that the chunk rules found no problem with.
     It simplifies only the codec's own members, and it must keep each
-    nested declaration as it is, because each codec of a pipeline the
-    codec contains is simplified for the chunk it receives in turn. What
-    does not depend on the chunk is left to `canonical`: `chunk_canonical`
-    receives the configuration as `canonical` spells it, and `canonical`
-    simplifies the result as it simplifies any configuration. The result
+    nested declaration as it is given, because each codec of a pipeline
+    the codec contains is simplified for the chunk it receives first.
+    What does not depend on the chunk is left to `canonical`:
+    `chunk_canonical` receives the configuration as `canonical` spells
+    it, with each nested declaration in its simplest spelling, and
+    `canonical` simplifies the result as it simplifies any configuration. The result
     must be the simplest spelling, so `chunk_canonical` must change
     nothing when it is asked about its own result. A chunk rule checks
     only the parts of a chunk that are known, and `chunk_canonical`
     simplifies only by them: a chunk with nothing known about it,
     `Chunk()`, leaves every configuration as it is. `codec_for_chunk`
-    returns the codec of a `Stage` in that spelling.
+    writes the codec of a `Stage` in that spelling.
     """
 
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules

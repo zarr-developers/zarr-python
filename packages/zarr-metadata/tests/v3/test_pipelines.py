@@ -31,6 +31,10 @@ from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC, BytesCodecConfiguration
+from zarr_metadata.v3.codec.sharding_indexed import (
+    SHARDING_INDEXED_CODEC,
+    ShardingIndexedCodecConfiguration,
+)
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS_CONTEXT,
     ArrayArrayCodecDefinition,
@@ -613,7 +617,7 @@ def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
     """Each codec of a pipeline that receives `chunk`, in its simplest spelling for the chunk it receives."""
     stages, problems = _read(codecs, chunk)
     assert problems == ()
-    return [canonical_of(codec_for_chunk(stage), ()) for stage in stages]
+    return [codec_for_chunk(stage) for stage in stages]
 
 
 @pytest.mark.parametrize(
@@ -653,26 +657,31 @@ def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
 def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
     data_type: JSONValue, codecs: list[JSONValue], simplest: list[JSONValue]
 ) -> None:
-    """`codec_for_chunk` returns each codec as its `chunk_canonical` simplifies it for the chunk it receives, and each codec of a pipeline it contains for the chunk that one receives. A codec with nothing to simplify is returned as it is."""
+    """`codec_for_chunk` writes each codec as its `chunk_canonical` simplifies it for the chunk it receives, and each codec of a pipeline it contains for the chunk that one receives. A codec with nothing to simplify is written as `canonical_of` writes it."""
     found = _simplest(codecs, _of(data_type))
     assert json_text(found) == json_text(simplest)
     # The simplest spelling reads without a problem, and has nothing left to simplify.
     assert json_text(_simplest(found, _of(data_type))) == json_text(simplest)
     stages, _ = _read(simplest, _of(data_type))
-    assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+    assert [codec_for_chunk(stage) for stage in stages] == [
+        canonical_of(stage.codec, ()) for stage in stages
+    ]
 
 
 def test_a_codec_with_a_problem_for_its_chunk_is_not_simplified() -> None:
-    """A codec the chunk rules find a problem with keeps its own configuration, and its `chunk_canonical` is not asked. A codec the scope refused is returned as it is."""
+    """A codec the chunk rules find a problem with keeps its own configuration, and its `chunk_canonical` is not asked. A codec the scope refused has no simplest spelling."""
     # `bytes` does not encode values that vary in size, and `gzip` requires a level.
     stages, problems = _read([LITTLE, {"name": "gzip", "configuration": {}}], _of("string"))
     assert [problem.loc for problem in problems] == [(1, "configuration", "level"), (0,)]
-    assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+    assert [codec_for_chunk(stage) for stage in stages] == [LITTLE, None]
     # A `chunk_canonical` that would drop the `endian` whatever the chunk is not asked either.
     eager = _bytes_with(lambda configuration, nested, chunk: {})
     stages, problems = read_pipeline([eager], _of("string"))
     assert [problem.loc for problem in problems] == [(0,)]
-    assert codec_for_chunk(stages[0]) is eager
+    assert codec_for_chunk(stages[0]) == {
+        "name": "acme.bytes",
+        "configuration": {"endian": "little"},
+    }
 
 
 class AcmeLeveledConfiguration(TypedDict, closed=True):
@@ -698,29 +707,28 @@ REFUSED_GZIP: JSONValue = {"name": "gzip", "configuration": {"level": 99}, "must
 
 
 @pytest.mark.parametrize(
-    ("codecs", "chunk_canonical"),
+    ("codecs", "chunk_canonical", "simplest"),
     [
         # An array of the result may be a list.
         (
             [LITTLE, GZIP],
             lambda configuration, nested, chunk: {"codecs": list(configuration["codecs"])},
+            {"name": "acme.leveled", "configuration": {"codecs": (LITTLE, GZIP)}},
         ),
-        # A problem inside a nested declaration is the document's, not the result's.
+        # A codec that holds a refused one has no simplest spelling, so nothing is asked.
         (
             [LITTLE, REFUSED_GZIP],
             lambda configuration, nested, chunk: {"codecs": configuration["codecs"]},
+            None,
         ),
     ],
     ids=["an-array-as-a-list", "a-nested-declaration-with-a-problem"],
 )
 def test_a_chunk_canonical_that_simplifies_its_own_members_is_taken_at_its_word(
-    codecs: list[JSONValue], chunk_canonical: object
+    codecs: list[JSONValue], chunk_canonical: object, simplest: JSONValue
 ) -> None:
-    """A result that drops the codec's own `level` and keeps each nested declaration as it was written passes every check, however it spells its arrays and whatever problems the nested declarations have."""
-    found = codec_for_chunk(_leveled(chunk_canonical, *codecs))
-    assert isinstance(found, AcceptedDeclaration)
-    assert json_text(cast("JSONValue", found.configuration)) == json_text({"codecs": codecs})
-    assert list(found.nested) == [("codecs", 0), ("codecs", 1)]
+    """A result that drops the codec's own `level` and keeps each nested declaration as it was given passes every check, however it spells its arrays. A codec that holds a declaration its definition refused is not written at all."""
+    assert codec_for_chunk(_leveled(chunk_canonical, *codecs)) == simplest
 
 
 def _bytes_with(chunk_canonical: object) -> ResolvedDeclaration[CodecDefinition[Any]]:
@@ -827,3 +835,37 @@ def test_error_a_chunk_canonical_that_changes_a_nested_declaration() -> None:
     assert isinstance(codec, AcceptedDeclaration)
     with pytest.raises(ValueError, match="expected the nested declaration to stay as it is"):
         codec_for_chunk(_stage(codec, CHUNK))
+
+
+def test_a_chunk_canonical_receives_the_configuration_in_its_simplest_spelling() -> None:
+    """`chunk_canonical` is asked after everything else is simplified: the codec's own members are as `canonical` spells them, and each codec of a pipeline it contains is already written for the chunk that one receives."""
+    seen: list[str] = []
+
+    def chunk_canonical(
+        configuration: ShardingIndexedCodecConfiguration, nested: Nested, chunk: Chunk
+    ) -> ShardingIndexedCodecConfiguration:
+        seen.append(json_text(cast("JSONValue", configuration)))
+        return configuration
+
+    shard = dataclasses.replace(
+        SHARDING_INDEXED_CODEC, name="acme.shard", chunk_canonical=chunk_canonical
+    )
+    declaration = {
+        "name": "acme.shard",
+        "configuration": {
+            "chunk_shape": [2, 1],
+            "codecs": [LITTLE],
+            "index_codecs": [LITTLE, "crc32c"],
+            "index_location": "end",
+        },
+    }
+    codec = resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[shard])))[0]
+    written = codec_for_chunk(_stage(codec, _of("uint8")))
+    # Each inner value takes one byte, an index value eight, and `end` is the default location.
+    simplest: JSONValue = {
+        "chunk_shape": [2, 1],
+        "codecs": [BARE],
+        "index_codecs": [LITTLE, CRC32C],
+    }
+    assert seen == [json_text(simplest)]
+    assert json_text(written) == json_text({"name": "acme.shard", "configuration": simplest})

@@ -738,7 +738,7 @@ class ZarrV3ArrayMetadata(Keyed):
         are a key for what the document means.
 
         Each declaration is written as `canonical_of` writes it, each
-        codec as `codec_for_chunk` returns it for the chunk it receives,
+        codec as `codec_for_chunk` writes it for the chunk it receives,
         and the fill value as `canonical_fill_value` writes it for the
         data type. `attributes` and `storage_transformers` are left out
         when empty, because a document without them means the same.
@@ -942,7 +942,7 @@ def canonical_array_document_v3(
         "chunk_grid": simplest(reading.chunk_grid),
         "chunk_key_encoding": simplest(reading.chunk_key_encoding),
         "fill_value": spelled_canonically(data_type, members.fill_value),
-        "codecs": tuple(simplest(codec) for codec in codecs_for_chunks(reading)),
+        "codecs": tuple(_codec_spelled(stage) for stage in reading.pipeline),
         "storage_transformers": tuple(simplest(entry) for entry in reading.storage_transformers),
         **simplest_members(reading.extra_fields),
     }
@@ -951,11 +951,13 @@ def canonical_array_document_v3(
     )
 
 
-def codecs_for_chunks(
-    reading: ZarrV3ArrayMetadataReading,
-) -> tuple[AcceptedDeclaration[CodecDefinition[Any]] | UnclaimedDeclaration, ...]:
-    """The codecs of `reading`, a read that found no problems, in pipeline order: each as `codec_for_chunk` returns it for the chunk it receives."""
-    return tuple(held(codec_for_chunk(stage)) for stage in reading.pipeline)
+def _codec_spelled(stage: Stage) -> JSONValue:
+    """The codec of `stage`, from a read that found no problems, as `codec_for_chunk` writes it. Raises `TypeError` for a codec with no simplest spelling, which such a read cannot produce."""
+    spelled = codec_for_chunk(stage)
+    if spelled is None:
+        msg = f"expected a codec a read found nothing wrong with, got {stage.codec!r}"
+        raise TypeError(msg)
+    return spelled
 
 
 def read_array_metadata_v3(
