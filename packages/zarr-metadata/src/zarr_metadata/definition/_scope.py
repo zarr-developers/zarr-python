@@ -1,4 +1,4 @@
-"""Operations on scopes: which definition a reading records for each name, how one reading refines another, and where a scope disagrees with a reading.
+"""Operations on scopes: which definition a reading records for each name, and where a scope disagrees with a reading.
 
 A model is a document read in a scope. The meaning of the document
 depends only on what the scope returned for the names the document uses
@@ -6,7 +6,9 @@ depends only on what the scope returned for the names the document uses
 document are ordered by how much they know. If a name was unclaimed and a
 definition later reads it, the name gains meaning and loses none. If one
 definition reads a name and then a different definition reads it, that is
-a conflict. The internal `disagreements` function in
+a conflict. A model's `refines` decides that order by reading: it reads
+the other model's document in its own scope, so nothing here compares
+two readings. The internal `disagreements` function in
 `zarr_metadata.definition._context`, which a model uses to compare a
 scope with its claims, is built on these operations. A scope's `union`
 raises the `ScopeConflictError` defined here when two scopes file
@@ -17,27 +19,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from zarr_metadata.definition._definition import (
-    AcceptedDeclaration,
     Definition,
-    RefusedDeclaration,
-    UnclaimedDeclaration,
-    as_kind,
-    declaration_key,
-    declarations_of,
     filed_under,
-    format_of,
-    own_key,
-    resolve,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import D, ResolvedDeclaration
+    from zarr_metadata.definition._definition import ResolvedDeclaration
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under. A scope's `claimant` looks up definitions by this key."""
@@ -140,72 +133,6 @@ def claims_of(
     return claims
 
 
-def refines(declaration: ResolvedDeclaration[Any], other: ResolvedDeclaration[Any]) -> bool:
-    """Whether `declaration` contains everything `other` contains: it reads the same where both read, and it may also read what `other` left unclaimed.
-
-    This is the order in which one reading of a document refines another.
-    Suppose `other` is unclaimed and `declaration` is accepted. This counts as a
-    gain when re-reading the unclaimed declaration's JSON, with `declaration`'s
-    definition and the definitions of the declarations nested in `declaration`,
-    produces `declaration`. Two spellings of one configuration count as one gain,
-    because `==` treats them as one declaration, so the order is transitive
-    through equality. The reverse direction (accepted to unclaimed) is a
-    loss. One name read by two different definitions is a conflict. A
-    refused declaration refines only itself. Two declarations that refine each other
-    are equal.
-    """
-    if isinstance(declaration, RefusedDeclaration) or isinstance(other, RefusedDeclaration):
-        return declaration == other
-    if isinstance(other, UnclaimedDeclaration):
-        if isinstance(declaration, UnclaimedDeclaration):
-            return declaration_key(declaration) == declaration_key(other)
-        return claim_key(declaration) == claim_key(other) and _gained(declaration, other)
-    if isinstance(declaration, UnclaimedDeclaration):
-        return False
-    if declaration.definition != other.definition or own_key(declaration) != own_key(other):
-        return False
-    if set(declaration.nested) != set(other.nested):
-        return False
-    return all(refines(declaration.nested[loc], other.nested[loc]) for loc in declaration.nested)
-
-
-def _gained(declaration: AcceptedDeclaration[Any], other: UnclaimedDeclaration) -> bool:
-    """Whether reading `other` in the scope formed by `declaration`'s own claims produces `declaration`. This is the test for a gain."""
-    return read_as_claimed(other, declaration) == declaration
-
-
-def read_as_claimed(
-    other: UnclaimedDeclaration, declaration: AcceptedDeclaration[D]
-) -> ResolvedDeclaration[D]:
-    """`other`, a declaration nothing claimed, read in the scope formed by `declaration`'s own claims: its definition and the definitions of the declarations nested in it. A gain is judged by what this returns."""
-    again, _ = resolve(other.json, declaration.read_as, _Claimed.of(declaration))
-    return cast("ResolvedDeclaration[D]", again)
-
-
-@dataclass(frozen=True, slots=True)
-class _Claimed:
-    """The scope formed by a declaration's own claims: its definition and the definitions of its nested declarations, keyed by kind and filed name. `_gained` re-reads a declaration in this scope."""
-
-    filed: Mapping[ClaimKey, Definition[Any]]
-    zarr_format: Literal[2, 3]
-
-    @classmethod
-    def of(cls, declaration: AcceptedDeclaration[Any]) -> _Claimed:
-        claimed = claims_of(declarations_of(declaration))
-        return cls(
-            {key: definition for key, definition in claimed.items() if definition is not None},
-            format_of(declaration.read_as),
-        )
-
-    def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` among the claims that reads `name`, or None if there is none. This matches a scope's `claimant`."""
-        asked = as_kind(kind)
-        filed, _ = filed_under(asked, name)
-        if filed is None:
-            return None
-        return cast("D | None", self.filed.get((asked, filed)))
-
-
 @dataclass(frozen=True, slots=True)
 class Disagreements:
     """The places where a scope reads a reading's claims differently: the names that would gain a meaning, and the names that conflict (including names that would lose a meaning)."""
@@ -247,6 +174,4 @@ __all__ = [
     "claims_of",
     "disagreements_of",
     "kind_name",
-    "read_as_claimed",
-    "refines",
 ]

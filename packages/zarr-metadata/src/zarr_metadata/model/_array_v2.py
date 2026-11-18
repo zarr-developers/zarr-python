@@ -19,7 +19,6 @@ from zarr_metadata._json import (
     is_array,
     is_object,
     is_tuple,
-    json_text,
     not_an_object,
     outside_of,
     prefixed,
@@ -33,7 +32,6 @@ from zarr_metadata.definition._definition import (
     AcceptedDeclaration,
     ResolvedDeclaration,
     UnclaimedDeclaration,
-    declaration_key,
     declarations_of,
     default_fill_value,
     fill_value_problems,
@@ -43,13 +41,13 @@ from zarr_metadata.definition._definition import (
     spelled_canonically,
 )
 from zarr_metadata.definition._scope import ScopeConflictError, claims_of
-from zarr_metadata.definition._scope import refines as refines_declaration
 from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JSONWriterLike
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     Derived,
     StoreKey,
     attributes_of,
+    canonical_members,
     check_literal,
     created,
     dimension_lengths,
@@ -59,6 +57,7 @@ from zarr_metadata.model._shared import (
     missing_keys,
     other_members,
     reading_of,
+    simplest,
     unclaimed_declarations_of,
 )
 
@@ -89,6 +88,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from zarr_metadata._typed_json import Loc
+    from zarr_metadata.definition._scope import Claims
     from zarr_metadata.v2.array import ZarrV2ArrayMetadataStoreKey
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
 
@@ -626,52 +626,25 @@ class ZarrV2ArrayMetadata(Keyed):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for a v2 array model: what its document means.
-
-        The key holds each declaration's `declaration_key`, and the fill value as JSON
-        text, in its canonical spelling when a definition in scope read the
-        dtype. Every other member is included as it is, with JSON members
-        as text. No `.zattrs` counts as empty attributes, since both mean
-        that the array has none, as in v3.
-        """
-        members = self._members
-        return (
-            members.shape,
-            members.chunks,
-            members.order,
-            members.dimension_separator,
-            self._fill_value_key(),
-            declaration_key(self.dtype),
-            None if self.compressor is None else declaration_key(self.compressor),
-            None
-            if self.filters is None
-            else tuple(declaration_key(entry) for entry in self.filters),
-            json_text({} if members.attributes is UNSET else members.attributes),
-            json_text(members.extra_fields),
+    def _canonical_document(self) -> Mapping[str, JSONValue]:
+        """The document in its simplest equivalent spelling. This is the one place that decides what a v2 array document means: the model's key is this document as JSON text."""
+        compressor, filters = self.compressor, self.filters
+        spelled: dict[str, JSONValue] = {
+            "dtype": simplest(self.dtype),
+            "fill_value": spelled_canonically(self.dtype, self._members.fill_value),
+            "compressor": None if compressor is None else simplest(compressor),
+            "filters": None if filters is None else tuple(simplest(entry) for entry in filters),
+        }
+        return canonical_members(
+            self._document,
+            spelled,
+            empty=("attributes",),
+            defaults={"dimension_separator": ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR},
         )
 
-    def _plain_key(
-        self, dtype: AcceptedDeclaration[ZarrV2DataTypeDefinition[Any]] | UnclaimedDeclaration
-    ) -> tuple[object, ...]:
-        """The members that hold no declaration, which `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
-        members = self._members
-        return (
-            members.shape,
-            members.chunks,
-            members.order,
-            members.dimension_separator,
-            json_text(spelled_canonically(dtype, members.fill_value)),
-            json_text({} if members.attributes is UNSET else members.attributes),
-            json_text(members.extra_fields),
-        )
-
-    def _fill_value_key(self) -> str:
-        """The fill value as `==` compares it, as JSON text: in its canonical spelling when a definition in scope read the dtype, and as written otherwise."""
-        fill_value = self._members.fill_value
-        if isinstance(self.dtype, AcceptedDeclaration):
-            return json_text(spelled_canonically(self.dtype, fill_value))
-        return json_text(fill_value)
+    def _claims(self) -> Claims:
+        """The claims the scope made for each name the document uses."""
+        return claims_of(self._reading.declarations())
 
     def __reduce__(self) -> tuple[type[ZarrV2ArrayMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
@@ -772,6 +745,26 @@ class ZarrV2ArrayMetadata(Keyed):
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
 
+    def canonicalize(self) -> ZarrV2ArrayMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope.
+
+        The result equals this model. Every model equal to this one, in
+        this scope, gives the same document: `to_json` of each result is
+        the same JSON, apart from the order of the members of an object,
+        which `to_key_value` sorts with `JSONWriter(sort_keys=True)`. So
+        the bytes that writer writes are the same for equal models, and
+        are a key for what the document means.
+
+        The dtype, the compressor and each filter are written as
+        `canonical_of` writes them, and the fill value as
+        `canonical_fill_value` writes it for the dtype. A
+        `dimension_separator` of `"."` is left out, and so are empty
+        `attributes`, because a document without them means the same.
+        Everything else is kept as written: `shape`, `chunks`, `order`,
+        the attributes, and whatever nothing in scope claims.
+        """
+        return type(self)(self._normal_form, context=self._context)
+
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
 
@@ -802,25 +795,8 @@ class ZarrV2ArrayMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds. Each declaration must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every other member must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
-        if type(other) is not type(self):
-            return False
-        if (self.compressor is None) != (other.compressor is None):
-            return False
-        if (self.filters is None) != (other.filters is None):
-            return False
-        mine = () if self.filters is None else self.filters
-        theirs = () if other.filters is None else other.filters
-        if len(mine) != len(theirs):
-            return False
-        pairs = [(self.dtype, other.dtype), *zip(mine, theirs, strict=True)]
-        if self.compressor is not None and other.compressor is not None:
-            pairs.append((self.compressor, other.compressor))
-        if not all(refines_declaration(one, another) for one, another in pairs):
-            return False
-        if len(fill_value_problems(self.dtype, other._members.fill_value)) != 0:
-            return False
-        return self._plain_key(self.dtype) == other._plain_key(self.dtype)
+        """Whether this model holds everything `other` holds: its scope read every name that `other`'s scope read, with the same definition, and `other`'s document, read in this model's scope, is this model. So the fill value is compared in the spelling of this model's dtype. If `other`'s document has a problem in this scope, as when this model's dtype rejects its fill value, this is not a refinement. False when `other` is not a v2 array."""
+        return self._refines(other, lambda: other.with_context(self._context))
 
     # --- constructors -----------------------------------------------------
 
