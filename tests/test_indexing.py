@@ -37,6 +37,7 @@ from zarr.core.indexing import (
     oindex,
     oindex_set,
     replace_ellipsis,
+    stable_argsort_chunk_indices,
 )
 from zarr.registry import get_ndbuffer_class
 from zarr.storage import MemoryStore, StorePath
@@ -543,6 +544,17 @@ def test_setitem_repeated_index(
         expected[selection] = value
         array.vindex[selection] = value
     assert_array_equal(array[:], expected)
+
+
+@pytest.mark.parametrize("nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**40])
+def test_stable_argsort_chunk_indices(nchunks: int) -> None:
+    """The sort matches NumPy's stable sort whether or not the chunk indices are narrowed."""
+    rng = np.random.default_rng(0)
+    chunk_indices = np.concatenate(
+        [[0, nchunks - 1, nchunks - 1, 0], rng.integers(0, nchunks, 1000)]
+    ).astype(np.intp)
+    expected = np.argsort(chunk_indices, kind="stable")
+    assert_array_equal(stable_argsort_chunk_indices(chunk_indices, nchunks), expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]

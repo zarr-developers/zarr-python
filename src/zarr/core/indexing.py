@@ -762,6 +762,21 @@ def sorted_run_ends(
     return a[run_starts].astype(np.intp, copy=False), run_ends
 
 
+def stable_argsort_chunk_indices(
+    chunk_indices: npt.NDArray[np.intp], nchunks: int
+) -> npt.NDArray[np.intp]:
+    """Return the indices that stably sort `chunk_indices`, each in `range(nchunks)`.
+
+    A stable sort keeps items that share a chunk in the order given, so repeated
+    indices are assigned in order and the last value given is the one stored. NumPy
+    sorts integers of at most 16 bits with a stable radix sort, which is several times
+    faster than its default sort, so the indices are narrowed when `nchunks` allows it.
+    """
+    if nchunks <= 2**16:
+        chunk_indices = chunk_indices.astype(np.uint16)
+    return np.argsort(chunk_indices, kind="stable")
+
+
 @dataclass(frozen=True)
 class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
@@ -830,9 +845,8 @@ class IntArrayDimIndexer:
             dim_out_sel = np.arange(nitems - 1, -1, -1)
             dim_sel_chunk_sorted = dim_sel_chunk[::-1]
         else:
-            # sort indices to group by chunk; a stable sort keeps repeated indices in
-            # the order given, so the last value assigned to an item is the one stored
-            dim_out_sel = np.argsort(dim_sel_chunk, kind="stable")
+            # sort indices to group by chunk
+            dim_out_sel = stable_argsort_chunk_indices(dim_sel_chunk, nchunks)
             dim_sel = np.take(dim_sel, dim_out_sel)
             dim_sel_chunk_sorted = dim_sel_chunk[dim_out_sel]
 
@@ -1346,9 +1360,8 @@ class CoordinateIndexer(Indexer):
 
         # group points by chunk
         if np.any(np.diff(chunks_raveled_indices) < 0):
-            # optimisation, only sort if needed; a stable sort keeps repeated points in
-            # the order given, so the last value assigned to a point is the one stored
-            sel_sort = np.argsort(chunks_raveled_indices, kind="stable")
+            # optimisation, only sort if needed
+            sel_sort = stable_argsort_chunk_indices(chunks_raveled_indices, product(cdata_shape))
             selection_broadcast = tuple(dim_sel[sel_sort] for dim_sel in selection_broadcast)
             chunks_raveled_indices = chunks_raveled_indices[sel_sort]
         else:
