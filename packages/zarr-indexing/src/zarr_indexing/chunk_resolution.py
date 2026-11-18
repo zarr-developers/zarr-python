@@ -688,12 +688,28 @@ def _group_by_key(
 ) -> np.ndarray[Any, np.dtype[np.intp]] | None:
     """An order that groups equal keys in ascending key order, or None if `keys` already do.
 
-    The order of entries within a group is unspecified, so the default
-    (unstable) sort serves; it outpaces a stable sort on large inputs.
+    NumPy's stable sort is a linear-time radix sort for integers of at most 16
+    bits, so keys shifted to start at zero are sorted one 16-bit digit at a
+    time: one pass when their range fits 16 bits, two least-significant-first
+    passes when it fits 32 bits, and the default sort beyond that. The order of
+    entries within a group is unspecified; the radix passes happen to keep
+    input order, and callers must not rely on it.
     """
     if bool((keys[1:] >= keys[:-1]).all()):
         return None
-    return np.asarray(np.argsort(keys), dtype=np.intp)
+    low = int(keys.min())
+    span = int(keys.max()) - low + 1
+    if span <= 2**16:
+        order = np.argsort((keys - low).astype(np.uint16), kind="stable")
+    elif span <= 2**32:
+        shifted = keys - low
+        # Least-significant digit first; the stable second pass keeps the
+        # first pass's order among keys that share a high digit.
+        order = np.argsort((shifted & 0xFFFF).astype(np.uint16), kind="stable")
+        order = order[np.argsort((shifted[order] >> 16).astype(np.uint16), kind="stable")]
+    else:
+        order = np.argsort(keys)
+    return np.asarray(order, dtype=np.intp)
 
 
 def _chunk_keys(

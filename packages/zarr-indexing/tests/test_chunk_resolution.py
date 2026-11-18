@@ -1100,3 +1100,30 @@ def test_singleton_coverage(stride: int, count: int) -> None:
     assert all(p.coverage == expected for p in plan_chunks(transform, grids))
     partition = plan_chunks(transform, grids).partition()
     assert all(bool(full) == (expected == "full") for full in partition.sets[0].full)
+
+
+# Offsets off the 16-bit digit boundaries, and one straddling zero, so a
+# missing shift to zero truncates keys out of order.
+@pytest.mark.parametrize("offset", [0, -3, 2**40 + 12345, -(2**40) - 777])
+@pytest.mark.parametrize("span", [1, 2, 2**8, 2**16, 2**16 + 1, 2**20, 2**32, 2**32 + 1, 2**40])
+def test_group_by_key_orders_keys_ascending(span: int, offset: int) -> None:
+    """Every key range, one radix pass, two, or the fallback, yields a grouping permutation.
+
+    Keys cover their whole range, so a pass that drops a digit or the shift to
+    zero misorders them.
+    """
+    from zarr_indexing.chunk_resolution import _group_by_key
+
+    rng = np.random.default_rng(span)
+    keys = rng.integers(0, span, 2000, dtype=np.intp)
+    keys[:2] = (span - 1, 0)
+    keys += offset
+    assert _group_by_key(np.sort(keys)) is None
+    order = _group_by_key(keys)
+    if span == 1:
+        assert order is None
+        return
+    assert order is not None
+    assert order.dtype == np.intp
+    np.testing.assert_array_equal(np.sort(order), np.arange(keys.size))
+    assert bool((np.diff(keys[order]) >= 0).all())
