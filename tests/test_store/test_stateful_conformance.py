@@ -3,8 +3,10 @@
 A Hypothesis state machine applies each operation to all stores at once and compares every result with
 the contract below. A store that disagrees fails the test, unless the disagreement is a known divergence:
 an entry in `KNOWN_DIVERGENCES` that records what that store does instead. `test_divergence_ledger_is_exact`
-runs each entry's witness against every store, so the ledger has to name exactly the stores that diverge:
-a fixed store must be removed from its entry, and a newly diverging one must be added.
+runs each entry's witness against every store, so each entry has to name exactly the stores that diverge
+on its witness: a fixed store must be removed from the entry, and a newly diverging one must be added. A
+divergence with no witness yet is found only when the state machine reaches it. Some entries apply on one
+platform only, because the filesystem stores raise the operating system's own errors.
 
 The contract (what the `Store` docstrings should promise):
 
@@ -519,9 +521,15 @@ def _below_a_key(stores: frozenset[str], error: str, operation: str) -> KnownDiv
     )
 
 
-def _raises_for_a_directory(observed: Outcome, state: State, args: tuple[Any, ...]) -> bool:
+def _raises_for_a_directory(error: str) -> Accepts:
+    return partial(_raised_for_a_directory, error)
+
+
+def _raised_for_a_directory(
+    error: str, observed: Outcome, state: State, args: tuple[Any, ...]
+) -> bool:
     name = args[0]
-    return observed == ("raised", "GenericError") and _is_a_directory(state, name)
+    return observed == ("raised", error) and _is_a_directory(state, name)
 
 
 def _posix_only(stores: frozenset[str]) -> frozenset[str]:
@@ -580,14 +588,26 @@ KNOWN_DIVERGENCES: tuple[KnownDivergence, ...] = (
     KnownDivergence(
         stores=_windows_only(frozenset({"obstore-local"})),
         summary="exists() on a directory raises GenericError (Windows)",
-        accepts=_raises_for_a_directory,
+        accepts=_raises_for_a_directory("GenericError"),
         witness=(("set", ("d/k", b"v")), ("exists", ("d",))),
     ),
     KnownDivergence(
         stores=_windows_only(frozenset({"obstore-local"})),
         summary="getsize() on a directory raises GenericError (Windows)",
-        accepts=_raises_for_a_directory,
+        accepts=_raises_for_a_directory("GenericError"),
         witness=(("set", ("d/k", b"v")), ("getsize", ("d",))),
+    ),
+    KnownDivergence(
+        stores=_windows_only(frozenset({"obstore-local"})),
+        summary="get() on a directory raises GenericError (Windows)",
+        accepts=_raises_for_a_directory("GenericError"),
+        witness=(("set", ("d/k", b"v")), ("get", ("d", None))),
+    ),
+    KnownDivergence(
+        stores=_windows_only(frozenset({"local", "latency-local", "fsspec-local"})),
+        summary="get() on a directory raises PermissionError (Windows opens it as a file)",
+        accepts=_raises_for_a_directory("PermissionError"),
+        witness=(("set", ("d/k", b"v")), ("get", ("d", None))),
     ),
     KnownDivergence(
         stores=FSSPEC,
