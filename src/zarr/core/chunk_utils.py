@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from zarr.abc.codec import GetResult, SupportsSyncCodec, _codec_supports_sync
-from zarr.core.indexing import is_scalar, last_assignments
+from zarr.core.indexing import is_scalar
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -158,12 +158,6 @@ def _merge_chunk_array(
                 None if idx in drop_axes else slice(None) for idx in range(chunk_spec.ndim)
             )
             chunk_value = chunk_value[item]
-        repeats = last_assignments(chunk_selection, chunk_spec.shape)
-        if repeats is not None:
-            # Write each element once, with the last value given for it, rather than
-            # leave the outcome to the array library's order of assignment.
-            chunk_array[repeats.selection] = repeats.pick(chunk_value.as_ndarray_like())
-            return chunk_array
     chunk_array[chunk_selection] = chunk_value
     return chunk_array
 

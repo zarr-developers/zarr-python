@@ -27,18 +27,19 @@ from zarr.core.indexing import (
     CoordinateSelection,
     IntArrayDimIndexer,
     MaskIndexer,
+    OrthogonalIndexer,
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
-    last_assignments,
+    argsort_chunk_indices,
+    last_writes,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
-    stable_argsort_chunk_indices,
 )
 from zarr.registry import get_ndbuffer_class
 from zarr.storage import MemoryStore, StorePath
@@ -548,68 +549,96 @@ def test_setitem_repeated_index(
 
 
 @pytest.mark.parametrize("nchunks", [1, 2**8, 2**16, 2**16 + 1, 2**40])
-def test_stable_argsort_chunk_indices(nchunks: int) -> None:
-    """The sort matches NumPy's stable sort whether or not the chunk indices are narrowed."""
+def test_argsort_chunk_indices(nchunks: int) -> None:
+    """The sort groups chunk indices whether or not they are narrowed."""
     rng = np.random.default_rng(0)
     chunk_indices = np.concatenate(
         [[0, nchunks - 1, nchunks - 1, 0], rng.integers(0, nchunks, 1000)]
     ).astype(np.intp)
-    expected = np.argsort(chunk_indices, kind="stable")
-    assert_array_equal(stable_argsort_chunk_indices(chunk_indices, nchunks), expected)
+    order = argsort_chunk_indices(chunk_indices, nchunks)
+    assert_array_equal(np.sort(order), np.arange(chunk_indices.size))
+    assert_array_equal(chunk_indices[order], np.sort(chunk_indices))
 
 
 _rng = np.random.default_rng(0)
 
 
+def _reversed_within_chunk_argsort(
+    chunk_indices: npt.NDArray[np.intp], nchunks: int
+) -> npt.NDArray[np.intp]:
+    """Group by chunk, listing each chunk's items in the reverse of the order given."""
+    return np.lexsort((-np.arange(chunk_indices.size), chunk_indices))
+
+
+@pytest.mark.parametrize("within_chunk_order", ["given", "reversed"])
 @pytest.mark.parametrize(
-    "selection",
+    ("method", "selection"),
     [
-        (np.array([1, 2, 1, 0, 2]), slice(None)),
-        (slice(1, 3), np.array([2, 2, 0])),
-        (slice(None), _rng.integers(0, 40, 100)),
-        (np.array([1, 2, 2]), np.array([3, 3, 3])),
-        (np.array([2, 1, 2]), np.array([3, 0, 3])),
-        (_rng.integers(0, 30, 1000), _rng.integers(0, 40, 1000)),
-        (np.array([1, 2, 1]), 2),
-        np.ix_(np.array([2, 0, 2]), np.array([1, 1, 3])),
-        (np.array([0, 1, 2]), slice(None)),
-        (slice(None), _rng.permutation(40)),
-        tuple(np.unravel_index(_rng.permutation(1200), (30, 40))),
-        np.ix_(np.array([2, 0]), np.array([1, 3])),
-        (slice(None), slice(1, 3)),
+        ("oindex", ([5, 1, 5, 20, 1, 29, 5], slice(None))),
+        ("oindex", (slice(2, 30), [8, 8, 0, 39, 8, 3])),
+        ("oindex", ([1, 1, 2, 9, 9], slice(None))),
+        ("oindex", (_rng.integers(0, 30, 200), slice(None))),
+        ("oindex", ([5, 1, 5, 20], [8, 8, 0, 39, 8])),
+        ("oindex", (3, [8, 8, 0, 39, 8])),
+        ("oindex", ([20, 3, 9], [0, 39])),
+        ("vindex", ([5, 1, 5, 20, 5], [8, 8, 8, 0, 8])),
+        ("vindex", ([5, 1, 5], [8, 0, 8])),
+        ("vindex", ([0, 0, 1], [0, 0, 2])),
+        ("vindex", (_rng.integers(0, 30, 2000), _rng.integers(0, 40, 2000))),
+        ("vindex", ([20, 3, 9], [0, 39, 0])),
     ],
     ids=[
-        "array_then_slice",
-        "slice_then_array",
-        "long_unsorted_array",
-        "sorted_coordinates",
-        "unsorted_coordinates",
-        "many_coordinates",
-        "array_and_integer",
-        "mesh",
-        "no_repeats_orthogonal",
-        "no_repeats_long_unsorted_array",
-        "no_repeats_many_coordinates",
-        "no_repeats_mesh",
-        "no_arrays",
+        "oindex_array_unordered",
+        "oindex_array_after_slice",
+        "oindex_array_increasing",
+        "oindex_array_many",
+        "oindex_mesh",
+        "oindex_mesh_with_integer",
+        "oindex_no_repeats",
+        "vindex_unordered",
+        "vindex_sparse",
+        "vindex_increasing",
+        "vindex_many",
+        "vindex_no_repeats",
     ],
 )
-def test_last_assignments(selection: tuple[Any, ...]) -> None:
-    """Writing through the resolved selection matches assigning each value in C order."""
-    shape = (30, 40)
-    targets = np.arange(product(shape)).reshape(shape)[selection]
-    values = np.arange(targets.size).reshape(targets.shape)
+def test_last_writes(
+    method: str,
+    selection: tuple[Any, ...],
+    within_chunk_order: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each projection writes every element once, and the result is assigning the values in C order.
+
+    The result must not depend on how the indexer orders the items within a chunk.
+    """
+    if within_chunk_order == "reversed":
+        monkeypatch.setattr(
+            zarr.core.indexing, "argsort_chunk_indices", _reversed_within_chunk_argsort
+        )
+    shape, chunks = (30, 40), (7, 9)
+    selection = tuple(np.asarray(s) if isinstance(s, list) else s for s in selection)
+    indexer: OrthogonalIndexer | CoordinateIndexer
+    if method == "oindex":
+        indexer = OrthogonalIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
+    else:
+        indexer = CoordinateIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
+    flat_ids = np.arange(product(shape)).reshape(shape)
+    targets = oindex(flat_ids, selection) if method == "oindex" else flat_ids[selection]
+    values = np.arange(targets.size).reshape(indexer.shape)
     expected = np.full(product(shape), -1)
     for target, value in zip(targets.ravel().tolist(), values.ravel().tolist(), strict=True):
         expected[target] = value
-    result = last_assignments(selection, shape)
-    if np.unique(targets).size == targets.size:
-        assert result is None
-        return
-    assert result is not None
-    actual = np.full(shape, -1)
-    actual[result.selection] = result.pick(values)
-    assert_array_equal(actual.ravel(), expected)
+    actual = np.full(product(shape), -1)
+    for projection in last_writes(indexer):
+        region = tuple(
+            slice(c * size, (c + 1) * size)
+            for c, size in zip(projection.chunk_coords, chunks, strict=True)
+        )
+        written = flat_ids[region][projection.chunk_selection].ravel()
+        assert np.unique(written).size == written.size
+        actual[written] = values[projection.out_selection].ravel()
+    assert_array_equal(actual, expected)
 
 
 Index = list[int] | tuple[slice | int | list[int], ...]

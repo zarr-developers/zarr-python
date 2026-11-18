@@ -109,6 +109,7 @@ from zarr.core.indexing import (
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
     is_scalar,
+    last_writes,
     pop_fields,
 )
 from zarr.core.metadata import (
@@ -5901,7 +5902,10 @@ async def _set_selection(
                 out_selection,
                 is_complete_chunk,
             )
-            for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+            # A scalar gives every element the same value, so repeats need no resolving.
+            for chunk_coords, chunk_selection, out_selection, is_complete_chunk in (
+                indexer if value_buffer.shape == () else last_writes(indexer)
+            )
         ],
         value_buffer,
         drop_axes=indexer.drop_axes,
