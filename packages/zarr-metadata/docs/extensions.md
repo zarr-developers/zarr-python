@@ -122,7 +122,9 @@ Other kinds declare more:
 - A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,
   `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`. A codec that
   receives an array declares what it checks about the chunk it receives
-  (`chunk_rules`) and any pipelines it contains (`pipelines`), and an
+  (`chunk_rules`), its simplest spelling for that chunk
+  (`chunk_canonical`, as `bytes` drops an `endian` when each value takes
+  one byte) and any pipelines it contains (`pipelines`), and an
   array -> array codec also declares what it hands on (`transition`). A
   bytes -> bytes codec receives bytes, so it declares none of these.
 
