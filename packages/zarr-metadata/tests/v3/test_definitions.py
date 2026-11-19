@@ -34,7 +34,7 @@ from zarr_metadata.definition import (
     configuration_of,
     resolve,
 )
-from zarr_metadata.definition._definition import resolve_refined
+from zarr_metadata.definition._definition import item_at, resolve_refined
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,
@@ -1185,6 +1185,14 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
 CRC32C: Final = {"name": "crc32c"}
 
 
+def _shard_of(codec: JSONValue, *, index_first: bool = False, chunk_shape: int = 2) -> JSONValue:
+    """A shard that holds `codec`, with its `index_codecs` written before its `codecs` when `index_first`."""
+    members: dict[str, JSONValue] = {"codecs": [codec], "index_codecs": [LE, CRC32C]}
+    if index_first:
+        members = dict(reversed(members.items()))
+    return {"name": "sharding_indexed", "configuration": {"chunk_shape": [chunk_shape], **members}}
+
+
 @pytest.mark.parametrize(
     ("one", "other", "kind", "equal"),
     [
@@ -1230,6 +1238,12 @@ CRC32C: Final = {"name": "crc32c"}
                 "configuration": {"index_codecs": [LE], **dict(reversed(SHARD.items()))},
                 "name": "sharding_indexed",
             },
+            CodecDefinition,
+            True,
+        ),
+        (
+            _shard_of(_shard_of(LE)),
+            _shard_of(_shard_of(LE, index_first=True), index_first=True),
             CodecDefinition,
             True,
         ),
@@ -1321,6 +1335,7 @@ CRC32C: Final = {"name": "crc32c"}
         "unclaimed-another-configuration",
         "another-name",
         "members-holding-declarations-in-another-order",
+        "members-holding-declarations-in-another-order-two-deep",
         "declarations-in-another-order",
         "members-in-another-order",
         "blosc-typesize-noshuffle",
@@ -1346,6 +1361,20 @@ def test_two_declarations_are_equal_when_they_read_the_same(
     assert (canonical_of(first, ()) == canonical_of(second, ())) is equal
     if equal:
         assert hash(first) == hash(second)
+
+
+def test_two_refused_declarations_are_equal_whatever_order_their_members_are_in() -> None:
+    """A refused declaration is compared by what was written and by the declarations it holds, in the order of their locations, not of the members that hold them."""
+    # A shard of inner chunks with no elements is refused, and still holds its codecs.
+    first, _ = resolve(_shard_of(LE, chunk_shape=0), CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT)
+    second, _ = resolve(
+        _shard_of(LE, chunk_shape=0, index_first=True), CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT
+    )
+    assert isinstance(first, RefusedDeclaration)
+    assert isinstance(second, RefusedDeclaration)
+    assert list(first.nested) != list(second.nested)
+    assert first == second
+    assert hash(first) == hash(second)
 
 
 def test_a_declaration_copied_or_pickled_is_read_by_a_definition_equal_to_its_own() -> None:
@@ -1824,3 +1853,23 @@ def test_error_resolve_refuses_a_kind_of_the_other_format_whatever_the_declarati
     """`resolve` with a kind of one format and a scope of the other raises one `TypeError`, before it reads the declaration. So the message is the same for a declaration with a name that a scope could look up and for a value with no name."""
     with pytest.raises(TypeError, match=f"^{re.escape(message)}$"):
         resolve(declaration, kind, context)
+
+
+@pytest.mark.parametrize(
+    ("path", "item"),
+    [
+        ((), {"a": ({"b": 1}, 2)}),
+        (("a",), ({"b": 1}, 2)),
+        (("a", 0, "b"), 1),
+        (("a", 1), 2),
+        (("a", 2), UNSET),
+        (("a", -1), UNSET),
+        (("b",), UNSET),
+        (("a", "b"), UNSET),
+        ((0,), UNSET),
+        (("a", 1, "b"), UNSET),
+    ],
+)
+def test_item_at_follows_a_location_into_json(path: tuple[str | int, ...], item: object) -> None:
+    """`item_at` returns the item at a location, and `UNSET` when the location does not lead into the value: a key an object lacks, an index outside an array, or a step into a scalar."""
+    assert item_at({"a": ({"b": 1}, 2)}, path) == item

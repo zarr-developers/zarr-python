@@ -94,9 +94,9 @@ Two spellings of a codec can mean the same thing for one chunk and not
 for another, which `canonical` cannot tell, since it receives the
 configuration alone. Such a codec declares its simplest spelling for a
 given chunk with `chunk_canonical`. For example, `bytes` drops an
-`endian` when each value takes one byte. `codec_for_chunk` returns the
-codec of a `Stage` in that spelling, with each codec of the pipelines
-it contains simplified for the chunk that one receives. An array model
+`endian` when each value takes one byte. `codec_for_chunk` writes the
+codec of a `Stage` in that spelling, as JSON, with each codec of the
+pipelines it contains simplified for the chunk that one receives. An array model
 compares its codecs this way.
 The reader does not guess. After a codec the scope did not read, or
 after a codec that does not declare its output, the next codec receives

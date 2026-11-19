@@ -19,7 +19,6 @@ from zarr_metadata._json import (
     frozen,
     is_json_object,
     is_object,
-    json_text,
     not_an_object,
     object_at,
     prefixed,
@@ -48,6 +47,7 @@ from zarr_metadata.model._json_writer import DEFAULT_JSON_WRITER, JSONWriter, JS
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
+    canonical_members,
     check_literal,
     load_store_json,
     located_conflicts,
@@ -71,6 +71,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.definition._definition import ResolvedDeclaration, UnclaimedDeclaration
+    from zarr_metadata.definition._scope import Claims
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
@@ -357,10 +358,13 @@ class ZarrV2GroupMetadata(Keyed):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for a v2 group model: its attributes as JSON text. No `.zattrs` counts as empty attributes, since both mean that the group has none, as in v3."""
-        attributes = self._attributes
-        return (json_text({} if attributes is UNSET else attributes),)
+    def _canonical_document(self) -> Mapping[str, JSONValue]:
+        """The document in its simplest equivalent spelling: without `attributes` when they are empty, since no `.zattrs` and an empty one both mean that the group has none."""
+        return canonical_members(self._document, {}, empty=("attributes",))
+
+    def _claims(self) -> Claims:
+        """The claims the scope made for each name the document uses."""
+        return {}
 
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
@@ -378,6 +382,10 @@ class ZarrV2GroupMetadata(Keyed):
         """Return `self.replace(**members)`, which `copy.replace(model, **members)` (Python 3.13) calls. It calls `replace` rather than being it, so a subclass that overrides `replace` changes what `copy.replace` does too."""
         return self.replace(**members)
 
+    def canonicalize(self) -> ZarrV2GroupMetadata:
+        """Return this model with its document in its simplest equivalent spelling, read in this model's own scope: without `attributes` when they are empty, because a group with no `.zattrs` means the same. The result equals this model, and every model equal to this one gives the same document, apart from the order of the members of an object, which `to_key_value` sorts with `JSONWriter(sort_keys=True)`."""
+        return type(self)(self._normal_form, context=self._context)
+
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
         context = scoped(context, CORE_V2_CONTEXT)
@@ -388,8 +396,8 @@ class ZarrV2GroupMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2GroupMetadata) -> bool:
-        """Whether this group holds everything `other` holds, which means its attributes are written the same way, no `.zattrs` counting as empty attributes. False when `other` is not a v2 group."""
-        return type(other) is type(self) and self._model_key == other._model_key
+        """Whether this model holds everything `other` holds: its scope read every name that `other`'s scope read, with the same definition, and `other`'s document, read in this model's scope, is this model. A group has no declarations, so this means its attributes are written the same way, no `.zattrs` counting as empty attributes. False when `other` is not a v2 group."""
+        return self._refines(other, lambda: other.with_context(self._context))
 
     @classmethod
     def create_default(
@@ -562,18 +570,25 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def _key_of(self) -> tuple[object, ...]:
-        """The key `==` and `hash` compare for v2 consolidated metadata: each node's path and key, and every other entry as JSON text."""
-        return (
-            tuple(sorted((path, node._model_key) for path, node in self._metadata.items())),
-            self._other_entries_text(),
-        )
+    def _canonical_document(self) -> Mapping[str, JSONValue]:
+        """The document with each node in its simplest equivalent spelling, as that node's normal form writes it: its `.zarray` or `.zgroup` entry without the attributes, and its `.zattrs` entry holding them, or left out when they are empty."""
+        entries = dict(object_at(self._document, "metadata"))
+        for path, node in self._metadata.items():
+            names = self._files[path]
+            written = dict(node._normal_form)
+            attributes = written.pop("attributes", None)
+            for name, key in names.items():
+                if name != ZARR_V2_ATTRIBUTES_STORE_KEY:
+                    entries[key] = written
+                elif attributes is None:
+                    del entries[key]
+                else:
+                    entries[key] = attributes
+        return {**self._document, "metadata": entries}
 
-    def _other_entries_text(self) -> str:
-        """The entries that no node is read from (an orphan `.zattrs`, or any other key) as JSON text, which `==` compares."""
-        entries = object_at(self._document, "metadata")
-        consumed = {key for names in self._files.values() for key in names.values()}
-        return json_text({key: value for key, value in entries.items() if key not in consumed})
+    def _claims(self) -> Claims:
+        """The claims the scope made for each name the document uses."""
+        return claims_of(self._located_declarations())
 
     def _located_declarations(self) -> Iterator[tuple[Loc, ResolvedDeclaration[Any]]]:
         """Each declaration of each array node, as read, located in the document: under the node's `.zarray` entry, at the key the document writes for it."""
@@ -585,6 +600,18 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, ZarrV2Context]]:
         return type(self), (self._document, self._context)
+
+    def canonicalize(self) -> ZarrV2ConsolidatedMetadata:
+        """Return this document with each node in its simplest equivalent spelling, as that node's `canonicalize` writes it, read in this model's own scope.
+
+        Each node's `.zarray` or `.zgroup` entry is written without the
+        attributes, and its `.zattrs` entry holds them, or is left out
+        when they are empty. Every other entry is kept as written. The
+        result equals this model. Every model equal to this one, in this
+        scope, gives the same document, apart from the order of the
+        members of an object, which a `JSONWriter(sort_keys=True)` sorts.
+        """
+        return type(self)(self._normal_form, context=self._context)
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`, whatever that changes. Raises `MetadataValidationError` when a node has a problem in `context`."""
@@ -617,16 +644,8 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2ConsolidatedMetadata) -> bool:
-        """Whether every node this holds refines the node `other` holds at the same path, both hold the same paths, and the other entries are written the same way. False when `other` is not v2 consolidated metadata."""
-        if type(other) is not type(self):
-            return False
-        if self._metadata.keys() != other._metadata.keys():
-            return False
-        if self._other_entries_text() != other._other_entries_text():
-            return False
-        return all(
-            _v2_node_refines(self._metadata[path], other._metadata[path]) for path in self._metadata
-        )
+        """Whether this model holds everything `other` holds: its scope read every name that `other`'s scope read, with the same definition, and `other`'s document, read in this model's scope, is this model. So every node this holds refines the node `other` holds at the same path, both hold the same paths, and the other entries are written the same way. False when `other` is not v2 consolidated metadata."""
+        return self._refines(other, lambda: other.with_context(self._context))
 
     @classmethod
     def from_json(
@@ -649,13 +668,6 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         return cls(
             load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY), context=context
         )
-
-
-def _v2_node_refines(node: ZarrV2NodeMetadata, other: ZarrV2NodeMetadata) -> bool:
-    """Whether `node` refines `other`. Models of the same kind use their own `refines`; an array never refines a group, or the reverse."""
-    if isinstance(node, ZarrV2ArrayMetadata):
-        return isinstance(other, ZarrV2ArrayMetadata) and node.refines(other)
-    return isinstance(other, ZarrV2GroupMetadata) and node.refines(other)
 
 
 _NODE_FILES: Final = (

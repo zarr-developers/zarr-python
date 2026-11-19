@@ -24,6 +24,8 @@ from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._definition import (
     RefusedDeclaration,
     UnclaimedDeclaration,
+    canonical_of,
+    held,
     is_declaration,
 )
 from zarr_metadata.definition._scope import Conflict, claim_key
@@ -202,6 +204,50 @@ def created(
             values = ", ".join(f"{key} = {json.dumps(written[key])}" for key in filled)
             error.add_note(f"create_default filled in the members not given: {values}")
         raise
+
+
+def simplest(declaration: ResolvedDeclaration[Any] | UNSET) -> JSONValue:
+    """`declaration`, from a read that found no problems, in its simplest equivalent spelling, as `canonical_of` writes it. Raises `TypeError` for a declaration with none, which such a read cannot produce."""
+    spelled = canonical_of(held(declaration), ())
+    if spelled is None:
+        msg = f"expected a declaration a read found nothing wrong with, got {declaration!r}"
+        raise TypeError(msg)
+    return spelled
+
+
+def simplest_members(extra_fields: Mapping[str, ResolvedDeclaration[Any]]) -> dict[str, JSONValue]:
+    """The extra fields of a document that a read found no problems with, by key, each in its simplest equivalent spelling."""
+    spelled: dict[str, JSONValue] = {}
+    for extra in extra_fields.values():
+        # An extra field is written as the member it is: its key, and its value.
+        spelled.update(cast("Mapping[str, JSONValue]", simplest(extra)))
+    return spelled
+
+
+def canonical_members(
+    document: Mapping[str, JSONValue],
+    spelled: Mapping[str, JSONValue],
+    *,
+    empty: Iterable[str] = (),
+    defaults: Mapping[str, JSONValue] | None = None,
+) -> dict[str, JSONValue]:
+    """`document`, the document a model holds, with each member in `spelled` written as `spelled` writes it, and without the members that say what their absence says.
+
+    A member in `empty` is left out when it is empty, and a member in
+    `defaults` when it has the value given there. The members keep the
+    order `document` writes them in. A member of `spelled` that
+    `document` does not write is not added.
+    """
+    canonical = {key: spelled.get(key, value) for key, value in document.items()}
+    for key in empty:
+        value = canonical.get(key)
+        if (is_array(value) or is_object(value)) and len(value) == 0:
+            del canonical[key]
+    if defaults is not None:
+        for key, default in defaults.items():
+            if key in canonical and canonical[key] == default:
+                del canonical[key]
+    return canonical
 
 
 def unclaimed_declarations_of(

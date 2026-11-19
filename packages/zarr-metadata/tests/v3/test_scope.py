@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
 from typing import Any
 
@@ -20,7 +21,8 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.definition._context import disagreements
 from zarr_metadata.definition._definition import declarations_of
-from zarr_metadata.definition._scope import Disagreements, claims_of, kind_name, refines
+from zarr_metadata.definition._scope import Disagreements, claims_of, kind_name
+from zarr_metadata.model import ZarrV3ArrayMetadata
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -166,21 +168,18 @@ def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
     )
 
 
+ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json())
+"""A `uint8` array of one chunk of two values."""
 GZIP_DECLARATION = {"name": "gzip", "configuration": {"level": 5}}
+GZIP_WITH_AN_UNKNOWN_KEY = {"name": "gzip", "configuration": {"level": 5, "extra": 1}}
+"""A gzip that the core definition reads with a problem, and that a scope without a gzip accepts as written."""
+STATIC_GZIP = dataclasses.replace(GZIP_CODEC, size="static")
+"""A second definition under the core gzip's name that reads the same configurations."""
 ZSTD_DECLARATION = {"name": "zstd", "configuration": {"level": 3}}
 BLOSC = {"cname": "zstd", "shuffle": "noshuffle", "blocksize": 0}
 BLOSC_LEVEL_ONE = {"name": "blosc", "configuration": {**BLOSC, "clevel": 1}}
 BLOSC_LEVEL_TRUE = {"name": "blosc", "configuration": {**BLOSC, "clevel": True}}
 """Two documents that Python's `==` treats as equal, but that `json_text` tells apart."""
-SHARD_HOLDING_REFUSED = {
-    "name": "sharding_indexed",
-    "configuration": {
-        "chunk_shape": [1],
-        "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 12}}],
-        "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
-    },
-}
-"""A shard that is read, holding a gzip that its definition refuses."""
 NESTED_ZSTD = {
     "name": "sharding_indexed",
     "configuration": {
@@ -191,73 +190,59 @@ NESTED_ZSTD = {
 }
 
 
+def _array(codec: object, context: ZarrV3Context) -> ZarrV3ArrayMetadata:
+    """A `uint8` array of one chunk of two values whose pipeline ends in `codec`, read in `context`. A codec that takes bytes follows a `bytes` codec."""
+    shard = isinstance(codec, dict) and codec["name"] == "sharding_indexed"
+    codecs = [codec] if shard else [{"name": "bytes"}, codec]
+    return ZarrV3ArrayMetadata({**ARRAY, "codecs": codecs}, context=context)
+
+
 @pytest.mark.parametrize(
-    ("declaration", "other", "expected"),
+    ("model", "other", "expected"),
     [
+        (_array(GZIP_DECLARATION, CORE_CONTEXT), _array(GZIP_DECLARATION, CORE_CONTEXT), True),
+        (_array({"name": "crc32c"}, CORE_CONTEXT), _array("crc32c", CORE_CONTEXT), True),
         (
-            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
-            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
+            _array(ZSTD_DECLARATION, CORE_AND_EXTENSIONS_CONTEXT),
+            _array(ZSTD_DECLARATION, CORE_CONTEXT),
             True,
         ),
         (
-            _read({"name": "crc32c"}, CodecDefinition, CORE_CONTEXT),
-            _read("crc32c", CodecDefinition, CORE_CONTEXT),
-            True,
-        ),
-        (
-            _read(ZSTD_DECLARATION, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
-            _read(ZSTD_DECLARATION, CodecDefinition, CORE_CONTEXT),
-            True,
-        ),
-        (
-            _read(ZSTD_DECLARATION, CodecDefinition, CORE_CONTEXT),
-            _read(ZSTD_DECLARATION, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _array(ZSTD_DECLARATION, CORE_CONTEXT),
+            _array(ZSTD_DECLARATION, CORE_AND_EXTENSIONS_CONTEXT),
             False,
         ),
         (
-            _read(GZIP_DECLARATION, CodecDefinition, CORE_CONTEXT),
-            _read(GZIP_DECLARATION, CodecDefinition, ZarrV3Context(codecs=[MY_GZIP])),
+            _array(GZIP_DECLARATION, CORE_CONTEXT),
+            _array(GZIP_DECLARATION, ZarrV3Context(codecs=[STATIC_GZIP])),
             False,
         ),
         (
-            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
-            _read(NESTED_ZSTD, CodecDefinition, CORE_CONTEXT),
+            _array(NESTED_ZSTD, CORE_AND_EXTENSIONS_CONTEXT),
+            _array(NESTED_ZSTD, CORE_CONTEXT),
             True,
         ),
         (
-            _read(NESTED_ZSTD, CodecDefinition, CORE_CONTEXT),
-            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS_CONTEXT),
+            _array(NESTED_ZSTD, CORE_CONTEXT),
+            _array(NESTED_ZSTD, CORE_AND_EXTENSIONS_CONTEXT),
+            False,
+        ),
+        (_array("zstd", CORE_CONTEXT), _array("zstd", CORE_CONTEXT), True),
+        (
+            _array({"name": "zstd", "configuration": {"level": 1}}, CORE_CONTEXT),
+            _array({"name": "zstd", "configuration": {"level": 2}}, CORE_CONTEXT),
+            False,
+        ),
+        (_array("crc32c", CORE_CONTEXT), _array({"name": "crc32c"}, ZarrV3Context()), True),
+        (
+            _array(BLOSC_LEVEL_ONE, CORE_AND_EXTENSIONS_CONTEXT),
+            _array(BLOSC_LEVEL_TRUE, ZarrV3Context()),
             False,
         ),
         (
-            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE_CONTEXT),
-            _read("gzip", CodecDefinition, CORE_CONTEXT),
+            _array(GZIP_DECLARATION, CORE_CONTEXT),
+            _array(GZIP_WITH_AN_UNKNOWN_KEY, ZarrV3Context()),
             False,
-        ),
-        (
-            _read("zstd", CodecDefinition, CORE_CONTEXT),
-            _read("zstd", CodecDefinition, CORE_CONTEXT),
-            True,
-        ),
-        (
-            _read({"name": "zstd", "configuration": {"level": 1}}, CodecDefinition, CORE_CONTEXT),
-            _read({"name": "zstd", "configuration": {"level": 2}}, CodecDefinition, CORE_CONTEXT),
-            False,
-        ),
-        (
-            _read("crc32c", CodecDefinition, CORE_CONTEXT),
-            _read({"name": "crc32c"}, CodecDefinition, ZarrV3Context()),
-            True,
-        ),
-        (
-            _read(BLOSC_LEVEL_ONE, CodecDefinition, CORE_CONTEXT),
-            _read(BLOSC_LEVEL_TRUE, CodecDefinition, ZarrV3Context()),
-            False,
-        ),
-        (
-            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE_CONTEXT),
-            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE_CONTEXT),
-            True,
         ),
     ],
     ids=[
@@ -268,19 +253,18 @@ NESTED_ZSTD = {
         "conflict",
         "nested-gain",
         "nested-loss",
-        "refused",
         "both-unclaimed",
         "unclaimed-differ",
         "gain-over-another-spelling",
         "no-gain-over-true-for-one",
-        "holding-a-refused-declaration",
+        "no-gain-over-a-problem",
     ],
 )
 def test_refines_orders_readings_by_information(
-    declaration: ResolvedDeclaration[Any], other: ResolvedDeclaration[Any], expected: bool
+    model: ZarrV3ArrayMetadata, other: ZarrV3ArrayMetadata, expected: bool
 ) -> None:
-    """`declaration` refines `other` when it reads the same where both read, and gains where `other` left a name unclaimed, including in the declarations it holds. A loss, a conflict, a refused declaration, or two unclaimed declarations written differently do not refine."""
-    assert refines(declaration, other) is expected
+    """A model refines another when it reads the same where both read, and gains where the other left a name unclaimed, including in the declarations a codec holds. A loss, a conflict, or two unclaimed declarations written differently do not refine. Neither does a document that the refining scope reads with a problem: what it wrote is not what the refining model holds."""
+    assert model.refines(other) is expected
 
 
 DOCUMENTS = [
@@ -291,25 +275,22 @@ DOCUMENTS = [
     ZSTD_DECLARATION,
     NESTED_ZSTD,
     BLOSC_LEVEL_ONE,
-    SHARD_HOLDING_REFUSED,
 ]
 CONTEXTS = [ZarrV3Context(), CORE_CONTEXT, CORE_AND_EXTENSIONS_CONTEXT]
-READINGS = [
-    _read(document, CodecDefinition, context) for document in DOCUMENTS for context in CONTEXTS
-]
+READINGS = [_array(document, context) for document in DOCUMENTS for context in CONTEXTS]
 
 
 @given(st.sampled_from(READINGS), st.sampled_from(READINGS), st.sampled_from(READINGS))
 def test_refines_is_a_partial_order_whose_bottom_is_equality(
-    a: ResolvedDeclaration[Any], b: ResolvedDeclaration[Any], c: ResolvedDeclaration[Any]
+    a: ZarrV3ArrayMetadata, b: ZarrV3ArrayMetadata, c: ZarrV3ArrayMetadata
 ) -> None:
-    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive. Two declarations that refine each other are equal, and equal declarations are refined by the same declarations."""
-    assert refines(a, a)
-    if refines(a, b) and refines(b, c):
-        assert refines(a, c)
-    assert (refines(a, b) and refines(b, a)) is (a == b)
+    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive. Two models that refine each other are equal, and equal models are refined by the same models."""
+    assert a.refines(a)
+    if a.refines(b) and b.refines(c):
+        assert a.refines(c)
+    assert (a.refines(b) and b.refines(a)) is (a == b)
     if a == b:
-        assert refines(c, a) is refines(c, b)
+        assert c.refines(a) is c.refines(b)
 
 
 @pytest.mark.parametrize(
@@ -407,32 +388,18 @@ def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> Non
 
 
 def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
-    """An accepted declaration refines an unclaimed one when its definition, reading the JSON of the unclaimed declaration, produces the accepted declaration. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
-    from zarr_metadata.definition import (
-        resolve,
-    )
-    from zarr_metadata.v3.definition import (
-        CORE_CONTEXT,
-        ChunkKeyEncodingDefinition,
-    )
-
+    """A model refines one whose scope left a name unclaimed when its own scope, reading the other document, reads this model. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
     nothing = ZarrV3Context()
-    spelled_out, _ = resolve(
-        {"name": "default", "configuration": {"separator": "/"}},
-        ChunkKeyEncodingDefinition,
-        CORE_CONTEXT,
-    )
-    bare, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, CORE_CONTEXT)
-    unclaimed, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, nothing)
+    separated = {"name": "default", "configuration": {"separator": "/"}}
+    spelled_out = ZarrV3ArrayMetadata({**ARRAY, "chunk_key_encoding": separated})
+    bare = ZarrV3ArrayMetadata({**ARRAY, "chunk_key_encoding": {"name": "default"}})
+    unclaimed = bare.with_context(nothing)
     assert spelled_out == bare
-    assert refines(bare, unclaimed)
-    assert refines(spelled_out, unclaimed)
-    other, _ = resolve(
-        {"name": "default", "configuration": {"separator": "."}},
-        ChunkKeyEncodingDefinition,
-        CORE_CONTEXT,
-    )
-    assert not refines(other, unclaimed)
+    assert bare.refines(unclaimed)
+    assert spelled_out.refines(unclaimed)
+    dotted = {"name": "default", "configuration": {"separator": "."}}
+    other = ZarrV3ArrayMetadata({**ARRAY, "chunk_key_encoding": dotted})
+    assert not other.refines(unclaimed)
     shard = {
         "name": "sharding_indexed",
         "configuration": {
@@ -442,9 +409,9 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
             "index_location": "end",
         },
     }
-    read, _ = resolve(shard, CodecDefinition, CORE_CONTEXT)
-    unread, _ = resolve({**shard, "must_understand": True}, CodecDefinition, nothing)
-    assert refines(read, unread)
+    read = _array(shard, CORE_CONTEXT)
+    unread = _array({**shard, "must_understand": True}, nothing)
+    assert read.refines(unread)
 
 
 OTHER_GZIP = BytesBytesCodecDefinition(name="gzip", configuration=EmptyConfiguration, size="static")

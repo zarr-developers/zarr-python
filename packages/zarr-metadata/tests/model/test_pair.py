@@ -265,6 +265,40 @@ def test_error_replace_refuses_a_document_with_a_problem() -> None:
         ZarrV3ArrayMetadata(ARRAY).replace(dimension_names=("x", "y"))
 
 
+def _core_without_codecs(*names: str) -> ZarrV3Context:
+    """`CORE_CONTEXT` without the codecs it files under `names`."""
+    kept = {name: codec for name, codec in CORE_CONTEXT.codecs.items() if name not in names}
+    return CORE_CONTEXT.copy(update={"codecs": kept})
+
+
+def _core_without_data_types(*names: str) -> ZarrV3Context:
+    """`CORE_CONTEXT` without the data types it files under `names`."""
+    kept = {name: each for name, each in CORE_CONTEXT.data_types.items() if name not in names}
+    return CORE_CONTEXT.copy(update={"data_types": kept})
+
+
+LITTLE: dict[str, Any] = {"name": "bytes", "configuration": {"endian": "little"}}
+ENDIAN: dict[str, Any] = {**ARRAY, "codecs": [LITTLE]}
+"""A `uint8` array whose `bytes` codec writes an `endian`, which means nothing for values of one byte. A scope that reads both the codec and the data type compares the codec without it."""
+TRANSPOSED: dict[str, Any] = {
+    **ARRAY,
+    "codecs": [{"name": "transpose", "configuration": {"order": [0]}}, LITTLE],
+}
+SHARDED_ENDIAN: dict[str, Any] = {
+    **ARRAY,
+    "codecs": [
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": [1],
+                "codecs": [LITTLE],
+                "index_codecs": [LITTLE, "crc32c"],
+            },
+        }
+    ],
+}
+
+
 @pytest.mark.parametrize(
     ("model", "context", "gained"),
     [
@@ -272,8 +306,48 @@ def test_error_replace_refuses_a_document_with_a_problem() -> None:
         (ZarrV3ArrayMetadata(ARRAY, context=CORE_CONTEXT), CORE_AND_EXTENSIONS_CONTEXT, False),
         (ZarrV3ArrayMetadata(FLOAT, context=ZarrV3Context()), CORE_CONTEXT, True),
         (ZarrV3ArrayMetadata(SHARDED, context=ZarrV3Context()), CORE_CONTEXT, True),
+        # What the new scope claims tells it more of the chunk a codec
+        # receives, so it compares that codec in a simpler spelling than
+        # the one the document writes.
+        (ZarrV3ArrayMetadata(ENDIAN, context=ZarrV3Context()), CORE_CONTEXT, True),
+        (
+            ZarrV3ArrayMetadata(ENDIAN, context=_core_without_codecs("bytes")),
+            CORE_CONTEXT,
+            True,
+        ),
+        (
+            ZarrV3ArrayMetadata(ENDIAN, context=_core_without_data_types("uint8")),
+            CORE_CONTEXT,
+            True,
+        ),
+        (
+            ZarrV3ArrayMetadata(TRANSPOSED, context=_core_without_codecs("transpose")),
+            CORE_CONTEXT,
+            True,
+        ),
+        (
+            ZarrV3ArrayMetadata(SHARDED_ENDIAN, context=_core_without_codecs("sharding_indexed")),
+            CORE_CONTEXT,
+            True,
+        ),
+        (
+            ZarrV3ArrayMetadata(SHARDED_ENDIAN, context=_core_without_codecs("bytes")),
+            CORE_CONTEXT,
+            True,
+        ),
     ],
-    ids=["gain", "nothing-to-gain", "gain-data-type-with-fill-value", "gain-of-a-shard"],
+    ids=[
+        "gain",
+        "nothing-to-gain",
+        "gain-data-type-with-fill-value",
+        "gain-of-a-shard",
+        "gain-of-everything-with-an-endian-that-means-nothing",
+        "gain-of-a-codec-simplified-for-its-chunk",
+        "gain-of-the-data-type-a-codec-is-simplified-by",
+        "gain-of-a-codec-before-one-simplified-for-its-chunk",
+        "gain-of-a-shard-whose-codecs-are-simplified",
+        "gain-of-a-codec-in-a-shard",
+    ],
 )
 def test_refined_in_moves_a_model_up_the_order(
     model: ZarrV3ArrayMetadata, context: ZarrV3Context, gained: bool

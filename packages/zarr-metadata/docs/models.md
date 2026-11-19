@@ -130,6 +130,8 @@ To change a model, use one of these methods:
 - `refined_in` also reads the document in another context. The new context
   must claim what this context left unclaimed and contradict nothing.
   Otherwise it raises `ScopeConflictError`.
+- `canonicalize` returns the model with its document in its simplest
+  equivalent spelling. See [Canonical documents](#canonical-documents).
 
 ## Writing store bytes
 
@@ -226,7 +228,9 @@ These are each declaration, and the fill value read against its data type.
   So in a `uint8` array, a `bytes` codec is the same codec with either
   `endian`, or with none. The codec is compared for the chunk it
   receives: after a `cast_value` to `float32`, the two `endian` values
-  are two codecs.
+  are two codecs. `codec_for_chunk` writes a codec in the spelling that
+  is compared, as JSON, which `canonical_of` cannot give, since it reads
+  the codec alone.
 
 A v2 document's
 [dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding),
@@ -264,3 +268,78 @@ equal to itself.
 
 Equal models have equal hashes. They may still write different documents,
 because `to_json` writes each document as it was given.
+
+## Canonical documents
+
+`canonicalize` returns a model with its document in its simplest
+equivalent spelling. The result equals the model it came from. Every model
+equal to that one, read in the same context, gives the same document.
+
+```python test="true" session="models"
+from zarr_metadata.model import ZarrV3ArrayMetadata
+
+written = ZarrV3ArrayMetadata.from_json(
+    {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "data_type": "uint8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+        "fill_value": 0,
+        "codecs": [
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "zstd", "configuration": {"level": 1, "checksum": False}},
+        ],
+        "attributes": {},
+    }
+)
+canonical = written.canonicalize()
+assert canonical == written
+print(canonical.to_json()["chunk_key_encoding"])
+#> {'name': 'default'}
+print(canonical.to_json()["codecs"])
+#> ({'name': 'bytes'}, {'name': 'zstd', 'configuration': {'level': 1}})
+print("attributes" in canonical.to_json())
+#> False
+```
+
+The canonical document is written from the same parts that `==` compares:
+
+- Each declaration is written as `canonical_of` writes it.
+- Each v3 codec is written for the chunk it receives, as `codec_for_chunk`
+  writes it. Above, each `uint8` value takes one byte, so the `endian`
+  says nothing.
+- The fill value is written as `canonical_fill_value` writes it for the
+  data type.
+- A member that says what its absence says is left out. These are empty
+  `attributes`, empty v3 `storage_transformers`, and a v2
+  `dimension_separator` of `"."`.
+- Everything else is kept as written. This includes the attributes, and
+  the configuration of a declaration that nothing in the context claims,
+  because only its own definition could simplify it. Such a declaration
+  is still written in the shortest form every reader accepts, without an
+  empty `configuration` or a `must_understand` of `true`.
+
+A v2 codec is written with each numcodecs default it leaves out, as its
+definition's `canonical` writes it. So a canonical v2 document can be
+longer than the one it came from.
+
+The order of the members of an object is not part of the spelling, because
+JSON gives it no meaning. Two equal models can give canonical documents
+whose members are in different orders. A `JSONWriter` that sorts them
+writes the same bytes for both, so those bytes are a key for what the
+document means:
+
+```python test="true" session="models"
+import hashlib
+
+stored = canonical.to_key_value({"sort_keys": True})["zarr.json"]
+digest = hashlib.sha256(stored).hexdigest()
+```
+
+The other models work the same way. A v3 group does not read the documents
+its `consolidated_metadata` lists, so its `canonicalize` keeps them as
+written. `ZarrV3ConsolidatedMetadata.canonicalize` and
+`ZarrV2ConsolidatedMetadata.canonicalize` write each node they list in its
+simplest spelling.

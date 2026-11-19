@@ -1200,16 +1200,13 @@ def declaration_key(declaration: ResolvedDeclaration[Any]) -> tuple[object, ...]
         configuration: JSONValue = dict(declaration.configuration)
         # Each nested declaration is compared by its own key, so its location is
         # cleared before the definition's `canonical` sees the rest, in the
-        # same order as `_canonical_declaration`. `canonical` simplifies only the
+        # same order as `canonical_declaration`. `canonical` simplifies only the
         # definition's own members.
         for loc in declaration.nested:
             configuration = _replaced(configuration, loc, None)
         view = read_only(cast("Mapping[str, JSONValue]", configuration))
-        spelled = asked(
-            definition,
-            "canonical",
-            lambda: json_text(cast("JSONValue", dict(definition.canonical(view)))),
-        )
+        _, own = _spelled(definition, view)
+        spelled = asked(definition, "canonical", lambda: json_text(cast("JSONValue", own)))
         return ("read", definition, spelled, _nested_key(declaration.nested))
     if isinstance(declaration, UnclaimedDeclaration):
         return (
@@ -1226,11 +1223,6 @@ def declaration_key(declaration: ResolvedDeclaration[Any]) -> tuple[object, ...]
         UNSET if declaration.json is UNSET else json_text(declaration.json),
         _nested_key(declaration.nested),
     )
-
-
-def own_key(declaration: AcceptedDeclaration[Any]) -> tuple[object, ...]:
-    """The part of `declaration_key` for an accepted declaration that excludes nested declarations: the definition and the canonical spelling of its own members."""
-    return declaration_key(declaration)[:3]
 
 
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
@@ -1277,36 +1269,9 @@ def written_json(declaration: AcceptedDeclaration[Any] | UnclaimedDeclaration) -
     return kind._envelope_json(declaration.name, declaration.configuration)
 
 
-def respelled(
-    declaration: AcceptedDeclaration[D],
-    configuration: Mapping[str, JSONValue],
-    nested: Nested,
-) -> AcceptedDeclaration[D]:
-    """`declaration` with `configuration` as its configuration, and each declaration in `nested` in place of the nested declaration at its location.
-
-    This builds the declaration that another spelling of `declaration`
-    reads as, without reading it again. The caller answers for the
-    spelling: `configuration` must be one that the definition allows and
-    that means the same thing, and it must keep each nested declaration
-    where it is. `nested` holds only the nested declarations to replace,
-    each one accepted or unclaimed, and each is written into the
-    configuration as its `to_json` writes it. A location in `nested` that
-    does not lead into `configuration` raises `TypeError`. The result is
-    written as `to_json` writes it, since no document wrote it.
-    """
-    spelled: JSONValue = dict(configuration)
-    for loc, inner in nested.items():
-        spelled = _replaced(spelled, loc, written_json(held(inner)))
-    kind = declaration.read_as
-    name = declaration.name
-    carried = kind._filed_under(name)[1] is not None
-    return AcceptedDeclaration(
-        json=kind._envelope_json(name, {} if carried else cast("Mapping[str, JSONValue]", spelled)),
-        name=name,
-        definition=declaration.definition,
-        configuration=cast("Mapping[str, JSONValue]", spelled),
-        nested={**declaration.nested, **nested},
-    )
+def declaration_locations(definition: Definition[Any], configuration: JSONValue) -> tuple[Loc, ...]:
+    """The location of each declaration that `configuration` holds, where `definition`'s TypedDict types a member with a declaration alias, in order. `configuration` is JSON with arrays as tuples."""
+    return tuple(found.loc for found in _typed(definition.configuration, configuration, ())[2])
 
 
 def item_at(value: JSONValue, path: Loc) -> JSONValue | UNSET:
@@ -1888,41 +1853,104 @@ def canonical_of(
 def _simplest(declaration: ResolvedDeclaration[Any]) -> JSONValue | None:
     """A declaration in its simplest spelling; None when the declaration or one of its nested declarations was refused, because a refused declaration has no simplest spelling."""
     if isinstance(declaration, AcceptedDeclaration):
-        return _canonical_declaration(declaration)
+        return canonical_declaration(declaration)
     if isinstance(declaration, UnclaimedDeclaration):
         return declaration.to_json()
     return None
 
 
-def _canonical_declaration(resolved: AcceptedDeclaration[Any]) -> JSONValue | None:
-    """An accepted declaration in its simplest equivalent spelling: nested declarations first, then its own members. None when a nested declaration was refused."""
+@dataclass(frozen=True, slots=True)
+class Further:
+    """A simplification of a definition's own members by something `canonical` cannot know, such as the chunk a codec receives.
+
+    `ask` receives the configuration in its simplest spelling so far,
+    read-only: its own members as `canonical` spells them, and each
+    nested declaration in its own simplest spelling. It returns a simpler
+    configuration, as JSON with arrays as tuples, or None when it
+    simplifies nothing. It answers for its result: it raises when the
+    result does not hold. `what` names the function of the definition
+    that `ask` calls, for the error raised when its result is not the
+    simplest spelling.
+    """
+
+    what: str
+    ask: Callable[[Mapping[str, JSONValue]], dict[str, JSONValue] | None]
+
+
+def canonical_declaration(
+    resolved: AcceptedDeclaration[Any],
+    spelled: Mapping[Loc, JSONValue | None] | None = None,
+    further: Further | None = None,
+) -> JSONValue | None:
+    """An accepted declaration in its simplest equivalent spelling: nested declarations first, then its own members. None when a nested declaration has no simplest spelling.
+
+    This is the one walk that writes a declaration in its simplest
+    spelling. A caller that knows more than the declaration says, as a
+    pipeline knows the chunk each codec receives, takes part in it
+    instead of walking the declaration again. `spelled` gives the
+    simplest spelling of the nested declarations the caller wrote
+    itself, by location, with None for one that has none. Each other
+    nested declaration is written as this function writes it. `further`
+    simplifies the declaration's own members once more, after
+    `canonical`. What it gives is spelled by `canonical` again, and must
+    then be the simplest spelling: asked about it, `further` must
+    simplify nothing, or this raises `ValueError`, which indicates a bug
+    in the definition.
+    """
     definition, name = resolved.definition, resolved.name
     configuration: JSONValue = dict(resolved.configuration)
     for loc, inner in resolved.nested.items():
-        simplest = _simplest(inner)
+        simplest = spelled[loc] if spelled is not None and loc in spelled else _simplest(inner)
         if simplest is None:
             return None
         configuration = _replaced(configuration, loc, simplest)
-    # Every function of a definition receives this read-only view. The
-    # result of `canonical` (the view itself when nothing is simplified) is
-    # converted to a dict.
-    view = read_only(cast("Mapping[str, JSONValue]", configuration))
-    simplified = asked(
-        definition,
-        "canonical",
-        lambda: dict(cast("Mapping[str, JSONValue]", definition.canonical(view))),
-    )
-    _, refused = definition.read_configuration(simplified)
+    simplified = _spelled_and_checked(definition, cast("Mapping[str, JSONValue]", configuration))
+    if further is not None:
+        given = further.ask(read_only(simplified))
+        if given is not None:
+            simplified = _spelled_and_checked(definition, given)
+            left = further.ask(read_only(simplified))
+            if left is not None:
+                # The simplest spelling has nothing left to simplify. Otherwise
+                # a document written from it would read as another declaration.
+                msg = (
+                    f"{definition.name!r}: its {further.what} gave {given!r}, which is not the "
+                    f"simplest spelling: asked again, it gave {left!r}"
+                )
+                raise ValueError(msg)
+    carrying = definition._carrying_name(simplified)
+    if carrying is not None:
+        return carrying
+    return resolved.read_as._envelope_json(name, simplified)
+
+
+def _spelled_and_checked(
+    definition: Definition[Any], configuration: Mapping[str, JSONValue]
+) -> dict[str, JSONValue]:
+    """`configuration` as `definition`'s `canonical` spells it. A result that the definition does not allow raises `ValueError`, which indicates a bug in the definition."""
+    kept, simplified = _spelled(definition, read_only(configuration))
+    # A `canonical` that returns what it received simplified nothing, so
+    # there is nothing of its own to check.
+    refused = () if kept else definition.read_configuration(simplified)[1]
     if len(refused) != 0:
         msg = (
             f"{definition.name!r}: its canonical gave {simplified!r}, which does not hold: "
             f"{list(refused)!r}"
         )
         raise ValueError(msg)
-    carrying = definition._carrying_name(simplified)
-    if carrying is not None:
-        return carrying
-    return resolved.read_as._envelope_json(name, simplified)
+    return simplified
+
+
+def _spelled(
+    definition: Definition[Any], view: Mapping[str, JSONValue]
+) -> tuple[bool, dict[str, JSONValue]]:
+    """Whether `definition`'s `canonical` returned `view` itself, and what it returned, as a dict. This is the one place that calls `canonical`. Every function of a definition receives a read-only view."""
+
+    def spelled() -> tuple[bool, dict[str, JSONValue]]:
+        given = cast("Mapping[str, JSONValue]", definition.canonical(view))
+        return given is view, dict(given)
+
+    return asked(definition, "canonical", spelled)
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
@@ -1943,6 +1971,7 @@ __all__ = [
     "C",
     "Context",
     "Definition",
+    "Further",
     "Nested",
     "Problems",
     "RefusedDeclaration",
@@ -1951,12 +1980,14 @@ __all__ = [
     "WithFillValue",
     "as_kind",
     "asked",
+    "canonical_declaration",
     "canonical_fill_value",
     "canonical_of",
     "canonicalize",
     "configuration_of",
     "declaration_key",
     "declaration_kind",
+    "declaration_locations",
     "declarations_of",
     "document_json",
     "filed_under",
@@ -1970,11 +2001,9 @@ __all__ = [
     "kind_of",
     "named_configuration",
     "no_rules",
-    "own_key",
     "read_only",
     "resolve",
     "resolve_refined",
-    "respelled",
     "ruled",
     "spelled_canonically",
     "unchanged",
