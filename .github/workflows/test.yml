@@ -53,6 +53,10 @@ jobs:
           - python-version: '3.14'
             dependency-set: 'optional'
             os: 'windows-latest'
+
+          - python-version: '3.13'
+            dependency-set: 'optional'
+            os: 'ubuntu-24.04-arm'
     runs-on: ${{ matrix.os }}
 
     steps:
