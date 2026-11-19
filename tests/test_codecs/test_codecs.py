@@ -17,12 +17,14 @@ from zarr.codecs import (
     GzipCodec,
     ShardingCodec,
     TransposeCodec,
+    ZstdCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import BasicSelection, decode_morton, morton_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.dtype import UInt8
 from zarr.errors import ZarrUserWarning
+from zarr.registry import register_codec
 from zarr.storage import MemoryStore, StorePath
 
 if TYPE_CHECKING:
@@ -484,3 +486,22 @@ def test_resolve_metadata_only_mutates_shape(codec: Codec) -> None:
     assert spec_out.dtype == spec_in.dtype, f"{name} changed dtype"
     assert spec_out.fill_value == spec_in.fill_value, f"{name} changed fill_value"
     assert spec_out.config == spec_in.config, f"{name} changed config"
+
+
+def test_uses_default_codec() -> None:
+    class MyZstdCodec(ZstdCodec):
+        pass
+
+    register_codec("zstd", MyZstdCodec)
+
+    with zarr.config.set(
+        {"codecs": {"zstd": f"{MyZstdCodec.__module__}.{MyZstdCodec.__qualname__}"}}
+    ):
+        a = zarr.create_array(
+            StorePath(zarr.storage.MemoryStore(), path="mycodec"),
+            shape=(10, 10),
+            chunks=(10, 10),
+            dtype="int32",
+        )
+        assert a.metadata.zarr_format == 3
+        assert isinstance(a.metadata.codecs[-1], MyZstdCodec)
