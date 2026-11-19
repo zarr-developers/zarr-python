@@ -822,6 +822,27 @@ class LatencyStore(WrapperStore[Store]):
         async for group in Store.get_ranges(self, key, byte_ranges, prototype=prototype, **kwargs):
             yield group
 
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int | None = None,
+        max_coalesced_bytes: int | None = None,
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        """Byte-range reads built on `self.get_sync`, so each fetch pays latency.
+
+        Routes through the coalescing `Store.get_ranges_sync` default instead of
+        the `WrapperStore` delegation, for the same reason as `get_ranges`.
+        """
+        kwargs: dict[str, int] = {}
+        if max_gap_bytes is not None:
+            kwargs["max_gap_bytes"] = max_gap_bytes
+        if max_coalesced_bytes is not None:
+            kwargs["max_coalesced_bytes"] = max_coalesced_bytes
+        return Store.get_ranges_sync(self, key, byte_ranges, prototype=prototype, **kwargs)
+
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
