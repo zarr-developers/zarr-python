@@ -45,6 +45,7 @@ Configuration options include the following:
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See [GPU support](gpu.md) for more.
 - Control request merging when reading multiple chunks from the same shard with `array.sharding_coalesce_max_gap_bytes` and `array.sharding_coalesce_max_bytes`. Reads of nearby chunks are coalesced into a single request to the store when separated by at most `sharding_coalesce_max_gap_bytes` and the resulting merged read is no larger than `sharding_coalesce_max_bytes`.
+- The most data that iterating over an array (`for row in array`) reads at a time, `array.iter_block_max_bytes` (default 128 MiB). Iteration reads one row of chunks (of shards, for a sharded array) along the first dimension at a time. A row of chunks larger than this is read in smaller blocks, and its chunks are then read once per block.
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
