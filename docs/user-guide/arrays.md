@@ -827,6 +827,39 @@ pairs are accepted:
 
 When writing, Zarr automatically compresses repeated values into RLE format.
 
+## Locating encoded chunks
+
+`Array.chunk_byte_range(coords)` returns the store-relative key, byte offset, and
+encoded length of a logical chunk. Coordinates are chunk indexes, not element
+indexes. An absent chunk returns `None`, including an absent inner chunk within
+a shard that contains other chunks.
+
+```python test="true"
+import zarr
+
+array = zarr.create_array(
+    store=zarr.storage.MemoryStore(),
+    shape=(8, 8), chunks=(2, 2), shards=(4, 4), dtype="int32",
+)
+array[:2, :2] = 7
+key, offset, length = array.chunk_byte_range((0, 0))
+assert key == "c/0/0"
+assert offset >= 0 and length > 0
+assert array.chunk_byte_range((0, 1)) is None
+```
+
+This supports regular unsharded arrays and one-level sharding with no outer
+codecs. Nested sharding and rectilinear grids are not supported. For sharded
+arrays the method reads and decodes the shard index, not the chunk payload.
+For unsharded arrays it uses the store's size lookup, which may read the entire
+object if the backend does not implement an efficient lookup.
+
+Each call reads its own index. The returned location describes encoded bytes,
+not uncompressed array bytes, and can become stale if the store changes. This
+is not a snapshot API or a payload-integrity check.
+
+The asynchronous equivalent is `await async_array.chunk_byte_range(coords)`.
+
 ## Features not yet ported to Zarr-Python 3
 
 The following Zarr-Python 2 features are not yet available in Zarr-Python 3.
