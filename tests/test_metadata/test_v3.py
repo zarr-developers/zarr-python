@@ -31,6 +31,7 @@ from zarr.errors import (
     MetadataValidationError,
     NodeTypeValidationError,
     UnknownCodecError,
+    ZarrDeprecationWarning,
 )
 
 if TYPE_CHECKING:
@@ -89,11 +90,30 @@ def test_parse_dimension_names_valid(data: Any) -> None:
         assert result == tuple(data)
 
 
-@pytest.mark.parametrize("data", [[1, 2, "a"], [None, 3]])
+@pytest.mark.parametrize("data", [[1, 2, "a"], [None, 3], "xy"])
 def test_parse_dimension_names_invalid(data: Any) -> None:
     """Iterables containing non-string elements are rejected."""
     with pytest.raises(TypeError, match="Expected either None or"):
         parse_dimension_names(data)
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"), [([], {}), ([["a", 1]], {"a": 1}), ({1: "x"}, {1: "x"})]
+)
+def test_parse_attributes_lenient_deprecated(data: Any, expected: dict[str, Any]) -> None:
+    """Non-mapping attributes still parse as before, but warn."""
+    from zarr.core.metadata.common import parse_attributes
+
+    with pytest.warns(ZarrDeprecationWarning, match="mapping with string keys"):
+        assert parse_attributes(data) == expected
+
+
+@pytest.mark.parametrize("data", [{}, {"a": 1}])
+def test_parse_attributes_valid(data: Any) -> None:
+    """Dicts with string keys are accepted without a warning."""
+    from zarr.core.metadata.common import parse_attributes
+
+    assert parse_attributes(data) == data
 
 
 def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:

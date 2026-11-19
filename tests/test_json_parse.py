@@ -85,3 +85,12 @@ class TestStorageTransformersRegression:
     def test_non_iterable_rejected(self) -> None:
         with pytest.raises(TypeError, match="Expected an iterable"):
             parse_storage_transformers(5)
+
+    def test_dict_rejected(self) -> None:
+        """A dict is iterable, but iterating it yields keys rather than
+        transformer objects, so it must be rejected rather than silently
+        swallowed."""
+        with pytest.raises(TypeError, match="Expected an iterable"):
+            parse_storage_transformers({})
+        with pytest.raises(TypeError, match="Expected an iterable"):
+            parse_storage_transformers({"name": "x"})
