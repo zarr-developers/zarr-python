@@ -55,6 +55,20 @@ DimensionNamesLike = Iterable[str | None] | None
 DimensionNames = DimensionNamesLike  # for backwards compatibility
 
 
+def validate_node_path(path: str, zarr_format: ZarrFormat) -> None:
+    """Validate node names in a normalized hierarchy path before creating them."""
+    if zarr_format != 3 or not path:
+        return
+
+    for name in path.split("/"):
+        if all(char == "." for char in name) or name.startswith("__") or name == ZARR_JSON:
+            raise ValueError(
+                f"Invalid Zarr format 3 node name {name!r} in path {path!r}. "
+                "Node names must not consist only of periods, start with '__', "
+                "or equal 'zarr.json'."
+            )
+
+
 class NamedConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
