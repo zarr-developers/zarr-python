@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final
 
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import (
+    NCZarrChar,
     NullTerminatedBytes,
     NullterminatedBytesJSON_V2,
     NullTerminatedBytesJSON_V3,
@@ -71,6 +72,7 @@ __all__ = [
     "Int16",
     "Int32",
     "Int64",
+    "NCZarrChar",
     "NullTerminatedBytes",
     "NullTerminatedBytesJSON_V3",
     "NullterminatedBytesJSON_V2",
@@ -118,8 +120,8 @@ STRING_DTYPE: Final = FixedLengthUTF32, VariableLengthUTF8
 TimeDType = DateTime64 | TimeDelta64
 TIME_DTYPE: Final = DateTime64, TimeDelta64
 
-BytesDType = RawBytes | NullTerminatedBytes | VariableLengthBytes
-BYTES_DTYPE: Final = RawBytes, NullTerminatedBytes, VariableLengthBytes
+BytesDType = RawBytes | NullTerminatedBytes | NCZarrChar | VariableLengthBytes
+BYTES_DTYPE: Final = RawBytes, NullTerminatedBytes, NCZarrChar, VariableLengthBytes
 
 AnyDType = (
     Bool
