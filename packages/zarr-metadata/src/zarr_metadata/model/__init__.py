@@ -42,7 +42,10 @@ store keys and undecodable bytes. The v3 constructors take the same
 scope and raises `MetadataValidationError` with every problem, so an
 invalid model is never built. `to_json` returns the document as written.
 `replace` reads new members in the model's own scope. `with_context` and
-`refined_in` read the document in another scope. `to_key_value` writes
+`refined_in` read the document in another scope. `canonicalize` returns
+the model with its document in its simplest equivalent spelling, the one
+that every equal model gives, apart from the order of the members of an
+object. `to_key_value` writes
 the model as it is, with a `JSONWriter`, or a mapping of its settings, deciding how
 the bytes are spelled (indentation, key order, ASCII escaping, trailing
 newline); the default is that of `json.dumps`. A v3 group reads its
