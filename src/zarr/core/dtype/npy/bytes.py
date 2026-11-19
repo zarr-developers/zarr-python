@@ -383,6 +383,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         if zarr_format == 2:
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
+            # UNREGISTERED: null-terminated-bytes
             v3_unstable_dtype_warning(self)
             return {
                 "name": self._zarr_v3_name,
@@ -781,6 +782,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         if zarr_format == 2:
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
+            # UNREGISTERED: raw-bytes
             v3_unstable_dtype_warning(self)
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
@@ -1045,6 +1047,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             True if the input is a valid representation of this class in Zarr V3, False otherwise.
         """
 
+        # UNREGISTERED: variable-length-bytes
         return data in (cls._zarr_v3_name, "bytes")
 
     @classmethod
@@ -1139,6 +1142,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         if zarr_format == 2:
             return {"name": "|O", "object_codec_id": self.object_codec_id}
         elif zarr_format == 3:
+            # UNREGISTERED: variable-length-bytes
             v3_unstable_dtype_warning(self)
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover

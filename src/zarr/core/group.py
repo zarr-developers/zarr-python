@@ -423,6 +423,7 @@ class GroupMetadata(Metadata):
                         # it's an array
                         d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
+                        # NON-CONFORMANT: v2-consolidated-group-entries
                         d[f"{k}/{ZGROUP_JSON}"] = {
                             "zarr_format": self.zarr_format,
                             "consolidated_metadata": {
@@ -471,6 +472,9 @@ class GroupMetadata(Metadata):
             raise NodeTypeValidationError(
                 f"Invalid value for 'node_type'. Expected 'group' or None. Got {node_type!r}."
             )
+        # NON-CONFORMANT: group-consolidated-metadata-null
+        # UNREGISTERED: v3-consolidated-metadata
+        # NON-CONFORMANT: v2-consolidated-group-entries
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
@@ -495,6 +499,7 @@ class GroupMetadata(Metadata):
         result = asdict(replace(self, consolidated_metadata=None))
         result.update(result.pop("extra_fields"))
         if self.consolidated_metadata is not None:
+            # UNREGISTERED: v3-consolidated-metadata
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
         else:
             # Leave consolidated metadata unset if it's None

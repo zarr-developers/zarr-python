@@ -278,6 +278,7 @@ class BaseFloat[
         if zarr_format == 2:
             if check_json_float_v2(data):
                 return self._cast_scalar_unchecked(float_from_json_v2(data))
+            # NON-CONFORMANT: numeric-fill-value-spellings
             elif check_json_floatish_str(data):
                 return self._cast_scalar_unchecked(float(data))
             else:
@@ -287,6 +288,7 @@ class BaseFloat[
         elif zarr_format == 3:
             if check_json_float_v3(data):
                 return self._cast_scalar_unchecked(float_from_json_v3(data))
+            # NON-CONFORMANT: numeric-fill-value-spellings
             elif check_json_floatish_str(data):
                 return self._cast_scalar_unchecked(float(data))
             else:

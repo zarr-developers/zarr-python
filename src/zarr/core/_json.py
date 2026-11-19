@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 def buffer_to_json(buffer: Buffer) -> JSON:
     """Parse the contents of a `Buffer` as a JSON value."""
     # json.loads is typed as returning Any; the result is by definition JSON.
+    # NON-CONFORMANT: json-nan-tokens
     return cast("JSON", json.loads(buffer.to_bytes()))
 
 
@@ -96,6 +97,7 @@ def json_to_buffer(
     """
     if prototype is None:
         prototype = default_buffer_prototype()
+    # NON-CONFORMANT: json-nan-tokens
     return prototype.buffer.from_bytes(json.dumps(obj, indent=indent, allow_nan=allow_nan).encode())
 
 

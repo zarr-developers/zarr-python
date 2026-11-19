@@ -192,6 +192,7 @@ class ArrayV2Metadata(Metadata):
         expected = {x.name for x in fields(cls)}
         expected |= {"dtype", "chunks"}
 
+        # NON-CONFORMANT: v2-empty-filters
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
         filters = _data.get("filters")
         if (

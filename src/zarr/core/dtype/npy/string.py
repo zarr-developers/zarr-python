@@ -405,6 +405,7 @@ class FixedLengthUTF32(
         return self.length * self.code_point_bytes
 
 
+# NON-CONFORMANT: string-fill-value-number
 def check_vlen_string_json_scalar(data: object) -> TypeGuard[int | str | float]:
     """
     Check if the input is a valid JSON scalar for a variable-length string.
