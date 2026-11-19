@@ -3831,6 +3831,9 @@ remote = [
 ]
 
 [package.dev-dependencies]
+conformance = [
+    { name = "zarr-metadata", extra = ["testing"] },
+]
 dev = [
     { name = "astroid" },
     { name = "botocore" },
@@ -3863,6 +3866,7 @@ dev = [
     { name = "towncrier" },
     { name = "universal-pathlib" },
     { name = "uv" },
+    { name = "zarr-metadata", extra = ["testing"] },
 ]
 docs = [
     { name = "astroid" },
@@ -3935,6 +3939,7 @@ requires-dist = [
 provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 
 [package.metadata.requires-dev]
+conformance = [{ name = "zarr-metadata", extras = ["testing"], specifier = "==0.8.0" }]
 dev = [
     { name = "astroid", specifier = "==4.3.4" },
     { name = "botocore" },
@@ -3967,6 +3972,7 @@ dev = [
     { name = "towncrier", specifier = "==26.9.0" },
     { name = "universal-pathlib" },
     { name = "uv", specifier = "==0.13.7" },
+    { name = "zarr-metadata", extras = ["testing"], specifier = "==0.8.0" },
 ]
 docs = [
     { name = "astroid", specifier = "==4.3.4" },
@@ -4016,4 +4022,22 @@ test = [
     { name = "pytest-reportlog", specifier = "==1.0.0" },
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "uv", specifier = "==0.13.7" },
+]
+
+[[package]]
+name = "zarr-metadata"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-types" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/e2/8e1f15171c0a21e9fda74e17ba6ed5820dc2ee10e500d2594ceec4eaf1ff/zarr_metadata-0.8.0.tar.gz", hash = "sha256:cd91855317118014f84c670a6f73c568cafdc781750e4f071651084a73b5c71f", size = 607925, upload-time = "2026-11-13T08:15:50.448Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/da/f7d2d72d44a6bd4f361d9e6b4f81166fed0254ff3856573ca2949c0eb150/zarr_metadata-0.8.0-py3-none-any.whl", hash = "sha256:6cb20d7c96665dbf5ba2eaebe49f9a2f416a73b8f8dbb2e0ed95ece67cf5a0b6", size = 336024, upload-time = "2026-11-13T08:15:49.029Z" },
+]
+
+[package.optional-dependencies]
+testing = [
+    { name = "hypothesis" },
 ]

@@ -123,6 +123,12 @@ test = [
     "pytest-codspeed==5.0.4",
     "uv==0.13.7",
 ]
+# tests/test_zarr_metadata_conformance.py draws array documents from zarr-metadata's
+# strategies. Its own group, because zarr-metadata needs a newer typing-extensions than
+# the `min_deps` env pins; the test skips where it is not installed.
+conformance = [
+    "zarr-metadata[testing]==0.8.0",
+]
 remote-tests = [
     {include-group = "test"},
     "fsspec>=2023.10.0",
@@ -156,6 +162,7 @@ docs = [
 ]
 dev = [
     {include-group = "test"},
+    {include-group = "conformance"},
     {include-group = "remote-tests"},
     {include-group = "docs"},
     "universal-pathlib",
@@ -188,7 +195,7 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 dependency-groups = ["dev"]
 
 [tool.hatch.envs.test]
-dependency-groups = ["test"]
+dependency-groups = ["test", "conformance"]
 
 [tool.hatch.envs.test.env-vars]
 

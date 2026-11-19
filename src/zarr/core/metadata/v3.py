@@ -604,8 +604,9 @@ class ArrayV3Metadata(Metadata):
             )
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
-        for codec in self.codecs:
-            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
+        # The codecs were validated in `__init__`, each against the spec the codecs
+        # before it leave. Validating them again here against the array's own data type
+        # would reject a codec that only ever sees the output of a dtype-changing codec.
 
     @property
     def ndim(self) -> int:
