@@ -39,6 +39,10 @@ jobs:
         os: ["ubuntu-latest"]
         include:
           - python-version: '3.12'
+            dependency-set: 'minimal'
+            os: 'ubuntu-24.04-arm'
+
+          - python-version: '3.12'
             dependency-set: 'optional'
             os: 'macos-latest'
 
