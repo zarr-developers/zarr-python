@@ -116,7 +116,7 @@ test = [
     "pytest-asyncio==1.4.1.post1",
     "pytest-cov==7.1.0",
     "numpydoc==1.11.0",
-    "hypothesis==6.170.14",
+    "hypothesis==6.170.15",
     "pytest-reportlog==1.0.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.3.1",
@@ -137,15 +137,15 @@ release = [
 ]
 docs = [
     # Doc building
-    "mkdocs-material[imaging]==9.8.0",
+    "mkdocs-material[imaging]==9.8.1",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.8",
     "mkdocstrings-python==2.0.10",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
-    "markdown-exec[ansi]==1.12.6",
+    "markdown-exec[ansi]==1.13.0",
     "griffe-inherited-docstrings==1.1.4",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
