@@ -38,6 +38,7 @@ from zarr.core.indexing import (
     oindex_set,
     replace_ellipsis,
 )
+from zarr.errors import VindexInvalidSelectionError
 from zarr.registry import get_ndbuffer_class
 from zarr.storage import MemoryStore, StorePath
 
@@ -426,6 +427,73 @@ def test_get_basic_selection_2d_rejects_list_in_tuple(store: StorePath) -> None:
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(5, 2))
     with pytest.raises(IndexError, match="unsupported selection item for basic indexing"):
         z.get_basic_selection((slice(None), [0, 1]))
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_partial_boolean_array_mask_matches_numpy(zarr_format: ZarrFormat) -> None:
+    """A Boolean array shorter than the array is a partial mask over the leading axes.
+
+    NumPy resolves such a mask with orthogonal (axis-wise) indexing, selects nothing
+    for a zero-length mask, and rejects any other length mismatch. A Boolean array
+    with the full shape stays a mask selection.
+    """
+    expected = np.arange(16, dtype="i4").reshape(4, 4)
+    arr = zarr.create_array({}, data=expected, chunks=(2, 2), zarr_format=zarr_format)
+    mask = np.array([True, False, True, False])
+    empty = np.array([], dtype=bool)
+    all_true = np.ones(4, dtype=bool)
+    all_false = np.zeros(4, dtype=bool)
+
+    assert_array_equal(arr[mask], expected[mask])
+    assert_array_equal(arr[all_true], expected[all_true])
+    assert_array_equal(arr[all_false], expected[all_false])
+    assert_array_equal(arr[empty], expected[empty])
+    assert_array_equal(arr[mask, :], expected[mask, :])
+    assert_array_equal(arr[:, mask], expected[:, mask])
+    assert_array_equal(arr[empty, :], expected[empty, :])
+
+    # A full-shape Boolean array is still a mask selection.
+    full_mask = np.eye(4, dtype=bool)
+    assert_array_equal(arr[full_mask], expected[full_mask])
+
+    # Orthogonal indexing agrees.
+    assert_array_equal(arr.oindex[mask], expected[mask])
+    assert_array_equal(arr.oindex[empty], expected[empty])
+
+    # 1-D and 3-D arrays.
+    expected_1d = np.arange(4, dtype="i4")
+    arr_1d = zarr.create_array({}, data=expected_1d, chunks=(2,), zarr_format=zarr_format)
+    assert_array_equal(arr_1d[mask], expected_1d[mask])
+    assert_array_equal(arr_1d[empty], expected_1d[empty])
+
+    expected_3d = np.arange(24, dtype="i4").reshape(2, 3, 4)
+    arr_3d = zarr.create_array({}, data=expected_3d, chunks=(1, 2, 2), zarr_format=zarr_format)
+    leading = np.array([True, False])
+    assert_array_equal(arr_3d[leading], expected_3d[leading])
+    assert_array_equal(arr_3d[empty], expected_3d[empty])
+
+    # A Boolean list keeps working.
+    assert_array_equal(arr[[True, False, True, False]], expected[[True, False, True, False]])
+
+    # A non-empty mask of the wrong length still raises, as it does in NumPy.
+    wrong_length = np.array([True, False, True])
+    with pytest.raises(IndexError):
+        arr[wrong_length]
+    with pytest.raises(IndexError):
+        expected[wrong_length]
+    with pytest.raises(IndexError):
+        arr.oindex[wrong_length]
+
+    # Writes through a partial mask select the same rows; an empty mask writes nothing.
+    arr[mask] = 99
+    expected[mask] = 99
+    assert_array_equal(arr[:], expected)
+    arr[empty] = 1
+    assert_array_equal(arr[:], expected)
+
+    # vindex keeps its own contract: coordinate arrays or a single full mask.
+    with pytest.raises(VindexInvalidSelectionError):
+        arr.vindex[mask]
 
 
 def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
