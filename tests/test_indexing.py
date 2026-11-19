@@ -428,6 +428,47 @@ def test_get_basic_selection_2d_rejects_list_in_tuple(store: StorePath) -> None:
         z.get_basic_selection((slice(None), [0, 1]))
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_empty_list_selection_matches_empty_array_and_numpy(zarr_format: ZarrFormat) -> None:
+    """An empty list is an empty integer selection, as it is in NumPy.
+
+    IntSequence, the declared selection type, includes list[int], so an empty list
+    has to behave like the equivalent empty integer array instead of being rejected
+    by basic indexing.
+    """
+    expected = np.arange(16, dtype="i4").reshape(4, 4)
+    arr = zarr.create_array({}, data=expected, chunks=(2, 2), zarr_format=zarr_format)
+    empty = np.array([], dtype=np.intp)
+
+    # Short form, orthogonal form and vectorized form all agree with NumPy.
+    assert_array_equal(arr[[]], expected[[]])
+    assert_array_equal(arr[[], :], expected[[], :])
+    assert_array_equal(arr[:, []], expected[:, []])
+    assert_array_equal(arr[[], []], expected[[], []])
+    assert_array_equal(arr[[], 0], expected[[], 0])
+    assert_array_equal(arr[0, []], expected[0, []])
+    assert_array_equal(arr.oindex[[]], expected[[]])
+    assert_array_equal(arr.oindex[[], :], expected[[], :])
+    # The equivalent empty array selection was already accepted.
+    assert_array_equal(arr[empty], expected[empty])
+    assert_array_equal(arr[empty, :], expected[empty, :])
+
+    # A bare list on a 1D array routes through vectorized indexing.
+    expected_1d = np.arange(4, dtype="i4")
+    arr_1d = zarr.create_array({}, data=expected_1d, chunks=(2,), zarr_format=zarr_format)
+    assert_array_equal(arr_1d[[]], expected_1d[[]])
+    assert_array_equal(arr_1d.vindex[[]], expected_1d[[]])
+
+    # Non-empty integer lists and boolean lists are unaffected.
+    assert_array_equal(arr[[0]], expected[[0]])
+    assert_array_equal(arr[[True, False, True, False]], expected[[True, False, True, False]])
+
+    # Writing through an empty selection is a no-op.
+    arr[[], :] = 1
+    arr[:, []] = 1
+    assert_array_equal(arr[:], expected)
+
+
 def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
     """Paired integer-list indexing falls back to vectorized (fancy) get and set via `__getitem__`/`__setitem__`."""
     z = zarr_array_from_numpy_array(store, np.zeros((20, 20)))
