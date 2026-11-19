@@ -9,7 +9,7 @@ type, pass through.
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NotRequired, cast
 
 import pytest
 from typing_extensions import TypedDict
@@ -73,7 +73,39 @@ ACME_SHUFFLE = ArrayArrayCodecDefinition(
 )
 """An array -> array codec that does not declare its output chunk."""
 
-CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(ZarrV3Context(codecs=[ACME_TILE, ACME_SHUFFLE]))
+
+class AcmePackConfiguration(TypedDict, closed=True):
+    mode: NotRequired[str]
+
+
+def _lower_mode(configuration: AcmePackConfiguration) -> AcmePackConfiguration:
+    """`mode` in lower case, since `acme.pack` reads it whatever its case."""
+    if "mode" not in configuration:
+        return configuration
+    return {"mode": configuration["mode"].lower()}
+
+
+def _mode_for_chunk(
+    configuration: AcmePackConfiguration, nested: Nested, chunk: Chunk
+) -> AcmePackConfiguration:
+    """Without a `mode` of `"auto"`, which is what `acme.pack` does without a `mode` for a data type the scope read."""
+    if isinstance(chunk.data_type, AcceptedDeclaration) and configuration.get("mode") == "auto":
+        return {}
+    return configuration
+
+
+ACME_PACK = ArrayBytesCodecDefinition(
+    name="acme.pack",
+    configuration=AcmePackConfiguration,
+    size="static",
+    canonical=_lower_mode,
+    chunk_canonical=_mode_for_chunk,
+)
+"""An array -> bytes codec with both a `canonical` and a `chunk_canonical`: the second simplifies what the first writes."""
+
+CONTEXT = CORE_AND_EXTENSIONS_CONTEXT.union(
+    ZarrV3Context(codecs=[ACME_TILE, ACME_SHUFFLE, ACME_PACK])
+)
 
 UINT8 = resolve("uint8", DataTypeDefinition, CONTEXT)[0]
 
@@ -573,6 +605,10 @@ def _shard(*codecs: JSONValue, index_codecs: tuple[JSONValue, ...] = (LITTLE, CR
     }
 
 
+def _pack(mode: str) -> JSONValue:
+    return {"name": "acme.pack", "configuration": {"mode": mode}}
+
+
 def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
     """Each codec of a pipeline that receives `chunk`, in its simplest spelling for the chunk it receives."""
     stages, problems = _read(codecs, chunk)
@@ -607,6 +643,11 @@ def _simplest(codecs: list[JSONValue], chunk: Chunk) -> list[JSONValue]:
         ("acme.t", [LITTLE], [LITTLE]),
         ("uint8", ["acme.shuffle", LITTLE], [{"name": "acme.shuffle"}, LITTLE]),
         ("uint8", ["acme.unclaimed", LITTLE], [{"name": "acme.unclaimed"}, LITTLE]),
+        # A codec is simplified for its chunk in the spelling its `canonical` gives it.
+        ("uint8", [_pack("auto")], [{"name": "acme.pack"}]),
+        ("uint8", [_pack("AUTO")], [{"name": "acme.pack"}]),
+        ("uint8", [_pack("FAST")], [_pack("fast")]),
+        ("acme.t", [_pack("AUTO")], [_pack("auto")]),
     ],
 )
 def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
@@ -622,11 +663,64 @@ def test_a_codec_is_written_in_the_simplest_spelling_for_the_chunk_it_receives(
 
 
 def test_a_codec_with_a_problem_for_its_chunk_is_not_simplified() -> None:
-    """A codec the chunk rules find a problem with is returned as it is, as is a codec the scope refused."""
+    """A codec the chunk rules find a problem with keeps its own configuration, and its `chunk_canonical` is not asked. A codec the scope refused is returned as it is."""
     # `bytes` does not encode values that vary in size, and `gzip` requires a level.
     stages, problems = _read([LITTLE, {"name": "gzip", "configuration": {}}], _of("string"))
     assert [problem.loc for problem in problems] == [(1, "configuration", "level"), (0,)]
     assert all(codec_for_chunk(stage) is stage.codec for stage in stages)
+    # A `chunk_canonical` that would drop the `endian` whatever the chunk is not asked either.
+    eager = _bytes_with(lambda configuration, nested, chunk: {})
+    stages, problems = read_pipeline([eager], _of("string"))
+    assert [problem.loc for problem in problems] == [(0,)]
+    assert codec_for_chunk(stages[0]) is eager
+
+
+class AcmeLeveledConfiguration(TypedDict, closed=True):
+    codecs: tuple[ZarrV3CodecDeclaration, ...]
+    level: NotRequired[int]
+
+
+def _leveled(chunk_canonical: object, *codecs: JSONValue) -> Stage:
+    """The stage, for `CHUNK`, of a codec `acme.leveled` that holds `codecs` and a `level` of 3, and whose `chunk_canonical` is `chunk_canonical`. It declares no pipelines, so the codecs it holds are left as they are."""
+    leveled = ArrayBytesCodecDefinition(
+        name="acme.leveled",
+        configuration=AcmeLeveledConfiguration,
+        size="dynamic",
+        chunk_canonical=chunk_canonical,  # pyright: ignore[reportArgumentType]
+    )
+    declaration = {"name": "acme.leveled", "configuration": {"codecs": list(codecs), "level": 3}}
+    codec = resolve(declaration, CodecDefinition, CONTEXT.union(ZarrV3Context(codecs=[leveled])))[0]
+    return read_pipeline([codec], CHUNK)[0][0]
+
+
+REFUSED_GZIP: JSONValue = {"name": "gzip", "configuration": {"level": 99}, "must_understand": False}
+"""A codec with problems of its own: no such level, and a codec may not waive `must_understand`. A configuration that holds it keeps it as written."""
+
+
+@pytest.mark.parametrize(
+    ("codecs", "chunk_canonical"),
+    [
+        # An array of the result may be a list.
+        (
+            [LITTLE, GZIP],
+            lambda configuration, nested, chunk: {"codecs": list(configuration["codecs"])},
+        ),
+        # A problem inside a nested declaration is the document's, not the result's.
+        (
+            [LITTLE, REFUSED_GZIP],
+            lambda configuration, nested, chunk: {"codecs": configuration["codecs"]},
+        ),
+    ],
+    ids=["an-array-as-a-list", "a-nested-declaration-with-a-problem"],
+)
+def test_a_chunk_canonical_that_simplifies_its_own_members_is_taken_at_its_word(
+    codecs: list[JSONValue], chunk_canonical: object
+) -> None:
+    """A result that drops the codec's own `level` and keeps each nested declaration as it was written passes every check, however it spells its arrays and whatever problems the nested declarations have."""
+    found = codec_for_chunk(_leveled(chunk_canonical, *codecs))
+    assert isinstance(found, AcceptedDeclaration)
+    assert json_text(cast("JSONValue", found.configuration)) == json_text({"codecs": codecs})
+    assert list(found.nested) == [("codecs", 0), ("codecs", 1)]
 
 
 def _bytes_with(chunk_canonical: object) -> ResolvedDeclaration[CodecDefinition[Any]]:
@@ -655,10 +749,41 @@ def test_error_a_chunk_canonical_the_chunk_rules_do_not_allow() -> None:
         codec_for_chunk(stage)
 
 
-def test_error_a_chunk_canonical_that_gives_something_else() -> None:
-    stage = _stage(_bytes_with(lambda configuration, nested, chunk: "little"), CHUNK)
+def test_error_a_chunk_canonical_with_something_left_to_simplify() -> None:
+    # Asked about `little` it gives `big`, and asked about `big` it gives `little`.
+    def chunk_canonical(
+        configuration: BytesCodecConfiguration, nested: Nested, chunk: Chunk
+    ) -> BytesCodecConfiguration:
+        return {"endian": "big" if configuration.get("endian") == "little" else "little"}
+
+    stage = _stage(_bytes_with(chunk_canonical), CHUNK)
+    with pytest.raises(
+        ValueError, match="'acme.bytes': its chunk_canonical gave .* not the simplest"
+    ):
+        codec_for_chunk(stage)
+
+
+@pytest.mark.parametrize(
+    "given", ["little", {"endian": {"little"}}, {1: "little"}], ids=["a-string", "a-set", "a-key"]
+)
+def test_error_a_chunk_canonical_that_gives_something_else(given: object) -> None:
+    """A result that is not an object of JSON is refused by name, before anything reads it."""
+    stage = _stage(_bytes_with(lambda configuration, nested, chunk: given), CHUNK)
     with pytest.raises(TypeError, match="'acme.bytes': its chunk_canonical gives a configuration"):
         codec_for_chunk(stage)
+
+
+def test_error_a_chunk_canonical_that_adds_a_nested_declaration() -> None:
+    # The codec it adds is one no scope read, so the result would hold a
+    # declaration that its `nested` does not.
+    def chunk_canonical(
+        configuration: AcmeLeveledConfiguration, nested: Nested, chunk: Chunk
+    ) -> AcmeLeveledConfiguration:
+        added = cast("ZarrV3CodecDeclaration", {"name": "crc32c"})
+        return {"codecs": (*configuration["codecs"], added)}
+
+    with pytest.raises(ValueError, match="expected no declaration that the codec did not hold"):
+        codec_for_chunk(_leveled(chunk_canonical, LITTLE, GZIP))
 
 
 def test_error_a_chunk_canonical_that_raises_says_whose_it_is() -> None:
