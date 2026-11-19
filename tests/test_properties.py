@@ -17,7 +17,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, event, given, settings
+from hypothesis import event, given, settings
 
 from tests.conftest import declared_chunk_data_sizes
 from zarr.abc.store import Store
@@ -199,12 +199,8 @@ async def test_oindex(data: st.DataObject) -> None:
     actual = await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
-    # sync set
-    for idxr, size in zip(zindexer, nparray.shape, strict=True):
-        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr % size).size:
-            # behaviour of setitem with repeated indices is not guaranteed in practice
-            # Negative and positive spellings of the same index are duplicates too.
-            assume(False)
+    # sync set: an index that repeats a position (in either spelling) keeps the last value
+    # written to it, as in NumPy, so repeated indices are drawn like any other
     # The sharding codec sees a coordinate selection (the GH4284 path) when the
     # chunk selection has more than one array axis or drops an integer axis.
     n_array_axes = sum(isinstance(idxr, np.ndarray) for idxr in zindexer)
@@ -248,19 +244,7 @@ async def test_vindex(data: st.DataObject) -> None:
     actual = await async_zarray.vindex.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 
-    # sync set
-    # Reads preserve the supplied indices; normalize negative indices explicitly when
-    # detecting repeated points rather than relying on a read to mutate the indexer.
-    points = np.stack(
-        [
-            (idxr % size).ravel()
-            for idxr, size in zip(np.broadcast_arrays(*indexer), nparray.shape, strict=True)
-        ],
-        axis=-1,
-    )
-    if len(np.unique(points, axis=0)) != len(points):
-        # behaviour of setitem with repeated coordinates is not guaranteed in practice
-        assume(False)
+    # sync set: a repeated point keeps the last value written to it, as in NumPy
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[indexer] = new_data
     zarray.vindex[indexer] = new_data

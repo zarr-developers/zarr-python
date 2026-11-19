@@ -5862,6 +5862,10 @@ async def _set_selection(
                 value = np.array(value, dtype=dtype, order="A")
     value = cast("NDArrayLike", value)
 
+    # A selection that names the same element more than once is reduced to one write per
+    # element, keeping the last value given for it, as sequential NumPy assignment does.
+    indexer, value = _collapse_repeated_indices(indexer, value, metadata.shape, chunk_grid)
+
     # We accept any ndarray like object from the user and convert it
     # to an NDBuffer (or subclass). From this point onwards, we only pass
     # Buffer and NDBuffer between components.
@@ -5906,6 +5910,44 @@ async def _set_selection(
         value_buffer,
         drop_axes=indexer.drop_axes,
     )
+
+
+def _collapse_repeated_indices(
+    indexer: Indexer, value: NDArrayLike, shape: tuple[int, ...], chunk_grid: ChunkGrid
+) -> tuple[Indexer, NDArrayLike]:
+    """Make a write with repeated indices touch each element once, keeping the last value.
+
+    Orthogonal and coordinate selections may name an element several times. Writing them
+    as given leaves the result to the order in which the chunk writes and the in-chunk
+    scatter happen, which differs between platforms and chunkings. Instead the selection
+    is reduced to the last occurrence of each element and the value array is reduced to
+    match, which is the result NumPy's sequential assignment gives.
+    """
+    if not isinstance(indexer, OrthogonalIndexer | CoordinateIndexer):
+        return indexer, value
+    collapsed = indexer.without_repeats(shape, chunk_grid)
+    if collapsed is None:
+        return indexer, value
+    new_indexer, kept = collapsed
+    if len(value.shape) == 0:
+        # a scalar is the same for every element, nothing to reduce
+        return new_indexer, value
+    if value.shape != indexer.shape:
+        try:
+            value = np.broadcast_to(value, indexer.shape)
+        except ValueError:
+            raise ValueError(
+                f"shape mismatch: value array of shape {value.shape} could not be broadcast "
+                f"to indexing result of shape {indexer.shape}"
+            ) from None
+    if isinstance(indexer, OrthogonalIndexer):
+        kept = cast("tuple[tuple[int, npt.NDArray[np.intp]], ...]", kept)
+        for axis, keep in kept:
+            value = np.take(value, keep, axis=axis)
+    else:
+        kept = cast("npt.NDArray[np.intp]", kept)
+        value = np.reshape(value, -1)[kept]
+    return new_indexer, value
 
 
 def _iter_chunk_coords_to_delete(

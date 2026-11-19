@@ -481,6 +481,10 @@ Mask indexing is conceptually the same as coordinate indexing, and is
 implemented internally via the same machinery. Both styles of indexing allow
 selecting arbitrary items from an array, also known as point selection.
 
+When a coordinate or orthogonal selection names the same item more than once
+in an assignment, the last value given for that item is the one stored, as
+with NumPy. The result does not depend on the chunking of the array.
+
 ### Orthogonal indexing
 
 Zarr arrays also support methods for orthogonal indexing, which allows
