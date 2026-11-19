@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 import zarr
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -99,3 +100,77 @@ async def test_create_array_short_hand_chunk_key_encoding(
     metadata_keys = {"zarr.json", ".zarray", ".zattrs"}
     keys = sorted([key async for key in store.list() if key not in metadata_keys])
     assert keys == chunk_keys
+
+
+@pytest.mark.parametrize("separator", ["/", "."])
+def test_default_encoding_round_trips_negative_coordinates(separator: str) -> None:
+    encoding = DefaultChunkKeyEncoding(separator=separator)  # type: ignore[arg-type]
+    key = encoding.encode_chunk_key((-3, 0, 12))
+    assert key == separator.join(["c", "-3", "0", "12"])
+    assert encoding.decode_chunk_key(key) == (-3, 0, 12)
+
+
+@pytest.mark.parametrize("chunk_key", ["c/-0", "c/1/-0", "c/-01"])
+def test_default_encoding_rejects_negative_zero(chunk_key: str) -> None:
+    """`-0` would name the same chunk as `0`, so it is not a valid key component."""
+    with pytest.raises(ValueError, match="Invalid chunk key component"):
+        DefaultChunkKeyEncoding(separator="/").decode_chunk_key(chunk_key)
+
+
+def test_v2_encoding_rejects_negative_zero() -> None:
+    with pytest.raises(ValueError, match="Invalid chunk key component"):
+        V2ChunkKeyEncoding(separator=".").decode_chunk_key("1.-0")
+
+
+@pytest.mark.parametrize(
+    ("inclusive_min", "chunk_grid", "first_chunk"),
+    [
+        ((0, 0), {"name": "regular", "configuration": {"chunk_shape": (4, 5)}}, (0, 0)),
+        ((-1, 3), {"name": "regular", "configuration": {"chunk_shape": (4, 5)}}, (-1, 0)),
+        (
+            (-1, 0),
+            {
+                "name": "offset",
+                "configuration": {
+                    "offset": (1, -1),
+                    "base_chunk_grid": {
+                        "name": "regular",
+                        "configuration": {"chunk_shape": (4, 5)},
+                    },
+                },
+            },
+            (-1, 0),
+        ),
+        (
+            (0, 0),
+            {
+                "name": "offset",
+                "configuration": {
+                    "offset": (6, -2),
+                    "base_chunk_grid": {
+                        "name": "regular",
+                        "configuration": {"chunk_shape": (4, 5)},
+                    },
+                },
+            },
+            (-2, 0),
+        ),
+    ],
+)
+def test_array_metadata_keys_the_first_chunk_by_its_grid_index(
+    inclusive_min: tuple[int, ...], chunk_grid: dict[str, Any], first_chunk: tuple[int, ...]
+) -> None:
+    """Chunk coordinates are zero-based on the array; the key names the grid index."""
+    from tests.test_metadata.conftest import minimal_metadata_dict_v3
+
+    document: dict[str, Any] = dict(minimal_metadata_dict_v3(chunk_grid=chunk_grid))
+    del document["shape"]
+    document["bounds"] = {
+        "inclusive_min": inclusive_min,
+        "exclusive_max": tuple(lo + 6 for lo in inclusive_min),
+    }
+    metadata = ArrayV3Metadata.from_dict(document)
+    assert metadata.first_chunk == first_chunk
+    assert metadata.encode_chunk_key((0, 0)) == "c/" + "/".join(map(str, first_chunk))
+    assert metadata.encode_chunk_key((1, 1)) == "c/" + "/".join(str(f + 1) for f in first_chunk)
+    assert metadata.decode_chunk_key(metadata.encode_chunk_key((1, 0))) == (1, 0)
