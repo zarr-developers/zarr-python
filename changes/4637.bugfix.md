@@ -1,0 +1,1 @@
+Reject inconsistent missing-entry sentinels and overflowing byte ranges in shard indices before reading or updating a shard. Partial writes now raise instead of rewriting shards with these malformed entries.

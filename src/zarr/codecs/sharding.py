@@ -213,6 +213,17 @@ class _ShardIndex(NamedTuple):
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
     offsets_and_lengths: npt.NDArray[np.uint64]
 
+    def validate(self) -> None:
+        """Reject inconsistent missing entries and ranges that overflow uint64."""
+        entries = self.offsets_and_lengths.reshape(-1, 2)
+        offsets, lengths = entries[:, 0], entries[:, 1]
+        missing = offsets == MAX_UINT_64
+        if np.any(missing != (lengths == MAX_UINT_64)):
+            raise ValueError("Invalid shard index: offset and length missing sentinels disagree.")
+        # Subtraction checks the range without overflowing unsigned addition.
+        if np.any((lengths > np.uint64(MAX_UINT_64) - offsets) & ~missing):
+            raise ValueError("Invalid shard index: offset plus length exceeds uint64.")
+
     def _localize_chunk(self, chunk_coords: tuple[int, ...]) -> tuple[int, ...]:
         return tuple(
             chunk_i % shard_i
@@ -700,7 +711,9 @@ class ShardingCodec(
         index_transform = self._get_index_chunk_transform(chunks_per_shard)
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         index_array = index_transform.decode_chunk(index_bytes, index_spec)
-        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
+        index = _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
+        index.validate()
+        return index
 
     def _encode_shard_index_sync(self, index: _ShardIndex) -> Buffer:
         """Encode shard index synchronously using ChunkTransform."""
@@ -1588,7 +1601,9 @@ class ShardingCodec(
         )
         if index_array is None:
             raise RuntimeError("Decoding the shard index produced no array.")
-        return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
+        index = _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
+        index.validate()
+        return index
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         # Pure compute: delegate to the sync implementation, with the same
