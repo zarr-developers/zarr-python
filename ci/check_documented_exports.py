@@ -20,9 +20,12 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+from functools import cache
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
+
+import griffe
 
 import zarr
 
@@ -31,6 +34,7 @@ if TYPE_CHECKING:
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 DEFAULT_API_DOCS_ROOT = REPO_ROOT / "docs" / "api"
+SRC_ROOT = REPO_ROOT / "src"
 
 # Names in zarr.__all__ that are intentionally absent from the API reference.
 # Keep this list short and justified -- it is the only escape hatch from the guard.
@@ -88,18 +92,35 @@ def iter_directives(text: str) -> Iterator[tuple[str, bool]]:
         yield match.group("target"), members_enabled
 
 
-def module_member_ids(module: ModuleType) -> Iterator[int]:
-    """Yield the id() of each public member a module directive renders.
+# mkdocstrings-python's default `filters`: hide names with a single leading underscore.
+PRIVATE_NAME_RE = re.compile(r"^_[^_]")
 
-    The rendered members are the module's ``__all__`` if defined, else its public
-    (non-underscore) attributes."""
-    member_names = getattr(module, "__all__", None) or [
-        name for name in dir(module) if not name.startswith("_")
-    ]
-    for name in member_names:
-        member = getattr(module, name, None)
-        if member is not None:
-            yield id(member)
+
+@cache
+def static_module(name: str) -> griffe.Module:
+    """Load a module the way mkdocstrings sees it: statically, from the source tree."""
+    loader = griffe.GriffeLoader(search_paths=[str(SRC_ROOT)])
+    root = loader.load(name.partition(".")[0])
+    module = root if name == root.path else root[name.partition(".")[2]]
+    if not isinstance(module, griffe.Module):
+        raise TypeError(f"{name} is not a module")
+    return module
+
+
+def module_member_ids(module: ModuleType) -> Iterator[int]:
+    """Yield the id() of each member a module directive renders.
+
+    This mirrors mkdocstrings-python's member selection under our configuration: a
+    member renders when its name passes the default filter and it is either defined in
+    the module or imported and listed in the module's ``__all__``. Imports that are not
+    in ``__all__`` do not render, and modules never render as members, even when listed
+    in ``__all__``; they get their own pages."""
+    for name, member in static_module(module.__name__).members.items():
+        if PRIVATE_NAME_RE.match(name) or (member.is_imported and not member.is_public):
+            continue
+        obj = getattr(module, name, None)
+        if obj is not None and not isinstance(obj, ModuleType):
+            yield id(obj)
 
 
 def documented_object_ids(api_docs_root: Path) -> set[int]:
