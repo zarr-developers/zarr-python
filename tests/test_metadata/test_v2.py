@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import json
+import pickle
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+import zarr.core.metadata as metadata_exports
+import zarr.core.metadata.v2 as metadata_v2
 import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype.npy.float import Float32, Float64
 from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
-from zarr.core.metadata import ArrayV2Metadata
+from zarr.core.metadata import ArrayMetadata, ArrayMetadataV2, ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format
 from zarr.errors import ZarrUserWarning
 
@@ -24,6 +27,31 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
     from zarr.core.dtype.common import DTypeName_V2
+
+
+def test_array_metadata_v2_names_are_compatible() -> None:
+    assert metadata_v2.ArrayMetadataV2 is ArrayMetadataV2
+    assert metadata_v2.ArrayV2Metadata is ArrayV2Metadata is ArrayMetadataV2
+    assert "ArrayMetadataV2" in metadata_exports.__all__
+    assert "ArrayV2Metadata" in metadata_exports.__all__
+    assert ArrayMetadataV2.__name__ == "ArrayMetadataV2"
+
+    metadata = ArrayMetadataV2(shape=(8,), chunks=(4,), dtype=Float64(), fill_value=0.0, order="C")
+    assert type(metadata) is ArrayMetadataV2
+    assert isinstance(metadata, (ArrayV2Metadata, ArrayMetadata))
+    match metadata:
+        case ArrayV2Metadata():
+            pass
+        case _:
+            pytest.fail("Legacy V2 class pattern no longer matches")
+
+    restored = ArrayV2Metadata.from_dict(metadata.to_dict())
+    assert type(restored) is ArrayMetadataV2
+    assert restored == metadata
+    assert pickle.loads(pickle.dumps(metadata)) == metadata
+    assert pickle.loads(b"czarr.core.metadata.v2\nArrayV2Metadata\n.") is ArrayMetadataV2
+    assert metadata.update_shape((12,)).shape == (12,)
+    assert metadata.update_attributes({"key": "value"}).attributes == {"key": "value"}
 
 
 def test_parse_zarr_format_valid() -> None:
