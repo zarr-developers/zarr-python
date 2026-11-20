@@ -242,19 +242,51 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         (store.root / "foo/bar").mkdir(parents=True)
         assert await store.is_empty("")
 
-    def test_delete_sync_directory(self, store: LocalStore) -> None:
-        """`delete_sync` on a key that is a directory must remove the whole tree.
+    @pytest.mark.parametrize("key", ["foo", "foo/", "foo/bar", ""])
+    @pytest.mark.parametrize("synchronous", [False, True])
+    async def test_delete_directory_keeps_keys(
+        self, store: LocalStore, key: str, synchronous: bool
+    ) -> None:
+        """Directories are not object keys; deleting one must preserve its children."""
+        values = {"foo/bar/baz": b"nested", "foobar/other": b"sibling", "file": b"file"}
+        for name, value in values.items():
+            await store.set(name, self.buffer_cls.from_bytes(value))
+        assert not await store.exists(key)
+        if synchronous:
+            store.delete_sync(key)
+        else:
+            await store.delete(key)
+        assert sorted(await _collect(store.list())) == sorted(values)
+        for name, value in values.items():
+            assert_bytes_equal(await store.get(name), self.buffer_cls.from_bytes(value))
 
-        Mirrors the async `delete_dir` behavior: deleting `"foo"` where
-        `"foo"` is a directory containing further nested paths should remove
-        everything under it, not just fail or delete a single file.
-        """
-        (store.root / "foo" / "bar").mkdir(parents=True)
-        (store.root / "foo" / "bar" / "baz").write_bytes(b"data")
+    @pytest.mark.parametrize("synchronous", [False, True])
+    async def test_delete_file_keeps_siblings(self, store: LocalStore, synchronous: bool) -> None:
+        value = self.buffer_cls.from_bytes(b"data")
+        await store.set("foo/a", value)
+        await store.set("foo/b", value)
+        for key in ("foo/a", "foo/a", "missing"):
+            if synchronous:
+                store.delete_sync(key)
+            else:
+                await store.delete(key)
+        assert sorted(await _collect(store.list())) == ["foo/b"]
+        assert_bytes_equal(await store.get("foo/b"), value)
+        await store.delete_dir("foo")
+        assert await _collect(store.list()) == []
 
-        store.delete_sync("foo")
-
-        assert not (store.root / "foo").exists()
+    @pytest.mark.parametrize("synchronous", [False, True])
+    async def test_delete_directory_read_only(self, store: LocalStore, synchronous: bool) -> None:
+        value = self.buffer_cls.from_bytes(b"data")
+        await store.set("foo/a", value)
+        read_only = store.with_read_only(True)
+        if synchronous:
+            with pytest.raises(ValueError, match="read-only"):
+                read_only.delete_sync("foo")
+        else:
+            with pytest.raises(ValueError, match="read-only"):
+                await read_only.delete("foo")
+        assert_bytes_equal(await store.get("foo/a"), value)
 
     def test_creates_new_directory(self, tmp_path: pathlib.Path) -> None:
         target = tmp_path.joinpath("a", "b", "c")
