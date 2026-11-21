@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import re
+import threading
 import warnings
 from collections import defaultdict
+from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
-from zarr.errors import ZarrUserWarning
+from zarr.errors import UnknownCodecError, URLPipelineError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -21,9 +24,10 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
+    from zarr.abc.url_pipeline import URLPipelineAdapter
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ZarrFormat
 
 __all__ = [
     "Registry",
@@ -37,7 +41,202 @@ __all__ = [
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
+    "register_url_adapter",
 ]
+
+_ZARR_CODEC_DOCS_URL = "https://zarr.readthedocs.io/en/stable/user-guide/extending/#custom-codecs"
+_NUMCODECS_CODEC_DOCS_URL = (
+    "https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec"
+)
+
+# Codecs zarr-python does not implement, mapped to the names of Python packages that do.
+# These tables exist purely to make the "no implementation for this codec" error actionable;
+# nothing here affects which codecs zarr can actually read or write. Values are what you would
+# pass to `pip install`. Only add an entry you have verified against the package's declared
+# entry points, and only for a package that is actually published.
+#
+# The two Zarr formats resolve codecs through different registries, so they get different
+# tables: a name can mean one thing as a Zarr format 3 codec name and another as a Zarr
+# format 2 codec id. For example, `imagecodecs_*` names are registered by
+# `imagecodecs-zarr` and `virtual-tiff` under `zarr.codecs`, and by
+# `imagecodecs-numcodecs` under `numcodecs.codecs`.
+
+# Zarr format 3 codec names (entry point group "zarr.codecs").
+_CODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "gribberish": ("gribberish",),
+    # Verified against imagecodecs-zarr 2026.8.16's published zarr.codecs entry points:
+    # https://pypi.org/project/imagecodecs-zarr/2026.8.16/
+    # virtual-tiff also provides 13 of these names, plus jpeg8 and jetraw.
+    # Keep exact names: neither package provides every possible imagecodecs_* name.
+    "imagecodecs_aec": ("imagecodecs-zarr",),
+    "imagecodecs_apng": ("imagecodecs-zarr",),
+    "imagecodecs_avif": ("imagecodecs-zarr",),
+    "imagecodecs_b2nd": ("imagecodecs-zarr",),
+    "imagecodecs_bfloat16": ("imagecodecs-zarr",),
+    "imagecodecs_bitorder": ("imagecodecs-zarr",),
+    "imagecodecs_bitshuffle": ("imagecodecs-zarr",),
+    "imagecodecs_blosc": ("imagecodecs-zarr",),
+    "imagecodecs_blosc2": ("imagecodecs-zarr",),
+    "imagecodecs_bmp": ("imagecodecs-zarr",),
+    "imagecodecs_brotli": ("imagecodecs-zarr",),
+    "imagecodecs_byteshuffle": ("imagecodecs-zarr",),
+    "imagecodecs_bz2": ("imagecodecs-zarr",),
+    "imagecodecs_ccittfax3": ("imagecodecs-zarr",),
+    "imagecodecs_ccittfax4": ("imagecodecs-zarr",),
+    "imagecodecs_ccittrle": ("imagecodecs-zarr",),
+    "imagecodecs_checksum": ("imagecodecs-zarr",),
+    "imagecodecs_chunked": ("imagecodecs-zarr",),
+    "imagecodecs_cms": ("imagecodecs-zarr",),
+    "imagecodecs_dds": ("imagecodecs-zarr",),
+    "imagecodecs_deflate": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_delta": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_dicomrle": ("imagecodecs-zarr",),
+    "imagecodecs_eer": ("imagecodecs-zarr",),
+    "imagecodecs_exr": ("imagecodecs-zarr",),
+    "imagecodecs_float24": ("imagecodecs-zarr",),
+    "imagecodecs_floatpred": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_gif": ("imagecodecs-zarr",),
+    "imagecodecs_hcomp": ("imagecodecs-zarr",),
+    "imagecodecs_heif": ("imagecodecs-zarr",),
+    "imagecodecs_htj2k": ("imagecodecs-zarr",),
+    "imagecodecs_isal": ("imagecodecs-zarr",),
+    "imagecodecs_jetraw": ("virtual-tiff",),
+    "imagecodecs_jpeg": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_jpeg2k": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_jpeg8": ("virtual-tiff",),
+    "imagecodecs_jpegls": ("imagecodecs-zarr",),
+    "imagecodecs_jpegxl": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_jpegxr": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_jpegxs": ("imagecodecs-zarr",),
+    "imagecodecs_lerc": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_ljpeg": ("imagecodecs-zarr",),
+    "imagecodecs_lz4": ("imagecodecs-zarr",),
+    "imagecodecs_lz4f": ("imagecodecs-zarr",),
+    "imagecodecs_lz4h5": ("imagecodecs-zarr",),
+    "imagecodecs_lzf": ("imagecodecs-zarr",),
+    "imagecodecs_lzfse": ("imagecodecs-zarr",),
+    "imagecodecs_lzham": ("imagecodecs-zarr",),
+    "imagecodecs_lzma": ("imagecodecs-zarr",),
+    "imagecodecs_lzo": ("imagecodecs-zarr",),
+    "imagecodecs_lzw": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_meshopt": ("imagecodecs-zarr",),
+    "imagecodecs_openzl": ("imagecodecs-zarr",),
+    "imagecodecs_packbits": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_packints": ("imagecodecs-zarr",),
+    "imagecodecs_pcodec": ("imagecodecs-zarr",),
+    "imagecodecs_pcx": ("imagecodecs-zarr",),
+    "imagecodecs_pglz": ("imagecodecs-zarr",),
+    "imagecodecs_pixarlog": ("imagecodecs-zarr",),
+    "imagecodecs_plio": ("imagecodecs-zarr",),
+    "imagecodecs_png": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_qoi": ("imagecodecs-zarr",),
+    "imagecodecs_quantize": ("imagecodecs-zarr",),
+    "imagecodecs_rcomp": ("imagecodecs-zarr",),
+    "imagecodecs_rgbe": ("imagecodecs-zarr",),
+    "imagecodecs_snappy": ("imagecodecs-zarr",),
+    "imagecodecs_sperr": ("imagecodecs-zarr",),
+    "imagecodecs_spng": ("imagecodecs-zarr",),
+    "imagecodecs_sz3": ("imagecodecs-zarr",),
+    "imagecodecs_szip": ("imagecodecs-zarr",),
+    "imagecodecs_tga": ("imagecodecs-zarr",),
+    "imagecodecs_tiff": ("imagecodecs-zarr",),
+    "imagecodecs_ultrahdr": ("imagecodecs-zarr",),
+    "imagecodecs_wavpack": ("imagecodecs-zarr",),
+    "imagecodecs_webp": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_wic": ("imagecodecs-zarr",),
+    "imagecodecs_xor": ("imagecodecs-zarr",),
+    "imagecodecs_zfp": ("imagecodecs-zarr",),
+    "imagecodecs_zlib": ("imagecodecs-zarr",),
+    "imagecodecs_zlibng": ("imagecodecs-zarr",),
+    "imagecodecs_zopfli": ("imagecodecs-zarr",),
+    "imagecodecs_zstd": ("imagecodecs-zarr", "virtual-tiff"),
+    "imagecodecs_zstd1": ("imagecodecs-zarr",),
+    "n5_default": ("zarr-n5",),
+}
+
+# As `_CODEC_PACKAGES`, but each key is matched against the start of the codec name. Packages
+# that provide many codecs namespace them behind a shared prefix, so one entry covers them all.
+_CODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "any-numcodecs.": ("zarr-any-numcodecs",),
+    "omfiles.": ("omfiles",),
+    "virtual_tiff.": ("virtual-tiff",),
+}
+
+# Zarr format 2 codec ids (entry point group "numcodecs.codecs"). `numcodecs` itself gates
+# several of its own codecs behind optional dependencies, so the package to install for those
+# is an extra of numcodecs rather than a third-party distribution.
+_NUMCODEC_PACKAGES: dict[str, tuple[str, ...]] = {
+    "FITSAscii": ("kerchunk",),
+    "FITSVarBintable": ("kerchunk",),
+    "crc32c": ("numcodecs[crc32c]",),
+    "fill_hdf_strings": ("kerchunk",),
+    "grib": ("kerchunk",),
+    "msgpack2": ("numcodecs[msgpack]",),
+    "pcodec": ("numcodecs[pcodec]",),
+    "rawgrib": ("gribscan",),
+    "record_member": ("kerchunk",),
+    "vc-delta3d": ("vc-delta3d",),
+    "wavpack": ("wavpack-numcodecs",),
+    "zfpy": ("numcodecs[zfpy]",),
+}
+
+# As `_NUMCODEC_PACKAGES`, but matched against the start of the codec id.
+_NUMCODEC_PACKAGE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "gribscan.": ("gribscan",),
+    "imagecodecs_": ("imagecodecs-numcodecs",),
+}
+
+
+def _packages_for_codec(name: str, *, zarr_format: ZarrFormat) -> tuple[str, ...]:
+    """
+    Names of Python packages known to provide an implementation of the codec ``name``.
+
+    Returns an empty tuple if we don't know of any.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in.
+    """
+    if zarr_format == 2:
+        exact, prefixes = _NUMCODEC_PACKAGES, _NUMCODEC_PACKAGE_PREFIXES
+    else:
+        exact, prefixes = _CODEC_PACKAGES, _CODEC_PACKAGE_PREFIXES
+    if name in exact:
+        return exact[name]
+    for prefix, packages in prefixes.items():
+        if name.startswith(prefix):
+            return packages
+    return ()
+
+
+def _missing_codec_message(name: str, *, zarr_format: ZarrFormat) -> str:
+    """
+    Build the error message raised when no implementation of the codec ``name`` is available.
+
+    Parameters
+    ----------
+    name : str
+        The codec name (Zarr format 3) or codec id (Zarr format 2) we failed to resolve.
+    zarr_format : ZarrFormat
+        Which registry the codec was looked up in. Zarr format 2 codecs are resolved through
+        numcodecs, so that case points at the numcodecs registry rather than at zarr's.
+    """
+    if zarr_format == 2:
+        docs_url, registry = _NUMCODECS_CODEC_DOCS_URL, "numcodecs"
+    else:
+        docs_url, registry = _ZARR_CODEC_DOCS_URL, "zarr"
+    msg = (
+        f"An implementation for codec {name!r} is not available. Register one explicitly "
+        f"using the codec registry (see {docs_url}), or install a Python package that "
+        f"registers a codec implementation with {registry}."
+    )
+    packages = _packages_for_codec(name, zarr_format=zarr_format)
+    if packages:
+        msg += f" Known packages supporting this codec: {', '.join(packages)}."
+    return msg
 
 
 class Registry[T](dict[str, type[T]]):
@@ -62,6 +261,7 @@ _pipeline_registry: Registry[CodecPipeline] = Registry()
 _buffer_registry: Registry[Buffer] = Registry()
 _ndbuffer_registry: Registry[NDBuffer] = Registry()
 _chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
+_url_adapter_registry: Registry[URLPipelineAdapter] = Registry()
 
 """
 The registry module is responsible for managing implementations of codecs,
@@ -108,6 +308,17 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         entry_points.select(group="zarr", name="chunk_key_encoding")
     )
 
+    for entry_point in entry_points.select(group="zarr.url_adapters"):
+        if _is_adapter_scheme(entry_point.name):
+            _url_adapter_registry.lazy_load_list.append(entry_point)
+        else:
+            warnings.warn(
+                f"ignoring the 'zarr.url_adapters' entry point {entry_point.name!r} "
+                f"({entry_point.value!r}): not a valid adapter scheme",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
+
     _pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     _pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -124,6 +335,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         _buffer_registry,
         _ndbuffer_registry,
         _chunk_key_encoding_registry,
+        _url_adapter_registry,
     ]
 
 
@@ -168,7 +380,7 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 
     codec_classes = _codec_registries[key]
     if not codec_classes:
-        raise KeyError(key)
+        raise UnknownCodecError(_missing_codec_message(key, zarr_format=3))
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
@@ -179,11 +391,17 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
             category=ZarrUserWarning,
         )
         return list(codec_classes.values())[-1]
-    selected_codec_cls = codec_classes[config_entry]
-
-    if selected_codec_cls:
-        return selected_codec_cls
-    raise KeyError(key)
+    selected_codec_cls = codec_classes.get(config_entry)
+    if selected_codec_cls is None:
+        # Not UnknownCodecError: the codec is known, the implementation named in the config is
+        # not registered. That is a configuration problem, which is what the sibling getters in
+        # this module raise BadConfigError for.
+        raise BadConfigError(
+            f"Codec {key!r} is configured to use the implementation {config_entry!r}, which is "
+            f"not registered. Registered implementations of this codec: "
+            f"{sorted(codec_classes)}."
+        )
+    return selected_codec_cls
 
 
 def _resolve_codec(data: dict[str, JSON]) -> Codec:
@@ -303,6 +521,140 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
     return _chunk_key_encoding_registry[key]
 
 
+# An RFC 3986 URL scheme (ASCII only), e.g. "s3" or "foo.myscheme".
+# Use with fullmatch.
+_URL_SCHEME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*")
+
+# Schemes zarr-python handles itself: the native `file:` and `memory:` roots
+# and the `zarr:`/`zarr2:`/`zarr3:` format segments.
+_RESERVED_URL_SCHEMES = frozenset({"file", "memory", "zarr", "zarr2", "zarr3"})
+
+
+def _is_adapter_scheme(scheme: str) -> bool:
+    return bool(_URL_SCHEME_RE.fullmatch(scheme)) and scheme.lower() not in _RESERVED_URL_SCHEMES
+
+
+def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
+    """
+    Register a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
+    class for a URL scheme (case-insensitive).
+
+    Registering a scheme that already has an adapter replaces it and emits a
+    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning].
+
+    Raises
+    ------
+    ValueError
+        If `scheme` is not a valid URL scheme, or is one zarr-python handles
+        itself (`file`, `memory`, `zarr`, `zarr2`, `zarr3`).
+    """
+    if not _URL_SCHEME_RE.fullmatch(scheme):
+        raise ValueError(f"{scheme!r} is not a valid URL scheme")
+    if not _is_adapter_scheme(scheme):
+        raise ValueError(
+            f"the URL scheme {scheme!r} is handled by zarr-python itself and cannot be "
+            "given to a URL pipeline adapter"
+        )
+    key = scheme.lower()
+    previous = _url_adapter_registry.get(key)
+    if previous is not None and previous is not cls:
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is being replaced: "
+            f"{fully_qualified_name(previous)} -> {fully_qualified_name(cls)}",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+    _url_adapter_registry.register(cls, key)
+
+
+def _list_url_adapter_schemes() -> set[str]:
+    """
+    The set of URL schemes with a registered URL pipeline adapter.
+
+    Includes adapters advertised via not-yet-loaded `zarr.url_adapters`
+    entry points; consulting this does not import any adapter code.
+    Schemes are case-insensitive and reported lowercased.
+    """
+    schemes = set(_url_adapter_registry) | {
+        e.name.lower() for e in _url_adapter_registry.lazy_load_list
+    }
+    return {scheme for scheme in schemes if _is_adapter_scheme(scheme)}
+
+
+_url_adapter_lock = threading.Lock()
+
+
+def _get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
+    """
+    Get the URL pipeline adapter class registered for `scheme`.
+
+    Loads pending `zarr.url_adapters` entry points for this scheme only, so
+    resolving one scheme never imports other providers' packages. When the
+    scheme is already registered (e.g. with `register_url_adapter`), a
+    same-named entry point is discarded with a
+    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning]; when several entry
+    points share the name, the first one wins and a warning names the rest.
+
+    Raises
+    ------
+    URLPipelineError
+        If no adapter is registered for the scheme, or if the entry point
+        providing it fails to import.
+    """
+    key = scheme.lower()
+    if not _is_adapter_scheme(key):
+        raise URLPipelineError(
+            f"'{key}:' is handled by zarr-python itself and cannot be an adapter segment"
+        )
+    # Claim this scheme's entry points under the lock so concurrent loads of
+    # different schemes can't clobber the list; import outside it, since an
+    # import may be slow or itself resolve URL adapters.
+    with _url_adapter_lock:
+        registered = _url_adapter_registry.get(key)
+        pending = [e for e in _url_adapter_registry.lazy_load_list if e.name.lower() == key]
+        if pending:
+            _url_adapter_registry.lazy_load_list[:] = [
+                e for e in _url_adapter_registry.lazy_load_list if e.name.lower() != key
+            ]
+    if pending and registered is not None:
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is already registered "
+            f"({fully_qualified_name(registered)}); ignoring entry point(s) "
+            f"{[e.value for e in pending]} of the same name",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+    elif pending:
+        entry_point, *duplicates = pending
+        if duplicates:
+            warnings.warn(
+                f"multiple 'zarr.url_adapters' entry points are named {entry_point.name!r}; "
+                f"using {entry_point.value!r} and ignoring {[e.value for e in duplicates]}",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
+        try:
+            cls = entry_point.load()
+        except Exception as exc:
+            # leave the entry points discoverable so a transient import
+            # failure is not permanent
+            with _url_adapter_lock:
+                _url_adapter_registry.lazy_load_list.extend(pending)
+            raise URLPipelineError(
+                f"the 'zarr.url_adapters' entry point {entry_point.name!r} could not be loaded"
+            ) from exc
+        with _url_adapter_lock:
+            if key not in _url_adapter_registry:
+                _url_adapter_registry.register(cls, qualname=key)
+    try:
+        return _url_adapter_registry[key]
+    except KeyError:
+        raise URLPipelineError(
+            f"no URL pipeline adapter is registered for scheme {scheme!r}. Adapters are "
+            "provided by packages via the 'zarr.url_adapters' entry-point group."
+        ) from None
+
+
 _collect_entrypoints()
 
 
@@ -321,6 +673,13 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     -------
     codec : Numcodec
 
+    Raises
+    ------
+    UnknownCodecError
+        If ``data`` carries a string ``"id"`` that is not registered with numcodecs. Any other
+        failure, including a registered codec rejecting its configuration and a ``data`` that is
+        not a mapping, propagates from numcodecs unchanged.
+
     Examples
     --------
     ```python
@@ -331,6 +690,19 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
     ```
     """
 
-    from numcodecs.registry import get_codec
+    from numcodecs.registry import codec_registry, entries, get_codec
 
+    # Check whether numcodecs can resolve the id *before* handing off, rather than catching what
+    # `get_codec` raises. Catching cannot tell "this id is unregistered" from "a registered codec
+    # rejected its configuration" or from "a wrapper codec failed to resolve an inner codec", and
+    # relabelling either of those with this id would attach a package hint that is simply wrong.
+    # This mirrors the two lookups `get_codec` performs (it then tests the result for
+    # truthiness rather than membership, which only differs for a falsy registry value).
+    # Widened to `object` deliberately: `data` is annotated as a TypedDict, but this is a public
+    # function and callers pass whatever they like. numcodecs coerces with `dict(config)` and
+    # raises for anything that is not a mapping, which is the behaviour to preserve.
+    raw: object = data
+    codec_id = raw.get("id") if isinstance(raw, Mapping) else None
+    if isinstance(codec_id, str) and codec_id not in codec_registry and codec_id not in entries:
+        raise UnknownCodecError(_missing_codec_message(codec_id, zarr_format=2))
     return get_codec(data)  # type: ignore[no-any-return]

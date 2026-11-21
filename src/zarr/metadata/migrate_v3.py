@@ -29,6 +29,7 @@ from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
+from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class
 from zarr.storage import StorePath
 from zarr.types import AnyArray
@@ -208,12 +209,18 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
         bytes_bytes_codec = _convert_compressor(metadata_v2.compressor, metadata_v2.dtype)
         codecs.append(bytes_bytes_codec)
 
+    # Zarr v2 allows a null fill value, Zarr v3 does not. Use the default that is
+    # already used when reading chunks of the v2 array that were never written.
+    fill_value: object = metadata_v2.fill_value
+    if fill_value is None:
+        fill_value = metadata_v2.dtype.default_scalar()
+
     return ArrayV3Metadata(
         shape=metadata_v2.shape,
         data_type=metadata_v2.dtype,
         chunk_grid=RegularChunkGridMetadata(chunk_shape=metadata_v2.chunks),
         chunk_key_encoding=chunk_key_encoding,
-        fill_value=metadata_v2.fill_value,
+        fill_value=fill_value,
         codecs=codecs,
         attributes=metadata_v2.attributes,
         dimension_names=None,
@@ -235,11 +242,16 @@ def _convert_compressor(
 ) -> BytesBytesCodec:
     match compressor.codec_id:
         case "blosc":
+            typesize = dtype.to_native_dtype().itemsize
+            shuffle = compressor.shuffle
+            if shuffle == numcodecs.Blosc.AUTOSHUFFLE:
+                # numcodecs bit-shuffles 1-byte items and byte-shuffles larger ones
+                shuffle = numcodecs.Blosc.BITSHUFFLE if typesize == 1 else numcodecs.Blosc.SHUFFLE
             return BloscCodec(
-                typesize=dtype.to_native_dtype().itemsize,
+                typesize=typesize,
                 cname=compressor.cname,
                 clevel=compressor.clevel,
-                shuffle=BloscShuffle.from_int(compressor.shuffle),
+                shuffle=BloscShuffle.from_int(shuffle),
                 blocksize=compressor.blocksize,
             )
 
@@ -273,7 +285,7 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
     try:
         codec_v3 = get_codec_class(numcodec_name)
-    except KeyError as exc:
+    except UnknownCodecError as exc:
         raise ValueError(
             f"Couldn't find corresponding zarr.codecs.numcodecs codec for {numcodecs_codec.codec_id}"
         ) from exc

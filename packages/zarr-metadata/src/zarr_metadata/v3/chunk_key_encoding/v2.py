@@ -13,50 +13,44 @@ names carry — this package's version-prefixed names always spell it
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired
+from typing import Final
 
-from typing_extensions import TypedDict
-
-V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
-"""The `name` field value of the v2 chunk key encoding."""
-
-V2ChunkKeyEncodingName = Literal["v2"]
-"""Literal type of the `name` field of the v2 chunk key encoding."""
-
-V2ChunkKeyEncodingSeparator = Literal["/", "."]
-"""Literal type of permitted `separator` values for the v2 chunk key encoding.
-
-Defaults to `"."` if absent.
-"""
-
-V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
-"""Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
+from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
+from zarr_metadata.v3._types.chunk_key_encoding import (
+    V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
+    V2_CHUNK_KEY_ENCODING_NAME,
+    V2_CHUNK_KEY_ENCODING_SEPARATOR,
+    V2ChunkKeyEncodingConfiguration,
+    V2ChunkKeyEncodingMetadata,
+    V2ChunkKeyEncodingName,
+    V2ChunkKeyEncodingObject,
+    V2ChunkKeyEncodingSeparator,
+)
 
 
-class V2ChunkKeyEncodingConfiguration(TypedDict):
-    """Configuration for the v2 chunk key encoding.
+def _canonical(configuration: V2ChunkKeyEncodingConfiguration) -> V2ChunkKeyEncodingConfiguration:
+    """Remove a `separator` of `.`, because an absent `separator` means the same thing.
 
-    `separator` is optional and defaults to `"."` per spec.
+    "If not specified, `separator` defaults to `.`"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29),
+    so the two spellings describe the same encoding.
     """
-
-    separator: NotRequired[V2ChunkKeyEncodingSeparator]
-
-
-class V2ChunkKeyEncodingObject(TypedDict):
-    """v2-compatibility chunk key encoding metadata in object form."""
-
-    name: V2ChunkKeyEncodingName
-    configuration: NotRequired[V2ChunkKeyEncodingConfiguration]
+    if configuration.get("separator") != V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR:
+        return configuration
+    return {}
 
 
-V2ChunkKeyEncodingMetadata = V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName
-"""Permitted JSON shapes for the v2-compatibility chunk-key encoding metadata.
+V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
+    name=V2_CHUNK_KEY_ENCODING_NAME,
+    configuration=V2ChunkKeyEncodingConfiguration,
+    canonical=_canonical,
+)
+"""The `v2` chunk key encoding. The type of `separator` already restricts its values, so the encoding has no rules of its own."""
 
-The configuration has no required keys (`separator` defaults to `"."`),
-so the short-hand-name form is permitted in addition to the object form.
-"""
 
 __all__ = [
+    "V2_CHUNK_KEY_ENCODING",
+    "V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingConfiguration",

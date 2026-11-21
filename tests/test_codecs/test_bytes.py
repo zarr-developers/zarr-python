@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import math
 import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -13,11 +14,13 @@ import pytest
 import zarr
 from tests.conftest import Expect, ExpectFail
 from zarr.abc.codec import SupportsSyncCodec
+from zarr.abc.store import OffsetByteRequest, RangeByteRequest
 from zarr.codecs.bytes import (
     ENDIAN,
     BytesCodec,
     Endian,
     EndianLiteral,
+    _block_window,
 )
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer, default_buffer_prototype
@@ -29,6 +32,8 @@ from zarr.storage import StorePath
 from .test_codecs import _AsyncArrayProxy
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from zarr.abc.store import Store
 
 
@@ -338,3 +343,282 @@ def test_bytes_codec_evolve_structured_single_byte_fields_clears_endian() -> Non
     spec = _make_array_spec(dtype)
     evolved = codec.evolve_from_array_spec(spec)
     assert evolved.endian is None
+
+
+@pytest.fixture(
+    params=[
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+    ]
+)
+def codec_pipeline(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Run a test once with each codec pipeline."""
+    with zarr.config.set({"codec_pipeline.path": request.param}):
+        yield
+
+
+class _RangeLoggingStore(zarr.storage.MemoryStore):
+    """A memory store that records the byte ranges it serves for chunk keys."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[tuple[str, Any, int]] = []
+
+    def _log(self, key: str, byte_range: Any, buf: Any) -> None:
+        if buf is not None and not key.endswith("zarr.json"):
+            self.reads.append((key, byte_range, len(buf)))
+
+    async def get(self, key: str, prototype: Any = None, byte_range: Any = None) -> Any:
+        buf = await super().get(key, prototype, byte_range)
+        self._log(key, byte_range, buf)
+        return buf
+
+    def get_sync(self, key: str, *, prototype: Any = None, byte_range: Any = None) -> Any:
+        buf = super().get_sync(key, prototype=prototype, byte_range=byte_range)
+        self._log(key, byte_range, buf)
+        return buf
+
+
+def _single_chunk_array(
+    data: np.ndarray[Any, Any], **kwargs: Any
+) -> tuple[Any, _RangeLoggingStore]:
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=data.shape, dtype=data.dtype, chunks=data.shape, fill_value=0, **kwargs
+    )
+    arr[...] = data
+    store.reads.clear()
+    return arr, store
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize(
+    ("selection", "items_read"),
+    [
+        (np.s_[500:600, 3], 100 * 10),
+        (np.s_[500:600], 100 * 10),
+        (np.s_[777, 5], 1),  # a single row is narrowed to the columns it needs
+        (np.s_[777, 2:6], 4),
+        (np.s_[777:778, 2:6], 4),
+        (np.s_[-1], 10),
+        (np.s_[10:20:3, ::2], 10 * 10),  # rows 10 to 19 are fetched
+        (np.s_[...], 10_000 * 10),
+    ],
+)
+def test_uncompressed_partial_read(selection: Any, items_read: int) -> None:
+    """Reading part of an uncompressed chunk fetches only the block it touches."""
+    data = np.arange(100_000, dtype="int16").reshape(10_000, 10)
+    arr, store = _single_chunk_array(data, compressors=None)
+    np.testing.assert_array_equal(arr[selection], data[selection])
+    assert sum(n for *_, n in store.reads) == items_read * 2
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize(
+    ("selection", "byte_range"),
+    [
+        (
+            np.s_[7, 10:20, 5:9],
+            (7 * 1200 + 10 * 30, 7 * 1200 + 20 * 30),
+        ),  # rows 10 to 19 of frame 7
+        (np.s_[7, 10:20], (7 * 1200 + 10 * 30, 7 * 1200 + 20 * 30)),
+        (np.s_[7, 10, 5:9], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 9)),
+        (np.s_[7, 10, 5], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 6)),
+        (np.s_[7:8, 10:11, 5:9], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 9)),
+        (np.s_[7, :, 5:9], (7 * 1200, 8 * 1200)),  # every row of frame 7
+        (np.s_[7], (7 * 1200, 8 * 1200)),
+        (np.s_[7:9, 10:20, 5:9], (7 * 1200, 9 * 1200)),  # two frames are fetched whole
+    ],
+)
+def test_uncompressed_partial_read_within_a_row(
+    selection: Any, byte_range: tuple[int, int]
+) -> None:
+    """A selection that touches one index along the leading axes is narrowed along the next."""
+    data = np.arange(50 * 40 * 30, dtype="uint8").reshape(50, 40, 30)
+    arr, store = _single_chunk_array(data, compressors=None)
+    np.testing.assert_array_equal(arr[selection], data[selection])
+    ((_, served, _),) = store.reads
+    assert (served.start, served.end) == byte_range
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize("dtype", [">u2", "<f8", "u1", "bool"])
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_uncompressed_partial_read_values(dtype: str, ndim: int) -> None:
+    """Partial reads return the same values as numpy for several dtypes, byte orders, and shapes."""
+    shape = {1: (1000,), 2: (100, 7), 3: (20, 5, 3)}[ndim]
+    data = (np.arange(int(np.prod(shape))) % 200).astype(dtype).reshape(shape)
+    arr, _ = _single_chunk_array(data, compressors=None)
+    selections: list[Any] = [np.s_[3:9], np.s_[4], np.s_[-3:], np.s_[1:15:4]]
+    for selection in selections:
+        np.testing.assert_array_equal(arr[selection], data[selection])
+    np.testing.assert_array_equal(arr.oindex[[1, 5, 2]], data[[1, 5, 2]])
+    mask = np.zeros(shape[0], dtype=bool)
+    mask[[2, 5, 11]] = True
+    np.testing.assert_array_equal(arr.oindex[mask], data[mask])
+    coords = tuple(np.array([0, 6, 3]) % n for n in shape)
+    np.testing.assert_array_equal(arr.vindex[coords], data[coords])
+    # selections that touch a single index along the leading axes
+    single: list[Any] = [np.s_[4, 2:], np.s_[4, -1], np.s_[4:5, 1:3], np.s_[4, ..., 0]]
+    if ndim == 3:
+        single += [np.s_[4, 2, 1:], np.s_[4, 2:4, 1], np.s_[4, :, 1], np.s_[4, 3, ::2]]
+    for selection in single if ndim > 1 else []:
+        np.testing.assert_array_equal(arr[selection], data[selection])
+    if ndim > 1:
+        np.testing.assert_array_equal(arr.oindex[[4], [3, 1]], data[[4]][:, [3, 1]])
+        mask = np.zeros(shape[1], dtype=bool)
+        mask[[1, 3]] = True
+        np.testing.assert_array_equal(arr.oindex[4, mask], data[4][mask])
+        point = tuple(np.array([n - 1, n - 1]) for n in shape)
+        np.testing.assert_array_equal(arr.vindex[point], data[point])
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+def test_uncompressed_partial_read_across_chunks() -> None:
+    """A selection spanning several chunks reads only the touched rows of each."""
+    data = np.arange(40_000, dtype="int32").reshape(4000, 10)
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=data.shape, dtype="int32", chunks=(1000, 10), compressors=None
+    )
+    arr[...] = data
+    store.reads.clear()
+    np.testing.assert_array_equal(arr[990:1010, 2], data[990:1010, 2])
+    assert sorted((key, n) for key, _, n in store.reads) == [("c/0/0", 400), ("c/1/0", 400)]
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+def test_compressed_chunks_are_read_whole() -> None:
+    """With a compressor the chunk bytes cannot be split, so the whole chunk is fetched."""
+    data = np.arange(100_000, dtype="int16").reshape(10_000, 10)
+    arr, store = _single_chunk_array(data)  # default compressor
+    np.testing.assert_array_equal(arr[500:600, 3], data[500:600, 3])
+    ((_, byte_range, _),) = store.reads
+    assert byte_range is None
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize("selection", [np.s_[10:20], np.s_[...]])
+def test_uncompressed_partial_read_missing_chunk(selection: Any) -> None:
+    """An unwritten chunk reads as the fill value, for a partial and a whole-chunk read."""
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=(100, 4), dtype="int16", chunks=(100, 4), compressors=None, fill_value=7
+    )
+    expected = np.full((100, 4), 7, dtype="int16")[selection]
+    np.testing.assert_array_equal(arr[selection], expected)
+
+
+class _RewritesRangeStore(zarr.storage.MemoryStore):
+    """A memory store that does not serve the byte range it is asked for.
+
+    `rewrite` maps the requested range to the one that is served instead.
+    """
+
+    def __init__(self, rewrite: Callable[[RangeByteRequest], Any]) -> None:
+        super().__init__()
+        self.rewrite = rewrite
+
+    def _served(self, byte_range: Any) -> Any:
+        if isinstance(byte_range, RangeByteRequest):
+            return self.rewrite(byte_range)
+        return byte_range
+
+    async def get(self, key: str, prototype: Any = None, byte_range: Any = None) -> Any:
+        return await super().get(key, prototype, self._served(byte_range))
+
+    def get_sync(self, key: str, *, prototype: Any = None, byte_range: Any = None) -> Any:
+        return super().get_sync(key, prototype=prototype, byte_range=self._served(byte_range))
+
+
+def _ignore_range(byte_range: RangeByteRequest) -> None:
+    """Send the whole value, as an HTTP server that ignores the Range header does."""
+
+
+def _ignore_range_end(byte_range: RangeByteRequest) -> OffsetByteRequest:
+    """Send everything from the start of the range to the end of the value."""
+    return OffsetByteRequest(byte_range.start)
+
+
+def _one_byte_short(byte_range: RangeByteRequest) -> RangeByteRequest:
+    return RangeByteRequest(byte_range.start, byte_range.end - 1)
+
+
+def _rewriting_array(
+    rewrite: Callable[[RangeByteRequest], Any],
+) -> tuple[Any, np.ndarray[Any, Any]]:
+    data = np.arange(400, dtype="<i2").reshape(100, 4)
+    arr = zarr.create_array(
+        _RewritesRangeStore(rewrite),
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=data.shape,
+        compressors=None,
+    )
+    arr[...] = data
+    return arr, data
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize("rewrite", [_ignore_range, _ignore_range_end])
+@pytest.mark.parametrize("selection", [np.s_[10:12, 0], np.s_[50:52, 0], np.s_[7], np.s_[98:]])
+def test_uncompressed_partial_read_store_sends_more_than_range(
+    rewrite: Callable[[RangeByteRequest], Any], selection: Any
+) -> None:
+    """A store that sends more than the requested range still reads correctly."""
+    arr, data = _rewriting_array(rewrite)
+    np.testing.assert_array_equal(arr[selection], data[selection])
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+def test_uncompressed_partial_read_store_sends_unexpected_length() -> None:
+    """A response whose length matches no known byte range behavior is an error."""
+    arr, _ = _rewriting_array(_one_byte_short)
+    with pytest.raises(ValueError, match="the store returned 15 bytes"):
+        arr[50:52, 0]
+
+
+@pytest.mark.parametrize(
+    ("selection", "shape"),
+    [
+        ((slice(5, 5), slice(None)), (10, 4)),  # no rows
+        ((slice(8, 2, -1), slice(None)), (10, 4)),  # negative step
+        ((np.array([], dtype=np.intp), slice(None)), (10, 4)),  # no rows
+        ((slice(None), 2), (10, 4)),  # every row
+        ((np.array([0, 9]), slice(None)), (10, 4)),  # first and last row
+        ((..., 2), (10, 4)),  # rows not determined
+        ((0, slice(None)), (1, 4)),  # the only row, and every column of it
+        (slice(2, 4), (10,)),  # not a tuple
+        ((), ()),  # zero-dimensional chunk
+    ],
+)
+def test_block_window_reads_whole_chunk(selection: Any, shape: tuple[int, ...]) -> None:
+    """Selections with no narrower block than the whole chunk give None."""
+    assert _block_window(selection, shape) is None
+
+
+@pytest.mark.parametrize(
+    ("selection", "shape", "offset", "block_shape"),
+    [
+        ((slice(2, 5), slice(None)), (10, 4), 8, (3, 4)),
+        ((3, slice(1, 3)), (10, 4), 13, (1, 2)),
+        ((3, 2), (10, 4), 14, (1, 1)),
+        ((0, 2), (1, 4), 2, (1, 1)),  # an axis of length 1 is passed through
+        ((3, slice(2, 2)), (10, 4), 12, (1, 4)),  # no columns: stop at the row
+        ((3, ..., 1), (10, 4, 5), 60, (1, 4, 5)),  # stop at the ellipsis
+        ((3,), (10, 4), 12, (1, 4)),  # fewer selectors than axes
+        ((np.array([3, 3]), np.array([1, 2])), (10, 4), 13, (1, 2)),
+        ((2, 1, slice(1, 4)), (5, 4, 6), 2 * 24 + 6 + 1, (1, 1, 3)),
+    ],
+)
+def test_block_window(
+    selection: Any, shape: tuple[int, ...], offset: int, block_shape: tuple[int, ...]
+) -> None:
+    """The block starts at the first item the selection touches along the narrowed axes."""
+    window = _block_window(selection, shape)
+    assert window is not None
+    assert window[:2] == (offset, block_shape)
+    # the shifted selection picks the same items from the block as the selection does from the chunk
+    data = np.arange(math.prod(shape)).reshape(shape)
+    block = data.reshape(-1)[offset : offset + math.prod(block_shape)].reshape(block_shape)
+    np.testing.assert_array_equal(block[window[2]], data[selection])

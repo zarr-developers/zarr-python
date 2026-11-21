@@ -44,7 +44,11 @@ from zarr.core.dtype import (
     parse_data_type,  # noqa: F401
     parse_dtype,
 )
-from zarr.core.dtype.common import DTypeSpec_V2, check_dtype_spec_v2
+from zarr.core.dtype.common import (
+    DTypeSpec_V2,
+    check_dtype_spec_no_object_codec_v2,
+    check_dtype_spec_v2,
+)
 
 __all__ = [
     "Bool",
@@ -87,6 +91,7 @@ __all__ = [
     "VariableLengthUTF8",
     "VariableLengthUTF8JSON_V2",
     "ZDType",
+    "check_dtype_spec_no_object_codec_v2",
     "check_dtype_spec_v2",
     "data_type_registry",
     "parse_dtype",

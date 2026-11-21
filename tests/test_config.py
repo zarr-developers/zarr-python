@@ -24,7 +24,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import ChunkNotFoundError, ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, UnknownCodecError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -59,6 +59,7 @@ def test_config_defaults_set() -> None:
                     "rectilinear_chunks": False,
                     "sharding_coalesce_max_gap_bytes": 1 << 20,
                     "sharding_coalesce_max_bytes": 16 << 20,
+                    "allow_unsafe_pickle_decode": False,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
@@ -334,7 +335,7 @@ def test_warning_on_missing_codec_config() -> None:
         pass
 
     # error if codec is not registered
-    with pytest.raises(KeyError):
+    with pytest.raises(UnknownCodecError):
         get_codec_class("missing_codec")
 
     # no warning if only one implementation is available

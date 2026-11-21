@@ -103,7 +103,7 @@ def create_hierarchy(
     nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
     nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
     print(nodes)
-    # {'a': GroupMetadata(attributes={'name': 'leaf'}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+    # {'a': GroupMetadata(attributes={'name': 'leaf'}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={})}
     ```
     """
     coro = create_hierarchy_async(store=store, nodes=nodes, overwrite=overwrite)

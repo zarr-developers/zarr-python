@@ -4,8 +4,7 @@
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
 #   "zarr-indexing>=0.1",
 #   "dask[array]==2025.3.0",
-#   "numpy==2.4.3",
-#   "pytest==9.0.2"
+#   "numpy==2.4.3"
 # ]
 # ///
 #
@@ -14,47 +13,50 @@
 Demonstrate using zarr_indexing.LazyArray with Dask
 """
 
-import sys
 import time
 
 import dask
 import dask.array as da
 import numpy as np
-import pytest
 import zarr
 from dask.base import tokenize
 
-from zarr_indexing import LazyArray
+from zarr_indexing import EagerArrayAdapter, LazyArray, Partition
 
 
-@pytest.fixture
-def source() -> zarr.Array:
-    """A chunked Zarr array to wrap."""
+def make_source() -> zarr.Array:
+    """Create a chunked Zarr array to wrap."""
     array = zarr.create_array(store={}, shape=(40, 30), chunks=(10, 10), dtype="i4")
     array[:] = np.arange(40 * 30).reshape(40, 30)
     return array
 
 
-def test_from_array(source: zarr.Array) -> None:
-    """Hand a LazyArray to `dask.array.from_array`."""
+def wrap_with_from_array(source: zarr.Array) -> None:
+    """Adapt lazy selections for `dask.array.from_array`."""
     lazy = LazyArray(source)
 
-    # `from_array` needs `shape`, `dtype`, and `__getitem__`, which the wrapper
-    # provides. Each Dask block reads its own region through the wrapper.
-    array = da.from_array(lazy, chunks=(10, 10))
+    # `from_array` expects eager block indexing, which `EagerArrayAdapter`
+    # provides. Each Dask block reads its own region through the adapter.
+    array = da.from_array(EagerArrayAdapter(lazy), chunks=(10, 10))
     print(array)
     assert np.array_equal(array.compute(scheduler="threads"), source[:])
 
     # A view works the same way, and its shape is the shape of the selection.
-    view = LazyArray(source).lazy[5:35, 3:27]
-    array = da.from_array(view, chunks=(10, 10))
+    view = LazyArray(source)[5:35, 3:27]
+    array = da.from_array(EagerArrayAdapter(view), chunks=(10, 10))
     assert array.shape == (30, 24)
     assert np.array_equal(array.compute(scheduler="threads"), source[5:35, 3:27])
 
 
-def test_parts_as_tasks(source: zarr.Array) -> None:
+@dask.delayed
+def read_part(part: Partition) -> np.ndarray:
+    """Read one partition's sub-view, as a Dask task."""
+    return part.view.result()
+
+
+def compute_parts_as_tasks(source: zarr.Array) -> None:
     """Build one task per partition and compute them in parallel."""
-    view = LazyArray(source).lazy[5:35, 3:27]
+    view = LazyArray(source)[5:35, 3:27]
 
     # The partitioning is discovered from the wrapped array's chunks, so each
     # partition of the view lies within one stored chunk.
@@ -62,12 +64,9 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     print(f"{len(parts)} parts for a {view.shape} view of a {source.shape} array")
 
     # A partition carries a sub-view to resolve and where its result belongs, so
-    # the reads are independent and the placement needs no coordination.
-    @dask.delayed
-    def read(part: object) -> np.ndarray:
-        return part.view.result()
-
-    blocks = dask.compute(*[read(part) for part in parts], scheduler="threads")
+    # reads can run concurrently with this source and reader; assembly below
+    # places the returned blocks sequentially.
+    blocks = dask.compute(*[read_part(part) for part in parts], scheduler="threads")
 
     result = np.empty(view.shape, dtype=view.dtype)
     for part, block in zip(parts, blocks, strict=True):
@@ -75,59 +74,60 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     assert np.array_equal(result, source[5:35, 3:27])
 
     # `is_complete` reports whether a partition covers its whole partition of
-    # the base array, which a writer uses to choose between overwriting a chunk
-    # and reading it first.
+    # the base array. A writer also needs storage-unit alignment, value-order,
+    # and concurrency checks before using coverage to skip a read.
     complete = [part.box for part in parts if part.is_complete]
     print(f"{len(complete)} of {len(parts)} parts cover their chunk completely")
 
 
-def test_tokenize(source: zarr.Array) -> None:
-    """Deterministic tokens let Dask cache and deduplicate work."""
+def compare_tokens(source: zarr.Array) -> None:
+    """Check token equality for these unchanged source and selection pairs."""
     lazy = LazyArray(source)
 
-    # Two wrappers over the same array and the same selection are the same task
-    # to Dask, whether or not they are the same Python object.
+    # These wrappers have equal tokens despite being different Python objects.
+    # Source mutation and token hooks affect whether cached results remain valid.
     assert tokenize(lazy) == tokenize(LazyArray(source))
-    assert tokenize(lazy.lazy[0:10]) == tokenize(LazyArray(source).lazy[0:10])
+    assert tokenize(lazy[0:10]) == tokenize(LazyArray(source)[0:10])
 
     # Different selections are different tasks.
-    assert tokenize(lazy.lazy[0:10]) != tokenize(lazy.lazy[10:20])
+    assert tokenize(lazy[0:10]) != tokenize(lazy[10:20])
 
-    # Selections that describe the same region are the same task, however they
-    # were composed.
-    assert tokenize(lazy.lazy[0:20].lazy[5:10]) == tokenize(lazy.lazy[5:10])
+    # These two slice chains serialize to the same transform and token.
+    assert tokenize(lazy[0:20][5:10]) == tokenize(lazy[5:10])
 
 
-def test_indexing_only_workload() -> None:
+def dask_chain(data: np.ndarray, depth: int) -> da.Array:
+    """Apply `depth` leading slices to a Dask array, one graph layer each."""
+    array = da.from_array(data, chunks=(1, 4))
+    for _ in range(depth):
+        array = array[1:]
+    return array
+
+
+def lazy_chain(data: np.ndarray, depth: int) -> LazyArray:
+    """Apply `depth` leading slices to a LazyArray, composed into one transform."""
+    view = LazyArray.from_numpy(data)
+    for _ in range(depth):
+        view = view[1:]
+    return view
+
+
+def time_indexing_only_workload() -> None:
     """Compare an accumulating task graph with a fused transform.
 
-    Dask records each indexing operation as another graph layer, and slices the
-    chunk grid to build it, so composing selections costs time proportional to
-    the number of selections and the number of chunks. `LazyArray` composes each
-    selection into the single transform it already holds, so the cost of
-    composing does not grow with the depth of the chain, and reading resolves
-    that one transform rather than walking a graph.
+    This measures repeated leading slices at several depths. LazyArray retains
+    one composed transform, but the loop still performs each selection. Dask's
+    graph construction and execution costs depend on graph optimizations and
+    chunk layout; these measurements do not establish general complexity bounds.
 
     Timings are printed rather than asserted, since they depend on the machine.
     """
     data = np.zeros((2000, 4), dtype="i4")  # 2000 chunks, one row each
 
-    def dask_chain(depth: int) -> da.Array:
-        array = da.from_array(data, chunks=(1, 4))
-        for _ in range(depth):
-            array = array[1:]
-        return array
-
-    def lazy_chain(depth: int) -> LazyArray:
-        view = LazyArray.from_numpy(data)
-        for _ in range(depth):
-            view = view.lazy[1:]
-        return view
-
     # Read once through each path first, so the timings below exclude the cost
     # of importing and initializing the machinery.
-    dask_chain(1)[:2].compute(scheduler="synchronous")
-    lazy_chain(1).lazy[:2].result()
+    dask_chain(data, 1)[:2].compute(scheduler="synchronous")
+    lazy_chain(data, 1)[:2].result()
 
     header = (
         f"{'selections':>10} {'dask compose':>13} {'dask read':>10} {'layers':>7}"
@@ -136,7 +136,7 @@ def test_indexing_only_workload() -> None:
     print(header)
     for depth in (1, 5, 20):
         start = time.perf_counter()
-        chained = dask_chain(depth)
+        chained = dask_chain(data, depth)
         dask_compose = time.perf_counter() - start
 
         start = time.perf_counter()
@@ -144,11 +144,11 @@ def test_indexing_only_workload() -> None:
         dask_read = time.perf_counter() - start
 
         start = time.perf_counter()
-        view = lazy_chain(depth)
+        view = lazy_chain(data, depth)
         lazy_compose = time.perf_counter() - start
 
         start = time.perf_counter()
-        from_lazy = view.lazy[:2].result()
+        from_lazy = view[:2].result()
         lazy_read = time.perf_counter() - start
 
         # Both paths describe the same selection, so they read the same data.
@@ -161,21 +161,13 @@ def test_indexing_only_workload() -> None:
         )
 
 
+def main() -> None:
+    source = make_source()
+    wrap_with_from_array(source)
+    compute_parts_as_tasks(source)
+    compare_tokens(source)
+    time_indexing_only_workload()
+
+
 if __name__ == "__main__":
-    # Run the example with printed output, and a dummy pytest configuration file specified.
-    # Without the dummy configuration file, at test time pytest will attempt to use the
-    # configuration file in the project root, which will error because Zarr is using some
-    # plugins that are not installed in this example.
-    sys.exit(
-        pytest.main(
-            [
-                "-s",
-                __file__,
-                f"-c {__file__}",
-                # Suppress: "PytestAssertRewriteWarning: Module already imported so
-                # cannot be rewritten; zarr"
-                "-W",
-                "ignore::pytest.PytestAssertRewriteWarning",
-            ]
-        )
-    )
+    main()

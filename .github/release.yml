@@ -1,0 +1,22 @@
+# Configuration for GitHub's "Generate release notes" button.
+#
+# The zarr-python repository also hosts the companion packages under packages/
+# (zarr-metadata, zarr-indexing, zarr-http-server), which have their own release
+# cadence, tags and changelogs. Pull requests that only touch a subpackage are
+# labelled by the labeler workflow (.github/labeler.yml) and excluded here, so a
+# `zarr` release lists only the changes that ship in `zarr`.
+changelog:
+  exclude:
+    labels:
+      - zarr-metadata
+      - zarr-indexing
+      - zarr-http-server
+    authors:
+      - pre-commit-ci[bot]
+  categories:
+    - title: Dependency updates
+      labels:
+        - dependencies
+    - title: What's Changed
+      labels:
+        - "*"

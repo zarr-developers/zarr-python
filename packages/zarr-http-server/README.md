@@ -30,7 +30,7 @@ store = zarr.storage.MemoryStore()
 array = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="float64")
 
 with serve_background(node_app(array)) as server:
-    print(server.url)   # e.g. http://127.0.0.1:8000
+    print(server.url)  # e.g. http://127.0.0.1:8000
 ```
 
 Building an app and running it are separate steps, and either app works with

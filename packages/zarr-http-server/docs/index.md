@@ -67,5 +67,5 @@ Reads are all that is enabled by default: `GET` and `HEAD` are served, and
 - [User guide](guide.md) — building apps, running them, byte ranges, CORS,
   writes, notebooks, and Uvicorn configuration
 - [API reference](api/index.md)
-- [Changelog](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/CHANGELOG.md)
+- [Release notes](release-notes.md)
 - [License (MIT)](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/LICENSE.txt)

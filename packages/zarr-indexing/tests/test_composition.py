@@ -440,11 +440,7 @@ def test_composing_an_inner_array_with_a_broadcast_axis_wider_than_one_cell() ->
 
 
 def test_composing_a_one_dimensional_inner_array_under_a_higher_rank_outer() -> None:
-    """The shortcut gated on the output rank but sized by the input rank.
-
-    A rank-2 outer therefore built a rank-1 array for a rank-2 domain, which the
-    engine's own invariant then rejected.
-    """
+    """Composed index arrays retain the full input rank of their domain."""
     outer = IndexTransform(
         domain=IndexDomain.from_shape((2, 3)),
         output=(DimensionMap(input_dimension=0, offset=1, stride=1),),

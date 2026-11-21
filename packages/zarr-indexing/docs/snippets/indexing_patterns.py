@@ -146,15 +146,15 @@ PATTERN_CASES: tuple[PatternCase, ...] = (
     },
     {
         # image[broadcast_rows, broadcast_columns] — NumPy broadcasting,
-        # materialized: each map carries the full (2, 3) broadcast block.
+        # kept compact: singleton axes encode independent dependencies.
         "name": "broadcasting",
         "mode": "vindex",
         "selection": (broadcast_rows, broadcast_columns),
         "transform": IndexTransform(
             domain=IndexDomain.from_shape((2, 3)),
             output=(
-                ArrayMap(np.broadcast_to(broadcast_rows, (2, 3))),
-                ArrayMap(np.broadcast_to(broadcast_columns, (2, 3))),
+                ArrayMap(broadcast_rows.reshape(2, 1)),
+                ArrayMap(broadcast_columns.reshape(1, 3)),
             ),
         ),
         "expected": image[broadcast_rows, broadcast_columns],

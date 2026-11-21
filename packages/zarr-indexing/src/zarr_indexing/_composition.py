@@ -15,7 +15,8 @@ substituting the outer map into the inner one:
   composing it with an outer `ArrayMap` leaves the index array alone and
   rescales around it.
 - An `ArrayMap` inner map must be *evaluated* at the coordinates the outer
-  transform produces, which is the only case that touches array data.
+  transform produces. This case gathers from the inner lookup table; other
+  cases can still inspect or copy index arrays during validation/construction.
 """
 
 from __future__ import annotations
@@ -43,7 +44,10 @@ def compose(outer: IndexTransform, inner: IndexTransform) -> IndexTransform:
     `inner` maps intermediate coords (rank n) to output coords (rank p).
     The result maps user coords (rank m) to output coords (rank p).
 
-    Precondition: `outer.output_rank == inner.domain.ndim`.
+    The output rank of `outer` must equal the input rank of `inner`, and every
+    coordinate produced by a nonempty `outer` must lie in `inner.domain`.
+    A rank mismatch raises `ValueError`; out-of-domain coordinates raise
+    `BoundsCheckError`.
 
     Examples
     --------

@@ -5,8 +5,7 @@ the *declaration* of an array indexing expression from the result of that expres
 
 Developed for use in [`zarr`](https://zarr.readthedocs.io).
 
-Inspired by [TensorStore](https://google.github.io/tensorstore/), which pioneered
-the approach used here.
+Inspired by [TensorStore's index-transform model](https://google.github.io/tensorstore/index_space.html).
 
 
 ## Install
@@ -21,15 +20,16 @@ pip install zarr-indexing
 
 ## Quickstart
 
-Wrap an array, compose a lazy view through `.lazy`, and call `result()` when
+Wrap an array, compose a lazy view with `view[...]`, and call `result()` when
 you want its values:
 
 ```python
 --8<-- "snippets/canonical_slice.py:landing-quickstart"
 ```
 
-Nothing is read until the `result()` call, however many selections are
-composed. [Lazy views compose](guide/index.md#lazy-views-compose) shows how
+Composing these selections does not read source values; the example reads them
+at `result()`. Construction inspects source metadata, and Dask tokenization can
+inspect source values. [Lazy views compose](guide/index.md#lazy-views-compose) shows how
 the chain stays one description, and where the materialization boundary is.
 
 ## Learn more
@@ -38,7 +38,9 @@ the chain stays one description, and where the materialization boundary is.
   chunk plan. Using lazy indexing, start at
   [An index selects coordinates](guide/index.md#an-index-selects-coordinates);
   integrating a chunked backend, start at
-  [A request becomes a chunk plan](guide/index.md#a-request-becomes-a-chunk-plan).
+  [A request becomes a chunk plan](guide/index.md#a-request-becomes-a-chunk-plan)
+  and finish with the per-axis tables a plan is
+  [built from](guide/index.md#a-plan-is-a-product-of-per-axis-tables).
 - [Indexing pattern reference](guide/patterns.md) — every selection form with
   its NumPy-verified result.
 - [Integration boundaries](guide/integrations.md) — what a reader, writer, or
@@ -49,5 +51,5 @@ the chain stays one description, and where the materialization boundary is.
 - [Design notes](design-notes.md) — TensorStore lineage, box vs query, and
   deliberate limits.
 - [API reference](api/index.md)
-- [Changelog](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CHANGELOG.md)
+- [Release notes](release-notes.md)
   · [License (MIT)](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/LICENSE.txt)

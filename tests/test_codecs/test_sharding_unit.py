@@ -732,6 +732,7 @@ class _AsyncOnlyBytesCodec(ArrayBytesCodec):
     `_decode_shard_index`/`_encode_shard_index`.
     """
 
+    is_fixed_size = True
     _inner = BytesCodec()
 
     def to_dict(self) -> dict[str, Any]:

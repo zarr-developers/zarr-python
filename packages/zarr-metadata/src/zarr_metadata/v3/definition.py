@@ -1,0 +1,203 @@
+"""The kinds of metadata in a Zarr v3 document, and the scopes this package provides for it.
+
+The kind of metadata a definition defines is its type: `CodecDefinition`
+(built as one of its kinds, `ArrayArrayCodecDefinition`,
+`ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`, with its
+`size`: `"static"` if the output size is determined by the input size,
+or `"dynamic"` if it depends on the values), `DataTypeDefinition`, `ChunkGridDefinition`,
+`ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`, and, for
+the members of a document that the spec does not define,
+`ArrayExtraFieldDefinition` and `GroupExtraFieldDefinition`. What a
+definition is and how a declaration is read are in `zarr_metadata.definition`,
+which both formats share. `ZarrV3Context` is the v3 scope, with one slot
+for each kind: `data_types`, `chunk_grids`, `chunk_key_encodings`,
+`codecs`, `storage_transformers`, `array_extra_fields` and
+`group_extra_fields`. `CORE_CONTEXT`, `CORE_AND_EXTENSIONS_CONTEXT` and `ZARR_PYTHON_CONTEXT` are
+the v3 scopes this package provides.
+
+A scope reads whole documents as well as declarations.
+`read_array_metadata_v3(document, context=CONTEXT)`, from
+`zarr_metadata.model`, reads each extension point of a v3 array document
+through the definitions in `CONTEXT`, and so do the model's `from_json` and
+`from_key_value`. The fill value is checked against the data type it
+names, by that data type's definition. The chunk grid is checked against
+the shape, by the grid's definition. The codecs are checked as a
+pipeline, each by its definition against the chunk it receives.
+
+A member that holds another declaration is annotated with the declaration
+alias of its kind (a shard's `codecs: tuple[ZarrV3CodecDeclaration, ...]`) and
+is read in the same scope as its parent declaration. A problem with the nested
+declaration belongs to that declaration and is reported at its location. The parent
+declaration is still read, as a document containing the nested declaration would be.
+A member that accepts only codecs of static size is annotated
+`ZarrV3StaticCodecDeclaration`. A shard's `index_codecs` uses this, because a
+reader locates the index from a size it knows before reading it. A codec
+of dynamic size in such a member is a problem at its location, when the
+declaration is read in a scope. A name that nothing claims is not checked, and
+its size is unknown, like everything else about it.
+`ZarrV3DeclarationJSON` describes the same JSON, but it is checked
+only as JSON, so a definition rejects a member typed with it. An
+extension with nothing to configure uses `EmptyConfiguration`, and is
+written with its name only.
+
+A data type also declares how its values are stored. `storage` is a
+function of the configuration and the nested declarations that returns a
+`StorageClass`: single bytes, several bytes at a time, or each value in
+as many bytes as it needs. A struct's storage depends on its fields.
+`storage_of(data_type)` calls it for a data type declaration the scope read.
+The `bytes` codec requires an `endian` for multi-byte numbers, and a
+struct rejects a field whose values vary in size. A data type that does
+not declare storage leaves it unknown.
+`array_bytes_codec_default`, a function of the same arguments, gives the
+array -> bytes codec that encodes the values of an array whose document
+is built without codecs, as a model's `create_default` builds it:
+`vlen-utf8` for `string`, and `bytes` with little `endian` for a data
+type that does not declare it. `default_array_bytes_codec(data_type)`
+calls it for a data type declaration the scope read.
+A data type also declares what kind of numbers its values are with
+`number_class`, a `NumberClass`: integral, floating-point, complex, or
+not plain numbers. A codec that is defined only for some kinds of numbers
+reads it: `cast_value` and `scale_offset` refuse a data type that
+declares complex or non-numeric values, as the numpy time types do. A
+data type that does not declare it leaves its number class unknown, and
+those codecs accept it.
+
+A chunk grid declares which array shapes it fits with `shape_rules`, a
+function that yields the spec violations in a grid with its
+configuration over an array of a given shape (a dimension with no chunk
+length, or chunks that do not cover the dimension), located in the
+configuration. A grid that does not declare shape rules fits every
+shape. It also declares the lengths of its chunks along each axis of an
+array it fits, with `chunk_lengths`: a set per axis, because a
+rectilinear grid's chunks differ in length. A reading stores both
+results for the grid it read: an entry for each dimension of the shape,
+with None where the lengths are unknown.
+
+A codec is checked against its input. The array passes its first codec
+a `Chunk`: the lengths of the grid's chunks along each of the array's
+dimensions, and the array's data type declaration, with None for unknown
+parts. A codec that receives an array, an `ArrayCodecDefinition`,
+declares the spec violations for a given chunk with `chunk_rules`, located in its configuration (for
+example, a `transpose` whose `order` has the wrong number of axes). An
+array -> array codec declares what it passes to the next codec with
+`transition`, whatever its chunk rules found. For example, `transpose`
+permutes the axes. A reading reads the codec declarations as a pipeline. It
+checks their order (array -> array codecs, one array -> bytes codec,
+bytes -> bytes codecs), then checks each codec against the chunk it
+receives, and records a `Stage` for each codec with that chunk. A codec
+that contains its own pipelines declares what each one receives with
+`pipelines`, keyed by the configuration member that holds each
+pipeline. For example, a shard's inner codecs receive its inner chunks,
+and its index codecs receive the shard index. Each pipeline is read the
+same way, and its stages are stored as the codec's `Stage.inner`.
+Two spellings of a codec can mean the same thing for one chunk and not
+for another, which `canonical` cannot tell, since it receives the
+configuration alone. Such a codec declares its simplest spelling for a
+given chunk with `chunk_canonical`. For example, `bytes` drops an
+`endian` when each value takes one byte. `codec_for_chunk` returns the
+codec of a `Stage` in that spelling, with each codec of the pipelines
+it contains simplified for the chunk that one receives. An array model
+compares its codecs this way.
+The reader does not guess. After a codec the scope did not read, or
+after a codec that does not declare its output, the next codec receives
+a chunk with nothing known about it, `Chunk()`, which never causes a
+problem. A later codec can still declare its own output.
+
+Raw bits are the only data type whose name encodes its configuration. A
+document writes `r` followed by the size in bits, and `r16` is read as
+`r*` (the notation in the specification's table of data types) with
+`{"bits": 16}`. A reader that wants to read raw bits its own way defines
+`r*`. A data type named `r16` is rejected, because that name is read as
+`r*`. `r*` itself is notation, and a document that uses it as a name
+refers to nothing in any scope.
+
+**JSON Schema.** `zarr_metadata.json_schema` writes a v3 declaration, or a whole
+`zarr.json`, as a JSON Schema.
+"""
+
+from typing import TYPE_CHECKING
+
+from zarr_metadata._renamed import renamed_scope
+from zarr_metadata.v3._common import (
+    ZarrV3ChunkGridDeclaration,
+    ZarrV3ChunkKeyEncodingDeclaration,
+    ZarrV3CodecDeclaration,
+    ZarrV3DataTypeDeclaration,
+    ZarrV3StaticCodecDeclaration,
+    ZarrV3StorageTransformerDeclaration,
+)
+from zarr_metadata.v3._context import ZarrV3Context, ZarrV3ContextSlots, ZarrV3Kind
+from zarr_metadata.v3._core import (
+    CORE_AND_EXTENSIONS_CONTEXT,
+    CORE_CONTEXT,
+    RENAMED_SCOPES,
+    ZARR_PYTHON_CONTEXT,
+)
+from zarr_metadata.v3._definition import (
+    ArrayArrayCodecDefinition,
+    ArrayBytesCodecDefinition,
+    ArrayCodecDefinition,
+    ArrayExtraFieldDefinition,
+    BytesBytesCodecDefinition,
+    Chunk,
+    ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
+    CodecDefinition,
+    CodecKind,
+    CodecSize,
+    DataTypeDefinition,
+    ExtraFieldDefinition,
+    GroupExtraFieldDefinition,
+    Lengths,
+    NumberClass,
+    StorageClass,
+    StorageTransformerDefinition,
+    default_array_bytes_codec,
+    storage_of,
+)
+from zarr_metadata.v3._pipeline import Stage, codec_for_chunk
+
+__all__ = [
+    "CORE_AND_EXTENSIONS_CONTEXT",
+    "CORE_CONTEXT",
+    "ZARR_PYTHON_CONTEXT",
+    "ArrayArrayCodecDefinition",
+    "ArrayBytesCodecDefinition",
+    "ArrayCodecDefinition",
+    "ArrayExtraFieldDefinition",
+    "BytesBytesCodecDefinition",
+    "Chunk",
+    "ChunkGridDefinition",
+    "ChunkKeyEncodingDefinition",
+    "CodecDefinition",
+    "CodecKind",
+    "CodecSize",
+    "DataTypeDefinition",
+    "ExtraFieldDefinition",
+    "GroupExtraFieldDefinition",
+    "Lengths",
+    "NumberClass",
+    "Stage",
+    "StorageClass",
+    "StorageTransformerDefinition",
+    "ZarrV3ChunkGridDeclaration",
+    "ZarrV3ChunkKeyEncodingDeclaration",
+    "ZarrV3CodecDeclaration",
+    "ZarrV3Context",
+    "ZarrV3ContextSlots",
+    "ZarrV3DataTypeDeclaration",
+    "ZarrV3Kind",
+    "ZarrV3StaticCodecDeclaration",
+    "ZarrV3StorageTransformerDeclaration",
+    "codec_for_chunk",
+    "default_array_bytes_codec",
+    "storage_of",
+]
+
+
+if not TYPE_CHECKING:
+    # Hidden from type checkers, which would otherwise read every missing
+    # name of this module as a scope.
+    def __getattr__(name: str) -> object:
+        """`CORE` and `CORE_AND_EXTENSIONS`, the scopes' names before they ended in `_CONTEXT`, with a `DeprecationWarning`."""
+        return renamed_scope(__name__, name, RENAMED_SCOPES)

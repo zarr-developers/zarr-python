@@ -4,19 +4,33 @@ Zarr v3 `int64` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from typing import Final
 
-INT64_DATA_TYPE_NAME: Final = "int64"
-"""The `data_type` value for the `int64` type."""
+from zarr_metadata._common import EmptyConfiguration
+from zarr_metadata.definition._definition import ConstantFillValue
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    multi_byte,
+)
+from zarr_metadata.v3._types.data_type import (
+    INT64_DATA_TYPE_NAME,
+    Int64DataTypeName,
+    Int64FillValue,
+)
 
-Int64DataTypeName = Literal["int64"]
-"""Literal type of the `data_type` field for `int64`."""
-
-Int64FillValue = int
-"""Permitted JSON shape of the `fill_value` field for `int64`: a JSON integer in [-2**63, 2**63 - 1]."""
+INT64_DATA_TYPE: Final = DataTypeDefinition(
+    name=INT64_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=Int64FillValue,
+    fill_value_default=ConstantFillValue(0),
+    storage=multi_byte,
+    number_class="integral",
+)
+"""The `int64` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 
 
 __all__ = [
+    "INT64_DATA_TYPE",
     "INT64_DATA_TYPE_NAME",
     "Int64DataTypeName",
     "Int64FillValue",

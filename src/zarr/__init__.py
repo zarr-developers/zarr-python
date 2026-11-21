@@ -30,7 +30,6 @@ from zarr.api.synchronous import (
     save,
     save_array,
     save_group,
-    tree,
     zeros,
     zeros_like,
 )
@@ -39,7 +38,10 @@ from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
-assert not __version__.startswith("0.0.0")
+if __version__.startswith("0.0.0"):
+    raise RuntimeError(
+        f"zarr resolved its own version to {__version__!r}; the build metadata is broken."
+    )
 
 _logger = logging.getLogger(__name__)
 
@@ -176,7 +178,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]

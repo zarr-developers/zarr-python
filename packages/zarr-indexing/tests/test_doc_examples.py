@@ -24,8 +24,6 @@ from __future__ import annotations
 
 import re
 import runpy
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +33,7 @@ import pytest
 import zarr_indexing
 import zarr_indexing.lazy_array as lazy_array_module
 from zarr_indexing import IndexTransform, LazyArray, ReadContext
+from zarr_indexing.domain import IndexDomain
 
 DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
@@ -42,9 +41,9 @@ STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
 DOC_SNIPPETS_DIR = DOCS / "snippets"
 CACHE_EXAMPLE = STANDALONE_EXAMPLES / "system_memory_chunk_cache" / "system_memory_chunk_cache.py"
 
-# Mirrors `pymdownx.snippets: base_path` in mkdocs.yml. If that list changes,
+# Mirrors `pymdownx.snippets: base_path` in ../mkdocs-base.yml. If that list changes,
 # change this one in the same commit.
-SNIPPET_BASE_PATHS = (DOCS, STANDALONE_EXAMPLES)
+SNIPPET_BASE_PATHS = (DOCS, STANDALONE_EXAMPLES, PACKAGE_ROOT)
 
 _INCLUDE = re.compile(r'--8<--\s+"(?P<target>[^":\n]+?)(?::(?P<region>[^"\n]+))?"')
 
@@ -59,20 +58,19 @@ def _markdown_includes() -> tuple[tuple[str, str, str | None], ...]:
 
 
 INCLUDES = _markdown_includes()
-# In-process executables: every snippet, plus the one standalone example that
-# is importable as a module. The lazy_indexing_* examples are CLI scripts
-# (they parse argv and call sys.exit), so they run as subprocesses below —
-# no other test in the repository executes them.
-EXECUTABLES = (*sorted(DOC_SNIPPETS_DIR.glob("*.py")), CACHE_EXAMPLE)
-CLI_EXAMPLES = tuple(
-    script for script in sorted(STANDALONE_EXAMPLES.glob("*/*.py")) if script not in EXECUTABLES
-)
+# Every snippet and every standalone example, run in process as `__main__`, so a
+# standalone example's `main()` runs too. No other test in the repository
+# executes the standalone examples.
+EXECUTABLES = (*sorted(DOC_SNIPPETS_DIR.glob("*.py")), *sorted(STANDALONE_EXAMPLES.glob("*/*.py")))
+# Modules an example imports beyond this package's test dependencies. Where one
+# is missing, as in an environment built from the sdist alone, the example skips.
+EXAMPLE_REQUIRES: dict[str, tuple[str, ...]] = {"lazy_indexing_dask": ("dask.array", "zarr")}
 
 PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOC_SNIPPETS_DIR / "indexing_patterns.py"))
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
 CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(CACHE_EXAMPLE))
 
-# The documented pattern matrix must keep covering every selection family.
+# The documented pattern matrix must keep its listed selection families.
 REQUIRED_PATTERNS = {
     "basic-slice",
     "integer-axis-removal",
@@ -128,22 +126,9 @@ def test_snippet_directories_hold_only_their_kind() -> None:
 @pytest.mark.parametrize("example", EXECUTABLES, ids=lambda path: path.stem)
 def test_documentation_example_executes(example: Path) -> None:
     """Examples are executable contracts; their inline asserts are the values check."""
+    for module in EXAMPLE_REQUIRES.get(example.stem, ()):
+        pytest.importorskip(module)
     runpy.run_path(str(example), run_name="__main__")
-
-
-@pytest.mark.parametrize("script", CLI_EXAMPLES, ids=lambda path: path.stem)
-def test_cli_example_runs_as_a_subprocess(script: Path) -> None:
-    """The CLI examples exit 0 when run the way their READMEs instruct."""
-    if "dask" in script.stem:
-        pytest.importorskip("dask.array")
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        capture_output=True,
-        text=True,
-        cwd=script.parent,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr[-2000:]
 
 
 @pytest.mark.parametrize(
@@ -203,9 +188,9 @@ def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
     image = PATTERN_NAMESPACE["image"]
     lazy = LazyArray.from_numpy(image)
     accessor = {
-        "basic": lazy.lazy,
-        "oindex": lazy.lazy.oindex,
-        "vindex": lazy.lazy.vindex,
+        "basic": lazy,
+        "oindex": lazy.oindex,
+        "vindex": lazy.vindex,
     }[case["mode"]]
     view = accessor[case["selection"]]
     result = view.result()
@@ -242,7 +227,7 @@ def test_default_source_contract_converts_basic_selected_slabs_to_system_memory(
             return self.data[key].tolist()
 
     source = ListSlabSource()
-    result = LazyArray(source).with_parts((2, 3)).lazy.oindex[[3, 1, 1], 1:5:2].result()
+    result = LazyArray(source).with_parts((2, 3)).oindex[[3, 1, 1], 1:5:2].result()
 
     np.testing.assert_array_equal(result, np.array([[16, 18], [6, 8], [6, 8]]))
     assert len(source.keys) > 0
@@ -251,7 +236,7 @@ def test_default_source_contract_converts_basic_selected_slabs_to_system_memory(
 
 def test_coordinate_array_example_preserves_order_and_duplicates() -> None:
     """Coordinate arrays are ordered sequences, not mathematical sets."""
-    view = LazyArray.from_numpy(np.arange(6)).with_parts((2,)).lazy.oindex[[4, 1, 1, 3]]
+    view = LazyArray.from_numpy(np.arange(6)).with_parts((2,)).oindex[[4, 1, 1, 3]]
 
     np.testing.assert_array_equal(view.result(), np.array([4, 1, 1, 3]))
     assembled = np.empty(view.shape, dtype=view.dtype)
@@ -264,8 +249,9 @@ def test_documented_partition_transform_is_global_and_projection_is_chunk_local(
     source = np.arange(8)
     part = tuple(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
 
-    assert part.view.transform.apply((0,)) == (4,)
-    assert part.view.array[part.view.transform.apply((0,))] == 4
+    assert part.view.transform.domain == IndexDomain((4,), (8,))
+    assert part.view.transform.apply((4,)) == (4,)
+    assert part.view.array[part.view.transform.apply((4,))] == 4
     assert part.projection.chunk_transform.apply((0,)) == (0,)
 
 
@@ -378,7 +364,7 @@ def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
     reader_type = CACHE_NAMESPACE["SystemMemoryChunkReader"]
     source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
     reader = reader_type(capacity=2)
-    view = LazyArray(source).with_reader(reader).lazy[1:5, 2]
+    view = LazyArray(source).with_reader(reader)[1:5, 2]
     parts = tuple(view.parts())
     out = np.empty(view.shape, dtype=source.dtype)
     for part in parts:

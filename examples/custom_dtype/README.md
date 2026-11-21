@@ -20,7 +20,7 @@ uv run examples/custom_dtype/custom_dtype.py
 ```
 
 Alternatively, run it with plain Python, in which case you must first install
-`zarr`, `ml_dtypes`, and `pytest` yourself:
+`zarr` and `ml_dtypes` yourself:
 
 ```bash
 python examples/custom_dtype/custom_dtype.py

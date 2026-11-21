@@ -15,8 +15,8 @@ model as an opaque value:
 - `InstanceOf` makes pydantic's core schema an is-instance check (no field
   introspection),
 - validation goes through `from_json` (the single source of truth for what
-  a well-formed document is, including normalization: bare-string metadata
-  fields, arrays-to-tuples),
+  a well-formed document is, including normalization: bare-string
+  declarations, arrays-to-tuples),
 - serialization goes through `to_json` (the canonical document form).
 
 `MetadataValidationError` subclasses `ValueError`, so pydantic converts a
@@ -42,7 +42,9 @@ from pydantic import (
 )
 
 from zarr_metadata import JSONValue
-from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3NamedConfig
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+)
 
 # --- the integration (this is the example) -----------------------------------
 
@@ -91,7 +93,7 @@ VALID_DOC = {
 
 def test_raw_document_is_validated_into_a_model() -> None:
     """A raw metadata document on a pydantic field is parsed by from_json,
-    with the library's normalization applied (tuples, canonical field form)."""
+    with the library's normalization applied (tuples, canonical declaration form)."""
     manifest = ArrayManifest.model_validate({"path": "a/b", "metadata": VALID_DOC})
     assert isinstance(manifest.metadata, ZarrV3ArrayMetadata)
     assert manifest.metadata.shape == (10,)
@@ -155,10 +157,10 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
     are the only supported integrations. If this test ever fails because
     pydantic learned to handle sentinels, revisit whether the introspection
     path needs its divergences documented again."""
-    from zarr_metadata._common import JSONValue
     from zarr_metadata.model import UNSET
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
+    from zarr_metadata.typed_json import JSONValue
+    from zarr_metadata.v3 import ZarrV3DeclarationJSON, ZarrV3ExtensionField
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 
     def build_and_use() -> None:
         adapter = TypeAdapter(ZarrV3ArrayMetadata)
@@ -167,10 +169,8 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
             _types_namespace={
                 "JSONValue": JSONValue,
                 "ZarrV3ExtensionField": ZarrV3ExtensionField,
-                "ZarrV3MetadataFieldJSON": ZarrV3MetadataFieldJSON,
+                "ZarrV3DeclarationJSON": ZarrV3DeclarationJSON,
                 "ZarrV3ArrayMetadataJSON": ZarrV3ArrayMetadataJSON,
-                "ZarrV3NamedConfig": ZarrV3NamedConfig,
-                "ZarrV3MetadataField": ZarrV3NamedConfig,
                 "UNSET": UNSET,
             },
         )
@@ -229,13 +229,17 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
         """Route every input document through the library's validation and
         normalization; pydantic then parses only canonical documents."""
         if isinstance(data, Mapping):
-            doc = dict(ZarrV3ArrayMetadata.from_json(data).to_json())
+            metadata = ZarrV3ArrayMetadata.from_json(data).to_json()
+            doc: dict[str, object] = dict(metadata)
             for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
                 if isinstance(doc[key], str):
                     doc[key] = {"name": doc[key]}
-            for key in ("codecs", "storage_transformers"):
+            for key, entries in (
+                ("codecs", metadata["codecs"]),
+                ("storage_transformers", metadata.get("storage_transformers", ())),
+            ):
                 doc[key] = tuple(
-                    {"name": item} if isinstance(item, str) else item for item in doc.get(key, ())
+                    {"name": item} if isinstance(item, str) else item for item in entries
                 )
             doc.setdefault("attributes", {})
             return doc

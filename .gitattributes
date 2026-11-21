@@ -1,3 +1,9 @@
 *.py linguist-language=python
 *.ipynb linguist-documentation
 .git_archival.txt export-subst
+
+# just refuses to format a CRLF file, so `just just-check` would fail on a Windows
+# checkout with core.autocrlf=true before the contributor has changed anything.
+Justfile text eol=lf
+*/justfile text eol=lf
+packages/*/justfile text eol=lf

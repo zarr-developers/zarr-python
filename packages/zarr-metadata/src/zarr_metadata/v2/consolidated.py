@@ -34,8 +34,13 @@ class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     `key.endswith(".zarray")` etc.
     """
 
-    zarr_consolidated_format: int
+    zarr_consolidated_format: Literal[1]
+    """The version of the consolidated metadata format, `1`."""
     metadata: Mapping[str, ZarrV2ZArrayJSON | ZarrV2ZGroupJSON | ZarrV2ZAttrsJSON]
+    """The content of each metadata file in the hierarchy, by its store key.
+
+    See the class docstring for the shape each key's value takes.
+    """
 
 
 ZarrV2ConsolidatedMetadataStoreKey = Literal[".zmetadata"]

@@ -118,7 +118,7 @@ def test_tunable_attrs_param(
 
 async def test_typesize() -> None:
     a = np.arange(1000000, dtype=np.uint64)
-    codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+    codecs = [zarr.codecs.BytesCodec(endian="little"), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
     data = await z.store.get("c/0", prototype=default_buffer_prototype())
     assert data is not None

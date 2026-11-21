@@ -1,6 +1,6 @@
 # Visual guide
 
-The whole model in one sentence: indexing through `LazyArray.lazy` builds a
+The whole model in one sentence: indexing through `LazyArray` builds a
 view, chunk planning partitions its coordinates, and `result()` materializes
 the view. This page follows one familiar NumPy selection, `source[2:5]`,
 through those stages.
@@ -8,8 +8,9 @@ through those stages.
 The first four sections are for anyone indexing arrays: coordinates,
 transforms, composition, and result axes. **If you are using lazy indexing
 rather than building a storage backend, you can stop after section four.**
-The last two sections are for integrators: they turn a request into a chunk
-plan and pair each chunk read with its place in the result.
+The last three sections are for integrators: they turn a request into a chunk
+plan, pair each chunk read with its place in the result, and show the per-axis
+tables the plan is built from.
 
 Throughout, one division of labor holds: the transform answers **which
 values?** and is independent of the backend; the reader answers **how do I
@@ -37,7 +38,7 @@ make the correspondence explicit: those result coordinates receive values
 `12`, `13`, and `14` from source coordinates `2`, `3`, and `4`.
 
 The wrapper below gives the same familiar selection a lazy spelling. Indexing
-through `.lazy` creates `view`; the last line asks for its values and checks the
+with `[...]` creates `view`; the last line asks for its values and checks the
 observable NumPy result.
 
 ```python
@@ -104,11 +105,40 @@ different questions:
 | Surface | Meaning of an integer index | Meaning of `-1` |
 | --- | --- | --- |
 | `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The actual address `-1`, if the domain contains it |
-| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before it reaches the transform algebra |
+| `LazyArray` with a NumPy key | A NumPy-style position in the current view | The last position, normalized against the domain's origin before it reaches the transform algebra |
+| `LazyArray` with an `IndexDomain` or `IndexTransform` key | A literal coordinate in the view's domain | The actual address `-1`, if the domain contains it |
 
-`LazyArray` uses positions because it is an array-like wrapper: each derived
-view starts at position zero and negative indices wrap exactly as they do in
-NumPy. The lower-level domain and transform types keep literal coordinates.
+`LazyArray` reads NumPy keys as positions because it is an array-like wrapper:
+negative indices wrap exactly as they do in NumPy. The view itself keeps its
+literal domain, as a TensorStore view does: `source[10:20]` has domain
+`[10, 20)`, and a further `[2:5]` on it has domain `[12, 15)`. A domain or
+transform key addresses those literal coordinates directly.
+
+### The key's type picks the frame {#the-keys-type-picks-the-frame}
+
+**The type of a key decides whether it is relative or absolute.** This is the
+one rule to remember about indexing a `LazyArray`:
+
+| Key type | Read as | Example |
+| --- | --- | --- |
+| slice, integer, `...`, `None`, index array, mask | **Relative**: positions in the current view, NumPy-style | `view[2:5]`, `view[-1]`, `view.oindex[[3, 1]]` |
+| `IndexDomain` | **Absolute**: coordinates of the view's domain, restricted to a box | `view[IndexDomain((12,), (15,))]` |
+| `IndexTransform` | **Absolute**: composed onto the view; the key's domain becomes the new view's domain | `view[IndexTransform.identity(view.transform.domain)[12:15]]` |
+
+No key type is valid in both readings, so a key never has two meanings. That is
+the property pandas lost with value-based `ix` dispatch and removed in favor of
+`loc` and `iloc`; TensorStore keeps it by giving each key type one fixed
+reading, and so does this wrapper. The only difference from TensorStore is
+which reading the NumPy key gets: absolute there, relative here.
+
+Whichever key produced a view, **its domain is always absolute**:
+`view.transform.domain` reports literal coordinates after `view[2:5]` exactly as
+it does after `view[IndexDomain(...)]`. The relative reading exists only at the
+moment a NumPy key is interpreted, so relative and absolute steps compose freely.
+
+```python
+--8<-- "snippets/key_types.py:key-types"
+```
 
 ### A transform points from the request to the source
 
@@ -208,28 +238,35 @@ metadata is ready to inspect:
 | Available without reading | Value in this example |
 | --- | --- |
 | `composed.shape` | `(2,)` |
-| `composed.transform` | One transform mapping request `i` to source `3 - i` |
+| `composed.transform` | One transform over the literal domain `[-3, -1)`, mapping request `i` to source `-i` |
 
 Neither property needs source values. Composition works only on the coordinate
 description; the assertion's call to `result()` is the first operation in the
 example that materializes the selected data.
 
 !!! warning "Stop here: the materialization boundary"
-    Indexing through `.lazy[...]` never reads. These do:
+    Indexing through `[...]` composes a selection without reading source values.
+    These operations request values:
 
     - `result()`
-    - eager indexing of the wrapper: `view[...]`
-    - `numpy.asarray(view)`, or passing the view to any NumPy function
-      (`numpy.add(view, 1)` converts, and therefore materializes, the view)
+    - `numpy.asarray(view)` and NumPy operations that convert the view
+      (`numpy.add(view, 1)` does so; `numpy.shape(view)` and `numpy.ndim(view)`
+      can use metadata without reading values)
+
+    Dask tokenization may also inspect values, depending on the wrapped source
+    and tokenization path.
 
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.
 
-    Nor does it write. There is no `__setitem__`, so `view[...] = values`
-    raises `TypeError` too, and a wrapped source needs no `__setitem__` of
-    its own. A consumer that writes plans the selection with `plan_chunks`
-    and performs its own read-modify-write, keeping chunk atomicity and
-    concurrent-writer policy on the backend's side of the boundary.
+    Iteration yields lazy first-axis views; call `result()` on each to read it.
+
+    `view.write(values)` writes through the composed transform to the original
+    writable source, synchronously, and returns `None`. `view[key] = values`
+    writes the selected sub-view in the same way. These calls do not create
+    futures or transactions. Read-only sources remain usable for reads;
+    writes require source assignment support. Storage atomicity and concurrent
+    writer coordination remain the backend's responsibility.
 
 ## An index defines a result array {#an-index-defines-a-result-array}
 
@@ -383,8 +420,11 @@ each bundles a sub-view of the request (`.view`), that chunk's projection
 Within one `Partition`, the frames divide: `Partition.view.transform` is a
 different, global transform — it maps the part view directly into the raw
 wrapped source — while only `Partition.projection.chunk_transform` uses
-zero-origin chunk-local coordinates. Readers receive both so the global
-source address and the local planning frame cannot be confused.
+zero-origin chunk-local coordinates. Parent assembly passes both frames to
+the reader. Independently scheduled `part.view.result()` calls plan against the
+same source grid and supply both frames too. Their result placement is relative
+to the part view being read. A partition view can be indexed or repartitioned
+like any other view; its base shape remains the full source shape.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |
@@ -398,7 +438,7 @@ rank one and source rank two.
 
 ### Order and duplicates need the request-side projection
 
-Orthogonal indexing (`.lazy.oindex`) applies each axis's indexer
+Orthogonal indexing (`.oindex`) applies each axis's indexer
 independently, like `numpy.ix_` — an outer product; the
 [pattern reference](patterns.md) develops the dialects. It can visit source
 cells in an order that does not match chunk order, and it can visit one
@@ -435,10 +475,87 @@ The paired representation preserves information that a bounding box or local
 selector discards: exact request order, duplicate destinations, and the
 correspondence between every request position and its chunk-local source cell.
 
+## A plan is a product of per-axis tables {#a-plan-is-a-product-of-per-axis-tables}
+
+Look again at the two projections of `image[1, :]`. Each chunk transform has
+one map per source axis, and every one of those maps came from restricting
+the request's map for *that axis alone* to *that axis's* chunk: the fixed row
+`ConstantMap(1)` lands in row-chunk 0 whatever the column chunk is, and the
+column slice meets column-chunk 0 as local columns `0:2` and column-chunk 1 as
+local columns `0:2` whatever the row chunk is. Restricting a transform to a
+chunk distributes over axes whenever each output map reads its own request
+axis — which every basic and orthogonal selection satisfies. So the plan does
+not intersect the whole transform with every chunk. It resolves each axis
+once, into a table with one row per chunk that axis touches, and a projection
+is one row of each table combined.
+
+```text
+image[1, :] over 2-by-2 chunks
+
+axis 0 (rows): ConstantMap(1)          axis 1 (columns): DimensionMap
+row | chunk  start  local  extent      row | chunk  start  local_start  extent  origin  full
+ 0  |   0      0      1      1          0  |   0      0        0          2       0     yes
+                                        1  |   1      2        0          2       2     yes
+
+row_shape (1, 2): 1 x 2 = 2 projections
+projection (0, 0) = axis-0 row 0 x axis-1 row 0 -> chunk (0, 0), local (1, 0:2), request columns 0:2
+projection (0, 1) = axis-0 row 0 x axis-1 row 1 -> chunk (0, 1), local (1, 0:2), request columns 2:4
+```
+
+`ChunkPlan.partition()` returns this factored form, a `GridPartition`. Its
+`sets` hold one table per source axis the request reads independently, in
+axis order, and `joint_sets` one table per connected group of index arrays; `row_shape` is the
+number of rows in each; and the plan walks the rows in row-major order over
+it. The executable example reads the two tables above off the plan, checks
+that the plan's projections are exactly the partition's rows, and evaluates
+the second row on both of its transforms:
+
+```python
+--8<-- "snippets/grid_partition.py:strided-tables"
+```
+
+There are three kinds of table, matching the three map kinds and the one
+arrangement that does not factor. A `StridedSet` holds a `ConstantMap` or
+`DimensionMap` axis; an `IndexedSet` holds an orthogonal `ArrayMap` axis
+(`.oindex`) with its coordinates grouped by chunk; and each `JointSet` holds one connected group of index arrays. Arrays
+sharing request axes are sorted together; independent groups are separate
+tables in `joint_sets`. Singleton broadcast axes retain this independence. The
+[API reference](../api/chunk_resolution.md) documents every column.
+
+The gather from the previous section, `oindex[[4, 1, 1], 2:6]` over 3-by-4
+chunks, groups rows `1, 1` into chunk 0 and row `4` into chunk 1 while
+remembering that row `4` fills request position 0. A `vindex` selection keeps
+its points paired in the joint table:
+
+```python
+--8<-- "snippets/grid_partition.py:indexed-and-joint"
+```
+
+Building independent strided tables costs the *sum* of touched chunks per
+axis. Index-array grouping also scales with the selected point count; the
+planner flattens each connected component separately. Independent components
+do not expand into their Cartesian product until their rows are iterated. And projections are derived from rows only when asked for:
+`chunk_coords()` lists every chunk the plan touches without materializing a
+row, and a consumer can read the columns directly, as
+[Integration boundaries](integrations.md#reading-the-tables-directly) shows.
+For example, `(u, v) -> (a[u], b[u], c[v])` has two independent components.
+The first two storage axes share `u`; the third reads `v`. With 1,000 values
+per input axis, planning stores 3,000 index values rather than 3,000,000.
+Each projection has one synthetic axis per nonconstant component, followed
+by residual request axes, including axes no output reads.
+
+```python
+--8<-- "snippets/grid_partition.py:components"
+```
+
+A hand-built affine diagonal — two `DimensionMap`s reading one request axis,
+which no selection produces — would need a table spanning several storage
+axes; the plan rejects it with `ValueError`.
+
 ---
 
-<nav aria-label="Guide navigation">
-  <strong>Previous:</strong> <a href="../">zarr-indexing</a>
-  ·
-  <strong>Next:</strong> <a href="patterns/">Indexing patterns</a>
+<nav aria-label="Guide navigation" markdown>
+**Previous:** [zarr-indexing](../index.md)
+·
+**Next:** [Indexing patterns](patterns.md)
 </nav>

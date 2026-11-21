@@ -4,38 +4,66 @@ Regular chunk grid (Zarr v3 core spec).
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
-from typing import Final, Literal
+from collections.abc import Iterator
+from typing import Final
 
-from typing_extensions import TypedDict
-
-REGULAR_CHUNK_GRID_NAME: Final = "regular"
-"""The `name` field value of the regular chunk grid."""
-
-RegularChunkGridName = Literal["regular"]
-"""Literal type of the `name` field of the regular chunk grid."""
-
-
-class RegularChunkGridConfiguration(TypedDict):
-    """Configuration for the regular chunk grid."""
-
-    chunk_shape: tuple[int, ...]
-
-
-class RegularChunkGridObject(TypedDict):
-    """Regular chunk grid metadata in object form."""
-
-    name: RegularChunkGridName
-    configuration: RegularChunkGridConfiguration
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import (
+    ChunkGridDefinition,
+    Lengths,
+)
+from zarr_metadata.v3._types.chunk_grid import (
+    REGULAR_CHUNK_GRID_NAME,
+    RegularChunkGridConfiguration,
+    RegularChunkGridMetadata,
+    RegularChunkGridName,
+    RegularChunkGridObject,
+)
 
 
-RegularChunkGridMetadata = RegularChunkGridObject
-"""Permitted JSON shape for regular chunk grid metadata.
+def _shape_rules(
+    configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
+) -> Iterator[ValidationProblem]:
+    """Check that there is one chunk length for each of the array's dimensions.
 
-`chunk_shape` is required and has no default, so only the object form is
-valid; the short-hand-name form is not permitted by the spec for this grid.
-"""
+    "The dimensionality of the grid is the same as the dimensionality of
+    the array"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L29-L31).
+    """
+    chunk_shape = configuration["chunk_shape"]
+    if len(chunk_shape) != len(shape):
+        yield ValidationProblem(
+            ("chunk_shape",),
+            f"expected one chunk length per dimension of shape, got {len(chunk_shape)}",
+            "invalid_value",
+        )
+
+
+def _chunk_lengths(
+    configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
+) -> Lengths:
+    """Return one length along each axis, because every chunk has the grid's `chunk_shape`.
+
+    "each chunk is a hyperrectangle of the same shape"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L28-L29),
+    including a chunk at the array's edge, where "the grid will overhang
+    the edge of the array space"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L43-L46).
+    """
+    return tuple(frozenset({length}) for length in configuration["chunk_shape"])
+
+
+REGULAR_CHUNK_GRID: Final = ChunkGridDefinition(
+    name=REGULAR_CHUNK_GRID_NAME,
+    configuration=RegularChunkGridConfiguration,
+    shape_rules=_shape_rules,
+    chunk_lengths=_chunk_lengths,
+)
+"""The `regular` chunk grid."""
 
 __all__ = [
+    "REGULAR_CHUNK_GRID",
     "REGULAR_CHUNK_GRID_NAME",
     "RegularChunkGridConfiguration",
     "RegularChunkGridMetadata",
