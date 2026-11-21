@@ -4121,7 +4121,10 @@ async def _shards_initialized(
 
     """
     store_contents = [
-        x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path + ("/" if array.store_path.path else ""))
+        x
+        async for x in array.store_path.store.list_prefix(
+            prefix=array.store_path.path + ("/" if array.store_path.path else "")
+        )
     ]
     store_contents_relative = [
         _relativize_path(path=key, prefix=array.store_path.path)
