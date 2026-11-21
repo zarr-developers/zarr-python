@@ -1,4 +1,5 @@
 
+
 def test_shards_initialized_with_sibling_prefix():
     import zarr
     g = zarr.open_group(zarr.storage.MemoryStore(), mode="w")
