@@ -162,7 +162,7 @@ from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Self
+    from typing import Self, SupportsIndex
 
     import numpy.typing as npt
 
@@ -1311,6 +1311,38 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     async def nbytes_stored(self) -> int:
         return await _nbytes_stored(self.store_path)
 
+    async def chunk_byte_range(
+        self, coords: tuple[SupportsIndex, ...]
+    ) -> tuple[str, int, int] | None:
+        """Locate the encoded bytes of one logical chunk without decoding its data.
+
+        Parameters
+        ----------
+        coords : tuple of int
+            Nonnegative logical chunk coordinates, not element or shard coordinates.
+
+        Returns
+        -------
+        tuple of (str, int, int) or None
+            Store-relative key, byte offset, and encoded byte length. Returns None
+            for an absent chunk, including an absent inner chunk of a stored shard.
+
+        Notes
+        -----
+        Supports regular chunk grids and one-level sharding with no outer codecs.
+        For sharded arrays this reads the shard index, not chunk payloads. Each
+        call reads its own index; there is no cross-call cache. For unsharded
+        arrays this calls `Store.getsize`, whose default implementation reads
+        the entire object if the store does not provide an efficient size lookup.
+
+        Locations describe the current stored representation, not decoded byte
+        counts. They are not a snapshot or an integrity check of the payload.
+        Concurrent writes can invalidate the returned location.
+        """
+        from zarr.core._chunk_location import chunk_byte_range
+
+        return await chunk_byte_range(self, coords)
+
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[tuple[int, ...]]:
@@ -2449,6 +2481,28 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         size : int
         """
         return sync(self.async_array.nbytes_stored())
+
+    def chunk_byte_range(self, coords: tuple[SupportsIndex, ...]) -> tuple[str, int, int] | None:
+        """Locate the encoded bytes of a logical chunk without decoding its data.
+
+        Parameters
+        ----------
+        coords : tuple of int
+            Nonnegative logical chunk coordinates, not element or shard coordinates.
+
+        Returns
+        -------
+        tuple of (str, int, int) or None
+            Store-relative key, byte offset, and encoded byte length, or None if
+            the chunk is absent.
+
+        Notes
+        -----
+        See [`AsyncArray.chunk_byte_range`][zarr.AsyncArray.chunk_byte_range] for
+        supported layouts, IO costs, and the requirement that the source not change
+        while using the location.
+        """
+        return sync(self.async_array.chunk_byte_range(coords))
 
     def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
