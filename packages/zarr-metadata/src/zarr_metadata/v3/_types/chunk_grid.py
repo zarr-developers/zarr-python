@@ -10,7 +10,7 @@ holds the chunk grid's definition and rules.
 
 from typing import Annotated, Final, Literal, NotRequired
 
-from annotated_types import Ge
+from annotated_types import Ge, MinLen
 from typing_extensions import TypedDict
 
 # regular: https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
@@ -67,7 +67,7 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 """
 
 
-# rectilinear: https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md
+# rectilinear: https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -77,12 +77,19 @@ RectilinearChunkGridName = Literal["rectilinear"]
 
 _Positive = Annotated[int, Ge(1)]
 
-RectilinearDimSpec = _Positive | tuple[_Positive | tuple[_Positive, _Positive], ...]
+RectilinearDimSpec = (
+    _Positive | Annotated[tuple[_Positive | tuple[_Positive, _Positive], ...], MinLen(1)]
+)
 """JSON shape for one dimension's rectilinear spec.
 
 Either a bare integer (uniform shorthand for a regular dimension within
-a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
-pairs. Every extent, and every run's length and count, is at least 1.
+a rectilinear grid), or a non-empty tuple of integers and/or
+`[value, count]` RLE pairs. Every extent, and every run's length and
+count, is at least 1. The tuple is non-empty even for a dimension of
+length 0, which writes a bare integer to have no chunks: "as a non-empty
+array", and "For an axis of length 0, the array form still requires at
+least one edge length"
+(https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md?plain=1#L89-L95).
 """
 
 
@@ -95,9 +102,9 @@ class RectilinearChunkGridConfiguration(TypedDict, closed=True):
     """The chunk edge lengths along each dimension of the array, one entry per dimension.
 
     An entry is a bare integer, a step repeated until it covers the
-    dimension, or a list of edge lengths and `[length, count]` runs, whose
-    lengths must sum to at least the dimension's length. Every length and
-    count is at least 1.
+    dimension, or a non-empty list of edge lengths and `[length, count]`
+    runs, whose lengths must sum to at least the dimension's length. Every
+    length and count is at least 1.
     """
 
 
@@ -121,7 +128,7 @@ RectilinearChunkGridMetadata = RectilinearChunkGridObject
 
 `kind` and `chunk_shapes` are required, so only the object form is valid;
 the short-hand-name form is not permitted by the spec for this grid.
-  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L59-L62
+  https://github.com/zarr-developers/zarr-extensions/blob/cadd1dab6c9aebafb66080b78b583f6507466b3d/chunk-grids/rectilinear/README.md#L59-L62
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 

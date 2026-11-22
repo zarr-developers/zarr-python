@@ -163,15 +163,18 @@ a TypedDict, `Mapping[str, V]`, a `NewType` and a type alias. A number's
 type may carry bounds, written with annotated-types and read the way
 pydantic reads them: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at most one
 from each side, at any depth. For example,
-`tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value out of
+`tuple[Annotated[int, Ge(1)], ...]` bounds each element. An integer's
+type may carry a step, `MultipleOf`, at most one. An array's or a
+string's type may bound its length with `MinLen`, `MaxLen` and `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. A value out of
 bounds is an `invalid_value` problem. Its message says what the type
 admits ("expected an integer >= 1, got 0"), and its `ctx` holds the
 bounds. The rules run only on a configuration within its bounds, so a
 rule can rely on them, as pydantic's after-validators and zod's
 refinements do. Until a value out of bounds is fixed, it is the only
 problem reported for the configuration. `Annotated` may also carry a
-note, as a string or a `Doc`. Any other metadata (a `MinLen`, a
-`Predicate`, pydantic's `Field`) is rejected when the definition is
+note, as a string or a `Doc`. Any other metadata (a `Predicate`,
+pydantic's `Field`) is rejected when the definition is
 built, because a type whose constraint the checker does not enforce
 would give false information.
 
@@ -211,7 +214,11 @@ declaration the scope read.
 equivalent spelling, and declarations are compared by it. Each nested declaration is
 written in its own simplest spelling, then the definition's `canonical`
 is applied (blosc drops a `typesize` that `noshuffle` ignores, and a
-rectilinear grid run-length encodes its chunk shapes). The envelope
+rectilinear grid run-length encodes its chunk shapes). A v3 codec that
+receives an array can have a simpler spelling still for the chunk it
+receives, which its `chunk_canonical` declares, and an array model
+compares its codecs in that spelling (see `zarr_metadata.v3.definition`).
+The envelope
 uses the shortest form every reader accepts: a data type with nothing to
 configure is its bare name, and any other declaration is an object,
 `{"name": ...}`, because a Zarr v3.0 reader does not accept a short-hand
@@ -256,8 +263,8 @@ TypedDict, that does not declare how undeclared keys are handled, or
 that has a member no checker reads (the error names the TypedDict that
 contains it); a `name` that is not a string; an attribute declared as a
 function (`rules`, `canonical`, `fill_value_rules`, `storage`,
-`shape_rules`, `chunk_lengths`, `chunk_rules`, `transition`,
-`pipelines`) that is not a function; a data type's `fill_value` that no
+`shape_rules`, `chunk_lengths`, `chunk_rules`, `chunk_canonical`,
+`transition`, `pipelines`) that is not a function; a data type's `fill_value` that no
 checker reads, or that contains a declaration, which a value of the
 data type never does; a codec `kind` that is not one of the three, or a
 `size` that is not `"static"` or `"dynamic"`; a function that is never

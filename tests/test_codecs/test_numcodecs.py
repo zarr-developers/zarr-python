@@ -139,9 +139,11 @@ def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCod
         "astype",
     ],
 )
+@pytest.mark.parametrize("transpose", [False, True])
 def test_generic_filter(
     codec_class: type[_numcodecs._NumcodecsArrayArrayCodec],
     codec_config: dict[str, JSON],
+    transpose: bool,
 ) -> None:
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
@@ -153,6 +155,7 @@ def test_generic_filter(
         fill_value=0,
         filters=[
             codec_class(**codec_config),
+            *([TransposeCodec(order=(1, 0))] if transpose else []),
         ],
     )
 

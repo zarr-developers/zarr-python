@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import math
 import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -19,7 +20,7 @@ from zarr.codecs.bytes import (
     BytesCodec,
     Endian,
     EndianLiteral,
-    _row_window,
+    _block_window,
 )
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer, default_buffer_prototype
@@ -392,22 +393,52 @@ def _single_chunk_array(
 
 @pytest.mark.usefixtures("codec_pipeline")
 @pytest.mark.parametrize(
-    ("selection", "rows_read"),
+    ("selection", "items_read"),
     [
-        (np.s_[500:600, 3], 100),
-        (np.s_[500:600], 100),
-        (np.s_[777, 5], 1),
-        (np.s_[-1], 1),
-        (np.s_[10:20:3, ::2], 10),  # rows 10 to 19 are fetched
-        (np.s_[...], 10_000),
+        (np.s_[500:600, 3], 100 * 10),
+        (np.s_[500:600], 100 * 10),
+        (np.s_[777, 5], 1),  # a single row is narrowed to the columns it needs
+        (np.s_[777, 2:6], 4),
+        (np.s_[777:778, 2:6], 4),
+        (np.s_[-1], 10),
+        (np.s_[10:20:3, ::2], 10 * 10),  # rows 10 to 19 are fetched
+        (np.s_[...], 10_000 * 10),
     ],
 )
-def test_uncompressed_partial_read(selection: Any, rows_read: int) -> None:
-    """Reading part of an uncompressed chunk fetches only the rows it touches."""
+def test_uncompressed_partial_read(selection: Any, items_read: int) -> None:
+    """Reading part of an uncompressed chunk fetches only the block it touches."""
     data = np.arange(100_000, dtype="int16").reshape(10_000, 10)
     arr, store = _single_chunk_array(data, compressors=None)
     np.testing.assert_array_equal(arr[selection], data[selection])
-    assert sum(n for *_, n in store.reads) == rows_read * 10 * 2
+    assert sum(n for *_, n in store.reads) == items_read * 2
+
+
+@pytest.mark.usefixtures("codec_pipeline")
+@pytest.mark.parametrize(
+    ("selection", "byte_range"),
+    [
+        (
+            np.s_[7, 10:20, 5:9],
+            (7 * 1200 + 10 * 30, 7 * 1200 + 20 * 30),
+        ),  # rows 10 to 19 of frame 7
+        (np.s_[7, 10:20], (7 * 1200 + 10 * 30, 7 * 1200 + 20 * 30)),
+        (np.s_[7, 10, 5:9], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 9)),
+        (np.s_[7, 10, 5], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 6)),
+        (np.s_[7:8, 10:11, 5:9], (7 * 1200 + 10 * 30 + 5, 7 * 1200 + 10 * 30 + 9)),
+        (np.s_[7, :, 5:9], (7 * 1200, 8 * 1200)),  # every row of frame 7
+        (np.s_[7], (7 * 1200, 8 * 1200)),
+        (np.s_[7:9, 10:20, 5:9], (7 * 1200, 9 * 1200)),  # two frames are fetched whole
+    ],
+)
+def test_uncompressed_partial_read_within_a_row(
+    selection: Any, byte_range: tuple[int, int]
+) -> None:
+    """A selection that touches one index along the leading axes is narrowed along the next."""
+    data = np.arange(50 * 40 * 30, dtype="uint8").reshape(50, 40, 30)
+    arr, store = _single_chunk_array(data, compressors=None)
+    np.testing.assert_array_equal(arr[selection], data[selection])
+    ((_, served, _),) = store.reads
+    assert (served.start, served.end) == byte_range
 
 
 @pytest.mark.usefixtures("codec_pipeline")
@@ -427,6 +458,19 @@ def test_uncompressed_partial_read_values(dtype: str, ndim: int) -> None:
     np.testing.assert_array_equal(arr.oindex[mask], data[mask])
     coords = tuple(np.array([0, 6, 3]) % n for n in shape)
     np.testing.assert_array_equal(arr.vindex[coords], data[coords])
+    # selections that touch a single index along the leading axes
+    single: list[Any] = [np.s_[4, 2:], np.s_[4, -1], np.s_[4:5, 1:3], np.s_[4, ..., 0]]
+    if ndim == 3:
+        single += [np.s_[4, 2, 1:], np.s_[4, 2:4, 1], np.s_[4, :, 1], np.s_[4, 3, ::2]]
+    for selection in single if ndim > 1 else []:
+        np.testing.assert_array_equal(arr[selection], data[selection])
+    if ndim > 1:
+        np.testing.assert_array_equal(arr.oindex[[4], [3, 1]], data[[4]][:, [3, 1]])
+        mask = np.zeros(shape[1], dtype=bool)
+        mask[[1, 3]] = True
+        np.testing.assert_array_equal(arr.oindex[4, mask], data[4][mask])
+        point = tuple(np.array([n - 1, n - 1]) for n in shape)
+        np.testing.assert_array_equal(arr.vindex[point], data[point])
 
 
 @pytest.mark.usefixtures("codec_pipeline")
@@ -543,10 +587,38 @@ def test_uncompressed_partial_read_store_sends_unexpected_length() -> None:
         ((slice(None), 2), (10, 4)),  # every row
         ((np.array([0, 9]), slice(None)), (10, 4)),  # first and last row
         ((..., 2), (10, 4)),  # rows not determined
+        ((0, slice(None)), (1, 4)),  # the only row, and every column of it
         (slice(2, 4), (10,)),  # not a tuple
         ((), ()),  # zero-dimensional chunk
     ],
 )
-def test_row_window_reads_whole_chunk(selection: Any, shape: tuple[int, ...]) -> None:
-    """Selections with no narrower row window than the whole chunk give None."""
-    assert _row_window(selection, shape) is None
+def test_block_window_reads_whole_chunk(selection: Any, shape: tuple[int, ...]) -> None:
+    """Selections with no narrower block than the whole chunk give None."""
+    assert _block_window(selection, shape) is None
+
+
+@pytest.mark.parametrize(
+    ("selection", "shape", "offset", "block_shape"),
+    [
+        ((slice(2, 5), slice(None)), (10, 4), 8, (3, 4)),
+        ((3, slice(1, 3)), (10, 4), 13, (1, 2)),
+        ((3, 2), (10, 4), 14, (1, 1)),
+        ((0, 2), (1, 4), 2, (1, 1)),  # an axis of length 1 is passed through
+        ((3, slice(2, 2)), (10, 4), 12, (1, 4)),  # no columns: stop at the row
+        ((3, ..., 1), (10, 4, 5), 60, (1, 4, 5)),  # stop at the ellipsis
+        ((3,), (10, 4), 12, (1, 4)),  # fewer selectors than axes
+        ((np.array([3, 3]), np.array([1, 2])), (10, 4), 13, (1, 2)),
+        ((2, 1, slice(1, 4)), (5, 4, 6), 2 * 24 + 6 + 1, (1, 1, 3)),
+    ],
+)
+def test_block_window(
+    selection: Any, shape: tuple[int, ...], offset: int, block_shape: tuple[int, ...]
+) -> None:
+    """The block starts at the first item the selection touches along the narrowed axes."""
+    window = _block_window(selection, shape)
+    assert window is not None
+    assert window[:2] == (offset, block_shape)
+    # the shifted selection picks the same items from the block as the selection does from the chunk
+    data = np.arange(math.prod(shape)).reshape(shape)
+    block = data.reshape(-1)[offset : offset + math.prod(block_shape)].reshape(block_shape)
+    np.testing.assert_array_equal(block[window[2]], data[selection])

@@ -89,17 +89,14 @@ def _edges(draw: st.DrawFn, extent: int | None) -> tuple[int | tuple[int, int], 
     can be long, since a pair costs the same however many chunks it
     counts, which is what the spelling is for. Its edges often share a
     factor, as they must for a shard to divide them into inner chunks
-    longer than 1; edges drawn apart rarely do. A
-    dimension of length zero, or of a length not known, may be covered by
-    no edges at all.
+    longer than 1; edges drawn apart rarely do. There is always at least
+    one edge, even along a dimension of length zero: the spec allows no
+    empty list, and a dimension with no chunks writes a bare length instead.
     """
-    min_runs = 0 if extent is None or extent == 0 else 1
     factor = draw(st.just(1) | st.integers(2, _MAX_FACTOR))
     sizes = [
         factor * size
-        for size in draw(
-            st.lists(st.integers(1, _MAX_LENGTH), min_size=min_runs, max_size=_MAX_RUNS)
-        )
+        for size in draw(st.lists(st.integers(1, _MAX_LENGTH), min_size=1, max_size=_MAX_RUNS))
     ]
     runs = [(size, draw(_count(extent, size))) for size in sizes]
     covered = sum(size * count for size, count in runs)

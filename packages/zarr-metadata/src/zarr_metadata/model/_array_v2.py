@@ -66,10 +66,15 @@ from zarr_metadata.model._shared import (
 from zarr_metadata.v2._context import ZarrV2Context  # noqa: TC001
 from zarr_metadata.v2._declaration_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.array import (
+    ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR,
+    ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZARR_V2_ARRAY_ORDER,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
     ZarrV2ArrayOrder,
+    is_zarr_v2_array_dimension_separator,
+    is_zarr_v2_array_order,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
@@ -239,13 +244,15 @@ def read_array_v2(
             doc["dtype"], refined["dtype"], found, ZarrV2DataTypeDefinition, context, ("dtype",)
         )
         problems.extend(found)
+    order: ZarrV2ArrayOrder | None = None
     if "order" in doc:
         # Checked after refinement, so a value that only compares equal to
         # "C" is refused, like every other value outside the set.
-        order, found = refine_json(doc["order"], ("order",))
-        refined["order"] = order
-        if len(found) != 0 or order not in ("C", "F"):
-            problems.append(outside_of(("order",), doc["order"], ("C", "F")))
+        refined["order"], found = refine_json(doc["order"], ("order",))
+        if len(found) == 0 and is_zarr_v2_array_order(refined["order"]):
+            order = refined["order"]
+        else:
+            problems.append(outside_of(("order",), doc["order"], ZARR_V2_ARRAY_ORDER))
     compressor: ResolvedDeclaration[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     if "compressor" in doc:
         compressor = None
@@ -297,12 +304,20 @@ def read_array_v2(
                 problems.extend(found)
             filters = tuple(read)
             refined["filters"] = tuple(items)
+    dimension_separator: ZarrV2ArrayDimensionSeparator = ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR
     if "dimension_separator" in doc:
-        separator, found = refine_json(doc["dimension_separator"], ("dimension_separator",))
-        refined["dimension_separator"] = separator
-        if len(found) != 0 or separator not in (".", "/"):
+        refined["dimension_separator"], found = refine_json(
+            doc["dimension_separator"], ("dimension_separator",)
+        )
+        if len(found) == 0 and is_zarr_v2_array_dimension_separator(refined["dimension_separator"]):
+            dimension_separator = refined["dimension_separator"]
+        else:
             problems.append(
-                outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
+                outside_of(
+                    ("dimension_separator",),
+                    doc["dimension_separator"],
+                    ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
+                )
             )
     fill_value: JSONValue = None
     if "fill_value" in doc:
@@ -325,16 +340,14 @@ def read_array_v2(
         filters=filters,
         problems=within(with_input(problems, doc), at),
     )
-    if len(problems) != 0 or shape is None or chunks is None or attributes is None:
+    if len(problems) != 0 or shape is None or chunks is None or order is None or attributes is None:
         return reading, None
     members = ArrayMembersV2(
         shape=shape,
         chunks=chunks,
         fill_value=fill_value,
-        order=cast("ZarrV2ArrayOrder", refined["order"]),
-        dimension_separator=cast(
-            "ZarrV2ArrayDimensionSeparator", refined.get("dimension_separator", ".")
-        ),
+        order=order,
+        dimension_separator=dimension_separator,
         attributes=attributes,
         extra_fields=extra_fields,
         document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
@@ -897,7 +910,7 @@ _DEFAULT_MEMBERS: Final[Mapping[str, object]] = MappingProxyType(
         "order": "C",
         "compressor": None,
         "filters": None,
-        "dimension_separator": ".",
+        "dimension_separator": ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR,
     }
 )
 """The document of `ZarrV2ArrayMetadata.create_default` given nothing: a scalar `|u1` array, without its `zarr_format`."""

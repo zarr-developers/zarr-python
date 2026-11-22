@@ -20,6 +20,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-enc
 
 from zarr_metadata.v3.chunk_key_encoding.default import (
     DEFAULT_CHUNK_KEY_ENCODING,
+    DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
     DEFAULT_CHUNK_KEY_ENCODING_NAME,
     DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR,
     DefaultChunkKeyEncodingConfiguration,
@@ -30,6 +31,7 @@ from zarr_metadata.v3.chunk_key_encoding.default import (
 )
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2_CHUNK_KEY_ENCODING,
+    V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
     V2_CHUNK_KEY_ENCODING_NAME,
     V2_CHUNK_KEY_ENCODING_SEPARATOR,
     V2ChunkKeyEncodingConfiguration,
@@ -41,9 +43,11 @@ from zarr_metadata.v3.chunk_key_encoding.v2 import (
 
 __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING",
+    "DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2_CHUNK_KEY_ENCODING",
+    "V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "DefaultChunkKeyEncodingConfiguration",
