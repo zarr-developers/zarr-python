@@ -805,6 +805,59 @@ def test_two_models_are_one_array_when_their_declarations_read_the_same(
     assert models[0].to_json() != models[1].to_json()
 
 
+_BIG = {"name": "bytes", "configuration": {"endian": "big"}}
+_TO_UINT8 = {"name": "cast_value", "configuration": {"data_type": "uint8"}}
+_TO_FLOAT32 = {"name": "cast_value", "configuration": {"data_type": "float32"}}
+
+
+def _shard_of(*codecs: object) -> dict[str, object]:
+    return {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [1],
+            "codecs": list(codecs),
+            "index_codecs": [_LITTLE, {"name": "crc32c"}],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("data_type", "left", "right", "same"),
+    [
+        ("uint8", [_LITTLE], [{"name": "bytes"}], True),
+        ("uint8", [_LITTLE], [_BIG], True),
+        ("uint16", [_LITTLE], [_BIG], False),
+        ("uint8", [_TO_FLOAT32, _LITTLE], [_TO_FLOAT32, _BIG], False),
+        ("uint16", [_TO_UINT8, _LITTLE], [_TO_UINT8, {"name": "bytes"}], True),
+        ("uint8", [_shard_of(_LITTLE)], [_shard_of({"name": "bytes"})], True),
+        ("uint16", [_shard_of(_LITTLE)], [_shard_of(_BIG)], False),
+    ],
+    ids=[
+        "one-byte-endian-or-none",
+        "one-byte-either-endian",
+        "two-bytes-either-endian",
+        "cast-to-four-bytes",
+        "cast-to-one-byte",
+        "shard-of-one-byte",
+        "shard-of-two-bytes",
+    ],
+)
+def test_two_models_are_one_array_when_each_codec_means_the_same_for_its_chunk(
+    data_type: str, left: object, right: object, same: bool
+) -> None:
+    """A codec is compared for the chunk it receives, as `codec_for_chunk` returns it: the `endian` of a `bytes` codec tells two arrays apart only where a value takes several bytes. `refines` agrees with `==`, and `to_json` writes each codec as given."""
+    document = ZarrV3ArrayMetadata.create_default(shape=(2,), data_type=data_type).to_json()
+    models = [
+        ZarrV3ArrayMetadata.from_json({**document, "codecs": codecs}) for codecs in (left, right)
+    ]
+    assert (models[0] == models[1]) is same
+    assert models[0].refines(models[1]) is same
+    assert models[1].refines(models[0]) is same
+    assert models[0].to_json() != models[1].to_json()
+    if same:
+        assert hash(models[0]) == hash(models[1])
+
+
 @pytest.mark.parametrize(
     ("left", "right", "same"),
     [

@@ -2,6 +2,28 @@
 
 <!-- towncrier release notes start -->
 
+## 0.9.0 (2026-11-16)
+
+### Features
+
+- `zarr_metadata.typed_json.check` and definitions' configurations now read more annotated-types constraints, as pydantic does: `MinLen`, `MaxLen` and `Len` on an array or a string, and `MultipleOf` on an integer. A value outside them is an `invalid_value` problem whose `ctx` uses pydantic's names (`min_length`, `multiple_of`), and the JSON Schema writes the matching keyword, such as `minItems`, `minLength` or `multipleOf`. A constraint on a type it does not apply to raises `TypeError`. Constant rules now live on the types, so the JSON Schemas say them too: non-empty `codecs`, sharding `codecs` and `index_codecs`, rectilinear edge lists, `struct` fields and v3 `struct` field names; `length_bytes` of at least 1 for `null_terminated_bytes` and zarr-python `raw_bytes`, and a positive multiple of 4 for `fixed_length_utf32`. Raw `r<N>` declares its bits a positive multiple of 8 on its type, and a refused name's message now names them: `bits in "r12": ...`. `check` now also refuses `"codecs": []`. ([#4636](https://github.com/zarr-developers/zarr-python/pull/4636))
+
+- Add `ZarrV3NodeType` and `ZARR_V3_NODE_TYPE` for the `node_type` member of a
+    v3 document, and constants for the separator the spec assumes when one is
+    absent: `ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR` (`"."`),
+    `DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR` (`"/"`) and
+    `V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR` (`"."`). The `TypeIs` functions
+    `is_zarr_v2_array_order`, `is_zarr_v2_array_dimension_separator` (in
+    `zarr_metadata.v2.array`) and `is_zarr_v3_node_type` (in `zarr_metadata.v3`)
+    narrow any value to the matching `Literal` type, under every type checker. ([#4638](https://github.com/zarr-developers/zarr-python/pull/4638))
+
+### Bugfixes
+
+- Strategies in `zarr_metadata.testing.strategies` that draw codec pipelines, such as `array_documents` and `pipelines`, now draw the same examples on every derandomized Hypothesis run. A codec was sampled from options that hold strategies, which Hypothesis labels by their memory address, so the examples its mutator produced varied from one process to the next. ([#4635](https://github.com/zarr-developers/zarr-python/pull/4635))
+
+- The `rectilinear` chunk grid now refuses an empty list of chunk edge lengths, such as `"chunk_shapes": [[]]`, even along a dimension of length 0. zarr-extensions#78 made the list form non-empty; a dimension with no chunks writes a bare integer instead. The JSON Schema says `minItems: 1` for the list, and `chunk_grid_configurations` no longer draws an empty list. ([#4636](https://github.com/zarr-developers/zarr-python/pull/4636))
+
+
 ## 0.8.0 (2026-11-12)
 
 ### Features

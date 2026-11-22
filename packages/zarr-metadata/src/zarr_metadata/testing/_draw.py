@@ -278,7 +278,16 @@ def pipelines_for(
 def _codec(
     draw: st.DrawFn, options: Sequence[tuple[K, Configurations]]
 ) -> tuple[K, ZarrV3DeclarationJSON]:
-    definition, configurations = draw(st.sampled_from(options))
+    # A name, not an option: Hypothesis labels a `sampled_from` by hashing its
+    # elements, and an option holds a strategy, which hashes by its `id`. A
+    # label that follows where a strategy sits in memory sends Hypothesis's
+    # mutator down other paths from one run to the next, so a derandomized
+    # run would not draw the same examples twice. Names also keep one set of
+    # options apart from another, as an index into either would not.
+    named = {
+        definition.name: (definition, configurations) for definition, configurations in options
+    }
+    definition, configurations = named[draw(st.sampled_from(list(named)))]
     return definition, draw(any_spelling(definition, configurations))
 
 

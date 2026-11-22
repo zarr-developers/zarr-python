@@ -76,7 +76,12 @@ from zarr_metadata.model._shared import (
     unclaimed_declarations_of,
     unexpected_keys,
 )
-from zarr_metadata.v3._common import ZarrV3ExtensionField
+from zarr_metadata.v3._common import (
+    ZARR_V3_NODE_TYPE,
+    ZarrV3ExtensionField,
+    ZarrV3NodeType,
+    is_zarr_v3_node_type,
+)
 
 # A runtime import: `get_type_hints` resolves the public signatures.
 from zarr_metadata.v3._context import ZarrV3Context  # noqa: TC001
@@ -872,12 +877,8 @@ def _read_node_v3(
     return ZarrV3UnknownNodeMetadataReading(problems), None
 
 
-_NODE_TYPES: Final = ("array", "group")
-"""The node types the spec defines."""
-
-
-def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]]:
-    """The node type `value` declares, one of `_NODE_TYPES`. None, with the problems, when it declares none of them or is not an object.
+def _node_type(value: object) -> tuple[ZarrV3NodeType | None, tuple[ValidationProblem, ...]]:
+    """The node type `value` declares, one of `ZARR_V3_NODE_TYPE`. None, with the problems, when it declares none of them or is not an object.
 
     When a document declares no valid node type, its `zarr_format` is
     checked too, so a document in another format is reported as not v3.
@@ -886,7 +887,7 @@ def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]
         return None, not_an_object(value)
     document = value
     node_type = document.get("node_type")
-    if isinstance(node_type, str) and node_type in _NODE_TYPES:
+    if is_zarr_v3_node_type(node_type):
         return node_type, ()
     problems = [
         *missing_keys(frozenset({"zarr_format"}), document),
@@ -895,7 +896,7 @@ def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]
     if "node_type" not in document:
         problems.append(ValidationProblem(("node_type",), "missing required key", "missing_key"))
     else:
-        problems.append(outside_of(("node_type",), node_type, _NODE_TYPES))
+        problems.append(outside_of(("node_type",), node_type, ZARR_V3_NODE_TYPE))
     return None, with_input(problems, document)
 
 

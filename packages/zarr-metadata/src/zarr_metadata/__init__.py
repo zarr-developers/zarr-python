@@ -38,6 +38,7 @@ from zarr_metadata.model import (
 from zarr_metadata.problems import MetadataValidationError, ProblemKind, ValidationProblem
 from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import (
+    ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
     ZARR_V2_ARRAY_ORDER,
@@ -65,7 +66,13 @@ from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3 import ZarrV3DeclarationJSON, ZarrV3ExtensionField, ZarrV3NamedConfigJSON
+from zarr_metadata.v3 import (
+    ZARR_V3_NODE_TYPE,
+    ZarrV3DeclarationJSON,
+    ZarrV3ExtensionField,
+    ZarrV3NamedConfigJSON,
+    ZarrV3NodeType,
+)
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
@@ -82,6 +89,7 @@ from zarr_metadata.v3.chunk_grid.regular import (
     RegularChunkGridName,
 )
 from zarr_metadata.v3.chunk_key_encoding.default import (
+    DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
     DEFAULT_CHUNK_KEY_ENCODING_NAME,
     DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR,
     DefaultChunkKeyEncodingMetadata,
@@ -89,6 +97,7 @@ from zarr_metadata.v3.chunk_key_encoding.default import (
     DefaultChunkKeyEncodingSeparator,
 )
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
+    V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR,
     V2_CHUNK_KEY_ENCODING_NAME,
     V2_CHUNK_KEY_ENCODING_SEPARATOR,
     V2ChunkKeyEncodingMetadata,
@@ -281,6 +290,7 @@ __all__ = [
     "COMPLEX64_DATA_TYPE_NAME",
     "COMPLEX128_DATA_TYPE_NAME",
     "CRC32C_CODEC_NAME",
+    "DEFAULT_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "ENDIANNESS",
@@ -309,10 +319,12 @@ __all__ = [
     "UINT32_DATA_TYPE_NAME",
     "UINT64_DATA_TYPE_NAME",
     "UNSET",
+    "V2_CHUNK_KEY_ENCODING_DEFAULT_SEPARATOR",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "VLEN_BYTES_CODEC_NAME",
     "VLEN_UTF8_CODEC_NAME",
+    "ZARR_V2_ARRAY_DEFAULT_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_DIMENSION_SEPARATOR",
     "ZARR_V2_ARRAY_METADATA_STORE_KEY",
     "ZARR_V2_ARRAY_ORDER",
@@ -322,6 +334,7 @@ __all__ = [
     "ZARR_V3_ARRAY_METADATA_STORE_KEY",
     "ZARR_V3_CONSOLIDATED_METADATA_KEY",
     "ZARR_V3_GROUP_METADATA_STORE_KEY",
+    "ZARR_V3_NODE_TYPE",
     "ZSTD_CODEC_NAME",
     "BloscCName",
     "BloscCodecMetadata",
@@ -444,6 +457,7 @@ __all__ = [
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3NamedConfigJSON",
     "ZarrV3NodeMetadataInput",
+    "ZarrV3NodeType",
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "__version__",

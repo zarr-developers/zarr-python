@@ -220,6 +220,13 @@ These are each declaration, and the fill value read against its data type.
 - A v3 blosc codec with `noshuffle`
   [ignores `typesize`](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/blosc/index.html#configuration-parameters).
   So it is the same codec with or without one.
+- A v3 `bytes` codec's `endian` orders the bytes of each value, and the
+  encoding of a value that takes one byte
+  [does not depend on it](https://zarr-specs.readthedocs.io/en/v3.1.0/v3/codecs/bytes/index.html#configuration-parameters).
+  So in a `uint8` array, a `bytes` codec is the same codec with either
+  `endian`, or with none. The codec is compared for the chunk it
+  receives: after a `cast_value` to `float32`, the two `endian` values
+  are two codecs.
 
 A v2 document's
 [dtype](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding),

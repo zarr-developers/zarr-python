@@ -193,6 +193,39 @@ rectangular-only view is a plausible next step, but it should be introduced by
 a consumer that needs the guarantee in its signatures rather than
 speculatively; `is_box` is the runtime check until then.
 
+## Repeated write targets
+
+A query can address one storage cell more than once: `a.vindex[[1, 1]] = [10, 20]`
+writes two values to one cell. Only one value can remain, and this library
+does not promise which. `LazyArray.write` gives the cell one of the values
+written to it, whole (on a masked NumPy array, the value and its mask come
+from the same write), and leaves the choice unspecified. A caller whose result depends on the choice removes repeated
+coordinates before writing, for example with `np.unique(..., return_index=True)`.
+
+Three decisions follow from that rule:
+
+- **Performance decides the internal order.** Planning groups each chunk's
+  points with whatever sort is fastest. That is currently NumPy's 16-bit radix
+  sort, which is stable, so a chunk's points stay in request order, and NumPy
+  assignment applies repeated targets in sequence in practice. Writes therefore
+  currently keep the last value in C order of the view. This describes the
+  implementation, not a contract: a faster planner or a NumPy change may pick a
+  different value, and tests must not depend on which one lands.
+- **Planning tables carry no order within a row.** `IndexedSet` and `JointSet`
+  pair every point with its request position, so result placement survives
+  planning, but the order of points within a row is unspecified. A consumer
+  that needs request order sorts a row by `positions`.
+- **The library does not deduplicate.** Removing repeats, or detecting them to
+  raise an error, needs a pass over each chunk's targets that can cost more
+  than the assignment itself: for a 200,000-point unordered selection written
+  to a NumPy array, the pass took about ten times as long as the assignment.
+  That cost would fall on every write to protect the few with ambiguous
+  input, so the caller who needs a particular value supplies unambiguous input.
+
+NumPy takes the same position: it documents that the final value of an element
+assigned more than once through advanced indexing cannot be predicted. Array
+libraries that scatter in parallel make the same choice.
+
 ## Negative-origin domains and prependable grids
 
 Literal coordinates let a domain grow at its lower end without changing the

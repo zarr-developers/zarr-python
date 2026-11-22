@@ -41,17 +41,6 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     return RawBytesDataTypeName(value)
 
 
-def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """Check the size: "raw bits, variable size given by *, limited to be a multiple of 8". Zero bits is not a valid type."""
-    bits = configuration["bits"]
-    if bits == 0 or bits % 8 != 0:
-        yield ValidationProblem(
-            ("bits",),
-            f"expected a size in bits that is a positive multiple of 8, got {bits}",
-            "invalid_value",
-        )
-
-
 def _fill_value_rules(
     configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
 ) -> Iterator[ValidationProblem]:
@@ -88,7 +77,6 @@ def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageCla
 RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=RAW_BYTES_NAME,
     configuration=RawBytesConfiguration,
-    rules=_rules,
     fill_value=RawBytesFillValue,
     fill_value_default=_fill_value_default,
     fill_value_rules=_fill_value_rules,

@@ -82,8 +82,10 @@ names `acme.lz4` is then checked against this definition.
 - a `NewType` or a type alias.
 
 A number may carry bounds from annotated-types: `Gt`, `Ge`, `Lt`, `Le` or
-`Interval`. Any other `Annotated` metadata is refused when the definition
-is built.
+`Interval`, and an integer a step, `MultipleOf`. An array or a string may
+bound its length with `MinLen`, `MaxLen` or `Len`, so
+`Annotated[tuple[int, ...], MinLen(1)]` is never empty. Any other
+`Annotated` metadata is refused when the definition is built.
 
 **The rules function**
 
@@ -120,7 +122,9 @@ Other kinds declare more:
 - A codec is defined by the class of its kind, `ArrayArrayCodecDefinition`,
   `ArrayBytesCodecDefinition` or `BytesBytesCodecDefinition`. A codec that
   receives an array declares what it checks about the chunk it receives
-  (`chunk_rules`) and any pipelines it contains (`pipelines`), and an
+  (`chunk_rules`), its simplest spelling for that chunk
+  (`chunk_canonical`, as `bytes` drops an `endian` when each value takes
+  one byte) and any pipelines it contains (`pipelines`), and an
   array -> array codec also declares what it hands on (`transition`). A
   bytes -> bytes codec receives bytes, so it declares none of these.
 
