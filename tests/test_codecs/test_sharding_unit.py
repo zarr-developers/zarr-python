@@ -780,6 +780,46 @@ def test_shard_index_async_fallback_for_async_only_index_codec() -> None:
     np.testing.assert_array_equal(decoded.offsets_and_lengths, index.offsets_and_lengths)
 
 
+@pytest.mark.parametrize("decoder", ["sync", "async", "async-only"])
+@pytest.mark.parametrize(
+    "entry",
+    [(MAX_UINT_64, 8), (0, MAX_UINT_64), (MAX_UINT_64 - 3, 8)],
+    ids=["missing-offset", "missing-length", "overflow"],
+)
+def test_shard_index_decode_rejects_invalid_entries(decoder: str, entry: tuple[int, int]) -> None:
+    serializer = _AsyncOnlyBytesCodec() if decoder == "async-only" else BytesCodec()
+    codec = ShardingCodec(chunk_shape=(1,), index_codecs=[serializer, Crc32cCodec()])
+    index = _ShardIndex.create_empty((2,))
+    index.offsets_and_lengths[1] = entry
+    encoded = asyncio.run(codec._encode_shard_index(index))
+
+    def decode() -> _ShardIndex:
+        if decoder == "sync":
+            return codec._decode_shard_index_sync(encoded, (2,))
+        return asyncio.run(codec._decode_shard_index(encoded, (2,)))
+
+    with pytest.raises(ValueError, match="Invalid shard index"):
+        decode()
+
+
+@pytest.mark.parametrize("decoder", ["sync", "async", "async-only"])
+def test_shard_index_validation_preserves_legal_entries(decoder: str) -> None:
+    serializer = _AsyncOnlyBytesCodec() if decoder == "async-only" else BytesCodec()
+    codec = ShardingCodec(chunk_shape=(1,), index_codecs=[serializer, Crc32cCodec()])
+    # Sparse, unordered and zero-length entries are legal. The last range ends
+    # at UINT64_MAX without overflowing; validation does not impose object bounds.
+    values = np.array(
+        [[MAX_UINT_64, MAX_UINT_64], [32, 4], [8, 0], [MAX_UINT_64 - 1, 1]], dtype="<u8"
+    )
+    index = _ShardIndex((4,), values)
+    encoded = asyncio.run(codec._encode_shard_index(index))
+    if decoder == "sync":
+        decoded = codec._decode_shard_index_sync(encoded, (4,))
+    else:
+        decoded = asyncio.run(codec._decode_shard_index(encoded, (4,)))
+    np.testing.assert_array_equal(decoded.offsets_and_lengths, values)
+
+
 # ============================================================================
 # Coalescing config option tests
 #
