@@ -48,6 +48,13 @@ Worked, end-to-end examples:
 
 - **[Glossary](glossary.md)** - Definitions of key terms (chunks, shards, codecs, etc.)
 
+For the on-disk format, see the [Zarr v2 specification](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html)
+or the [Zarr v3 core specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/).
+In v3, codecs such as [bytes](https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/)
+and [gzip](https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/) have
+separate specifications. For Zarr-Python's experimental v3 consolidated metadata,
+see [Consolidated Metadata](consolidated_metadata.md).
+
 ## Need Help?
 
 - Browse the [API Reference](../api/zarr/index.md) for detailed function documentation
