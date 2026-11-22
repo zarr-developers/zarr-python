@@ -119,6 +119,12 @@ removed, or modified, consolidated metadata may not be desirable.
    `use_consolidated=False` to [`zarr.open_group`][] to always read child
    metadata directly from the store.
 
+For example, if a writer adds an array without re-consolidating the group,
+reopening with `use_consolidated=True` still uses the old list of children.
+Either open with `use_consolidated=False` to see the new array immediately, or
+run [`zarr.consolidate_metadata`][] on the store and reopen the group. A group
+that was already opened with consolidated metadata keeps its original snapshot.
+
 ## Stores Without Support for Consolidated Metadata
 
 Some stores may want to opt out of the consolidated metadata mechanism. This
