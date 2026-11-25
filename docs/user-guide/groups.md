@@ -51,6 +51,14 @@ print(root['foo/bar'])
 print(root['foo/bar/baz'])
 ```
 
+To move up the hierarchy, use the `parent` property of a group or array. It returns
+`None` for a node at the root of the store:
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(root['foo/bar/baz'].parent)
+print(root.parent)
+```
+
 Accessing a member with `[]` returns either an [`zarr.Array`][] or a [`zarr.Group`][], depending on
 what is stored at the given path. When you expect a node of a particular kind, use
 [`zarr.Group.get_array`][] or [`zarr.Group.get_group`][] instead. These methods accept the same
