@@ -171,6 +171,23 @@ def test_group_name_properties(
     assert branch.basename == branch_name.split("/")[-1]
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_parent(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test that the parent of a group or array is the group that contains it
+    """
+    root = Group.from_store(store=store, zarr_format=zarr_format)
+    child = root.create_group("child")
+    grandchild = child.create_group("grandchild")
+    arr = grandchild.create_array("arr", shape=(1,), dtype="uint8")
+
+    assert root.parent is None
+    assert child.parent == root
+    assert grandchild.parent == child
+    assert arr.parent == grandchild
+    assert zarr.create_array(store, shape=(1,), dtype="uint8", overwrite=True).parent is None
+
+
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
 def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metadata: bool) -> None:
     """
