@@ -405,6 +405,11 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     assert group["subgroup"]["subarray"] == subsubarray
     assert group["subgroup/subarray"] == subsubarray
 
+    # non-string keys are a type error, not a bare assert or a
+    # string-join error from deep inside the storage layer (#3387)
+    with pytest.raises(TypeError, match='invalid type for "path": int'):
+        group[0]  # type: ignore[index]
+
     with pytest.raises(KeyError, match="nope"):
         group["nope"]
 
@@ -1207,6 +1212,10 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     # check that asking for a nonexistent key raises KeyError
     with pytest.raises(KeyError, match="foo"):
         await agroup.getitem("foo")
+
+    # check that a non-string key raises a clear TypeError (#3387)
+    with pytest.raises(TypeError, match='invalid type for "path": int'):
+        await agroup.getitem(0)  # type: ignore[arg-type]
 
 
 async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None:
