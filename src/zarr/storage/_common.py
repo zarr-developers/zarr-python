@@ -277,7 +277,7 @@ class StorePath:
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
-        return self.__class__(self.store, _join_paths([self.path, other]))
+        return self.__class__(self.store, _join_paths([self.path, normalize_path(other)]))
 
     def __str__(self) -> str:
         return _join_paths([str(self.store), self.path])
