@@ -2286,6 +2286,11 @@ class Group(SyncMixin):
         return self._async_group.basename
 
     @property
+    def parent(self) -> Group | None:
+        """The group containing this group, or ``None`` for the root group."""
+        return _open_parent(self.store_path, self.metadata.zarr_format)
+
+    @property
     def attrs(self) -> Attributes:
         """Attributes of this Group"""
         return Attributes(self)
@@ -3961,3 +3966,11 @@ async def create_rooted_hierarchy(
         x async for x in create_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
     ]
     return dict(nodes_created)[root_key]
+
+
+def _open_parent(store_path: StorePath, zarr_format: ZarrFormat) -> Group | None:
+    """Open the group that contains the node at ``store_path``, or ``None`` at the root."""
+    if not store_path.path:
+        return None
+    parent_path = store_path.path.rpartition("/")[0]
+    return Group.open(StorePath(store_path.store, parent_path), zarr_format=zarr_format)

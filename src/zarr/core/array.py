@@ -171,6 +171,7 @@ if TYPE_CHECKING:
     from zarr.codecs.sharding import IndexLocation, ShardingCodec
     from zarr.core.buffer import Buffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.group import Group
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
@@ -2259,6 +2260,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def basename(self) -> str:
         """Final component of name."""
         return self.async_array.basename
+
+    @property
+    def parent(self) -> Group | None:
+        """The group containing this array, or ``None`` for an array at the root of the store."""
+        from zarr.core.group import _open_parent
+
+        return _open_parent(self.store_path, self.metadata.zarr_format)
 
     @property
     def metadata(self) -> ArrayMetadata:
