@@ -36,6 +36,7 @@ from zarr.api.synchronous import (
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
+from zarr.core.sync import run
 
 # in case setuptools scm screw up and find version to be 0.0.0
 if __version__.startswith("0.0.0"):
@@ -175,6 +176,7 @@ __all__ = [
     "open_group",
     "open_like",
     "print_debug_info",
+    "run",
     "save",
     "save_array",
     "save_group",
