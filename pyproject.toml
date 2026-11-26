@@ -111,9 +111,9 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.17.2",
+    "coverage==7.17.3",
     "pytest==9.2.0",
-    "pytest-asyncio==1.4.1.post1",
+    "pytest-asyncio==1.5.0",
     "pytest-cov==7.1.0",
     "numpydoc==1.11.0",
     "hypothesis==6.170.15",
@@ -121,7 +121,7 @@ test = [
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.3.1",
     "pytest-codspeed==5.0.4",
-    "uv==0.13.7",
+    "uv==0.13.9",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -140,12 +140,12 @@ docs = [
     "mkdocs-material[imaging]==9.8.1",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.8",
-    "mkdocstrings-python==2.0.10",
+    "mkdocstrings-python==2.0.11",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.13.0",
     "griffe-inherited-docstrings==1.1.4",
-    "ruff==0.17.4",
+    "ruff==0.17.5",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
