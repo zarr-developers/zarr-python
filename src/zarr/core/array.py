@@ -2587,6 +2587,24 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         return arr_np
 
+    def __iter__(self) -> Iterator[NDArrayLikeOrScalar]:
+        """Iterate over the first axis of the array.
+
+        For a 1-dimensional array, iteration yields the scalar value of each
+        element (matching NumPy and zarr v2), even though indexing a single
+        element returns a 0-dimensional array. For arrays with more than one
+        dimension, iteration yields the sub-array at each index of the first
+        axis.
+        """
+        if self.ndim == 0:
+            raise TypeError("iteration over a 0-d array")
+        for index in range(self.shape[0]):
+            item = self[index]
+            if isinstance(item, np.ndarray) and item.ndim == 0:
+                yield item[()]
+            else:
+                yield item
+
     def __getitem__(self, selection: Selection) -> NDArrayLikeOrScalar:
         """Retrieve data for an item or region of the array.
 
