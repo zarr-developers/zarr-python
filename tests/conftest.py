@@ -650,3 +650,27 @@ def moto_server() -> Generator[str, None, None]:
         yield f"http://{host}:{port}/"
     finally:
         server.stop()
+
+
+
+# --- campaign A591 transient GPU probe (added for ONE bounded GPU job; do not merge) ---
+def _campaign_a591_gpu_probe() -> None:
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    if _shutil.which("nvidia-smi") is None:
+        return
+    _out = []
+    for _cmd in (
+        ["nvidia-smi", "-L"],
+        ["nvidia-smi", "--query-gpu=uuid,name,memory.total", "--format=csv,noheader"],
+    ):
+        try:
+            _r = _subprocess.run(_cmd, capture_output=True, text=True, timeout=120)
+            _out.append("$ " + " ".join(_cmd) + " rc=" + str(_r.returncode) + "\n" + _r.stdout + _r.stderr)
+        except Exception as _exc:  # noqa: BLE001
+            _out.append("$ " + " ".join(_cmd) + " ERROR " + repr(_exc))
+    raise RuntimeError("CAMPAIGN-A591-GPU-PROOF\n" + "\n".join(_out))
+
+
+_campaign_a591_gpu_probe()
