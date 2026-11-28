@@ -2337,6 +2337,29 @@ def test_chunk_grid_shape(
     assert arr._nshards == np.prod(shard_grid_shape)
 
 
+def test_iter_1d_yields_scalars() -> None:
+    # Regression test for https://github.com/zarr-developers/zarr-python/issues/3415:
+    # iterating a 1-d array yielded 0-d arrays instead of scalars.
+    arr = zarr.array(np.array([10, -3, 7], dtype=np.int32), chunks=(2,))
+    listed = list(arr)
+    assert listed == [np.int32(10), np.int32(-3), np.int32(7)]
+    assert all(type(item) is np.int32 for item in listed)
+
+
+def test_iter_2d_yields_subarrays() -> None:
+    arr = zarr.array(np.arange(6).reshape(2, 3), chunks=(1, 3))
+    rows = list(arr)
+    assert len(rows) == 2
+    assert all(isinstance(row, np.ndarray) and row.shape == (3,) for row in rows)
+    np.testing.assert_array_equal(rows[1], np.array([3, 4, 5]))
+
+
+def test_iter_0d_raises() -> None:
+    arr = zarr.array(np.array(5))
+    with pytest.raises(TypeError, match="iteration over a 0-d array"):
+        list(arr)
+
+
 @pytest.mark.parametrize(
     ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
 )
